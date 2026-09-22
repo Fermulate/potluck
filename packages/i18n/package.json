@@ -8,9 +8,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.include=src"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "5.1.0",
+    "fast-check": "^4.10.2",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
