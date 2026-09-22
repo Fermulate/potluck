@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+dist
+dev-dist
+coverage
+.turbo
+**/routeTree.gen.ts
+supabase/.temp
+supabase/.branches

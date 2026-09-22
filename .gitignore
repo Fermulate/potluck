@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+# local tooling (not part of the project)
+.lavish/
+.claude/
+.agents/
+.mcp.json
+skills-lock.json
+supabase/.temp/
+supabase/.branches/
+playwright-report/
+test-results/
+
+# generated / editor
+dev-dist/
+*.tsbuildinfo
+.vscode/*
+!.vscode/extensions.json
+.idea/
