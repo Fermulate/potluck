@@ -11,6 +11,7 @@ export type SplitError =
   | { code: 'sum_mismatch'; expected: number; actual: number; difference: number }
   | { code: 'invalid_weight'; userId: string }
   | { code: 'percent_sum'; actual: number }
+  | { code: 'zero_shares' }
 
 const fail = (error: SplitError): SplitResult => ({ ok: false, error })
 
@@ -101,5 +102,17 @@ export function splitPercent(
   if (sum !== BigInt(100 * WEIGHT_SCALE)) {
     return fail({ code: 'percent_sum', actual: Number(sum) / WEIGHT_SCALE })
   }
+  return { ok: true, shares: allocate(totalCents, scaled.weights) }
+}
+
+/** Split proportionally to share counts (e.g. 2 shares for a couple). Fractional shares are fine. */
+export function splitShares(
+  totalCents: number,
+  shareCounts: Readonly<Record<string, number>>,
+): SplitResult {
+  if (!isCents(totalCents)) return fail({ code: 'invalid_total' })
+  const scaled = scaleWeights(shareCounts)
+  if (!scaled.ok) return scaled
+  if (sumOf(scaled.weights) === 0n) return fail({ code: 'zero_shares' })
   return { ok: true, shares: allocate(totalCents, scaled.weights) }
 }
