@@ -9,8 +9,36 @@ export type SplitError =
   | { code: 'invalid_amount'; userId: string }
   /** `difference` is what is still unassigned: positive means too little, negative too much. */
   | { code: 'sum_mismatch'; expected: number; actual: number; difference: number }
+  | { code: 'invalid_weight'; userId: string }
+  | { code: 'percent_sum'; actual: number }
 
 const fail = (error: SplitError): SplitResult => ({ ok: false, error })
+
+/** Percents and share counts are fixed-point with this many decimals before allocation. */
+const WEIGHT_SCALE = 1_000_000
+
+/** Convert decimal weights (percents, share counts) to scaled integers, in sorted id order. */
+function scaleWeights(
+  weights: Readonly<Record<string, number>>,
+): { ok: true; weights: Map<string, bigint> } | { ok: false; error: SplitError } {
+  const ids = Object.keys(weights).sort(compareIds)
+  if (ids.length === 0) return { ok: false, error: { code: 'no_users' } }
+  const scaled = new Map<string, bigint>()
+  for (const id of ids) {
+    const value = weights[id]!
+    if (!Number.isFinite(value) || value < 0) {
+      return { ok: false, error: { code: 'invalid_weight', userId: id } }
+    }
+    scaled.set(id, BigInt(Math.round(value * WEIGHT_SCALE)))
+  }
+  return { ok: true, weights: scaled }
+}
+
+function sumOf(weights: ReadonlyMap<string, bigint>): bigint {
+  let sum = 0n
+  for (const w of weights.values()) sum += w
+  return sum
+}
 
 function isCents(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0
@@ -56,4 +84,22 @@ export function splitExact(totalCents: number, amounts: Readonly<Shares>): Split
     })
   }
   return { ok: true, shares: Object.fromEntries(ids.map((id) => [id, amounts[id]!])) }
+}
+
+/**
+ * Split by percentage. Percents may have up to 6 decimals and must add up to exactly 100.
+ * Leftover cents go to the largest fractional remainder, ties by user id.
+ */
+export function splitPercent(
+  totalCents: number,
+  percents: Readonly<Record<string, number>>,
+): SplitResult {
+  if (!isCents(totalCents)) return fail({ code: 'invalid_total' })
+  const scaled = scaleWeights(percents)
+  if (!scaled.ok) return scaled
+  const sum = sumOf(scaled.weights)
+  if (sum !== BigInt(100 * WEIGHT_SCALE)) {
+    return fail({ code: 'percent_sum', actual: Number(sum) / WEIGHT_SCALE })
+  }
+  return { ok: true, shares: allocate(totalCents, scaled.weights) }
 }
