@@ -5,3 +5,4 @@ export {
   type BalanceSettlement,
   type BalanceSplit,
 } from './balances'
+export { simplifyDebts, type Transfer } from './simplify'
