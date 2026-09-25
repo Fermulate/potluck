@@ -35,7 +35,8 @@ const zoneFor = (value: DateInput, timeZone: string) => (isDateOnly(value) ? 'UT
  * ICU uses inconsistently, e.g. before AM/PM) become plain spaces, and range dashes become a
  * spaced hyphen per house style.
  */
-const clean = (text: string) => text.replace(/\s*[–—]\s*/g, ' - ').replace(/[  ]/g, ' ')
+const clean = (text: string) =>
+  text.replace(/\s*[\u2013\u2014]\s*/g, ' - ').replace(/[\u2009\u202f]/g, ' ')
 
 const cache = new Map<string, Intl.DateTimeFormat>()
 function dateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions) {

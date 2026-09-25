@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { formatMoney } from './index'
 
-const NBSP = ' '
+const NBSP = '\u00a0'
 
 describe('formatMoney', () => {
   it('formats cents as a currency amount', () => {
