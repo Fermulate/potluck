@@ -46,13 +46,11 @@ const RULES: { [A in Action]: Rule<A> } = {
   'invite.create': (role, { membersCanInvite }) => membersCanInvite || isManager(role),
   'member.remove': (role, { targetRole, targetNetCents }) =>
     targetNetCents === 0 &&
-    ((role === 'owner' && targetRole !== 'owner') ||
-      (role === 'admin' && targetRole === 'member')),
+    ((role === 'owner' && targetRole !== 'owner') || (role === 'admin' && targetRole === 'member')),
   'member.changeRole': (role, { targetRole, newRole }) =>
     newRole !== 'owner' &&
     newRole !== targetRole &&
-    ((role === 'owner' && targetRole !== 'owner') ||
-      (role === 'admin' && targetRole === 'member')),
+    ((role === 'owner' && targetRole !== 'owner') || (role === 'admin' && targetRole === 'member')),
   'group.edit': isManager,
   'group.delete': (role) => role === 'owner',
   'group.transferOwnership': (role) => role === 'owner',

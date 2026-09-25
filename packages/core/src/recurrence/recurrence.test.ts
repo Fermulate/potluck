@@ -32,5 +32,7 @@ describe('nextOccurrence', () => {
   it('rejects malformed dates', () => {
     expect(() => nextOccurrence('2026-02-30', 'monthly')).toThrow(RangeError)
     expect(() => nextOccurrence('next tuesday', 'weekly')).toThrow(RangeError)
+    expect(() => nextOccurrence('2026-13-01', 'yearly')).toThrow(RangeError)
+    expect(() => nextOccurrence('2026-01-00', 'yearly')).toThrow(RangeError)
   })
 })

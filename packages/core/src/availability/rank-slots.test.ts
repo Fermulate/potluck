@@ -112,6 +112,13 @@ describe('rankSlots', () => {
     ])
   })
 
+  it('throws on unreadable timestamps and bad slot sizes', () => {
+    expect(() => rankSlots([{ userId: 'a', slotStart: 'soon', level: 'yes' }], options)).toThrow(
+      RangeError,
+    )
+    expect(() => rankSlots([], { ...options, slotMinutes: 0 })).toThrow(RangeError)
+  })
+
   it('rounds a duration that is not a whole number of slots up to the next slot', () => {
     const ranked = rankSlots([row('a', '18:00'), row('b', '18:00'), row('b', '18:30')], {
       ...options,

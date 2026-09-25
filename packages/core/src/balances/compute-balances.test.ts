@@ -31,6 +31,14 @@ describe('computeBalances', () => {
     ).toEqual({ a: 600, b: -300, c: -300 })
   })
 
+  it('skips an expense with no shares to charge', () => {
+    expect(
+      computeBalances([
+        { paidBy: 'a', amountCents: 500, splits: [{ userId: 'b', shareCents: 0 }] },
+      ]),
+    ).toEqual({})
+  })
+
   it('converts foreign currency expenses into the group currency', () => {
     expect(
       computeBalances([

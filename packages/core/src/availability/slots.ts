@@ -29,7 +29,7 @@ export function buildSlots(grid: SlotGrid): string[] {
   const end = parseDateOnly(grid.windowEnd)
   const slots: string[] = []
 
-  for (let day = parseDateOnly(grid.windowStart); compareDateOnly(day, end) <= 0; ) {
+  for (let day = parseDateOnly(grid.windowStart); compareDateOnly(day, end) <= 0;) {
     const date = formatDateOnly(day)
     for (
       let minute = grid.dayStartMinute;

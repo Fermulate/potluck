@@ -44,7 +44,11 @@ describe('eventCreateSchema', () => {
       min_attendees: 4,
       rsvp_deadline: '2026-06-09T12:00:00Z',
     })
-    expect(parsed).toMatchObject({ emoji: '🌮', slot_minutes: 60, rsvp_deadline: '2026-06-09T12:00:00Z' })
+    expect(parsed).toMatchObject({
+      emoji: '🌮',
+      slot_minutes: 60,
+      rsvp_deadline: '2026-06-09T12:00:00Z',
+    })
   })
 
   it('allows a single day window', () => {
@@ -69,9 +73,9 @@ describe('eventCreateSchema', () => {
   })
 
   it('rejects a duration longer than the daily window', () => {
-    expect(messages({ day_start_minute: 1080, day_end_minute: 1200, duration_minutes: 180 })).toEqual(
-      ['duration_too_long'],
-    )
+    expect(
+      messages({ day_start_minute: 1080, day_end_minute: 1200, duration_minutes: 180 }),
+    ).toEqual(['duration_too_long'])
   })
 
   it.each([

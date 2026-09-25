@@ -37,7 +37,10 @@ const MINUTE = 60_000
 /** Parse a timestamptz in ISO or Postgres text form (`2026-06-12 18:00:00+00`) to epoch ms. */
 function toEpoch(value: string | Date): number {
   if (value instanceof Date) return value.getTime()
-  const iso = value.trim().replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00')
+  const iso = value
+    .trim()
+    .replace(' ', 'T')
+    .replace(/([+-]\d{2})$/, '$1:00')
   const ms = Date.parse(iso)
   if (Number.isNaN(ms)) throw new RangeError(`invalid timestamp: ${value}`)
   return ms

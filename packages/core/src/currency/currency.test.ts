@@ -84,6 +84,7 @@ describe('convert', () => {
     expect(() => convert(100, 0)).toThrow(RangeError)
     expect(() => convert(100, -1)).toThrow(RangeError)
     expect(() => convert(100, 'abc')).toThrow(RangeError)
+    expect(() => convert(100, 1e-9)).toThrow(RangeError)
     expect(() => convert(1.5, 1)).toThrow(RangeError)
   })
 })

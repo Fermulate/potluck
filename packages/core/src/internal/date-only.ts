@@ -15,7 +15,8 @@ export function parseDateOnly(value: string): DateParts {
   if (parts.month < 1 || parts.month > 12 || parts.day < 1) {
     throw new RangeError(`invalid date ${value}`)
   }
-  if (parts.day > daysInMonth(parts.year, parts.month)) throw new RangeError(`invalid date ${value}`)
+  if (parts.day > daysInMonth(parts.year, parts.month))
+    throw new RangeError(`invalid date ${value}`)
   return parts
 }
 
