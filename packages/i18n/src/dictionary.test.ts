@@ -1,4 +1,4 @@
-import { CATEGORY_IDS, SPLIT_TYPES } from '@potluck/core'
+import { CATEGORY_IDS, SPLIT_TYPES, type SplitError } from '@potluck/core'
 import { describe, expect, it } from 'vitest'
 import { en, hasMessage } from './index'
 
@@ -60,6 +60,40 @@ describe('coverage of core domain values', () => {
         SPLIT_TYPES.flatMap((type) => [`splitTypes.${type}.label`, `splitTypes.${type}.hint`]),
       ),
     ).toEqual([])
+  })
+
+  it('explains every split error code from core', () => {
+    const codes = [
+      'invalid_total',
+      'no_users',
+      'duplicate_user',
+      'invalid_amount',
+      'sum_mismatch',
+      'invalid_weight',
+      'percent_sum',
+      'zero_shares',
+      'no_items',
+      'item_no_users',
+      'invalid_item_amount',
+      'invalid_extra',
+    ] satisfies SplitError['code'][]
+    expect(missingKeys(codes.map((code) => `errors.split.${code}`))).toEqual([])
+  })
+
+  it('explains every custom schema validation code from core', () => {
+    const codes = [
+      'invalid_currency',
+      'splits_sum_mismatch',
+      'duplicate_split_user',
+      'percent_sum',
+      'shares_required',
+      'invalid_slot_size',
+      'window_end_before_start',
+      'window_too_long',
+      'day_end_before_start',
+      'duration_too_long',
+    ]
+    expect(missingKeys(codes.map((code) => `errors.validation.${code}`))).toEqual([])
   })
 
   it('names and describes every group role', () => {
