@@ -1,4 +1,11 @@
 export {
+  MAX_WINDOW_DAYS,
+  SLOT_SIZES,
+  eventCreateSchema,
+  type EventCreateInput,
+  type EventCreatePayload,
+} from './event'
+export {
   SPLIT_TYPES,
   expenseCreateSchema,
   expenseSplitSchema,
