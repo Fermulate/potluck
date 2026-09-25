@@ -1,12 +1,5 @@
 /**
- * Translation strings and lookup. Platform-neutral.
+ * Strings and formatting. Platform-neutral (Intl only, no DOM).
  */
-export const en = {
-  'app.name': 'Potluck',
-} as const
-
-export type MessageKey = keyof typeof en
-
-export function t(key: MessageKey): string {
-  return en[key]
-}
+export { en, type Dictionary } from './en'
+export { hasMessage, t, type MessageKey, type MessageParams } from './translate'
