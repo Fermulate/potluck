@@ -10,10 +10,19 @@
     <title>Potluck</title>
     <style>
       /* First paint before the token stylesheet loads. Values mirror @potluck/tokens. */
-      html { background: #fbf5ea; color: #1d1a16; }
-      html[data-theme='dark'] { background: #14110e; color: #f6efe3; }
+      html {
+        background: #fbf5ea;
+        color: #1d1a16;
+      }
+      html[data-theme='dark'] {
+        background: #14110e;
+        color: #f6efe3;
+      }
       @media (prefers-color-scheme: dark) {
-        html:not([data-theme='light']) { background: #14110e; color: #f6efe3; }
+        html:not([data-theme='light']) {
+          background: #14110e;
+          color: #f6efe3;
+        }
       }
     </style>
     <script>

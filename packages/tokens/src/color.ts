@@ -195,7 +195,14 @@ export function avatarColor(seed: string): (typeof avatarPalette)[number] {
 }
 
 /** Confetti and celebration colors. */
-export const celebration = ['#e8492f', '#f5b53d', '#5f7a3a', '#6b3d6e', '#fbf5ea', '#ff8a70'] as const
+export const celebration = [
+  '#e8492f',
+  '#f5b53d',
+  '#5f7a3a',
+  '#6b3d6e',
+  '#fbf5ea',
+  '#ff8a70',
+] as const
 
 function channel(value: number): number {
   const c = value / 255
