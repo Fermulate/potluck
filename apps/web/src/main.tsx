@@ -3,8 +3,14 @@ import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { queryClient } from '@/lib/query-client'
+import { initTheme } from '@/styles/theme-preference'
+import { installTokens } from '@/styles/tokens'
 import { routeTree } from './routeTree.gen'
+import '@/styles/fonts'
 import './index.css'
+
+installTokens()
+initTheme()
 
 const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: 'intent' })
 
