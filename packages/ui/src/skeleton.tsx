@@ -21,7 +21,7 @@ export function Skeleton({ shape = 'block', className, ...props }: SkeletonProps
     <div
       aria-hidden
       className={cn(
-        'animate-shimmer bg-[linear-gradient(100deg,var(--color-sunken)_30%,var(--color-line)_50%,var(--color-sunken)_70%)] bg-[length:200%_100%]',
+        'animate-shimmer bg-[linear-gradient(100deg,var(--pl-sunken)_30%,var(--pl-line)_50%,var(--pl-sunken)_70%)] bg-[length:200%_100%]',
         shapes[shape],
         className,
       )}

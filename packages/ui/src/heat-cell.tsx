@@ -39,8 +39,8 @@ export const HeatCell = forwardRef<HTMLDivElement, HeatCellProps>(function HeatC
         'relative h-full min-h-6 w-full rounded-[0.3125rem] transition-[background-color,box-shadow] duration-300 ease-out',
         levels[level],
         busy &&
-          'bg-[repeating-linear-gradient(135deg,transparent_0_4px,color-mix(in_oklab,var(--color-ink)_14%,transparent)_4px_5px)]',
-        selected && 'shadow-[0_0_0_2px_var(--color-ink)]',
+          'bg-[repeating-linear-gradient(135deg,transparent_0_4px,color-mix(in_oklab,var(--pl-ink)_14%,transparent)_4px_5px)]',
+        selected && 'shadow-[0_0_0_2px_var(--pl-ink)]',
         className,
       )}
       {...props}

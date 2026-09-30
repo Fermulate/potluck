@@ -2,6 +2,10 @@
  * Tailwind theme for Potluck. Every value points at a `--pl-*` custom property
  * generated from @potluck/tokens (see ./tokens.ts), so light and dark swap by
  * changing variables only. Do not hardcode colors here.
+ *
+ * `inline` makes utilities read `--pl-*` directly at the element, so any
+ * subtree with `data-theme` renders in that theme. In arbitrary values use
+ * `var(--pl-ink)`, not `var(--color-ink)`, for the same reason.
  */
 
 /* Shared components ship Tailwind classes from source. */
@@ -9,7 +13,7 @@
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
-@theme {
+@theme inline {
   /* Only token colors exist. Tailwind's default palette is switched off. */
   --color-*: initial;
   --color-transparent: transparent;
