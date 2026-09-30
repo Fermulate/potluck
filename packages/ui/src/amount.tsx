@@ -44,9 +44,9 @@ const toneClass: Record<AmountSurface, Record<'owe' | 'owed' | 'settled' | 'neut
     neutral: 'text-ink',
   },
   hero: {
-    owe: 'text-tomato',
-    owed: 'text-saffron',
-    settled: 'text-olive',
+    owe: 'text-hero-tomato',
+    owed: 'text-hero-saffron',
+    settled: 'text-hero-olive',
     neutral: 'text-on-hero',
   },
 }
