@@ -47,14 +47,14 @@ export function Phone({
   className?: string
 }) {
   return (
-    <figure className={cn('flex shrink-0 flex-col items-center gap-4', className)}>
+    <figure className={cn('flex shrink-0 flex-col items-center gap-4 max-sm:w-full', className)}>
       <div
-        className="relative isolate h-[50rem] w-[24.375rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[2.75rem] border border-line bg-paper shadow-raised"
+        className="relative isolate h-[50rem] w-[24.375rem] overflow-hidden rounded-[2.75rem] border border-line bg-paper shadow-raised max-sm:h-[46rem] max-sm:w-full max-sm:rounded-none max-sm:border-x-0 max-sm:shadow-none"
         style={{ contain: 'paint' }}
       >
         <div
           aria-hidden
-          className="flex h-11 items-center justify-between px-8 pt-1 tabular text-[0.8125rem] font-semibold text-ink"
+          className="flex h-11 items-center justify-between px-8 pt-1 tabular text-[0.8125rem] font-semibold text-ink max-sm:hidden"
         >
           <span>9:41</span>
           <span className="h-[1.375rem] w-24 rounded-pill bg-black" />
@@ -62,7 +62,7 @@ export function Phone({
             <span className="h-2.5 w-4 rounded-[3px] border border-ink/70" />
           </span>
         </div>
-        <div className="scrollbar-none h-[calc(100%-2.75rem)] overflow-y-auto pb-28">
+        <div className="scrollbar-none h-[calc(100%-2.75rem)] overflow-y-auto pb-28 max-sm:h-full max-sm:pt-4">
           {children}
         </div>
         {activeTab && (

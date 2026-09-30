@@ -129,7 +129,7 @@ function LockedEvent({ item, last }: { item: Extract<Item, { kind: 'event' }>; l
         <p className="mt-1 flourish text-2xl leading-tight">
           {item.emoji} {item.what}
         </p>
-        <p className="mt-1 tabular text-sm font-semibold">Sat, Nov 22, 10:00 am</p>
+        <p className="mt-1 tabular text-sm font-semibold">Sun, Nov 22, 10:00 am</p>
         <div className="mt-3">
           <AvatarStack
             people={people.slice(1, 5).map((p) => ({ ...p }))}
