@@ -167,7 +167,7 @@ export function SheetContent({
                 dragElastic={{ top: 0.04, bottom: 0.8 }}
                 onDragEnd={onDragEnd}
                 className={cn(
-                  'pointer-events-auto relative flex max-h-[92dvh] w-full flex-col bg-card text-ink shadow-sheet outline-none',
+                  'pointer-events-auto relative flex max-h-[92dvh] w-full flex-col overflow-hidden bg-card text-ink shadow-sheet outline-none',
                   asSheet
                     ? 'rounded-t-sheet border-t border-line pb-safe'
                     : cn('max-h-[85dvh] rounded-sheet border border-line', widths[size]),
