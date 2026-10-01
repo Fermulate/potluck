@@ -51,7 +51,7 @@ export const Avatar = forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
     >
       {src && <AvatarPrimitive.Image src={src} alt={name} className="size-full object-cover" />}
       <AvatarPrimitive.Fallback
-        delayMs={src ? 400 : 0}
+        delayMs={src ? 400 : undefined}
         className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--pl-ink)_14%,transparent)]"
         style={{ backgroundColor: color.bg, color: color.fg }}
       >
