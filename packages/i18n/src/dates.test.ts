@@ -74,6 +74,17 @@ describe('formatRelative', () => {
     expect(rel('2026-07-20T12:00:00Z')).toBe('next month')
   })
 
+  it('compares calendar dates with the viewer day, without hours', () => {
+    const la = 'America/Los_Angeles'
+    // 6 PM June 12 in Los Angeles, already June 13 in UTC
+    const evening = '2026-06-13T01:00:00Z'
+    expect(formatRelative('2026-06-12', { now: evening, timeZone: la })).toBe('today')
+    expect(formatRelative('2026-06-11', { now: evening, timeZone: la })).toBe('yesterday')
+    expect(rel('2026-06-12')).toBe('today')
+    expect(rel('2026-06-13')).toBe('tomorrow')
+    expect(rel('2026-06-09')).toBe('3 days ago')
+  })
+
   it('defaults now to the current time', () => {
     expect(formatRelative(new Date(), { timeZone: 'UTC' })).toBe('now')
   })

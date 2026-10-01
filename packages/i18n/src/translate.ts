@@ -52,7 +52,7 @@ function flatten(node: object, prefix: string, out: Map<string, string>): Map<st
 
 const messages = flatten(en, '', new Map())
 const pluralRules = new Intl.PluralRules('en-US')
-const numberFormat = new Intl.NumberFormat('en-US')
+const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 })
 
 function resolve(key: string, count: unknown): string | undefined {
   if (typeof count === 'number') {
@@ -66,7 +66,8 @@ function resolve(key: string, count: unknown): string | undefined {
 
 /**
  * Translate `key`, filling `{placeholders}` from `params`. Numbers are formatted with digit
- * grouping. Unknown keys return the key itself; missing params leave the placeholder in place.
+ * grouping and keep every fraction digit. Unknown keys return the key itself; missing params
+ * leave the placeholder in place.
  */
 export function t<K extends MessageKey>(key: K, ...[params]: ParamArgs<K>): string {
   const values = (params ?? {}) as Record<string, string | number | undefined>

@@ -14,7 +14,8 @@ export interface ActionContext {
   'event.create': undefined
   'event.lock': { isCreator: boolean }
   'event.cancel': { isCreator: boolean }
-  'invite.create': { membersCanInvite: boolean }
+  /** `inviteRole`: the role the invite grants. Only owners and admins may mint admin invites. */
+  'invite.create': { membersCanInvite: boolean; inviteRole: 'admin' | 'member' }
   'member.remove': { targetRole: GroupRole; targetNetCents: number }
   'member.changeRole': { targetRole: GroupRole; newRole: GroupRole }
   'group.edit': undefined
@@ -43,7 +44,8 @@ const RULES: { [A in Action]: Rule<A> } = {
   'event.create': anyone,
   'event.lock': (role, { isCreator }) => isCreator || isManager(role),
   'event.cancel': (role, { isCreator }) => isCreator || isManager(role),
-  'invite.create': (role, { membersCanInvite }) => membersCanInvite || isManager(role),
+  'invite.create': (role, { membersCanInvite, inviteRole }) =>
+    isManager(role) || (membersCanInvite && inviteRole === 'member'),
   'member.remove': (role, { targetRole, targetNetCents }) =>
     targetNetCents === 0 &&
     ((role === 'owner' && targetRole !== 'owner') || (role === 'admin' && targetRole === 'member')),

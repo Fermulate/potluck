@@ -39,6 +39,12 @@ describe('t', () => {
     expect(t('groups.memberCount', { count: 1200 })).toBe('1,200 members')
   })
 
+  it('keeps every fraction digit of interpolated numbers', () => {
+    expect(t('expenses.foreignCurrency', { rate: 0.00684, currency: 'USD' })).toBe(
+      'Converted at 0.00684 to USD',
+    )
+  })
+
   it('checks keys and params at compile time', () => {
     // @ts-expect-error unknown key
     expect(t('nope.never')).toBe('nope.never')

@@ -89,6 +89,7 @@ A native app (Expo) is planned. Everything below the screens is shared:
 | Lock / cancel an event                              | yes   | yes                            | creator only            |
 | Edit/delete others' expenses                        | yes   | yes                            | no                      |
 | Create invites                                      | yes   | yes                            | if `members_can_invite` |
+| Create admin invites                                | yes   | yes                            | no                      |
 | Remove members, change roles                        | yes   | admins can manage members only | no                      |
 | Edit group settings                                 | yes   | yes                            | no                      |
 | Delete group, transfer ownership                    | yes   | no                             | no                      |

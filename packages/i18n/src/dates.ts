@@ -95,25 +95,29 @@ function calendarDay(date: Date, timeZone: string): { epoch: number; months: num
  * "now", "5 minutes ago", "in 2 hours", "yesterday", "3 days ago", "2 weeks ago",
  * "next month", "last year". Beyond 22 hours it counts calendar days in `timeZone`,
  * so something from last night reads as "yesterday" even if it was 23 hours ago.
+ * Calendar dates (`YYYY-MM-DD`) are compared by day only: "today", "yesterday", "in 3 days".
  */
 export function formatRelative(
   value: DateInput,
   options: DateFormatOptions & { now?: DateInput },
 ): string {
   const rtf = new Intl.RelativeTimeFormat(options.locale ?? DEFAULT_LOCALE, { numeric: 'auto' })
+  const nowInput = options.now ?? Date.now()
   const date = toDate(value)
-  const now = toDate(options.now ?? Date.now())
+  const now = toDate(nowInput)
   const diff = date.getTime() - now.getTime()
   const abs = Math.abs(diff)
+  const timed = !isDateOnly(value)
 
-  if (abs < 45_000) return rtf.format(0, 'second')
-  if (abs < 45 * MINUTE) return rtf.format(Math.round(diff / MINUTE), 'minute')
+  if (timed && abs < 45_000) return rtf.format(0, 'second')
+  if (timed && abs < 45 * MINUTE) return rtf.format(Math.round(diff / MINUTE), 'minute')
 
-  const zone = zoneFor(value, options.timeZone)
-  const a = calendarDay(date, zone)
-  const b = calendarDay(now, zone)
+  const a = calendarDay(date, zoneFor(value, options.timeZone))
+  const b = calendarDay(now, zoneFor(nowInput, options.timeZone))
   const days = Math.round((a.epoch - b.epoch) / DAY)
-  if (abs < 22 * HOUR || days === 0) return rtf.format(Math.round(diff / HOUR), 'hour')
+  if (timed && (abs < 22 * HOUR || days === 0)) {
+    return rtf.format(Math.round(diff / HOUR), 'hour')
+  }
   if (Math.abs(days) < 7) return rtf.format(days, 'day')
 
   const months = a.months - b.months
