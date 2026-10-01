@@ -115,7 +115,7 @@ export function BestTimeCard() {
         <p className="text-[2rem] leading-[1.05] font-extrabold tracking-tight">Sunday, Nov 15</p>
         <p className="mt-1 tabular text-lg font-semibold">7:30 to 9:30 pm</p>
       </div>
-      <div className="flex items-center justify-between gap-3 [--avatar-ring:var(--color-saffron)]">
+      <div className="flex items-center justify-between gap-3 [--avatar-ring:var(--pl-saffron)]">
         <div className="flex items-center gap-2">
           <AvatarStack people={[...free]} max={5} size="sm" label="6 people free" />
           <span className="text-sm">Sam can’t</span>

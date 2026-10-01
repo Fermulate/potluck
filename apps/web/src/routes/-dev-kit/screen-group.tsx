@@ -119,7 +119,7 @@ function LockedEvent({ item, last }: { item: Extract<Item, { kind: 'event' }>; l
   return (
     <Entry last={last} marker={<DateChip date={item.when} locale={en} size="sm" tone="tomato" />}>
       <Card
-        className="relative -mt-0.5 overflow-hidden [--avatar-ring:var(--color-card)]"
+        className="relative -mt-0.5 overflow-hidden [--avatar-ring:var(--pl-card)]"
         onClick={() => {
           setStamped(false)
           window.setTimeout(() => setStamped(true), 250)
