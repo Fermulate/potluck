@@ -64,9 +64,10 @@ select set_config('tests.code', (select code from public.group_invites where id 
 -- invite_preview for anonymous visitors
 select tests.login_anon();
 select results_eq(
-  $$ select name, member_count, first_names, status, is_member from invite_preview(current_setting('tests.code')) $$,
-  $$ values ('Dim sum club'::text, 3, array['Olivia', 'Adam', 'Mia'], 'valid'::text, false) $$,
-  'anon gets the group name, member count and first names'
+  $$ select name, member_count, first_names[1], (select array_agg(n order by n) from unnest(first_names) n), status, is_member
+     from invite_preview(current_setting('tests.code')) $$,
+  $$ values ('Dim sum club'::text, 3, 'Olivia'::text, array['Adam', 'Mia', 'Olivia'], 'valid'::text, false) $$,
+  'anon gets the group name, member count and first names (owner first)'
 );
 select throws_ok(
   $$ select * from invite_preview('does-not-exist-123') $$,
