@@ -114,7 +114,6 @@ declare
   debts bigint[];
   ci int;
   di int;
-  i int;
   pay bigint;
 begin
   perform private.require_member(simplified_debts.group_id);
