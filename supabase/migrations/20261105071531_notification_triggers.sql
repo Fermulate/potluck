@@ -30,7 +30,8 @@ security definer
 set search_path = ''
 as $$
 declare
-  actor uuid := coalesce(auth.uid(), new.created_by);
+  -- created_by, not auth.uid(): this runs at commit, after the caller may have changed.
+  actor uuid := coalesce(new.created_by, auth.uid());
 begin
   if new.deleted_at is not null or not exists (select 1 from public.expenses e where e.id = new.id) then
     return null;
