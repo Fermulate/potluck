@@ -8,6 +8,7 @@
 --   reset role                            back to the superuser (plain SQL)
 --   tests.group_with(owner, members[], admins[], name)  group built directly, returns id
 --   tests.remember('g', id) / tests.id('g')             stash ids for later statements
+--   tests.people('alice', 'bob')                        [{user_id}, ...] for expense splits
 
 create extension if not exists pgtap with schema extensions;
 
@@ -137,6 +138,17 @@ stable
 set search_path = ''
 as $$
   select nullif(current_setting('tests.' || key, true), '')::uuid;
+$$;
+
+-- Split list for create_expense payloads: tests.people('alice', 'bob').
+create or replace function tests.people(variadic handles text[])
+returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  select jsonb_agg(jsonb_build_object('user_id', tests.uid(h)) order by ord)
+  from unnest(handles) with ordinality as t (h, ord);
 $$;
 
 grant execute on all functions in schema tests to anon, authenticated, service_role;
