@@ -290,6 +290,10 @@ begin
     end if;
   end if;
 
+  -- The expense row and its splits are written one after the other, so the
+  -- sum check must run at commit even if the caller made constraints immediate.
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+
   if prev.id is null then
     if v_recurrence is not null then
       insert into public.recurring_expenses (

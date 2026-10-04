@@ -25,6 +25,8 @@ declare
   runs int;
   made int := 0;
 begin
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+
   for r in
     select * from public.recurring_expenses x
     where x.active and x.next_run_on <= run_on
