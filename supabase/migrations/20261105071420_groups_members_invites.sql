@@ -68,8 +68,8 @@ begin
 
   if owners <> 1 then
     raise exception using
-      message = 'A group must have exactly one owner',
-      hint = 'group_owner_required',
+      message = 'group_owner_required',
+      detail = 'A group must have exactly one owner',
       errcode = '23514';
   end if;
 

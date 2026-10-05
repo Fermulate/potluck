@@ -22,25 +22,25 @@ begin
   select * into g from public.groups x where x.id = create_invite.group_id;
 
   if g.is_direct then
-    raise exception using message = 'Direct groups cannot have invites', hint = 'direct_group', errcode = '23514';
+    raise exception using message = 'direct_group', detail = 'Direct groups cannot have invites', errcode = '23514';
   end if;
   if g.archived_at is not null then
-    raise exception using message = 'This group is archived', hint = 'group_archived', errcode = '23514';
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
   end if;
   if my_role = 'member' and not g.members_can_invite then
-    raise exception using message = 'Only admins can invite people to this group', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only admins can invite people to this group', errcode = '42501';
   end if;
   if wanted = 'owner' then
-    raise exception using message = 'Invites cannot make someone the owner', hint = 'invalid_role', errcode = '22023';
+    raise exception using message = 'invalid_role', detail = 'Invites cannot make someone the owner', errcode = '22023';
   end if;
   if wanted = 'admin' and my_role <> 'owner' then
-    raise exception using message = 'Only the owner can invite admins', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only the owner can invite admins', errcode = '42501';
   end if;
   if create_invite.max_uses is not null and create_invite.max_uses < 1 then
-    raise exception using message = 'Max uses must be at least 1', hint = 'invalid_max_uses', errcode = '22023';
+    raise exception using message = 'invalid_max_uses', detail = 'Max uses must be at least 1', errcode = '22023';
   end if;
   if create_invite.expires_at is not null and create_invite.expires_at <= now() then
-    raise exception using message = 'Expiry must be in the future', hint = 'invalid_expiry', errcode = '22023';
+    raise exception using message = 'invalid_expiry', detail = 'Expiry must be in the future', errcode = '22023';
   end if;
 
   insert into public.group_invites (group_id, role, max_uses, expires_at, email, created_by)
@@ -84,7 +84,7 @@ begin
   select * into inv from public.group_invites i where i.code = invite_preview.code;
 
   if inv.id is null then
-    raise exception using message = 'This invite link is not valid', hint = 'invite_not_found', errcode = 'P0002';
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'P0002';
   end if;
 
   return query
@@ -138,7 +138,7 @@ begin
   for update;
 
   if inv.id is null then
-    raise exception using message = 'This invite link is not valid', hint = 'invite_not_found', errcode = 'P0002';
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'P0002';
   end if;
 
   if exists (select 1 from public.group_members m where m.group_id = inv.group_id and m.user_id = uid) then
@@ -146,22 +146,22 @@ begin
   end if;
 
   if inv.revoked_at is not null then
-    raise exception using message = 'This invite has been revoked', hint = 'invite_revoked', errcode = '23514';
+    raise exception using message = 'invite_revoked', detail = 'This invite has been revoked', errcode = '23514';
   end if;
   if inv.expires_at is not null and inv.expires_at <= now() then
-    raise exception using message = 'This invite has expired', hint = 'invite_expired', errcode = '23514';
+    raise exception using message = 'invite_expired', detail = 'This invite has expired', errcode = '23514';
   end if;
   if inv.max_uses is not null and inv.uses >= inv.max_uses then
-    raise exception using message = 'This invite has been used up', hint = 'invite_used_up', errcode = '23514';
+    raise exception using message = 'invite_used_up', detail = 'This invite has been used up', errcode = '23514';
   end if;
   if inv.email is not null then
     select lower(u.email) into my_email from auth.users u where u.id = uid;
     if my_email is distinct from inv.email then
-      raise exception using message = 'This invite was sent to a different email address', hint = 'invite_wrong_email', errcode = '42501';
+      raise exception using message = 'invite_wrong_email', detail = 'This invite was sent to a different email address', errcode = '42501';
     end if;
   end if;
   if exists (select 1 from public.groups g where g.id = inv.group_id and g.archived_at is not null) then
-    raise exception using message = 'This group is archived', hint = 'group_archived', errcode = '23514';
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
   end if;
 
   insert into public.group_members (group_id, user_id, role)

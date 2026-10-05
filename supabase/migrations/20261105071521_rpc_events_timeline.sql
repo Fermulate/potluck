@@ -14,11 +14,11 @@ declare
 begin
   select * into ev from public.events e where e.id = eid for update;
   if ev.id is null then
-    raise exception using message = 'Event not found', hint = 'event_not_found', errcode = 'P0002';
+    raise exception using message = 'event_not_found', detail = 'Event not found', errcode = 'P0002';
   end if;
   my_role := private.require_member(ev.group_id);
   if my_role = 'member' and ev.created_by is distinct from uid then
-    raise exception using message = 'Only the organizer or a group admin can do that', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only the organizer or a group admin can do that', errcode = '42501';
   end if;
   return ev;
 end;
@@ -36,10 +36,10 @@ declare
   ev public.events := private.manageable_event(schedule_event.event_id);
 begin
   if schedule_event.starts_at is null then
-    raise exception using message = 'Pick a start time', hint = 'starts_at_required', errcode = '22023';
+    raise exception using message = 'starts_at_required', detail = 'Pick a start time', errcode = '22023';
   end if;
   if ev.status not in ('polling', 'scheduled') then
-    raise exception using message = 'This event can no longer be scheduled', hint = 'event_not_schedulable', errcode = '23514';
+    raise exception using message = 'event_not_schedulable', detail = 'This event can no longer be scheduled', errcode = '23514';
   end if;
 
   update public.events e set
@@ -68,7 +68,7 @@ begin
     return ev;
   end if;
   if ev.status = 'done' then
-    raise exception using message = 'This event already happened', hint = 'event_done', errcode = '23514';
+    raise exception using message = 'event_done', detail = 'This event already happened', errcode = '23514';
   end if;
 
   update public.events e set status = 'cancelled'

@@ -1,8 +1,8 @@
 -- RPCs: groups and membership.
 --
--- Error convention for every RPC: `raise exception using message = <readable
--- English>, hint = <stable snake_case code>, errcode = <sqlstate>`. Clients map
--- the hint to a translated string. SQLSTATEs used:
+-- Error convention for every RPC: `raise exception using message = <stable
+-- snake_case code>, detail = <readable English>, errcode = <sqlstate>`.
+-- Clients map the message code to a translated string. SQLSTATEs used:
 --   42501 not signed in / not allowed   P0002 not found
 --   22023 invalid input                 23514 business rule violated
 
@@ -18,10 +18,10 @@ declare
   uid uuid := auth.uid();
 begin
   if uid is null then
-    raise exception using message = 'You need to be signed in', hint = 'not_authenticated', errcode = '42501';
+    raise exception using message = 'not_authenticated', detail = 'You need to be signed in', errcode = '42501';
   end if;
   if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is not null) then
-    raise exception using message = 'This account has been closed', hint = 'account_deleted', errcode = '42501';
+    raise exception using message = 'account_deleted', detail = 'This account has been closed', errcode = '42501';
   end if;
   return uid;
 end;
@@ -43,7 +43,7 @@ begin
   where m.group_id = gid and m.user_id = (select private.require_user());
 
   if r is null then
-    raise exception using message = 'You are not a member of this group', hint = 'not_a_member', errcode = '42501';
+    raise exception using message = 'not_a_member', detail = 'You are not a member of this group', errcode = '42501';
   end if;
   return r;
 end;
@@ -82,7 +82,7 @@ declare
   g public.groups;
 begin
   if create_group.name is null or char_length(btrim(create_group.name)) = 0 then
-    raise exception using message = 'Give the group a name', hint = 'group_name_required', errcode = '22023';
+    raise exception using message = 'group_name_required', detail = 'Give the group a name', errcode = '22023';
   end if;
 
   cur := upper(coalesce(
@@ -91,7 +91,7 @@ begin
     'USD'
   ));
   if cur !~ '^[A-Z]{3}$' then
-    raise exception using message = 'Unknown currency code', hint = 'invalid_currency', errcode = '22023';
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
   end if;
 
   insert into public.groups (name, emoji, color, currency, created_by)
@@ -117,10 +117,10 @@ declare
   target_role public.group_role;
 begin
   if my_role = 'member' then
-    raise exception using message = 'Only owners and admins can change roles', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only owners and admins can change roles', errcode = '42501';
   end if;
   if set_member_role.role = 'owner' then
-    raise exception using message = 'Use transfer ownership to make someone the owner', hint = 'use_transfer_ownership', errcode = '22023';
+    raise exception using message = 'use_transfer_ownership', detail = 'Use transfer ownership to make someone the owner', errcode = '22023';
   end if;
 
   select m.role into target_role
@@ -128,13 +128,13 @@ begin
   where m.group_id = set_member_role.group_id and m.user_id = set_member_role.user_id;
 
   if target_role is null then
-    raise exception using message = 'That person is not in this group', hint = 'member_not_found', errcode = 'P0002';
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'P0002';
   end if;
   if target_role = 'owner' then
-    raise exception using message = 'The owner''s role cannot be changed', hint = 'cannot_change_owner', errcode = '42501';
+    raise exception using message = 'cannot_change_owner', detail = 'The owner''s role cannot be changed', errcode = '42501';
   end if;
   if my_role = 'admin' and target_role <> 'member' then
-    raise exception using message = 'Admins can only manage regular members', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Admins can only manage regular members', errcode = '42501';
   end if;
 
   update public.group_members m
@@ -155,10 +155,10 @@ declare
   target_role public.group_role;
 begin
   if remove_member.user_id = auth.uid() then
-    raise exception using message = 'Use leave group to remove yourself', hint = 'use_leave_group', errcode = '22023';
+    raise exception using message = 'use_leave_group', detail = 'Use leave group to remove yourself', errcode = '22023';
   end if;
   if my_role = 'member' then
-    raise exception using message = 'Only owners and admins can remove members', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only owners and admins can remove members', errcode = '42501';
   end if;
 
   select m.role into target_role
@@ -166,16 +166,16 @@ begin
   where m.group_id = remove_member.group_id and m.user_id = remove_member.user_id;
 
   if target_role is null then
-    raise exception using message = 'That person is not in this group', hint = 'member_not_found', errcode = 'P0002';
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'P0002';
   end if;
   if target_role = 'owner' then
-    raise exception using message = 'The owner cannot be removed', hint = 'cannot_remove_owner', errcode = '42501';
+    raise exception using message = 'cannot_remove_owner', detail = 'The owner cannot be removed', errcode = '42501';
   end if;
   if my_role = 'admin' and target_role <> 'member' then
-    raise exception using message = 'Admins can only manage regular members', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Admins can only manage regular members', errcode = '42501';
   end if;
   if private.member_balance(remove_member.group_id, remove_member.user_id) <> 0 then
-    raise exception using message = 'This member still has an unsettled balance', hint = 'member_has_balance', errcode = '23514';
+    raise exception using message = 'member_has_balance', detail = 'This member still has an unsettled balance', errcode = '23514';
   end if;
 
   delete from public.group_members m
@@ -198,7 +198,7 @@ declare
   others int;
 begin
   if private.member_balance(leave_group.group_id, uid) <> 0 then
-    raise exception using message = 'Settle up before leaving this group', hint = 'member_has_balance', errcode = '23514';
+    raise exception using message = 'member_has_balance', detail = 'Settle up before leaving this group', errcode = '23514';
   end if;
 
   select count(*) into others
@@ -207,7 +207,7 @@ begin
 
   if my_role = 'owner' then
     if others > 0 then
-      raise exception using message = 'Transfer ownership before leaving', hint = 'owner_must_transfer', errcode = '23514';
+      raise exception using message = 'owner_must_transfer', detail = 'Transfer ownership before leaving', errcode = '23514';
     end if;
     delete from public.groups g where g.id = leave_group.group_id;
     return;
@@ -231,10 +231,10 @@ declare
   uid uuid := auth.uid();
 begin
   if my_role <> 'owner' then
-    raise exception using message = 'Only the owner can transfer ownership', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'Only the owner can transfer ownership', errcode = '42501';
   end if;
   if transfer_ownership.user_id = uid then
-    raise exception using message = 'You already own this group', hint = 'already_owner', errcode = '22023';
+    raise exception using message = 'already_owner', detail = 'You already own this group', errcode = '22023';
   end if;
   if not exists (
     select 1 from public.group_members m
@@ -243,7 +243,7 @@ begin
       and m.user_id = transfer_ownership.user_id
       and p.deleted_at is null
   ) then
-    raise exception using message = 'That person is not in this group', hint = 'member_not_found', errcode = 'P0002';
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'P0002';
   end if;
 
   -- Demote first: the one-owner unique index is not deferrable.
@@ -269,7 +269,7 @@ declare
   gid uuid;
 begin
   if get_or_create_direct_group.friend_id = uid then
-    raise exception using message = 'You cannot split with yourself', hint = 'invalid_friend', errcode = '22023';
+    raise exception using message = 'invalid_friend', detail = 'You cannot split with yourself', errcode = '22023';
   end if;
 
   if not exists (
@@ -278,7 +278,7 @@ begin
       and p.deleted_at is null
       and p.id in (select private.my_contact_ids())
   ) then
-    raise exception using message = 'You can only split with friends', hint = 'not_a_friend', errcode = '42501';
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
   end if;
 
   if exists (
@@ -286,7 +286,7 @@ begin
     where (b.blocker_id = uid and b.blocked_id = get_or_create_direct_group.friend_id)
        or (b.blocker_id = get_or_create_direct_group.friend_id and b.blocked_id = uid)
   ) then
-    raise exception using message = 'You cannot split with this person', hint = 'blocked', errcode = '42501';
+    raise exception using message = 'blocked', detail = 'You cannot split with this person', errcode = '42501';
   end if;
 
   -- Serialize creation per pair so two taps do not create two groups.

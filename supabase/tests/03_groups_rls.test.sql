@@ -79,7 +79,7 @@ select create_expense(jsonb_build_object(
 ));
 select throws_ok(
   $$ update public.groups set currency = 'GBP' where id = tests.id('g') $$,
-  '23514', 'The currency of a group with expenses cannot be changed', 'currency is locked once expenses exist'
+  '23514', 'group_currency_locked', 'currency is locked once expenses exist'
 );
 
 -- Invites
@@ -127,7 +127,7 @@ select throws_ok(
 );
 select throws_ok(
   $$ update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('owner'); set constraints all immediate $$,
-  '23514', 'A group must have exactly one owner', 'a group cannot be left without an owner'
+  '23514', 'group_owner_required', 'a group cannot be left without an owner'
 );
 
 -- Owner deletes

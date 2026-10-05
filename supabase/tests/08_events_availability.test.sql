@@ -78,7 +78,7 @@ select is(
 select tests.login('m1');
 select throws_ok(
   $$ select request_availability(tests.id('ev'), array[tests.uid('outsider')]) $$,
-  'P0002', 'Everyone asked must be in the group', 'cannot ask outsiders'
+  'P0002', 'member_not_found', 'cannot ask outsiders'
 );
 select is(request_availability(tests.id('ev'), array[tests.uid('m2'), tests.uid('m1')]), 1, 'explicit list, never yourself');
 
@@ -111,27 +111,27 @@ select ok(
 select tests.login('m3');
 select throws_ok(
   $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '09:30'))) $$,
-  '22023', 'Some times are outside this event''s grid', 'before day start'
+  '22023', 'invalid_slot', 'before day start'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '12:00'))) $$,
-  '22023', 'Some times are outside this event''s grid', 'at day end'
+  '22023', 'invalid_slot', 'at day end'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:15'))) $$,
-  '22023', 'Some times are outside this event''s grid', 'off the slot grid'
+  '22023', 'invalid_slot', 'off the slot grid'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(5, '10:00'))) $$,
-  '22023', 'Some times are outside this event''s grid', 'outside the date window'
+  '22023', 'invalid_slot', 'outside the date window'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:00'), pg_temp.at(1, '10:00'))) $$,
-  '22023', 'A time appears twice', 'duplicates rejected'
+  '22023', 'duplicate_slot', 'duplicates rejected'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), '[{"slot_start": "not a date"}]') $$,
-  '22023', 'Availability is not valid', 'garbage rejected'
+  '22023', 'invalid_slots', 'garbage rejected'
 );
 select is(set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '11:00'))), 1, 'first answer');
 select is(
@@ -144,7 +144,7 @@ select is((select count(*)::int from public.availability where event_id = tests.
 select tests.login('outsider');
 select throws_ok(
   $$ select set_availability(tests.id('ev'), '[]') $$,
-  '42501', 'You are not a member of this group', 'outsiders cannot answer'
+  '42501', 'not_a_member', 'outsiders cannot answer'
 );
 select is((select count(*)::int from public.availability where event_id = tests.id('ev')), 0, 'outsiders see no availability');
 select throws_ok(
@@ -198,13 +198,13 @@ reset role;
 update public.events set duration_minutes = 60 where id = tests.id('ev');
 
 select tests.login('outsider');
-select throws_ok($$ select * from best_slots(tests.id('ev')) $$, '42501', 'You are not a member of this group', 'outsiders cannot rank slots');
+select throws_ok($$ select * from best_slots(tests.id('ev')) $$, '42501', 'not_a_member', 'outsiders cannot rank slots');
 
 -- schedule_event
 select tests.login('m2');
 select throws_ok(
   $$ select schedule_event(tests.id('ev'), pg_temp.at(2, '10:00')) $$,
-  '42501', 'Only the organizer or a group admin can do that', 'other members cannot lock the time'
+  '42501', 'not_allowed', 'other members cannot lock the time'
 );
 select tests.login('m1');
 select is(
@@ -225,11 +225,11 @@ select ok(
 select tests.login('m1');
 select throws_ok(
   $$ select set_availability(tests.id('ev'), '[]') $$,
-  '23514', 'This event is no longer collecting availability', 'no availability once scheduled'
+  '23514', 'event_not_polling', 'no availability once scheduled'
 );
 select throws_ok(
   $$ select request_availability(tests.id('ev')) $$,
-  '23514', 'This event is no longer collecting availability', 'no requests once scheduled'
+  '23514', 'event_not_polling', 'no requests once scheduled'
 );
 
 select tests.login('admin');
@@ -280,7 +280,7 @@ select is((select count(*)::int from my_timeline()), 0, 'other people''s events 
 
 -- cancel_event
 select tests.login('m2');
-select throws_ok($$ select cancel_event(tests.id('ev')) $$, '42501', 'Only the organizer or a group admin can do that', 'other members cannot cancel');
+select throws_ok($$ select cancel_event(tests.id('ev')) $$, '42501', 'not_allowed', 'other members cannot cancel');
 select tests.login('owner');
 select is((select status from cancel_event(tests.id('ev'))), 'cancelled'::public.event_status, 'owner cancels');
 select is((select status from cancel_event(tests.id('ev'))), 'cancelled'::public.event_status, 'cancelling twice is harmless');
@@ -293,9 +293,9 @@ select is(
 select tests.login('m1');
 select throws_ok(
   $$ select schedule_event(tests.id('ev'), pg_temp.at(1, '10:00')) $$,
-  '23514', 'This event can no longer be scheduled', 'cancelled events stay cancelled'
+  '23514', 'event_not_schedulable', 'cancelled events stay cancelled'
 );
-select throws_ok($$ select schedule_event(gen_random_uuid(), now()) $$, 'P0002', 'Event not found', 'unknown event');
+select throws_ok($$ select schedule_event(gen_random_uuid(), now()) $$, 'P0002', 'event_not_found', 'unknown event');
 
 select * from finish();
 rollback;

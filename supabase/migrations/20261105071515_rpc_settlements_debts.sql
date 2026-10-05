@@ -29,30 +29,30 @@ begin
   select * into g from public.groups x where x.id = settle_up.group_id;
 
   if settle_up.amount_cents is null or settle_up.amount_cents <= 0 or settle_up.amount_cents > 100000000000 then
-    raise exception using message = 'Enter an amount greater than zero', hint = 'invalid_amount', errcode = '22023';
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
   end if;
   if settle_up.to_user is null or settle_up.to_user = payer then
-    raise exception using message = 'Pick who you paid', hint = 'invalid_recipient', errcode = '22023';
+    raise exception using message = 'invalid_recipient', detail = 'Pick who you paid', errcode = '22023';
   end if;
   if my_role = 'member' and uid <> payer and uid <> settle_up.to_user then
-    raise exception using message = 'You can only record payments you made or received', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'You can only record payments you made or received', errcode = '42501';
   end if;
   if (
     select count(*) from public.group_members m
     where m.group_id = settle_up.group_id and m.user_id in (payer, settle_up.to_user)
   ) <> 2 then
-    raise exception using message = 'Both people must be in the group', hint = 'member_not_found', errcode = 'P0002';
+    raise exception using message = 'member_not_found', detail = 'Both people must be in the group', errcode = 'P0002';
   end if;
 
   cur := upper(coalesce(nullif(btrim(settle_up.currency), ''), g.currency));
   if cur !~ '^[A-Z]{3}$' then
-    raise exception using message = 'Unknown currency code', hint = 'invalid_currency', errcode = '22023';
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
   end if;
   fx := private.fx_rate(cur::char(3), g.currency, coalesce(settle_up.settled_at, now())::date);
   if fx is null then
     raise exception using
-      message = format('No exchange rate from %s to %s yet', cur, g.currency),
-      hint = 'fx_rate_unavailable',
+      message = 'fx_rate_unavailable',
+      detail = format('No exchange rate from %s to %s yet', cur, g.currency),
       errcode = '23514';
   end if;
 
@@ -82,11 +82,11 @@ declare
 begin
   select * into s from public.settlements x where x.id = delete_settlement.id for update;
   if s.id is null then
-    raise exception using message = 'Payment not found', hint = 'settlement_not_found', errcode = 'P0002';
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'P0002';
   end if;
   my_role := private.require_member(s.group_id);
   if my_role = 'member' and uid not in (s.from_user, s.to_user) and uid is distinct from s.created_by then
-    raise exception using message = 'You can only remove payments you were part of', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'You can only remove payments you were part of', errcode = '42501';
   end if;
 
   update public.settlements x set deleted_at = coalesce(x.deleted_at, now())

@@ -91,17 +91,17 @@ select tests.login('leaver');
 select lives_ok($$ select delete_my_account() $$, 'calling again is harmless');
 select throws_ok(
   $$ select create_group('Comeback') $$,
-  '42501', 'This account has been closed', 'a closed account cannot use RPCs'
+  '42501', 'account_deleted', 'a closed account cannot use RPCs'
 );
 select throws_ok(
   $$ select settle_up(tests.id('debt'), tests.uid('other'), 1000) $$,
-  '42501', 'This account has been closed', 'not even to settle'
+  '42501', 'account_deleted', 'not even to settle'
 );
 
 select tests.login('other');
 select throws_ok(
   $$ select transfer_ownership(tests.id('debt'), tests.uid('leaver')) $$,
-  'P0002', 'That person is not in this group', 'closed accounts cannot receive ownership'
+  'P0002', 'member_not_found', 'closed accounts cannot receive ownership'
 );
 select set_config('tests.code', (select code from create_invite(tests.id('debt'))), true);
 select is(

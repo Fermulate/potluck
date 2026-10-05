@@ -18,8 +18,8 @@ select tests.remember('g', (select id from create_group('Hike crew', 'x', 'green
 select is((select currency from public.groups where id = tests.id('g')), 'EUR'::char(3), 'currency defaults to the creator''s default currency');
 select is((select private.group_role(tests.id('g'))), 'owner'::public.group_role, 'creator becomes owner');
 select is((select currency from create_group('USD group', null, null, 'usd')), 'USD'::char(3), 'explicit currency is normalized to upper case');
-select throws_ok($$ select create_group('   ') $$, '22023', 'Give the group a name', 'blank names are rejected');
-select throws_ok($$ select create_group('x', null, null, 'EURO') $$, '22023', 'Unknown currency code', 'bad currency codes are rejected');
+select throws_ok($$ select create_group('   ') $$, '22023', 'group_name_required', 'blank names are rejected');
+select throws_ok($$ select create_group('x', null, null, 'EURO') $$, '22023', 'invalid_currency', 'bad currency codes are rejected');
 
 select tests.login_anon();
 select throws_ok($$ select create_group('anon group') $$, '42501', null, 'anon cannot create groups');
@@ -35,27 +35,27 @@ insert into public.group_members (group_id, user_id, role) values
 select tests.login('member');
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('member2'), 'admin') $$,
-  '42501', 'Only owners and admins can change roles', 'members cannot change roles'
+  '42501', 'not_allowed', 'members cannot change roles'
 );
 
 select tests.login('outsider');
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('member2'), 'admin') $$,
-  '42501', 'You are not a member of this group', 'outsiders cannot change roles'
+  '42501', 'not_a_member', 'outsiders cannot change roles'
 );
 
 select tests.login('admin');
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('admin2'), 'member') $$,
-  '42501', 'Admins can only manage regular members', 'admins cannot demote other admins'
+  '42501', 'not_allowed', 'admins cannot demote other admins'
 );
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('owner'), 'member') $$,
-  '42501', 'The owner''s role cannot be changed', 'nobody changes the owner''s role'
+  '42501', 'cannot_change_owner', 'nobody changes the owner''s role'
 );
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('member'), 'owner') $$,
-  '22023', 'Use transfer ownership to make someone the owner', 'owner role is only reachable by transfer'
+  '22023', 'use_transfer_ownership', 'owner role is only reachable by transfer'
 );
 select lives_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('member2'), 'admin') $$,
@@ -70,28 +70,28 @@ select lives_ok(
 );
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('outsider'), 'admin') $$,
-  'P0002', 'That person is not in this group', 'target must be a member'
+  'P0002', 'member_not_found', 'target must be a member'
 );
 
 -- remove_member
 select tests.login('member');
 select throws_ok(
   $$ select remove_member(tests.id('g'), tests.uid('member2')) $$,
-  '42501', 'Only owners and admins can remove members', 'members cannot remove people'
+  '42501', 'not_allowed', 'members cannot remove people'
 );
 
 select tests.login('admin');
 select throws_ok(
   $$ select remove_member(tests.id('g'), tests.uid('admin2')) $$,
-  '42501', 'Admins can only manage regular members', 'admins cannot remove admins'
+  '42501', 'not_allowed', 'admins cannot remove admins'
 );
 select throws_ok(
   $$ select remove_member(tests.id('g'), tests.uid('owner')) $$,
-  '42501', 'The owner cannot be removed', 'nobody removes the owner'
+  '42501', 'cannot_remove_owner', 'nobody removes the owner'
 );
 select throws_ok(
   $$ select remove_member(tests.id('g'), tests.uid('admin')) $$,
-  '22023', 'Use leave group to remove yourself', 'remove_member is not for yourself'
+  '22023', 'use_leave_group', 'remove_member is not for yourself'
 );
 
 -- A balance blocks removal.
@@ -103,7 +103,7 @@ select create_expense(jsonb_build_object(
 select tests.login('admin');
 select throws_ok(
   $$ select remove_member(tests.id('g'), tests.uid('member2')) $$,
-  '23514', 'This member still has an unsettled balance', 'members with a balance cannot be removed'
+  '23514', 'member_has_balance', 'members with a balance cannot be removed'
 );
 select lives_ok($$ select remove_member(tests.id('g'), tests.uid('member')) $$, 'admins remove members with no balance');
 select is(
@@ -118,7 +118,7 @@ select lives_ok($$ select remove_member(tests.id('g'), tests.uid('admin2')) $$, 
 select tests.login('member2');
 select throws_ok(
   $$ select leave_group(tests.id('g')) $$,
-  '23514', 'Settle up before leaving this group', 'cannot leave with a balance'
+  '23514', 'member_has_balance', 'cannot leave with a balance'
 );
 select settle_up(tests.id('g'), tests.uid('owner'), 1000);
 select lives_ok($$ select leave_group(tests.id('g')) $$, 'can leave once settled');
@@ -132,19 +132,19 @@ select is((select count(*)::int from public.groups where id = tests.id('g')), 0,
 select tests.login('owner');
 select throws_ok(
   $$ select leave_group(tests.id('g')) $$,
-  '23514', 'Transfer ownership before leaving', 'the owner must hand over first'
+  '23514', 'owner_must_transfer', 'the owner must hand over first'
 );
 
 -- transfer_ownership
 select tests.login('admin');
 select throws_ok(
   $$ select transfer_ownership(tests.id('g'), tests.uid('admin')) $$,
-  '42501', 'Only the owner can transfer ownership', 'admins cannot take ownership'
+  '42501', 'not_allowed', 'admins cannot take ownership'
 );
 select tests.login('owner');
 select throws_ok(
   $$ select transfer_ownership(tests.id('g'), tests.uid('outsider')) $$,
-  'P0002', 'That person is not in this group', 'new owner must be a member'
+  'P0002', 'member_not_found', 'new owner must be a member'
 );
 select lives_ok($$ select transfer_ownership(tests.id('g'), tests.uid('admin')) $$, 'owner hands over');
 select results_eq(
@@ -164,11 +164,11 @@ select tests.remember('h', tests.group_with('owner', array['member']));
 select tests.login('owner');
 select throws_ok(
   $$ select get_or_create_direct_group(tests.uid('outsider')) $$,
-  '42501', 'You can only split with friends', 'strangers cannot be split with'
+  '42501', 'not_a_friend', 'strangers cannot be split with'
 );
 select throws_ok(
   $$ select get_or_create_direct_group(tests.uid('owner')) $$,
-  '22023', 'You cannot split with yourself', 'not with yourself'
+  '22023', 'invalid_friend', 'not with yourself'
 );
 select tests.remember('d', get_or_create_direct_group(tests.uid('member')));
 select is((select is_direct from public.groups where id = tests.id('d')), true, 'creates a hidden direct group');
@@ -184,7 +184,7 @@ delete from public.groups where id = tests.id('d');
 select tests.login('owner');
 select throws_ok(
   $$ select get_or_create_direct_group(tests.uid('member')) $$,
-  '42501', 'You cannot split with this person', 'blocked pairs cannot open a direct group'
+  '42501', 'blocked', 'blocked pairs cannot open a direct group'
 );
 
 select * from finish();
