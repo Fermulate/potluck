@@ -72,7 +72,11 @@ select is((select count(*)::int from public.friendships), 0, 'strangers see no f
 select tests.login('bob');
 delete from public.friendships where friend_id = tests.uid('alice') or user_id = tests.uid('alice');
 reset role;
-select is((select count(*)::int from public.friendships), 0, 'either side can unfriend');
+select is(
+  (select count(*)::int from public.friendships where tests.uid('alice') in (user_id, friend_id)),
+  0,
+  'either side can unfriend'
+);
 
 -- Blocks
 select tests.login('alice');

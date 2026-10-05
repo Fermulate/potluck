@@ -107,7 +107,7 @@ select tests.remember('c', (select id from public.comments where body like 'I''l
 select is((select group_id from public.comments where id = tests.id('c')), tests.id('g'), 'group_id is derived from the expense');
 reset role;
 select set_eq(
-  $$ select user_id from public.notifications where type = 'comment.created' $$,
+  $$ select user_id from public.notifications where type = 'comment.created' and data ->> 'comment_id' = tests.id('c')::text $$,
   array[tests.uid('m1'), tests.uid('admin')],
   'expense participants (not the author) hear about comments'
 );
