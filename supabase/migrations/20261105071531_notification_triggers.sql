@@ -1,7 +1,8 @@
 -- In-app notifications. The `notify` edge function fans new rows out to push.
 -- Types:
---   expense.created, settlement.created, comment.created, member.joined,
---   event.scheduled, event.rescheduled, event.cancelled,
+--   expense.created, expense.updated, settlement.created, comment.created,
+--   member.joined, event.created, event.scheduled (also on reschedule),
+--   event.cancelled,
 --   availability.requested (from request_availability),
 --   event.reminder, rsvp.reminder (from the hourly cron job)
 -- The actor never gets notified about their own action, closed accounts never do.
@@ -188,10 +189,9 @@ declare
   kind text;
   recipients uuid[];
 begin
-  if new.status = 'scheduled' and old.status <> 'scheduled' then
+  if new.status = 'scheduled'
+     and (old.status <> 'scheduled' or new.starts_at is distinct from old.starts_at) then
     kind := 'event.scheduled';
-  elsif new.status = 'scheduled' and new.starts_at is distinct from old.starts_at then
-    kind := 'event.rescheduled';
   elsif new.status = 'cancelled' and old.status <> 'cancelled' then
     kind := 'event.cancelled';
   else
@@ -220,3 +220,81 @@ $$;
 create trigger events_notify
 after update on public.events
 for each row execute function private.events_notify();
+
+-- Deferred like expenses_notify so rewritten splits are visible. Deletes and
+-- restores are not notified, only real edits.
+create or replace function private.expenses_notify_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  recipients uuid[];
+begin
+  if new.deleted_at is not null or old.deleted_at is not null
+     or (new.description, new.amount_cents, new.currency, new.fx_rate, new.paid_by, new.split_type, new.spent_at)
+        is not distinct from
+        (old.description, old.amount_cents, old.currency, old.fx_rate, old.paid_by, old.split_type, old.spent_at) then
+    return null;
+  end if;
+
+  select array_agg(distinct u) into recipients
+  from (
+    select s.user_id as u from public.expense_splits s where s.expense_id = new.id
+    union
+    select new.paid_by
+  ) x;
+
+  perform private.notify(
+    recipients,
+    'expense.updated',
+    jsonb_build_object(
+      'expense_id', new.id,
+      'group_id', new.group_id,
+      'description', new.description,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+create constraint trigger expenses_notify_update
+after update on public.expenses
+deferrable initially deferred
+for each row execute function private.expenses_notify_update();
+
+create or replace function private.events_notify_created()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  recipients uuid[];
+begin
+  select array_agg(m.user_id) into recipients
+  from public.group_members m
+  where m.group_id = new.group_id;
+
+  perform private.notify(
+    recipients,
+    'event.created',
+    jsonb_build_object(
+      'event_id', new.id,
+      'group_id', new.group_id,
+      'event_title', new.title,
+      'status', new.status
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+create trigger events_notify_created
+after insert on public.events
+for each row execute function private.events_notify_created();
