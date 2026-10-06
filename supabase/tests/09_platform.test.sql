@@ -1,7 +1,7 @@
 -- Activity, comments, notifications, push tokens, app_config, calendar
 -- connections, busy blocks, recurring templates.
 begin;
-select plan(45);
+select plan(49);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -96,6 +96,39 @@ select tests.login('admin');
 select ok((select count(*) from public.notifications where read_at is null) >= 1, 'other users'' notifications are untouched');
 delete from public.notifications;
 select is((select count(*)::int from public.notifications), 0, 'users can clear their notifications');
+
+select tests.login('admin');
+select update_expense(tests.id('e'), '{"amount_cents": 1200}');
+reset role;
+set constraints all immediate;
+select set_eq(
+  $$ select user_id from public.notifications where type = 'expense.updated' and data ->> 'expense_id' = tests.id('e')::text $$,
+  array[tests.uid('m1'), tests.uid('m2')],
+  'an edit notifies the payer and split members, not the editor'
+);
+
+select tests.login('m1');
+insert into public.events (group_id, title) values (tests.id('g'), 'House meeting');
+reset role;
+select set_eq(
+  $$ select n.user_id from public.notifications n join public.events e on e.id = (n.data ->> 'event_id')::uuid
+     where n.type = 'event.created' and e.title = 'House meeting' $$,
+  array[tests.uid('owner'), tests.uid('admin'), tests.uid('m2')],
+  'a new event notifies the rest of the group'
+);
+select tests.login('m1');
+select request_availability((select id from public.events where title = 'House meeting'), array[tests.uid('m2')]);
+reset role;
+select is(
+  (select data -> 'user_ids' from public.activity where verb = 'availability.requested' and group_id = tests.id('g')),
+  jsonb_build_array(tests.uid('m2')),
+  'availability requests show in the feed'
+);
+select is(
+  (select count(*)::int from public.notifications where type = 'availability.requested' and user_id = tests.uid('m2')),
+  1,
+  'and notify the person asked'
+);
 
 -- Comments
 select tests.login('m2');

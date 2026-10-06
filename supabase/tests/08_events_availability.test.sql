@@ -235,9 +235,10 @@ select throws_ok(
 select tests.login('admin');
 select lives_ok($$ select schedule_event(tests.id('ev'), pg_temp.at(1, '10:30')) $$, 'admins can reschedule');
 reset role;
-select ok(
-  exists (select 1 from public.activity where verb = 'event.rescheduled' and subject_id = tests.id('ev')),
-  'reschedule logged'
+select is(
+  (select count(*)::int from public.activity where verb = 'event.scheduled' and subject_id = tests.id('ev')),
+  2,
+  'reschedule logged as event.scheduled again'
 );
 
 -- RSVPs
