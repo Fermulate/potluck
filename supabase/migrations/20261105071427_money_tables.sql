@@ -157,6 +157,43 @@ create table public.fx_rates (
 
 comment on table public.fx_rates is 'Daily FX rates (1 base = rate quote). Filled by the fx-sync edge function.';
 
+-- Digits after the decimal point (ISO 4217). Amounts are always stored in the
+-- currency's minor unit (cents, yen, fils). Same table as packages/core.
+create or replace function private.minor_units(currency text)
+returns int
+language sql
+immutable
+set search_path = ''
+as $$
+  select case upper(currency)
+    when 'BIF' then 0 when 'CLP' then 0 when 'DJF' then 0 when 'GNF' then 0
+    when 'ISK' then 0 when 'JPY' then 0 when 'KMF' then 0 when 'KRW' then 0
+    when 'PYG' then 0 when 'RWF' then 0 when 'UGX' then 0 when 'UYI' then 0
+    when 'VND' then 0 when 'VUV' then 0 when 'XAF' then 0 when 'XOF' then 0
+    when 'XPF' then 0
+    when 'BHD' then 3 when 'IQD' then 3 when 'JOD' then 3 when 'KWD' then 3
+    when 'LYD' then 3 when 'OMR' then 3 when 'TND' then 3
+    else 2
+  end;
+$$;
+
+-- Converts minor units of one currency into minor units of another at `rate`
+-- (units of `to` per unit of `from`), rounding half away from zero.
+create or replace function private.convert_minor(amount bigint, rate numeric, from_currency text, to_currency text)
+returns bigint
+language sql
+immutable
+set search_path = ''
+as $$
+  select round(
+    amount::numeric * rate::numeric(18, 8)
+    * power(10::numeric, private.minor_units(to_currency) - private.minor_units(from_currency))
+  )::bigint;
+$$;
+
+grant execute on function private.minor_units(text), private.convert_minor(bigint, numeric, text, text)
+  to authenticated, service_role;
+
 -- Latest known rate on or before `on_day`, trying the inverse pair as a fallback.
 create or replace function private.fx_rate(from_currency char(3), to_currency char(3), on_day date default current_date)
 returns numeric
