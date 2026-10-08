@@ -27,10 +27,10 @@ pnpm dev               # http://localhost:5173
 | Path              | What lives there                                                         |
 | ----------------- | ------------------------------------------------------------------------ |
 | `apps/web`        | Vite + React web app (PWA)                                               |
-| `packages/core`   | Domain logic (money, splits, balances). No DOM, no React DOM             |
+| `packages/core`   | Domain logic (money, splits, balances, scheduling). No DOM, no React DOM |
 | `packages/api`    | Supabase client, generated DB types, query helpers. No DOM, no React DOM |
 | `packages/tokens` | Design tokens as plain values                                            |
-| `packages/i18n`   | Translation strings                                                      |
+| `packages/i18n`   | Translation strings and `Intl` formatters                                |
 | `packages/ui`     | Web-only React components                                                |
 | `supabase`        | Config, migrations, seed data and pgTAP tests                            |
 
