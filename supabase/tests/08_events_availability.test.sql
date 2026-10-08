@@ -1,7 +1,7 @@
 -- Events RLS, set_availability, request_availability, best_slots,
 -- schedule_event, cancel_event, RSVPs, my_timeline.
 begin;
-select plan(55);
+select plan(59);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -36,6 +36,14 @@ select lives_ok(
   'members create polls'
 );
 select tests.remember('ev', (select id from public.events where title = 'Saturday hike'));
+select throws_ok(
+  $$ insert into public.events (group_id, title, timezone) values (tests.id('g'), 'Moon party', 'Mars/Base') $$,
+  '23514', null, 'unknown time zones are rejected on insert'
+);
+select throws_ok(
+  $$ update public.events set timezone = 'Mars/Base' where id = tests.id('ev') $$,
+  '23514', null, 'and on update'
+);
 select is((select created_by from public.events where id = tests.id('ev')), tests.uid('m1'), 'creator recorded');
 
 select tests.login('m2');
@@ -81,6 +89,13 @@ select throws_ok(
   'P0002', 'member_not_found', 'cannot ask outsiders'
 );
 select is(request_availability(tests.id('ev'), array[tests.uid('m2'), tests.uid('m1')]), 1, 'explicit list, never yourself');
+reset role;
+update public.profiles set deleted_at = now() where id = tests.uid('m3');
+select tests.login('m1');
+select is(request_availability(tests.id('ev'), array[tests.uid('m2'), tests.uid('m3')]), 1, 'closed accounts are never asked');
+reset role;
+update public.profiles set deleted_at = null where id = tests.uid('m3');
+select tests.login('m1');
 
 -- set_availability
 select is(
@@ -196,6 +211,19 @@ select is(
 );
 reset role;
 update public.events set duration_minutes = 60 where id = tests.id('ev');
+
+-- Answers given on the 30 minute grid stay after the grid changes to 60
+-- minutes. Only the exact cell start counts, like rankSlots: at day 1 10:00,
+-- m1 and m2 said yes, m3 has nothing at 10:00.
+update public.events set slot_minutes = 60 where id = tests.id('ev');
+select tests.login('owner');
+select is(
+  (select (yes_count, maybe_count, missing)::text from best_slots(tests.id('ev'), 100) where starts_at = pg_temp.at(1, '10:00')),
+  (2, 0, (select array_agg(u order by u) from unnest(array[tests.uid('owner'), tests.uid('admin'), tests.uid('m3')]) u))::text,
+  'extra answers inside the duration do not change the count'
+);
+reset role;
+update public.events set slot_minutes = 30 where id = tests.id('ev');
 
 select tests.login('outsider');
 select throws_ok($$ select * from best_slots(tests.id('ev')) $$, '42501', 'not_a_member', 'outsiders cannot rank slots');

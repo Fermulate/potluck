@@ -27,6 +27,27 @@ with check (
 );
 
 -- Authors edit or soft delete their comments; admins can soft delete any.
+-- Row policies cannot limit columns per role, so this trigger keeps body
+-- changes to the author.
+create or replace function private.comments_guard_body()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.body is distinct from old.body
+     and (select auth.uid()) is not null
+     and (select auth.uid()) is distinct from old.author_id then
+    raise exception using message = 'not_allowed', detail = 'Only the author can edit a comment', errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger comments_guard_body
+before update on public.comments
+for each row execute function private.comments_guard_body();
+
 create policy "comments: author or admin update"
 on public.comments for update
 to authenticated

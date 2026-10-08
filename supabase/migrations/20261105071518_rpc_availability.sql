@@ -150,7 +150,9 @@ begin
     end if;
     select coalesce(array_agg(distinct t.id), '{}') into targets
     from unnest(user_ids) as t (id)
-    where t.id <> uid;
+    join public.profiles p on p.id = t.id
+    where t.id <> uid
+      and p.deleted_at is null;
   end if;
 
   insert into public.availability_requests (event_id, user_id, requested_by, requested_at, responded_at)
@@ -207,7 +209,6 @@ as $$
 declare
   ev public.events := private.member_event($1);
   cells int := ceil(ev.duration_minutes::numeric / ev.slot_minutes)::int;
-  span interval := make_interval(mins => cells * ev.slot_minutes);
   max_rows int := least(greatest(coalesce($2, 5), 0), 100);
 begin
   return query
@@ -228,11 +229,11 @@ begin
       coalesce(bool_and(a.level = 'yes'), false) as all_yes
     from candidates c
     cross join members mb
+    cross join generate_series(0, cells - 1) as k (i)
     left join public.availability a
       on a.event_id = ev.id
      and a.user_id = mb.user_id
-     and a.slot_start >= c.slot
-     and a.slot_start < c.slot + span
+     and a.slot_start = c.slot + make_interval(mins => k.i * ev.slot_minutes)
     group by c.slot, mb.user_id
   ),
   scored as (

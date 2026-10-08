@@ -1,7 +1,7 @@
 -- Cron job bodies: recurring expense materialization, event reminders,
 -- finishing past events.
 begin;
-select plan(22);
+select plan(24);
 
 -- Ignore any seeded rates; each test adds the ones it needs.
 delete from public.fx_rates;
@@ -105,6 +105,28 @@ select is(
   (select fx_rate from public.expenses where recurring_id = tests.id('eur') and spent_at = '2026-04-01'),
   1.2::numeric(18,8),
   'rate looked up at materialization'
+);
+
+-- Month end and leap day series keep their anchor day (nextOccurrence in packages/core).
+select tests.login('m1');
+select tests.remember('rent', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Rent', 'amount_cents', 2000, 'recurrence', 'monthly',
+  'spent_at', '2026-01-31', 'splits', tests.people('m1', 'm2')))));
+select tests.remember('leap', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Domain', 'amount_cents', 1500, 'recurrence', 'yearly',
+  'spent_at', '2024-02-29', 'splits', tests.people('m1', 'm2')))));
+reset role;
+select private.materialize_recurring_expenses('2026-04-30');
+select is(
+  (select array_agg(spent_at order by spent_at) from public.expenses where recurring_id = tests.id('rent')),
+  array['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']::date[],
+  'a series on the 31st clamps to short months and returns to the 31st'
+);
+select private.materialize_recurring_expenses('2028-03-01');
+select is(
+  (select array_agg(spent_at order by spent_at) from public.expenses where recurring_id = tests.id('leap')),
+  array['2024-02-29', '2025-02-28', '2026-02-28', '2027-02-28', '2028-02-29']::date[],
+  'a yearly series on Feb 29 is back on Feb 29 in leap years'
 );
 
 -- Reminders

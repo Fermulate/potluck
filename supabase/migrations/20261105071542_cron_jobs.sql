@@ -9,6 +9,9 @@ grant all privileges on all tables in schema cron to postgres;
 -- periods (at most 12 per template per run). A template whose payer or split
 -- members left the group, or whose group was archived, is deactivated. A
 -- missing FX rate leaves the template due so the next run retries it.
+-- Monthly and yearly runs keep the day of month of the series' first expense,
+-- clamped to the month end (Jan 31, Feb 28, Mar 31), like nextOccurrence in
+-- packages/core.
 -- Returns the number of expenses created.
 create or replace function private.materialize_recurring_expenses(run_on date default current_date)
 returns int
@@ -22,6 +25,8 @@ declare
   fx numeric;
   new_id uuid;
   due date;
+  anchor_day int;
+  period_start date;
   runs int;
   made int := 0;
 begin
@@ -50,6 +55,9 @@ begin
       end if;
 
       due := r.next_run_on;
+      anchor_day := extract(day from coalesce(
+        (select min(e.spent_at) from public.expenses e where e.recurring_id = r.id),
+        r.next_run_on))::int;
       runs := 0;
       while due <= run_on and runs < 12 loop
         fx := private.fx_rate(r.currency, g.currency, due);
@@ -68,10 +76,14 @@ begin
         select new_id, c.user_id, c.share_cents, c.weight
         from private.compute_splits(r.amount_cents, r.split_type, r.splits) c;
 
-        due := (due + case r.recurrence
-          when 'weekly' then interval '1 week'
-          when 'monthly' then interval '1 month'
-          else interval '1 year' end)::date;
+        if r.recurrence = 'weekly' then
+          due := due + 7;
+        else
+          period_start := (date_trunc('month', due::timestamp) + case r.recurrence
+            when 'monthly' then interval '1 month'
+            else interval '1 year' end)::date;
+          due := least(period_start + (anchor_day - 1), (period_start + interval '1 month')::date - 1);
+        end if;
         runs := runs + 1;
         made := made + 1;
       end loop;
