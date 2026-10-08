@@ -1,12 +1,16 @@
 /**
- * Translation strings and lookup. Platform-neutral.
+ * Strings and formatting. Platform-neutral (Intl only, no DOM).
  */
-export const en = {
-  'app.name': 'Potluck',
-} as const
-
-export type MessageKey = keyof typeof en
-
-export function t(key: MessageKey): string {
-  return en[key]
-}
+export {
+  formatDate,
+  formatDateRange,
+  formatRelative,
+  formatTime,
+  type DateFormatOptions,
+  type DateInput,
+  type DateStyle,
+} from './dates'
+export { en, type Dictionary } from './en'
+export { greeting } from './greeting'
+export { DEFAULT_LOCALE, formatMoney, type MoneyFormatOptions } from './money'
+export { hasMessage, t, type MessageKey, type MessageParams } from './translate'
