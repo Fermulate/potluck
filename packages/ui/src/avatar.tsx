@@ -3,6 +3,7 @@ import * as AvatarPrimitive from '@radix-ui/react-avatar'
 import { motion } from 'motion/react'
 import { forwardRef } from 'react'
 import { cn } from './cn'
+import { usePrefersReducedMotion } from './hooks'
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -97,6 +98,7 @@ export function AvatarStack({
   animate = false,
   className,
 }: AvatarStackProps) {
+  const reduced = usePrefersReducedMotion()
   const shown = people.slice(0, max)
   const extra = people.length - shown.length
   return (
@@ -110,14 +112,13 @@ export function AvatarStack({
           key={p.id}
           className={cn('inline-flex', i > 0 && overlap[size])}
           style={{ zIndex: shown.length - i }}
-          initial={animate ? { opacity: 0, scale: 0.6, x: -8 } : false}
+          initial={animate ? (reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, x: -8 }) : false}
           animate={{ opacity: 1, scale: 1, x: 0 }}
-          transition={{
-            type: 'spring',
-            stiffness: 380,
-            damping: 26,
-            delay: animate ? i * 0.06 : 0,
-          }}
+          transition={
+            reduced
+              ? { duration: 0.2 }
+              : { type: 'spring', stiffness: 380, damping: 26, delay: animate ? i * 0.06 : 0 }
+          }
         >
           <Avatar name={p.name} seed={p.id} src={p.src} size={size} ring />
         </motion.span>

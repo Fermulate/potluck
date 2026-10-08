@@ -49,7 +49,7 @@ export function Field({
 }: FieldProps) {
   const auto = useId()
   const controlId = id ?? `f${auto}`
-  const hintId = hint ? `${controlId}-hint` : undefined
+  const hintId = hint && !error ? `${controlId}-hint` : undefined
   const errorId = error ? `${controlId}-error` : undefined
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined
   return (

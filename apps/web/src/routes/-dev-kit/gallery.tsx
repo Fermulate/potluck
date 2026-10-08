@@ -1,3 +1,4 @@
+import { heatLevel } from '@potluck/tokens'
 import {
   AddButton,
   Amount,
@@ -18,16 +19,8 @@ import {
   IconButton,
   Input,
   ListRow,
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuSeparator,
-  MenuTrigger,
   MoneyInput,
   PageHeader,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   ProgressRing,
   SegmentedControl,
   Select,
@@ -42,8 +35,6 @@ import {
   Switch,
   TextArea,
   toast,
-  Tooltip,
-  type HeatLevel,
 } from '@potluck/ui'
 import {
   ArrowUpRight,
@@ -506,35 +497,6 @@ function Overlays() {
           onConfirm={() => new Promise((r) => window.setTimeout(r, 900))}
         />
       </Row>
-      <Row>
-        <Menu>
-          <MenuTrigger asChild>
-            <IconButton label="Expense options" icon={<Ellipsis />} variant="secondary" />
-          </MenuTrigger>
-          <MenuContent>
-            <MenuItem icon={<Pencil />}>Edit</MenuItem>
-            <MenuItem icon={<Share />}>Share</MenuItem>
-            <MenuSeparator />
-            <MenuItem icon={<Trash />} tone="danger">
-              Delete
-            </MenuItem>
-          </MenuContent>
-        </Menu>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="secondary" size="sm">
-              Who’s in?
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent>
-            <p className="text-sm font-semibold">5 going</p>
-            <AvatarStack className="mt-2" people={[...people].slice(0, 5)} max={5} size="sm" />
-          </PopoverContent>
-        </Popover>
-        <Tooltip content="Copy invite link">
-          <IconButton label="Copy invite link" icon={<Share />} />
-        </Tooltip>
-      </Row>
     </Block>
   )
 }
@@ -613,10 +575,13 @@ function Heat() {
     >
       <div className="grid grid-cols-8 gap-1">
         {Array.from({ length: max + 1 }, (_, n) => {
-          const level = Math.min(4, n === 0 ? 0 : Math.ceil((n / max) * 4)) as HeatLevel
           return (
             <div key={n} className="flex flex-col items-center gap-1">
-              <HeatCell level={level} className="h-10" aria-label={`${n} of ${max} free`} />
+              <HeatCell
+                level={heatLevel(n, max)}
+                className="h-10"
+                aria-label={`${n} of ${max} free`}
+              />
               <span className="tabular text-xs text-mute">{n}</span>
             </div>
           )

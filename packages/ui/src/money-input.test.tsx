@@ -15,6 +15,11 @@ describe('parseMoneyInput', () => {
 
   it('understands a comma decimal separator', () => {
     expect(parseMoneyInput('12,5', 'EUR', 'de-DE')).toBe(1250)
+    expect(parseMoneyInput('12.5', 'EUR', 'de-DE')).toBe(1250)
+  })
+
+  it('drops dot grouping in comma decimal locales', () => {
+    expect(parseMoneyInput('1.234,56', 'EUR', 'de-DE')).toBe(123456)
   })
 
   it('handles currencies without cents', () => {
@@ -22,16 +27,26 @@ describe('parseMoneyInput', () => {
   })
 })
 
-function Harness({ initial = null }: { initial?: number | null }) {
+function Harness({
+  initial = null,
+  locale = 'en-US',
+}: {
+  initial?: number | null
+  locale?: string
+}) {
   const [cents, setCents] = useState<number | null>(initial)
+  const [currency, setCurrency] = useState(locale === 'de-DE' ? 'EUR' : 'USD')
   return (
     <>
       <Field label="Amount">
-        <MoneyInput value={cents} onValueChange={setCents} currency="USD" locale="en-US" />
+        <MoneyInput value={cents} onValueChange={setCents} currency={currency} locale={locale} />
       </Field>
       <output>{cents === null ? 'empty' : cents}</output>
       <button type="button" onClick={() => setCents(2000)}>
         Twenty
+      </button>
+      <button type="button" onClick={() => setCurrency('JPY')}>
+        Yen
       </button>
     </>
   )
@@ -59,5 +74,25 @@ describe('MoneyInput', () => {
     expect(input).toHaveValue('1.50')
     await userEvent.click(screen.getByRole('button', { name: 'Twenty' }))
     expect(input).toHaveValue('20')
+  })
+
+  it('reads a pasted German amount with grouping', async () => {
+    render(<Harness locale="de-DE" />)
+    const input = screen.getByRole('textbox', { name: 'Amount' })
+    await userEvent.click(input)
+    await userEvent.paste('1.234,56')
+    expect(input).toHaveValue('1234,56')
+    expect(screen.getByRole('status')).toHaveTextContent(/^123456$/)
+  })
+
+  it('reformats the text when the currency changes', async () => {
+    render(<Harness initial={4250} />)
+    const input = screen.getByRole('textbox', { name: 'Amount' })
+    expect(input).toHaveValue('42.50')
+    await userEvent.click(screen.getByRole('button', { name: 'Yen' }))
+    expect(input).toHaveValue('4250')
+    await userEvent.type(input, '{Backspace}')
+    expect(input).toHaveValue('425')
+    expect(screen.getByRole('status')).toHaveTextContent(/^425$/)
   })
 })
