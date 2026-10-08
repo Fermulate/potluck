@@ -116,6 +116,69 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `my_timeline(from, to)`                                                                                           | upcoming events across all my groups with my RSVP and request state                                                                                           |
 | `delete_my_account()`                                                                                             | anonymizes profile (tombstone name), removes PII, deletes auth user via edge function                                                                         |
 
+## Database implementation notes
+
+The schema lives in `supabase/migrations`, pgTAP tests in `supabase/tests` (`pnpm db:test`), demo data in `supabase/seed.sql`. This section records what the migrations do beyond (or differently from) the tables above.
+
+### Errors
+
+Every RPC raises `message = <stable snake_case code>`, `detail = <readable English>`, `errcode = <sqlstate>`. Clients translate the code (PostgREST returns it as `message`, the English text as `details`). SQLSTATEs: `42501` not signed in or not allowed, `P0002` not found, `22023` invalid input, `23514` business rule. Common codes: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `member_not_found`, `member_has_balance`, `owner_must_transfer`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `split_member_not_in_group`, `payer_not_in_group`, `fx_rate_unavailable`, `invalid_amount`, `expense_not_found`, `expense_deleted`, `event_not_found`, `event_not_polling`, `event_not_schedulable`, `invalid_slot`, `duplicate_slot`, `group_currency_locked`.
+
+### RPC details and deviations
+
+- `create_group(name, emoji?, color?, currency?)` returns the `groups` row. Currency defaults to the caller's `default_currency`.
+- `create_invite(group_id, role = 'member', max_uses?, expires_at?, email?)` returns the invite row. Members can invite only when `members_can_invite`; only the owner can create `admin` invites; direct and archived groups cannot have invites.
+- `invite_preview(code)` returns `group_id, name, emoji, color, cover_path, member_count, first_names text[] (owner first, max 5), status ('valid' | 'expired' | 'revoked' | 'used_up'), is_member`. Unknown codes raise `invite_not_found`.
+- `accept_invite(code)`: already being a member returns the group id without using up the invite. Email-bound invites compare against the auth email, case-insensitive.
+- `set_member_role`: admins may change roles of plain members only (including promoting to admin); nobody can grant `owner` here.
+- `leave_group`: the owner must transfer first unless they are the last member, in which case leaving deletes the group.
+- `get_or_create_direct_group(friend_id)`: the friend must be a friend or share a group, and neither may have blocked the other. Creates a group named `Direct` (caller owner, friend admin, `members_can_invite = false`).
+- `create_expense(payload)` / `update_expense(id, payload)` / `delete_expense(id)` / `restore_expense(id)` return the `expenses` row. Payload keys are documented at the top of the expenses RPC migration. Extra payload key `recurrence` (`weekly` | `monthly` | `yearly`, create only) also creates a `recurring_expenses` template whose first run is one period after `spent_at`. `receipt_path` must start with `<group_id>/`. Members edit expenses they created or paid; admins and the owner edit any. Restoring fails if someone in the expense has left.
+- Splits: if every split has `share_cents` they are used as given (must sum to the amount). Otherwise `equal`, `percent` (weights sum to exactly 100) and `shares` are derived with 6-decimal fixed-point weights and largest remainder, ties by user id, same as `packages/core`. `exact` and `itemized` always need `share_cents`.
+- `settle_up(group_id, to_user, amount_cents, currency?, note?, from_user?, settled_at?)` returns the settlement. `from_user` defaults to the caller; members can record payments they made or received, admins any.
+- Extra RPC `delete_settlement(id)`: soft delete by payer, recipient, recorder or admin.
+- `simplified_debts(group_id)`: greedy largest creditor vs largest debtor, ties by user id. Always simplifies, whatever `groups.simplify_debts` says (the client decides what to show).
+- `set_availability(event_id, slots)` returns the number of slots saved. `slots` is an array of `{slot_start, level}` or bare timestamps (= yes). Every slot must be a grid cell: inside the date window and `[day_start_minute, day_end_minute)` in `events.timezone`, aligned to `slot_minutes`. Only while the event is `polling`.
+- `request_availability(event_id, user_ids?)` returns how many people were asked. `null` or empty means every member (except the caller) who has not answered.
+- `best_slots(event_id, limit = 5)`: candidates are the distinct `slot_start`s in current members' availability; durations round up to whole cells; yes needs yes on every covered cell, maybe needs yes or maybe on all of them; `missing` lists members who cannot make the whole duration, sorted by id; `min_attendees` counts yes + maybe; capped at 100 rows. Same rules as `rankSlots` in `packages/core`. Past candidates are not filtered out.
+- `schedule_event(event_id, starts_at)` also reschedules an already scheduled event and sets `ends_at = starts_at + duration`. `cancel_event` is idempotent. Owner, admins or the event creator.
+- `my_timeline(from = now(), to = now() + 60 days)` returns `event_id, group_id, group_name, group_emoji, group_color, title, emoji, location, status, timezone, starts_at, ends_at, window_start, window_end, rsvp_deadline, my_rsvp, going_count, availability_requested, availability_submitted` for scheduled events in range and open polls overlapping it.
+- `delete_my_account()` returns void. It tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set), hands owned groups to the longest-standing admin (else member) or deletes groups with nobody else, removes zero-balance memberships (open balances stay), deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites. Closed accounts get `account_deleted` from every RPC. Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused. Avatar files are left for the edge function too.
+
+### Schema additions
+
+- `events.timezone` (IANA zone the window is expressed in, default `UTC`) and `events.reminder_sent_at` (set by the reminder job).
+- `comments.group_id`, filled from the expense or event by a trigger and used by RLS.
+- `calendar_connections`: `id`, `account_email`, `access_token_secret_id`, `refresh_token_secret_id` (Vault ids, not readable by clients), unique `(user_id, provider)`.
+- `busy_blocks.id` (identity) with unique `(user_id, starts_at, ends_at, source)`.
+- `recurring_expenses.category`, `created_by`, timestamps. `push_tokens.created_at`, `app_config.updated_at`.
+- A group's currency cannot change once it has expenses or settlements.
+- Exactly one owner per group is enforced by the partial unique index plus a deferred constraint trigger. Splits summing to the amount is a deferred constraint trigger.
+
+### Money math
+
+`group_balances` matches `computeBalances` in `packages/core`: each expense is converted once (`round(amount * fx_rate)`, half away from zero, adjusted for currencies whose minor unit is not 2 digits) and the payer is credited that total; the total is spread over the splits in proportion to `share_cents` by largest remainder (ties by user id), so every expense nets to exactly zero. Settlements are converted the same way. `fx_rate` is snapshotted on write from the latest `fx_rates` row on or before the expense date (inverse pair as fallback) unless the payload gives one.
+
+### Access
+
+Clients write directly (RLS-checked) only to: `profiles` (own display fields), `groups` (admins: settings; owner: delete), `group_invites` (revoke or delete, admins or creator), `events` (members insert polls; creator or admins edit details and delete), `event_rsvps` (own), `comments` (insert own, author edits, author or admin soft deletes), `notifications` (own `read_at`, delete), `push_tokens`, `blocks`, `reports`, `busy_blocks` (own), `recurring_expenses` (creator or admin: `active`, `description`, `category`, `next_run_on`, delete), `friendships` (delete either side). Everything else goes through RPCs. Profiles are visible to yourself, people you share a group with and friends. Busy blocks are private. `app_config` is readable by `anon`.
+
+### Activity and notifications
+
+Activity verbs: `group.created`, `group.updated`, `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.deleted`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`.
+
+Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `settlement.created`, `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
+
+### Storage, realtime, cron
+
+- Buckets: `avatars` (public, `<user_id>/...`, owner writes), `group-covers` (public, `<group_id>/...`, owner and admins write), `receipts` (private, `<group_id>/...`, members read and upload, uploader or admins replace and delete).
+- `supabase_realtime` publishes `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events`, `group_members`.
+- pg_cron: `materialize-recurring-expenses` daily at 00:10 UTC (catches up at most 12 periods per template per run; deactivates templates whose people left; retries when an FX rate is missing) and `event-reminders` hourly at :05 (reminders once per event starting within 24h, then marks ended events `done`).
+
+### Local demo data
+
+`supabase/seed.sql` creates `ava`, `ben`, `cleo`, `dev`, `eli` and `fay` at `@potluck.test` (password `potluck-demo`), the groups Hike crew, Roommates and Dim sum club, a 1:1 between Ava and Fay, about 30 expenses (all split types, one in EUR), settlements, a polling hike with availability from five people and an open request, a scheduled taco night with RSVPs, comments, and an invite code `hikecrew-demo`.
+
 ## Edge functions
 
 - `notify`: fans a notification out to web push (VAPID) and, later, Expo push.
