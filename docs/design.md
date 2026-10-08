@@ -18,6 +18,8 @@ Potluck should feel like a well-run dinner party: warm, confident, a little play
 
 Dark mode is designed, not inverted: background `#14110e`, surface `#1f1b17`, ink becomes `#f6efe3`, tomato `#ff6a4d`, saffron `#ffc65c`. Check AA contrast for every text pairing.
 
+These are the brand hues. The exact per-theme values, including AA adjustments (light secondary text uses `#716759`, not `mute`), live in `packages/tokens/src/color.ts`, which is the source of truth.
+
 Heat scale for availability (0 to max): `#f1e9db`, `#f9dccf`, `#f4ab95`, `#ee7a5d`, `#e8492f`.
 
 ## Type
