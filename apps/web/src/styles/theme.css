@@ -1,0 +1,162 @@
+/*
+ * Tailwind theme for Potluck. Every value points at a `--pl-*` custom property
+ * generated from @potluck/tokens (see ./tokens.ts), so light and dark swap by
+ * changing variables only. Do not hardcode colors here.
+ *
+ * `inline` makes utilities read `--pl-*` directly at the element, so any
+ * subtree with `data-theme` renders in that theme. In arbitrary values use
+ * `var(--pl-ink)`, not `var(--color-ink)`, for the same reason.
+ */
+
+/* Shared components ship Tailwind classes from source. */
+@source '../../../../packages/ui/src';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+  /* Only token colors exist. Tailwind's default palette is switched off. */
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-paper: var(--pl-paper);
+  --color-card: var(--pl-card);
+  --color-sunken: var(--pl-sunken);
+  --color-ink: var(--pl-ink);
+  --color-mute: var(--pl-mute);
+  --color-line: var(--pl-line);
+  --color-line-strong: var(--pl-line-strong);
+
+  --color-tomato: var(--pl-tomato);
+  --color-tomato-strong: var(--pl-tomato-strong);
+  --color-tomato-ink: var(--pl-tomato-ink);
+  --color-tomato-soft: var(--pl-tomato-soft);
+  --color-on-tomato: var(--pl-on-tomato);
+
+  --color-saffron: var(--pl-saffron);
+  --color-saffron-ink: var(--pl-saffron-ink);
+  --color-saffron-soft: var(--pl-saffron-soft);
+  --color-on-saffron: var(--pl-on-saffron);
+
+  --color-olive: var(--pl-olive);
+  --color-olive-ink: var(--pl-olive-ink);
+  --color-olive-soft: var(--pl-olive-soft);
+  --color-on-olive: var(--pl-on-olive);
+
+  --color-plum: var(--pl-plum);
+  --color-plum-ink: var(--pl-plum-ink);
+  --color-plum-soft: var(--pl-plum-soft);
+  --color-on-plum: var(--pl-on-plum);
+
+  --color-hero: var(--pl-hero);
+  --color-on-hero: var(--pl-on-hero);
+  --color-hero-mute: var(--pl-hero-mute);
+  --color-hero-tomato: var(--pl-hero-tomato);
+  --color-hero-saffron: var(--pl-hero-saffron);
+  --color-hero-olive: var(--pl-hero-olive);
+
+  --color-focus: var(--pl-focus);
+  --color-scrim: var(--pl-scrim);
+
+  --color-heat-0: var(--pl-heat-0);
+  --color-heat-1: var(--pl-heat-1);
+  --color-heat-2: var(--pl-heat-2);
+  --color-heat-3: var(--pl-heat-3);
+  --color-heat-4: var(--pl-heat-4);
+
+  --font-*: initial;
+  --font-sans: var(--pl-font-sans);
+  --font-display: var(--pl-font-display);
+
+  --spacing: var(--pl-space);
+
+  --radius-*: initial;
+  --radius-xs: var(--pl-radius-xs);
+  --radius-sm: var(--pl-radius-sm);
+  --radius-input: var(--pl-radius-input);
+  --radius-card: var(--pl-radius-card);
+  --radius-sheet: var(--pl-radius-sheet);
+  --radius-pill: var(--pl-radius-pill);
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  --shadow-raised: var(--pl-shadow-raised);
+  --shadow-sheet: var(--pl-shadow-sheet);
+  --shadow-pop: var(--pl-shadow-pop);
+
+  --text-xs: var(--pl-text-xs);
+  --text-xs--line-height: var(--pl-text-xs-leading);
+  --text-xs--letter-spacing: var(--pl-text-xs-tracking);
+  --text-sm: var(--pl-text-sm);
+  --text-sm--line-height: var(--pl-text-sm-leading);
+  --text-base: var(--pl-text-base);
+  --text-base--line-height: var(--pl-text-base-leading);
+  --text-lg: var(--pl-text-lg);
+  --text-lg--line-height: var(--pl-text-lg-leading);
+  --text-xl: var(--pl-text-xl);
+  --text-xl--line-height: var(--pl-text-xl-leading);
+  --text-xl--letter-spacing: var(--pl-text-xl-tracking);
+  --text-2xl: var(--pl-text-2xl);
+  --text-2xl--line-height: var(--pl-text-2xl-leading);
+  --text-2xl--letter-spacing: var(--pl-text-2xl-tracking);
+  --text-3xl: var(--pl-text-3xl);
+  --text-3xl--line-height: var(--pl-text-3xl-leading);
+  --text-3xl--letter-spacing: var(--pl-text-3xl-tracking);
+  --text-4xl: var(--pl-text-4xl);
+  --text-4xl--line-height: var(--pl-text-4xl-leading);
+  --text-4xl--letter-spacing: var(--pl-text-4xl-tracking);
+  --text-5xl: var(--pl-text-5xl);
+  --text-5xl--line-height: var(--pl-text-5xl-leading);
+  --text-5xl--letter-spacing: var(--pl-text-5xl-tracking);
+  --text-6xl: var(--pl-text-6xl);
+  --text-6xl--line-height: var(--pl-text-6xl-leading);
+  --text-6xl--letter-spacing: var(--pl-text-6xl-tracking);
+  --text-7xl: var(--pl-text-7xl);
+  --text-7xl--line-height: var(--pl-text-7xl-leading);
+  --text-7xl--letter-spacing: var(--pl-text-7xl-tracking);
+
+  --ease-out: var(--pl-ease-out);
+  --ease-in-out: var(--pl-ease-in-out);
+
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+
+  --animate-shimmer: pl-shimmer 1.6s var(--pl-ease-in-out) infinite;
+  --animate-fade-in: pl-fade-in var(--pl-duration-base) var(--pl-ease-out) both;
+  --animate-dot: pl-dot 960ms var(--pl-ease-in-out) infinite;
+
+  @keyframes pl-dot {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.35;
+    }
+    40% {
+      transform: translateY(-40%);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pl-shimmer {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
+  @keyframes pl-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}

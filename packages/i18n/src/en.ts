@@ -14,6 +14,10 @@ export const en = {
     tagline: 'Split the bill. Pick the night. Stay friends.',
   },
 
+  toast: {
+    region: 'Notifications',
+  },
+
   common: {
     save: 'Save',
     saving: 'Saving...',

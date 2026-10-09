@@ -1,0 +1,128 @@
+/* Base element styles and small utilities that sit on top of the theme. */
+
+@layer base {
+  :root {
+    color-scheme: var(--pl-color-scheme, light);
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  html {
+    background-color: var(--pl-paper);
+  }
+
+  body {
+    min-height: 100dvh;
+    background-color: var(--pl-paper);
+    color: var(--pl-ink);
+    font-family: var(--pl-font-sans);
+    font-optical-sizing: auto;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Paper grain: a faint fiber texture so the background never reads as flat beige. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: var(--pl-grain-opacity, 0.5);
+    mix-blend-mode: var(--pl-grain-blend, multiply);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .33 0 0 0 0 .2 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  [data-theme='dark'] {
+    --pl-grain-opacity: 0.35;
+    --pl-grain-blend: screen;
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+    isolation: isolate;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--pl-focus);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--pl-saffron);
+    color: var(--pl-on-saffron);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button,
+  [role='button'] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Tabular, lining figures. Use on every amount and anything that ticks. */
+@utility tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings:
+    'tnum' 1,
+    'lnum' 1;
+}
+
+/* Instrument Serif italic for greetings, empty states and event titles. */
+@utility flourish {
+  font-family: var(--pl-font-display);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Inside the balance hero the focus ring flips to the hero foreground. */
+@utility on-hero {
+  --pl-focus: var(--pl-on-hero);
+  background-color: var(--pl-hero);
+  color: var(--pl-on-hero);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

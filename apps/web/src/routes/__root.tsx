@@ -1,6 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
-import { Toaster } from 'sonner'
+import { t } from '@potluck/i18n'
+import { Toaster } from '@potluck/ui'
+import { useTheme } from '@/styles/use-theme'
 
 interface RouterContext {
   queryClient: QueryClient
@@ -11,10 +13,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 })
 
 function RootLayout() {
+  const { resolved } = useTheme()
   return (
     <>
       <Outlet />
-      <Toaster position="top-center" />
+      <Toaster label={t('toast.region')} theme={resolved} />
     </>
   )
 }
