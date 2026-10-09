@@ -202,22 +202,31 @@ update public.expenses set notes = 'Includes the extra bag of ice' where descrip
 -- Settlements ----------------------------------------------------------------
 
 do $$
+declare
+  x record;
+  sid uuid;
 begin
-  perform pg_temp.act_as('dev');
-  perform public.settle_up('10000000-0000-4000-8000-000000000001', pg_temp.uid('ben'), 2000, null, 'Venmo', null, now() - interval '10 days');
-  perform pg_temp.act_as('eli');
-  perform public.settle_up('10000000-0000-4000-8000-000000000001', pg_temp.uid('cleo'), 1500, null, 'cash at the trailhead', null, now() - interval '6 days');
-  perform pg_temp.act_as('cleo');
-  perform public.settle_up('10000000-0000-4000-8000-000000000002', pg_temp.uid('ben'), 108000, null, 'rent', null, now() - interval '55 days');
-  perform pg_temp.act_as('ava');
-  perform public.settle_up('10000000-0000-4000-8000-000000000002', pg_temp.uid('ben'), 72000, null, 'rent', null, now() - interval '54 days');
-  perform pg_temp.act_as('fay');
-  perform public.settle_up('10000000-0000-4000-8000-000000000002', pg_temp.uid('ben'), 72000, null, 'rent', null, now() - interval '52 days');
-  perform public.settle_up('10000000-0000-4000-8000-000000000002', pg_temp.uid('ben'), 50000, null, 'rent, part 1', null, now() - interval '5 days');
-  perform pg_temp.act_as('eli');
-  perform public.settle_up('10000000-0000-4000-8000-000000000003', pg_temp.uid('fay'), 2500, 'EUR', null, null, now() - interval '3 days');
-  perform pg_temp.act_as('ava');
-  perform public.settle_up(public.get_or_create_direct_group(pg_temp.uid('fay')), pg_temp.uid('fay'), 7500, null, 'thanks for grabbing these!', null, now() - interval '2 days');
+  -- settle_up always records the caller paying now; backdate afterwards.
+  for x in
+    select * from (values
+      (1, 'dev',  '10000000-0000-4000-8000-000000000001'::uuid, 'ben',  2000,   null, 'Venmo',                      interval '10 days'),
+      (2, 'eli',  '10000000-0000-4000-8000-000000000001'::uuid, 'cleo', 1500,   null, 'cash at the trailhead',      interval '6 days'),
+      (3, 'cleo', '10000000-0000-4000-8000-000000000002'::uuid, 'ben',  108000, null, 'rent',                       interval '55 days'),
+      (4, 'ava',  '10000000-0000-4000-8000-000000000002'::uuid, 'ben',  72000,  null, 'rent',                       interval '54 days'),
+      (5, 'fay',  '10000000-0000-4000-8000-000000000002'::uuid, 'ben',  72000,  null, 'rent',                       interval '52 days'),
+      (6, 'fay',  '10000000-0000-4000-8000-000000000002'::uuid, 'ben',  50000,  null, 'rent, part 1',               interval '5 days'),
+      (7, 'eli',  '10000000-0000-4000-8000-000000000003'::uuid, 'fay',  2500,   'EUR', null,                        interval '3 days'),
+      (8, 'ava',  null::uuid,                                   'fay',  7500,   null, 'thanks for grabbing these!', interval '2 days')
+    ) as t (n, payer, gid, payee, amount, currency, note, ago)
+    order by n
+  loop
+    perform pg_temp.act_as(x.payer);
+    select s.id into sid from public.settle_up(
+      coalesce(x.gid, public.get_or_create_direct_group(pg_temp.uid(x.payee))),
+      pg_temp.uid(x.payee), x.amount, x.currency, x.note
+    ) s;
+    update public.settlements s set settled_at = now() - x.ago where s.id = sid;
+  end loop;
 end;
 $$;
 

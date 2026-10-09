@@ -1436,10 +1436,8 @@ export type Database = {
         Args: {
           amount_cents: number
           currency?: string
-          from_user?: string
           group_id: string
           note?: string
-          settled_at?: string
           to_user: string
         }
         Returns: {

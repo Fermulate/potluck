@@ -1,15 +1,12 @@
 -- RPCs: settling up and debt simplification.
 
--- Records a payment from `from_user` (default: caller) to `to_user`. Anyone can
--- record a payment they made or received; admins can record any payment.
+-- Records a payment from the caller to `to_user`, settled now.
 create or replace function public.settle_up(
   group_id uuid,
   to_user uuid,
   amount_cents bigint,
   currency text default null,
-  note text default null,
-  from_user uuid default null,
-  settled_at timestamptz default null
+  note text default null
 )
 returns public.settlements
 language plpgsql
@@ -20,7 +17,7 @@ as $$
 declare
   my_role public.group_role := private.require_member(settle_up.group_id);
   uid uuid := auth.uid();
-  payer uuid := coalesce(settle_up.from_user, uid);
+  payer uuid := uid;
   g public.groups;
   cur text;
   fx numeric;
@@ -34,9 +31,6 @@ begin
   if settle_up.to_user is null or settle_up.to_user = payer then
     raise exception using message = 'invalid_recipient', detail = 'Pick who you paid', errcode = '22023';
   end if;
-  if my_role = 'member' and uid <> payer and uid <> settle_up.to_user then
-    raise exception using message = 'not_allowed', detail = 'You can only record payments you made or received', errcode = '42501';
-  end if;
   if (
     select count(*) from public.group_members m
     where m.group_id = settle_up.group_id and m.user_id in (payer, settle_up.to_user)
@@ -48,7 +42,7 @@ begin
   if cur !~ '^[A-Z]{3}$' then
     raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
   end if;
-  fx := private.fx_rate(cur::char(3), g.currency, coalesce(settle_up.settled_at, now())::date);
+  fx := private.fx_rate(cur::char(3), g.currency, current_date);
   if fx is null then
     raise exception using
       message = 'fx_rate_unavailable',
@@ -59,7 +53,7 @@ begin
   insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
   values (
     settle_up.group_id, payer, settle_up.to_user, settle_up.amount_cents, cur, fx,
-    nullif(btrim(settle_up.note), ''), coalesce(settle_up.settled_at, now()), uid
+    nullif(btrim(settle_up.note), ''), now(), uid
   )
   returning * into result;
 
@@ -160,13 +154,13 @@ end;
 $$;
 
 revoke execute on function
-  public.settle_up(uuid, uuid, bigint, text, text, uuid, timestamptz),
+  public.settle_up(uuid, uuid, bigint, text, text),
   public.delete_settlement(uuid),
   public.simplified_debts(uuid)
 from public, anon;
 
 grant execute on function
-  public.settle_up(uuid, uuid, bigint, text, text, uuid, timestamptz),
+  public.settle_up(uuid, uuid, bigint, text, text),
   public.delete_settlement(uuid),
   public.simplified_debts(uuid)
 to authenticated, service_role;

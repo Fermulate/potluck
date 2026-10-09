@@ -48,7 +48,7 @@ select has_function('public', 'create_expense', array['jsonb'], 'create_expense'
 select has_function('public', 'update_expense', array['uuid', 'jsonb'], 'update_expense');
 select has_function('public', 'delete_expense', array['uuid'], 'delete_expense');
 select has_function('public', 'restore_expense', array['uuid'], 'restore_expense');
-select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text', 'uuid', 'timestamp with time zone'], 'settle_up');
+select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
 select has_function('public', 'set_availability', array['uuid', 'jsonb'], 'set_availability');
