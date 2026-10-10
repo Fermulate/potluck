@@ -610,6 +610,18 @@ Clients do not patch their cache from the payload. A change invalidates the matc
 
 The plan channel batches invalidations for 300 ms so a friend dragging across twenty cells causes one refetch, not twenty.
 
+## Scheduled jobs
+
+All jobs are `pg_cron` entries created by migrations, so every environment gets the same schedule. `cron.schedule` with an existing name updates the job, which keeps the migrations rerunnable. Times are UTC.
+
+| Job                              | Schedule      | Runs                                                                  | Does                                                                                                                                                                                      |
+| -------------------------------- | ------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `materialize-recurring-expenses` | `10 0 * * *`  | `private.materialize_recurring_expenses()`                            | Writes due recurring templates as real expenses, catching up at most 12 periods per template. Deactivates templates whose payer or people left. Leaves a template due when no FX rate exists yet |
+| `event-reminders`                | `5 * * * *`   | `private.send_event_reminders()` then `private.finish_past_events()`  | `event.reminder` to going and maybe, `rsvp.reminder` to members who have not answered, once per event starting in the next 24 hours. Then flips ended scheduled events to `done`          |
+| `fx-sync`                        | `30 16 * * *` | `private.invoke_edge_function('fx-sync')`                             | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                    |
+
+Each recurring template runs inside its own `begin ... exception` block, so one bad template logs a warning and the rest still run.
+
 ## Money conventions
 
 - **Integer minor units.** Every amount is a `bigint` in the currency's minor unit: cents for USD, yen for JPY, fils for KWD. `private.minor_units()` and `minorUnits()` in `packages/core/src/currency` share the same ISO 4217 table (0, 2 or 3 digits). No floats anywhere, in SQL or TypeScript. Core uses `BigInt` for intermediate products.
