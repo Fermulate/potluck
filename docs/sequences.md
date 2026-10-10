@@ -17,6 +17,14 @@ Participants used throughout:
 - [Add an expense](#add-an-expense)
 - [Settle up](#settle-up)
 - [Simplified debts](#simplified-debts)
+- [Plan an event](#plan-an-event)
+- [Request availability](#request-availability)
+- [Paint availability and the live heatmap](#paint-availability-and-the-live-heatmap)
+- [Best slots and scheduling](#best-slots-and-scheduling)
+- [Recurring expenses](#recurring-expenses)
+- [Daily FX sync](#daily-fx-sync)
+- [Delete an account](#delete-an-account)
+- [Deploy pipeline](#deploy-pipeline)
 
 ## Sign up and profile creation
 
@@ -330,3 +338,140 @@ sequenceDiagram
   M->>DB: insert or update event_rsvps (going, maybe, declined)
   Note over DB: hourly job sends event.reminder<br/>and rsvp.reminder within 24 hours of the start
 ```
+
+## Recurring expenses
+
+Adding `recurrence` to a `create_expense` payload writes the first expense and a `recurring_expenses` template whose `next_run_on` is one period after `spent_at`. From then on pg_cron does the work.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant CR as pg_cron
+  participant DB as DB
+  participant E as Edge notify
+
+  CR->>DB: 00:10 UTC: private.materialize_recurring_expenses(current_date)
+  DB->>DB: select active templates with next_run_on <= today,<br/>for update skip locked
+  loop each template (own exception block)
+    alt group archived, payer or a split person left
+      DB->>DB: active = false, skip
+    else
+      DB->>DB: anchor_day = day of the series' first expense
+      loop while due <= today and runs < 12
+        DB->>DB: fx = private.fx_rate(currency, group currency, due)
+        break fx is null
+          Note over DB: template stays due,<br/>tomorrow's run retries
+        end
+        DB->>DB: insert expenses (spent_at = due, recurring_id)
+        DB->>DB: insert expense_splits from private.compute_splits()
+        DB->>DB: due = next week, or next month or year<br/>on anchor_day clamped to month end
+      end
+      DB->>DB: update next_run_on = due
+    end
+  end
+  Note over DB: at commit: splits sum check,<br/>expense.created notifications
+  DB->>E: notify (push) per notification
+```
+
+`nextOccurrence()` in core computes the same dates (Jan 31, Feb 28, Mar 31), so the UI can show when a series runs next.
+
+## Daily FX sync
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant CR as pg_cron
+  participant DB as DB
+  participant V as Vault
+  participant N as pg_net
+  participant E as Edge fx-sync
+  participant FR as Frankfurter
+
+  CR->>DB: 16:30 UTC: private.invoke_edge_function('fx-sync')
+  DB->>V: read project_url, edge_secret
+  alt either secret missing (local, CI)
+    DB-->>CR: return, no call
+  else
+    DB->>N: net.http_post(project_url/functions/v1/fx-sync,<br/>x-potluck-secret, timeout 5 s)
+    N->>E: POST
+    E->>E: hasEdgeSecret() or 403
+    E->>FR: GET /v1/latest?base=EUR&symbols=USD,GBP,...
+    FR-->>E: { date, rates per EUR }
+    E->>E: cross rates for every pair of 28 currencies,<br/>8 decimals
+    E->>DB: upsert fx_rates in batches of 1000 (service role)
+  end
+```
+
+To backfill, call the function with `?from=YYYY-MM-DD` and the secret header. It fetches the range from Frankfurter and upserts every day in it.
+
+## Delete an account
+
+The profile is never deleted. Other people's balances still reference it, and the money tables use `on delete restrict`, so the account becomes a tombstone named "Former member".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Web
+  participant E as Edge delete-account
+  participant DB as DB
+  participant A as Auth admin
+
+  U->>W: confirm delete
+  W->>E: POST /functions/v1/delete-account (Authorization: user JWT)
+  E->>E: gateway verify_jwt, then auth.getUser()
+  E->>DB: rpc delete_my_account() as the user
+  DB->>DB: owned groups: hand to oldest admin, else oldest member,<br/>delete the group if nobody else is left
+  DB->>DB: leave groups where balance is 0,<br/>keep memberships with open balances
+  DB->>DB: delete push_tokens, calendar_connections, busy_blocks,<br/>notifications, availability, requests, RSVPs,<br/>friendships, blocks
+  DB->>DB: revoke open invites the user created
+  DB->>DB: profile: Former member, avatar_path null,<br/>timezone UTC, locale en, deleted_at now()
+  DB-->>E: ok
+  E->>A: auth.admin.deleteUser(id, shouldSoftDelete = true)
+  A-->>E: ok
+  E-->>W: { ok: true }
+  W->>W: sign out, go to landing
+```
+
+After this every RPC answers `account_deleted` for that id, and closed accounts never receive notifications. Two things are not cleaned up yet: avatar files in the `avatars` bucket and the `calendar_feed_tokens` row.
+
+## Deploy pipeline
+
+`deploy.yml` runs on pull requests, pushes to `main` and manual dispatch. `ci.yml` and `codeql.yml` run alongside it, and CI has to pass before a PR merges (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor D as Developer
+  participant GH as GitHub
+  participant CI as ci.yml
+  participant DP as deploy.yml
+  participant SB as Supabase
+  participant CF as Cloudflare
+
+  D->>GH: open pull request
+  par checks
+    GH->>CI: typecheck, lint, test, build
+    GH->>CI: supabase start, supabase test db (pgTAP)
+  and preview
+    GH->>DP: web job (migrate job skipped on PRs)
+    DP->>DP: pnpm turbo run build --filter=@potluck/web<br/>with VITE_* repo variables
+    DP->>CF: wrangler versions upload --preview-alias pr-N
+    CF-->>DP: preview URL for alias pr-N (in the job log)
+  end
+  D->>GH: merge to main
+  GH->>DP: push to main
+  DP->>SB: migrate job (environment production):<br/>supabase link, db push, config push, functions deploy
+  alt migrate failed
+    DP-->>GH: stop, web is not deployed
+  else success or skipped (no Supabase secrets)
+    DP->>DP: build web
+    DP->>CF: wrangler deploy
+    loop up to 6 tries, 10 s apart
+      DP->>CF: GET VITE_APP_URL/groups
+    end
+    CF-->>DP: 200 (SPA fallback) or fail the job
+  end
+```
+
+The migrations run before the new web build goes out, so the database is never older than the client that talks to it. Additive migrations keep the old client working during the gap.
