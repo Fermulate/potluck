@@ -39,6 +39,7 @@ export const common = {
   tomorrow: 'Tomorrow',
   nameAndOthers_one: '{name} and {count} other',
   nameAndOthers_other: '{name} and {count} others',
+  comingSoon: 'Almost ready. Check back soon.',
 } as const
 
 export const nav = {
