@@ -2,10 +2,76 @@
 
 Potluck is a static web app (installable PWA) backed entirely by Supabase. There is no application server: the client talks to Supabase directly and Postgres Row Level Security is the authorization layer.
 
+## System context
+
+Who talks to Potluck and what Potluck talks to.
+
+```mermaid
+flowchart LR
+  member(["Group member<br/>splits costs, plans events"])
+  guest(["Invitee<br/>opens an invite link"])
+  calendar(["Calendar app<br/>subscribes to an .ics feed"])
+
+  subgraph potluck["Potluck"]
+    web["Web app (PWA)"]
+    backend["Supabase project"]
+  end
+
+  frankfurter[("Frankfurter API<br/>ECB reference rates")]
+  pushsvc[("Browser push services<br/>FCM, Mozilla, Apple")]
+  smtp[("Supabase SMTP<br/>auth emails")]
+
+  member --> web
+  guest --> web
+  calendar -->|"GET ics-feed?token="| backend
+  web --> backend
+  backend -->|daily| frankfurter
+  backend -->|web push, VAPID| pushsvc
+  backend --> smtp
+  pushsvc --> member
 ```
-apps/web  ──supabase-js──▶  Supabase (Auth · Postgres+RLS · Realtime · Storage · Edge Functions · pg_cron)
-   │
-Cloudflare Workers static assets (SPA fallback)
+
+## Containers
+
+There is no application server. The browser loads static files from Cloudflare and then talks to Supabase directly with the publishable key and the user's JWT.
+
+```mermaid
+flowchart TB
+  user(["Browser"])
+
+  subgraph cf["Cloudflare Workers (static assets)"]
+    assets["apps/web dist<br/>index.html, JS, service worker<br/>SPA fallback for unknown paths"]
+  end
+
+  subgraph sb["Supabase"]
+    auth["Auth (GoTrue)<br/>email + password, magic link"]
+    rest["PostgREST<br/>tables + RPCs in public"]
+    rt["Realtime<br/>postgres_changes"]
+    storage["Storage<br/>avatars, group-covers, receipts"]
+    edge["Edge Functions (Deno)<br/>notify, fx-sync, ics-feed, delete-account"]
+    subgraph pg["Postgres 17"]
+      public["public schema<br/>tables, RLS, definer RPCs"]
+      private["private schema<br/>policy helpers, triggers, jobs"]
+      cron["pg_cron"]
+      net["pg_net"]
+      vault["Vault<br/>project_url, edge_secret"]
+    end
+  end
+
+  user -->|HTTPS| assets
+  user -->|supabase-js| auth
+  user -->|supabase-js| rest
+  user -->|websocket| rt
+  user -->|upload, signed URL| storage
+  user -->|"POST delete-account (JWT)"| edge
+  rest --> public
+  public --> private
+  rt --> public
+  cron --> private
+  private --> net
+  net -->|"x-potluck-secret"| edge
+  vault -.-> net
+  edge -->|service role| rest
 ```
 
 A native app (Expo) is planned. Everything below the screens is shared:
