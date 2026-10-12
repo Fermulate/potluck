@@ -14,16 +14,16 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 
 ### Who we defend against
 
-| Actor                                   | Can                                                       | Stopped by                                                                                                    |
-| --------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Anyone on the internet                  | call the API with the publishable key                     | grants: `anon` can read `app_config`, call `invite_preview`, and read the public buckets. Nothing else         |
-| A signed-in stranger                    | call every RPC, query every table                         | RLS on every table, `require_member()` in every group RPC                                                     |
-| A group member overreaching             | edit others' expenses, promote themselves, delete the group | role checks inside RPCs and policies, the role matrix in [architecture.md](architecture.md#roles)             |
-| A removed or departed member            | keep reading the group                                    | membership is checked on every query. Realtime re-applies RLS per change                                       |
-| Someone holding an invite link          | see the group name, member count, first names; join       | expiry, max uses, revocation, optional email binding                                                          |
-| Someone holding a calendar feed URL     | read the owner's scheduled events                         | 32-character random token, rotatable with `calendar_feed_token(true)`                                         |
-| A client with a tampered bundle         | send any payload to any RPC                               | the server derives splits, FX rates, payer of a settlement and `created_by` itself                            |
-| Someone calling edge functions directly | trigger push or FX sync                                   | `x-potluck-secret` shared secret, constant-time compare                                                       |
+| Actor                                   | Can                                                         | Stopped by                                                                                             |
+| --------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Anyone on the internet                  | call the API with the publishable key                       | grants: `anon` can read `app_config`, call `invite_preview`, and read the public buckets. Nothing else |
+| A signed-in stranger                    | call every RPC, query every table                           | RLS on every table, `require_member()` in every group RPC                                              |
+| A group member overreaching             | edit others' expenses, promote themselves, delete the group | role checks inside RPCs and policies, the role matrix in [architecture.md](architecture.md#roles)      |
+| A removed or departed member            | keep reading the group                                      | membership is checked on every query. Realtime re-applies RLS per change                               |
+| Someone holding an invite link          | see the group name, member count, first names; join         | expiry, max uses, revocation, optional email binding                                                   |
+| Someone holding a calendar feed URL     | read the owner's scheduled events                           | 32-character random token, rotatable with `calendar_feed_token(true)`                                  |
+| A client with a tampered bundle         | send any payload to any RPC                                 | the server derives splits, FX rates, payer of a settlement and `created_by` itself                     |
+| Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                |
 
 Out of scope: a compromised Supabase or Cloudflare account, a malicious maintainer, and a stolen unlocked phone with an active session.
 
@@ -42,17 +42,17 @@ These are real today. Each should become an issue.
 
 ### What is stored
 
-| Data                                    | Where                                      | Visible to                                                     |
-| --------------------------------------- | ------------------------------------------ | -------------------------------------------------------------- |
-| Email, password hash, sessions          | `auth.users` (Supabase Auth)               | nobody through the API. Supabase operators                     |
-| Display name, avatar, time zone, locale, default currency | `profiles`               | you, people you share a group with, friends                    |
-| Groups, members, invites                | `groups`, `group_members`, `group_invites` | members. Invites only to admins and the invite's creator       |
-| Expenses, splits, settlements, comments | money tables, `comments`                   | members of that group                                          |
-| Availability, RSVPs, events             | plans tables                               | members of that group                                          |
-| Busy blocks, calendar links             | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off)    |
-| Notifications, push subscriptions       | `notifications`, `push_tokens`             | only you                                                       |
-| Receipts                                | private `receipts` bucket                  | members of the group (authenticated download or signed URL)    |
-| Avatars, group covers                   | public buckets                             | anyone with the URL                                            |
+| Data                                                      | Where                                      | Visible to                                                  |
+| --------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- |
+| Email, password hash, sessions                            | `auth.users` (Supabase Auth)               | nobody through the API. Supabase operators                  |
+| Display name, avatar, time zone, locale, default currency | `profiles`                                 | you, people you share a group with, friends                 |
+| Groups, members, invites                                  | `groups`, `group_members`, `group_invites` | members. Invites only to admins and the invite's creator    |
+| Expenses, splits, settlements, comments                   | money tables, `comments`                   | members of that group                                       |
+| Availability, RSVPs, events                               | plans tables                               | members of that group                                       |
+| Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off) |
+| Notifications, push subscriptions                         | `notifications`, `push_tokens`             | only you                                                    |
+| Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL) |
+| Avatars, group covers                                     | public buckets                             | anyone with the URL                                         |
 
 There is no analytics or tracking code in the app.
 

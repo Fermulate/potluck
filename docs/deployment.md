@@ -4,11 +4,11 @@ Potluck runs on two free tiers: Cloudflare serves the static web app, and one Su
 
 ## Environments
 
-| Environment | Web                                                                  | Backend                              | Deployed by                         |
-| ----------- | -------------------------------------------------------------------- | ------------------------------------ | ----------------------------------- |
-| Local       | http://localhost:5173 (`pnpm dev`)                                   | local Supabase in Docker             | you                                 |
-| Preview     | `https://pr-<number>-potluck.potluck-web.workers.dev` (worker version alias) | **production** Supabase project | `deploy.yml` on every pull request   |
-| Production  | https://potluck.potluck-web.workers.dev                              | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` on push to `main`   |
+| Environment | Web                                                                          | Backend                                 | Deployed by                        |
+| ----------- | ---------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------- |
+| Local       | http://localhost:5173 (`pnpm dev`)                                           | local Supabase in Docker                | you                                |
+| Preview     | `https://pr-<number>-potluck.potluck-web.workers.dev` (worker version alias) | **production** Supabase project         | `deploy.yml` on every pull request |
+| Production  | https://potluck.potluck-web.workers.dev                                      | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` on push to `main`     |
 
 Previews are web-only. They build with the same `VITE_*` variables as production, so a preview signs in against production data and runs whatever migrations production already has. A PR that needs a new migration cannot be fully tested on its preview: test it locally.
 
@@ -20,24 +20,24 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 
 ### Variables
 
-| Name                            | Example                                    | Used for                                                 |
-| ------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co` | baked into the web build                                 |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                       | baked into the web build. Public by design, RLS guards data |
-| `VITE_APP_URL`                  | `https://potluck.potluck-web.workers.dev`  | baked into the build, and the smoke test URL             |
-| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                       | web push subscription in the browser                     |
-| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                               | `wrangler deploy` and `versions upload`                  |
+| Name                            | Example                                    | Used for                                                      |
+| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co` | baked into the web build                                      |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                       | baked into the web build. Public by design, RLS guards data   |
+| `VITE_APP_URL`                  | `https://potluck.potluck-web.workers.dev`  | baked into the build, and the smoke test URL                  |
+| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                       | web push subscription in the browser                          |
+| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                               | `wrangler deploy` and `versions upload`                       |
 | `SUPABASE_PROJECT_REF`          | `mzotlkpghnrwbezcazld`                     | `supabase link`. The workflow falls back to this ref if unset |
 
 ### Secrets
 
-| Name                     | Used for                                                                               |
-| ------------------------ | -------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`   | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account      |
-| `SUPABASE_ACCESS_TOKEN`  | Supabase CLI (personal access token from the dashboard)                                |
-| `SUPABASE_DB_PASSWORD`   | `supabase db push` to the remote database                                              |
-| `SUPABASE_URL`           | `keepalive.yml` daily ping                                                             |
-| `SUPABASE_PUBLISHABLE_KEY` | `keepalive.yml` daily ping                                                           |
+| Name                       | Used for                                                                          |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`     | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account |
+| `SUPABASE_ACCESS_TOKEN`    | Supabase CLI (personal access token from the dashboard)                           |
+| `SUPABASE_DB_PASSWORD`     | `supabase db push` to the remote database                                         |
+| `SUPABASE_URL`             | `keepalive.yml` daily ping                                                        |
+| `SUPABASE_PUBLISHABLE_KEY` | `keepalive.yml` daily ping                                                        |
 
 Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without both Supabase secrets the `migrate` job logs a notice and skips. That keeps forks green.
 
@@ -81,13 +81,13 @@ npx supabase secrets set --project-ref <ref> \
   APP_URL=https://potluck.potluck-web.workers.dev
 ```
 
-| Secret              | Read by                | Notes                                                                                   |
-| ------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `VAPID_PUBLIC_KEY`  | `notify`               | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                      |
-| `VAPID_PRIVATE_KEY` | `notify`               | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`             |
-| `VAPID_SUBJECT`     | `notify`               | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`            |
-| `EDGE_SECRET`       | `notify`, `fx-sync`    | shared with the database. Must equal the Vault `edge_secret`                            |
-| `APP_URL`           | `notify`, `ics-feed`   | base for links in push messages and calendar events. Defaults to the workers.dev URL    |
+| Secret              | Read by              | Notes                                                                                |
+| ------------------- | -------------------- | ------------------------------------------------------------------------------------ |
+| `VAPID_PUBLIC_KEY`  | `notify`             | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                   |
+| `VAPID_PRIVATE_KEY` | `notify`             | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`          |
+| `VAPID_SUBJECT`     | `notify`             | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`         |
+| `EDGE_SECRET`       | `notify`, `fx-sync`  | shared with the database. Must equal the Vault `edge_secret`                         |
+| `APP_URL`           | `notify`, `ics-feed` | base for links in push messages and calendar events. Defaults to the workers.dev URL |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform. Generate VAPID keys with `npx web-push generate-vapid-keys`.
 
@@ -122,12 +122,12 @@ curl -X POST "https://<ref>.supabase.co/functions/v1/fx-sync?from=2026-01-01" \
 
 ## Rollback
 
-| What            | How                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Web             | `cd apps/web && npx wrangler rollback` returns to the previous version. `npx wrangler versions list` shows older ones, and `npx wrangler versions deploy <version-id>@100%` picks one |
-| Edge functions  | check out the last good commit and run `npx supabase functions deploy <name> --project-ref <ref>`                           |
-| Database        | roll forward. Write a new migration that undoes the change and merge it. There are no down migrations, and `db push` never rewinds |
-| Auth config     | revert the `config.toml` change and let the next deploy push it, or run `supabase config push` from the reverted commit   |
+| What           | How                                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web            | `cd apps/web && npx wrangler rollback` returns to the previous version. `npx wrangler versions list` shows older ones, and `npx wrangler versions deploy <version-id>@100%` picks one |
+| Edge functions | check out the last good commit and run `npx supabase functions deploy <name> --project-ref <ref>`                                                                                     |
+| Database       | roll forward. Write a new migration that undoes the change and merge it. There are no down migrations, and `db push` never rewinds                                                    |
+| Auth config    | revert the `config.toml` change and let the next deploy push it, or run `supabase config push` from the reverted commit                                                               |
 
 Rolling back the web app alone is always safe, because the schema only ever gains things. Reverting a merge commit on `main` redeploys the web app but leaves the database as it is.
 

@@ -78,14 +78,14 @@ flowchart TB
 
 A native app (Expo) is planned. Everything below the screens is shared:
 
-| Package           | Purpose                                                                     | Platform     |
-| ----------------- | --------------------------------------------------------------------------- | ------------ |
+| Package           | Purpose                                                                                                                    | Platform     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | `packages/core`   | split math, rounding, debt simplification, slot ranking and heat levels, recurrence dates, role checks, validation schemas | any (no DOM) |
-| `packages/api`    | typed Supabase client, generated DB types, TanStack Query options           | any (no DOM) |
-| `packages/tokens` | design tokens as TS                                                         | any          |
-| `packages/i18n`   | strings, money/date formatting via `Intl`                                   | any          |
-| `packages/ui`     | web React components                                                        | web          |
-| `apps/web`        | web screens and routing                                                     | web          |
+| `packages/api`    | typed Supabase client, generated DB types, TanStack Query options                                                          | any (no DOM) |
+| `packages/tokens` | design tokens as TS                                                                                                        | any          |
+| `packages/i18n`   | strings, money/date formatting via `Intl`                                                                                  | any          |
+| `packages/ui`     | web React components                                                                                                       | web          |
+| `apps/web`        | web screens and routing                                                                                                    | web          |
 
 ### Package dependencies
 
@@ -590,11 +590,11 @@ Paths start with an owning id, and policies parse it with `storage.foldername(na
 
 Each function uses one of three schemes. `verify_jwt` is set per function in `supabase/config.toml`.
 
-| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                          |
-| ---------------- | ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                              |
-| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)         |
-| `fx-sync`        | false        | same shared secret                               | same                                                                                                                |
+| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                                       |
+| ---------------- | ------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                                           |
+| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)                      |
+| `fx-sync`        | false        | same shared secret                               | same                                                                                                                             |
 | `ics-feed`       | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string |
 
 The service-role client (`_shared/admin.ts`) bypasses RLS, so each function authorizes the caller before touching it.
@@ -605,10 +605,10 @@ The `supabase_realtime` publication carries `availability`, `expenses`, `expense
 
 Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. One channel per screen:
 
-| Channel           | Tables (filter)                                                                                           | Refetches                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `money:<groupId>` | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                                    | group money queries, the changed expense, comments |
-| `plan:<eventId>`  | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`)       | heatmap, `best_slots`, requests, RSVPs, comments  |
+| Channel           | Tables (filter)                                                                                       | Refetches                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `money:<groupId>` | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                               | group money queries, the changed expense, comments |
+| `plan:<eventId>`  | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests, RSVPs, comments   |
 
 The plan channel batches invalidations for 300 ms so a friend dragging across twenty cells causes one refetch, not twenty.
 
@@ -616,11 +616,11 @@ The plan channel batches invalidations for 300 ms so a friend dragging across tw
 
 All jobs are `pg_cron` entries created by migrations, so every environment gets the same schedule. `cron.schedule` with an existing name updates the job, which keeps the migrations rerunnable. Times are UTC.
 
-| Job                              | Schedule      | Runs                                                                  | Does                                                                                                                                                                                      |
-| -------------------------------- | ------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `materialize-recurring-expenses` | `10 0 * * *`  | `private.materialize_recurring_expenses()`                            | Writes due recurring templates as real expenses, catching up at most 12 periods per template. Deactivates templates whose payer or people left. Leaves a template due when no FX rate exists yet |
-| `event-reminders`                | `5 * * * *`   | `private.send_event_reminders()` then `private.finish_past_events()`  | `event.reminder` to going and maybe, `rsvp.reminder` to members who have not answered, once per event starting in the next 24 hours. Then flips ended scheduled events to `done`          |
-| `fx-sync`                        | `30 16 * * *` | `private.invoke_edge_function('fx-sync')`                             | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                    |
+| Job                              | Schedule      | Runs                                                                 | Does                                                                                                                                                                                             |
+| -------------------------------- | ------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `materialize-recurring-expenses` | `10 0 * * *`  | `private.materialize_recurring_expenses()`                           | Writes due recurring templates as real expenses, catching up at most 12 periods per template. Deactivates templates whose payer or people left. Leaves a template due when no FX rate exists yet |
+| `event-reminders`                | `5 * * * *`   | `private.send_event_reminders()` then `private.finish_past_events()` | `event.reminder` to going and maybe, `rsvp.reminder` to members who have not answered, once per event starting in the next 24 hours. Then flips ended scheduled events to `done`                 |
+| `fx-sync`                        | `30 16 * * *` | `private.invoke_edge_function('fx-sync')`                            | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                           |
 
 Each recurring template runs inside its own `begin ... exception` block, so one bad template logs a warning and the rest still run.
 
