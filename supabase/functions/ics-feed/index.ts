@@ -43,6 +43,13 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!owner) return new Response('Not found', { status: 404 })
 
+  const { data: profile } = await db
+    .from('profiles')
+    .select('deleted_at')
+    .eq('id', owner.user_id)
+    .maybeSingle()
+  if (!profile || profile.deleted_at) return new Response('Not found', { status: 404 })
+
   const { data: memberships } = await db
     .from('group_members')
     .select('group_id')

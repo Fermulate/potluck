@@ -1,6 +1,7 @@
 // Closes the caller's account: tombstones their data with delete_my_account()
 // (as the caller, so the RPC's own checks apply), then soft deletes the auth
-// user so profile foreign keys and shared ledgers stay intact.
+// user so profile foreign keys and shared ledgers stay intact. Avatar files
+// are removed too.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { adminClient } from '../_shared/admin.ts'
 import { corsHeaders, json } from '../_shared/http.ts'
@@ -22,7 +23,15 @@ Deno.serve(async (req) => {
   const { error: rpcError } = await asUser.rpc('delete_my_account')
   if (rpcError) return json({ error: rpcError.message }, 400)
 
-  const { error: deleteError } = await adminClient().auth.admin.deleteUser(userData.user.id, true)
+  const admin = adminClient()
+  const uid = userData.user.id
+  // Avatar files live under `<uid>/` in the public avatars bucket.
+  const { data: files } = await admin.storage.from('avatars').list(uid, { limit: 1000 })
+  if (files?.length) {
+    await admin.storage.from('avatars').remove(files.map((f) => `${uid}/${f.name}`))
+  }
+
+  const { error: deleteError } = await admin.auth.admin.deleteUser(uid, true)
   if (deleteError) return json({ error: 'auth_delete_failed' }, 500)
 
   return json({ ok: true })

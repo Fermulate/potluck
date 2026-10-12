@@ -1,6 +1,6 @@
 -- calendar_feed_token() and the push hook
 begin;
-select plan(10);
+select plan(11);
 
 select tests.create_user('owner');
 select tests.create_user('snoop');
@@ -32,6 +32,16 @@ select is(
   (select count(*)::int from net.http_request_queue),
   0,
   'nothing is sent without edge config'
+);
+
+-- Closing the account drops the feed token.
+select tests.login('owner');
+select delete_my_account();
+reset role;
+select is(
+  (select count(*)::int from public.calendar_feed_tokens where user_id = tests.uid('owner')),
+  0,
+  'closing the account removes the feed token'
 );
 
 select * from finish();

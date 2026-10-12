@@ -55,6 +55,14 @@ function message(n: NotificationRow): { title: string; body: string; url: string
       return { title: 'It is on', body: title('A plan was locked in'), url: event }
     case 'event.cancelled':
       return { title: 'Plan cancelled', body: title('A plan was called off'), url: event }
+    case 'event.reminder':
+      return { title: 'Coming up soon', body: title('A plan is coming up'), url: event }
+    case 'rsvp.reminder':
+      return {
+        title: 'Are you in?',
+        body: title('Let the group know if you are coming'),
+        url: event,
+      }
     default:
       return { title: 'Potluck', body: 'Something new is waiting for you.', url: '/notifications' }
   }
