@@ -74,12 +74,14 @@ flowchart TB
   edge -->|service role| rest
 ```
 
+## Packages
+
 A native app (Expo) is planned. Everything below the screens is shared:
 
 | Package           | Purpose                                                                     | Platform     |
 | ----------------- | --------------------------------------------------------------------------- | ------------ |
-| `packages/core`   | split math, rounding, debt simplification, slot ranking, validation schemas | any (no DOM) |
-| `packages/api`    | typed Supabase client, generated DB types, TanStack Query hooks             | any (no DOM) |
+| `packages/core`   | split math, rounding, debt simplification, slot ranking and heat levels, recurrence dates, role checks, validation schemas | any (no DOM) |
+| `packages/api`    | typed Supabase client, generated DB types, TanStack Query options           | any (no DOM) |
 | `packages/tokens` | design tokens as TS                                                         | any          |
 | `packages/i18n`   | strings, money/date formatting via `Intl`                                   | any          |
 | `packages/ui`     | web React components                                                        | web          |
@@ -133,7 +135,7 @@ flowchart BT
 
 The ER diagrams below are drawn from the migrations and split in three so they stay readable. Columns are trimmed to keys and the ones that matter for behavior; the lists after the diagrams have the rest. `profiles` and `groups` appear in more than one diagram.
 
-### Identity, social and groups
+### Diagram: identity, social and groups
 
 ```mermaid
 erDiagram
@@ -204,7 +206,7 @@ erDiagram
   }
 ```
 
-### Money
+### Diagram: money
 
 ```mermaid
 erDiagram
@@ -284,7 +286,7 @@ erDiagram
 
 The `group_balances` view (`security_invoker`) sums `expenses`, `expense_splits` and `settlements` into `(group_id, user_id, net_cents)`.
 
-### Plans, feed and platform
+### Diagram: plans, feed and platform
 
 ```mermaid
 erDiagram
@@ -574,7 +576,7 @@ Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`
 
 ### Storage
 
-Paths start with an owning id, and policies parse it with `storage.foldername(name)[1]`. `private.try_uuid` turns a malformed folder into `null` instead of an error, so a bad path is simply denied.
+Paths start with an owning id, and policies parse it with `storage.foldername(name)[1]`. `private.try_uuid` turns a malformed folder into `null` instead of an error, so a bad path is denied.
 
 | Bucket         | Public read | Path prefix  | Write                                                                                   | Limits                     |
 | -------------- | ----------- | ------------ | --------------------------------------------------------------------------------------- | -------------------------- |
