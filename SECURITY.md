@@ -23,3 +23,7 @@ Out of scope: vulnerabilities in third-party services (Supabase, Cloudflare, Git
 ## Supported versions
 
 Only the latest version deployed from `main` receives security fixes.
+
+## How Potluck is secured
+
+The threat model, what data we store and who can see it, how account deletion works, and how we handle secrets are in [docs/security.md](docs/security.md). The authorization design (row level security, security definer functions, storage policies, edge function auth) is in [docs/architecture.md](docs/architecture.md#security-model).
