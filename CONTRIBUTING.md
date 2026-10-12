@@ -22,6 +22,8 @@ cp .env.example .env.local
 pnpm dev               # http://localhost:5173
 ```
 
+Demo accounts, Windows notes, edge functions and the rest of the local setup are in [docs/development.md](docs/development.md). The full developer docs start at [docs/README.md](docs/README.md).
+
 ## Repository layout
 
 | Path              | What lives there                                                         |
