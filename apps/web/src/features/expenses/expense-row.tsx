@@ -1,6 +1,7 @@
 import type { ExpenseWithSplits, Settlement } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
-import { Amount, cn } from '@potluck/ui'
+import { cn } from '@potluck/ui'
+import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -113,7 +114,7 @@ export function ExpenseRow({
               >
                 {line.kind === 'lent' ? t('expenses.youLentLabel') : t('expenses.youBorrowedLabel')}
               </span>
-              <Amount
+              <Money
                 cents={line.cents}
                 currency={expense.currency}
                 locale={locale}
@@ -173,7 +174,7 @@ export function SettlementRow({
         title={text}
         subtitle={settlement.note ?? t('balances.settledShort')}
         right={
-          <Amount
+          <Money
             cents={settlement.amount_cents}
             currency={settlement.currency}
             locale={locale}

@@ -1,7 +1,8 @@
 import type { MoneyMember } from '@potluck/api'
 import type { Shares } from '@potluck/core'
 import { t } from '@potluck/i18n'
-import { Amount, Avatar, Button, IconButton, cn } from '@potluck/ui'
+import { Avatar, Button, IconButton, cn } from '@potluck/ui'
+import { Money } from '../money'
 import { Plus, X } from 'lucide-react'
 import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
@@ -129,7 +130,7 @@ export function ItemizedEditor({
       <dl className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 rounded-card bg-sunken p-4">
         <dt className="text-sm text-mute">{t('expenses.itemized.subtotal')}</dt>
         <dd className="text-right tabular font-semibold">
-          <Amount cents={subtotal} currency={currency} tone="neutral" />
+          <Money cents={subtotal} currency={currency} tone="neutral" />
         </dd>
         <dt>
           <label htmlFor="itemized-tax" className="text-sm text-mute">
@@ -163,7 +164,7 @@ export function ItemizedEditor({
           {t('expenses.itemized.total')}
         </dt>
         <dd className="border-t border-line-strong pt-2 text-right tabular text-lg font-extrabold">
-          <Amount cents={itemsTotal(draft)} currency={currency} tone="neutral" />
+          <Money cents={itemsTotal(draft)} currency={currency} tone="neutral" />
         </dd>
       </dl>
 
@@ -181,7 +182,7 @@ export function ItemizedEditor({
                 />
                 <span className="flex-1 truncate font-semibold">{name(m)}</span>
                 <span className="tabular font-bold">
-                  <Amount cents={shares[m.id] ?? 0} currency={currency} tone="neutral" />
+                  <Money cents={shares[m.id] ?? 0} currency={currency} tone="neutral" />
                 </span>
               </li>
             ))}
