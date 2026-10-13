@@ -291,6 +291,7 @@ export function SplitEditor({
                   people={participants.map((m) => ({
                     id: m.id,
                     name: displayName(m, viewerId),
+                    fullName: m.display_name,
                     avatarSrc: avatarUrl(m.avatar_path),
                   }))}
                   percent={draft.percent}
