@@ -61,7 +61,10 @@ export function ActivityFeed() {
   })
 
   const sections = useMemo(() => {
-    const items = feed.data?.pages.flat() ?? []
+    // The hidden 1:1 groups are an implementation detail; their creation is not news.
+    const items = (feed.data?.pages.flat() ?? []).filter(
+      (item) => !(item.verb === 'group.created' && item.group?.is_direct),
+    )
     return groupByDay(items, (item) => dayOf(item.created_at, timeZone))
   }, [feed.data, timeZone])
 

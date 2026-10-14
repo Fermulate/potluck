@@ -307,6 +307,15 @@ export const activity = {
   fallback: '{actor} made a change',
   aPlan: 'a plan',
   anExpense: 'an expense',
+  /** Variants for the viewer's own actions, where "{actor}" would read badly. */
+  self: {
+    event: {
+      created: 'You are planning {event}',
+    },
+    availability: {
+      requested: 'You asked when everyone is free for {event}',
+    },
+  },
   group: {
     created: '{actor} started {group}',
     updated: '{actor} updated the group settings',

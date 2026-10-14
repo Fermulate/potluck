@@ -105,7 +105,8 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       break
   }
 
-  const key = `activity.${item.verb}`
+  const own = item.actor_id === ctx.viewerId ? `activity.self.${item.verb}` : null
+  const key = own && hasMessage(own) ? own : `activity.${item.verb}`
   const template = hasMessage(key) ? (key as 'activity.fallback') : null
   const text = template ? fill(t(template, { actor }), params) : t('activity.fallback', { actor })
   return { text, detail, emoji, tone, link }
