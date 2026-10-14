@@ -312,11 +312,7 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               </p>
             </section>
           )}
-          <ExpenseComments
-            expenseId={e.id}
-            groupId={e.group_id}
-            canModerate={role === 'owner' || role === 'admin'}
-          />
+          <ExpenseComments expenseId={e.id} canModerate={role === 'owner' || role === 'admin'} />
         </div>
       </div>
 
