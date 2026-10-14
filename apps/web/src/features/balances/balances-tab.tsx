@@ -1,55 +1,20 @@
-import { moneyQueries, type Debt, type MoneyGroup } from '@potluck/api'
-import { pairwiseDebts } from '@potluck/core'
+import { moneyQueries } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, Card, EmptyState, Skeleton, cn } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Plus } from 'lucide-react'
-import { useMemo } from 'react'
+import { useDebts } from './use-debts'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { Money } from '@/features/expenses/money'
 import {
   avatarUrl,
-  useGroupExpenses,
   useGroupMoneyRealtime,
-  useGroupSettlements,
   useMoneyGroup,
   useNameOf,
   usePeople,
 } from '@/features/expenses/money-data'
-
-/** Debts to show: the server's simplified set, or every pair when the group keeps them apart. */
-function useDebts(groupId: string, group: MoneyGroup | undefined) {
-  const simplify = group?.simplify_debts ?? true
-  const simplified = useQuery({
-    ...moneyQueries.simplified(supabase, groupId),
-    enabled: !!group && simplify,
-  })
-  const expenses = useGroupExpenses(groupId)
-  const settlements = useGroupSettlements(groupId)
-  const pairwise = useMemo(() => {
-    if (!group || simplify || !expenses.data || !settlements.data) return undefined
-    return pairwiseDebts(
-      expenses.data.map((e) => ({
-        paidBy: e.paid_by,
-        amountCents: e.amount_cents,
-        currency: e.currency,
-        fxRate: e.fx_rate,
-        splits: e.expense_splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
-      })),
-      settlements.data.map((s) => ({
-        fromUser: s.from_user,
-        toUser: s.to_user,
-        amountCents: s.amount_cents,
-        currency: s.currency,
-        fxRate: s.fx_rate,
-      })),
-      { groupCurrency: group.currency },
-    ).map<Debt>((d) => ({ from_user: d.fromUser, to_user: d.toUser, amount_cents: d.amountCents }))
-  }, [group, simplify, expenses.data, settlements.data])
-  return simplify ? simplified.data : pairwise
-}
 
 export function BalancesTab({ groupId }: { groupId: string }) {
   useGroupMoneyRealtime(groupId)
