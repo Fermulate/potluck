@@ -15,8 +15,8 @@ export function usePeople(): Map<string, MoneyPerson> {
   return useMemo(() => new Map((data ?? []).map((p) => [p.id, p])), [data])
 }
 
-export function useMoneyGroup(groupId: string) {
-  return useQuery(moneyQueries.group(supabase, groupId))
+export function useMoneyGroup(groupId: string | undefined) {
+  return useQuery({ ...moneyQueries.group(supabase, groupId ?? ''), enabled: !!groupId })
 }
 
 export function useGroupExpenses(groupId: string) {
