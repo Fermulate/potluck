@@ -29,23 +29,25 @@ function symbol(code: string): string {
 
 /**
  * Pick the currency an expense was paid in. Only currencies with a known rate into the group
- * currency are offered, because the server needs one to save.
+ * currency on or before `spentAt` are offered, because the server needs one to save.
  */
 export function CurrencyPicker({
   open,
   onOpenChange,
   value,
   groupCurrency,
+  spentAt,
   onSelect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   value: string
   groupCurrency: string
+  spentAt: string
   onSelect: (code: string) => void
 }) {
   const { data, isPending } = useQuery({
-    ...moneyQueries.fxCurrencies(supabase, groupCurrency),
+    ...moneyQueries.fxCurrencies(supabase, groupCurrency, spentAt),
     enabled: open,
   })
 

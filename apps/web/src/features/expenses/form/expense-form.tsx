@@ -257,6 +257,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 amountCents={total}
                 currency={currency}
                 groupCurrency={group.currency}
+                spentAt={spentAt}
+                savedRate={
+                  editing && editing.currency === currency ? Number(editing.fx_rate) : undefined
+                }
               />
             )}
           </div>
@@ -379,6 +383,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         onOpenChange={setPickingCurrency}
         value={currency}
         groupCurrency={group.currency}
+        spentAt={spentAt}
         onSelect={setCurrency}
       />
     </MoneyPageShell>
