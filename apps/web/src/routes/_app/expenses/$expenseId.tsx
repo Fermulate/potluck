@@ -1,7 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { ExpenseDetail } from '@/features/expenses/expense-detail'
 
 export const Route = createFileRoute('/_app/expenses/$expenseId')({
-  component: () => <RoutePlaceholder title={t('expenses.title')} />,
+  component: ExpenseRoute,
 })
+
+function ExpenseRoute() {
+  const { expenseId } = Route.useParams()
+  return <ExpenseDetail key={expenseId} expenseId={expenseId} />
+}

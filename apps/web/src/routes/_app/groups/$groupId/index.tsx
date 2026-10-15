@@ -1,7 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { ExpensesTab } from '@/features/expenses/expenses-tab'
 
 export const Route = createFileRoute('/_app/groups/$groupId/')({
-  component: () => <RoutePlaceholder title={t('expenses.title')} />,
+  component: GroupExpenses,
 })
+
+function GroupExpenses() {
+  const { groupId } = Route.useParams()
+  return <ExpensesTab groupId={groupId} />
+}
