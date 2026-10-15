@@ -103,7 +103,6 @@ export const expenses = {
     eventLinked: 'Linked to a plan',
     itemizedTotal: 'The total comes from the items below.',
     itemizedEditNote: 'Item details are not kept after saving, so this opens as exact amounts.',
-    splitPreview: 'Who owes what',
   },
   currencyPicker: {
     title: 'Pick a currency',
@@ -133,7 +132,6 @@ export const expenses = {
     itemPlaceholder: 'Dumplings',
     remove: 'Remove {item}',
     assign: 'Who had {item}?',
-    hint: 'Tax and tip follow each person, in proportion to what they had.',
     untitled: 'Item {number}',
   },
   receiptUpload: {
