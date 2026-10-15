@@ -3,7 +3,7 @@ import { t } from '@potluck/i18n'
 import { Button, IconButton, toast } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Camera, FileText, X } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export interface ReceiptValue {
@@ -17,16 +17,13 @@ const MAX_BYTES = 10 * 1024 * 1024
 const TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'application/pdf']
 
 function useObjectUrl(file: File | null) {
-  const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!file) {
-      setUrl(null)
-      return
-    }
-    const next = URL.createObjectURL(file)
-    setUrl(next)
-    return () => URL.revokeObjectURL(next)
-  }, [file])
+  const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url)
+    },
+    [url],
+  )
   return url
 }
 
@@ -118,16 +115,4 @@ export function ReceiptField({
       )}
     </div>
   )
-}
-
-/** File extension for an upload, from its type or name. */
-export function receiptExtension(file: File): string {
-  const fromType: Record<string, string> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/webp': 'webp',
-    'image/heic': 'heic',
-    'application/pdf': 'pdf',
-  }
-  return fromType[file.type] ?? file.name.split('.').pop() ?? 'jpg'
 }

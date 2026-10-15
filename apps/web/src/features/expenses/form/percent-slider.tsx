@@ -39,13 +39,12 @@ export function PercentSlider({
   const [dragging, setDragging] = useState<number | null>(null)
   const order = people.map((p) => p.id)
 
-  let running = 0
-  const segments = people.map((p) => {
-    const value = percent[p.id] ?? 0
-    const start = running
-    running += value
-    return { ...p, value, start, color: avatarColor(p.id) }
-  })
+  const segments = people.map((p, i) => ({
+    ...p,
+    value: percent[p.id] ?? 0,
+    start: people.slice(0, i).reduce((sum, q) => sum + (percent[q.id] ?? 0), 0),
+    color: avatarColor(p.id),
+  }))
 
   const setBoundary = (index: number, cumulative: number) => {
     const snapped = Math.round(cumulative / STEP) * STEP
