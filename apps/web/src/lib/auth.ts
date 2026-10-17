@@ -50,3 +50,26 @@ export function useUserId(): string {
 export async function signOut() {
   await supabase.auth.signOut()
 }
+
+/**
+ * Only same-origin paths survive the `redirect` search param, so a crafted link cannot bounce a
+ * fresh session to another site.
+ */
+export function safeRedirect(target: string | undefined | null, fallback = '/home'): string {
+  if (!target || !target.startsWith('/') || target.startsWith('//') || target.startsWith('/\\')) {
+    return fallback
+  }
+  return target
+}
+
+/** Absolute URL of the auth callback, carrying where to go afterwards. */
+export function authCallbackUrl(next?: string): string {
+  const url = new URL('/auth/callback', window.location.origin)
+  if (next) url.searchParams.set('redirect', next)
+  return url.toString()
+}
+
+/** New accounts carry this flag until they finish onboarding. */
+export function needsOnboarding(session: Session | null): boolean {
+  return session?.user.user_metadata?.needs_onboarding === true
+}
