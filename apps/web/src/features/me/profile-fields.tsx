@@ -21,7 +21,8 @@ function NativeSelect({
 }) {
   const field = useField()
   return (
-    <div className="relative">
+    // Inline-size containment keeps a long option label from widening the layout.
+    <div className="relative [contain:inline-size]">
       <select
         id={field?.id}
         aria-describedby={field?.describedBy}

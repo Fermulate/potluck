@@ -58,6 +58,11 @@ function FriendBalance({ friend }: { friend: Friend }) {
   )
 }
 
+/** One-person invites for friends expire after a week. */
+function weekFromNow(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+}
+
 function AddFriendSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const { data: groups = [] } = useMyGroups()
   const [busy, setBusy] = useState<string | null>(null)
@@ -71,11 +76,7 @@ function AddFriendSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (
   async function invite(groupId: string, name: string) {
     setBusy(groupId)
     try {
-      const created = await createInvite(supabase, {
-        groupId,
-        maxUses: 1,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      })
+      const created = await createInvite(supabase, { groupId, maxUses: 1, expiresAt: weekFromNow() })
       await shareInvite(name, created.code)
     } catch (error) {
       toast.error(errorMessage(error))
