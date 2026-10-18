@@ -14,11 +14,11 @@ interface AuthLayoutProps {
 }
 
 const PLATES = [
-  { emoji: '🥟', x: '14%', y: '18%', r: -8, size: 'size-24' },
-  { emoji: '🍜', x: '58%', y: '12%', r: 6, size: 'size-28' },
-  { emoji: '🌮', x: '30%', y: '46%', r: 4, size: 'size-32' },
-  { emoji: '🍷', x: '68%', y: '50%', r: -10, size: 'size-20' },
-  { emoji: '🥗', x: '10%', y: '70%', r: 10, size: 'size-24' },
+  { emoji: '🥟', x: '12%', y: '16%', r: -8, size: 'size-24' },
+  { emoji: '🍜', x: '50%', y: '9%', r: 6, size: 'size-28' },
+  { emoji: '🥗', x: '78%', y: '24%', r: 10, size: 'size-24' },
+  { emoji: '🌮', x: '26%', y: '36%', r: 4, size: 'size-32' },
+  { emoji: '🍷', x: '62%', y: '44%', r: -10, size: 'size-20' },
 ] as const
 
 /** The table seen from above: plates on a dark cloth, one per friend. */

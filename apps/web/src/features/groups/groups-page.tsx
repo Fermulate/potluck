@@ -35,34 +35,32 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
         to="/groups/$groupId"
         params={{ groupId: group.id }}
         viewTransition
-        className="group flex h-full items-center gap-4 rounded-card border border-line bg-card p-4 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99]"
+        className="group flex h-full flex-col gap-4 rounded-card border border-line bg-card p-4 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99] sm:p-5"
       >
-        <GroupTile
-          emoji={group.emoji}
-          color={group.color}
-          size="md"
-          className="transition-transform duration-200 group-hover:rotate-[-8deg]"
-          style={{ viewTransitionName: groupTransitionName(group.id) }}
-        />
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[1.0625rem] font-bold tracking-tight">{group.name}</h3>
-          <div className="mt-1.5 flex items-center gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <GroupTile
+            emoji={group.emoji}
+            color={group.color}
+            size="md"
+            className="transition-transform duration-200 group-hover:rotate-[-9deg]"
+            style={{ viewTransitionName: groupTransitionName(group.id) }}
+          />
+          <ViewerBalance cents={group.my_net_cents} currency={group.currency} stacked />
+        </div>
+        <div className="mt-auto">
+          <h3 className="truncate font-display text-[1.75rem] leading-tight">{group.name}</h3>
+          <div className="mt-2 flex items-center gap-2">
             <AvatarStack
               people={people}
-              max={4}
+              max={5}
               size="xs"
               label={t('groups.memberCount', { count: people.length })}
             />
-            <span className="text-xs text-mute">
+            <span className="text-xs font-medium text-mute">
               {t('groups.memberCount', { count: people.length })}
             </span>
           </div>
         </div>
-        <ViewerBalance
-          cents={group.my_net_cents}
-          currency={group.currency}
-          className="max-w-[9rem] text-right leading-tight"
-        />
       </Link>
     </motion.li>
   )
@@ -70,7 +68,7 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
 
 function GroupsSkeleton() {
   return (
-    <ul className="grid gap-3 md:grid-cols-2" aria-hidden>
+    <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-hidden>
       {Array.from({ length: 4 }, (_, i) => (
         <li key={i} className="flex items-center gap-4 rounded-card border border-line bg-card p-4">
           <Skeleton className="size-14 rounded-[1rem]" />
@@ -106,7 +104,7 @@ export function GroupsPage({
   )
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
+    <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
       <PageHeader
         title={t('groups.title')}
         subtitle={t('groups.subtitle')}
@@ -114,8 +112,11 @@ export function GroupsPage({
       />
 
       <div className="mt-6 flex flex-wrap gap-2">
-        <Button asChild variant="secondary" size="sm" leadingIcon={<UsersRound />}>
-          <Link to="/friends">{t('nav.friends')}</Link>
+        <Button asChild variant="secondary" size="sm">
+          <Link to="/friends">
+            <UsersRound aria-hidden className="-ml-1 size-4" />
+            {t('nav.friends')}
+          </Link>
         </Button>
         <Button
           variant="secondary"
@@ -156,7 +157,7 @@ export function GroupsPage({
             }
           />
         ) : (
-          <ul className="grid gap-3 md:grid-cols-2">
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {active.map((group, i) => (
               <GroupCard key={group.id} group={group} index={i} />
             ))}
@@ -183,7 +184,7 @@ export function GroupsPage({
             </button>
           </h2>
           {showArchived && (
-            <ul className="mt-3 grid gap-3 opacity-75 md:grid-cols-2">
+            <ul className="mt-3 grid gap-3 opacity-75 sm:grid-cols-2 xl:grid-cols-3">
               {archived.map((group, i) => (
                 <GroupCard key={group.id} group={group} index={i} />
               ))}

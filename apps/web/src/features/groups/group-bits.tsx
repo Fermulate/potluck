@@ -1,4 +1,4 @@
-import { formatMoney, t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import { Amount, cn } from '@potluck/ui'
 import type { CSSProperties } from 'react'
 import { DEFAULT_GROUP_EMOJI, groupTone } from '@/lib/group-colors'
@@ -47,31 +47,51 @@ export function GroupTile({
 export function ViewerBalance({
   cents,
   currency,
+  stacked = false,
   className,
 }: {
   cents: number
   currency: string
+  /** Label over a bigger amount, for cards. */
+  stacked?: boolean
   className?: string
 }) {
   if (cents === 0) {
-    return <span className={cn('text-sm text-mute', className)}>{t('groups.settledUp')}</span>
+    return (
+      <span className={cn('text-sm font-medium text-mute', stacked && 'pt-1', className)}>
+        {t('groups.settledUp')}
+      </span>
+    )
   }
   const amount = formatMoney(Math.abs(cents), currency)
   const text = cents > 0 ? t('groups.youAreOwed', { amount }) : t('groups.youOwe', { amount })
   const [before, after] = text.split(amount) as [string, string | undefined]
+  const figure = (
+    <Amount
+      cents={Math.abs(cents)}
+      currency={currency}
+      locale={DEFAULT_LOCALE}
+      tone={cents > 0 ? 'owed' : 'owe'}
+      className={stacked ? 'text-xl font-extrabold' : 'font-bold'}
+    />
+  )
   return (
-    <span className={cn('text-sm', className)}>
+    <span className={cn(stacked ? 'flex flex-col items-end text-right' : 'text-sm', className)}>
       <span className="sr-only">{text}</span>
-      <span aria-hidden>
-        <span className="text-mute">{before}</span>
-        <Amount
-          cents={Math.abs(cents)}
-          currency={currency}
-          tone={cents > 0 ? 'owed' : 'owe'}
-          className="font-bold"
-        />
-        {after && <span className="text-mute">{after}</span>}
-      </span>
+      {stacked ? (
+        <>
+          <span aria-hidden className="text-xs font-medium text-mute">
+            {before.trim()}
+          </span>
+          <span aria-hidden>{figure}</span>
+        </>
+      ) : (
+        <span aria-hidden>
+          <span className="text-mute">{before}</span>
+          {figure}
+          {after && <span className="text-mute">{after}</span>}
+        </span>
+      )}
     </span>
   )
 }
