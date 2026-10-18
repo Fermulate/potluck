@@ -208,8 +208,36 @@ export function isFlagOn(config: AppConfig | undefined, key: string): boolean {
 
 // Account ----------------------------------------------------------------------
 
-/** Tombstones the profile and closes the account. Sign out afterwards. */
+/**
+ * Closes the account: the `delete-account` edge function tombstones the profile as the caller,
+ * then removes the auth user. Sign out afterwards.
+ */
 export async function deleteMyAccount(client: PotluckClient) {
-  const { error } = await client.rpc('delete_my_account')
+  const { error } = await client.functions.invoke('delete-account', { method: 'POST' })
   if (error) throw error
+}
+
+// Calendar feed ----------------------------------------------------------------
+
+export const calendarFeedKeys = {
+  token: (userId: string) => ['potluck', 'me', 'calendar-feed', userId] as const,
+}
+
+/** The personal `.ics` feed token. `rotate` invalidates the old one. */
+export async function fetchCalendarFeedToken(client: PotluckClient, rotate = false) {
+  const { data, error } = await client.rpc('calendar_feed_token', { rotate })
+  if (error) throw error
+  return data
+}
+
+export const calendarFeedTokenQueryOptions = (client: PotluckClient, userId: string) =>
+  queryOptions({
+    queryKey: calendarFeedKeys.token(userId),
+    queryFn: () => fetchCalendarFeedToken(client),
+    staleTime: Infinity,
+  })
+
+/** Subscribe URL for the feed, given the Supabase project URL. */
+export function calendarFeedUrl(supabaseUrl: string, token: string): string {
+  return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/ics-feed?token=${encodeURIComponent(token)}`
 }
