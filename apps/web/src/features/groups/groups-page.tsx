@@ -14,7 +14,8 @@ import { motion } from 'motion/react'
 import { useState } from 'react'
 import { errorMessage } from '@/lib/errors'
 import { CreateGroupSheet } from './create-group-sheet'
-import { GroupTile, groupTransitionName, stackPeople, ViewerBalance } from './group-bits'
+import { GroupTile, ViewerBalance } from './group-bits'
+import { groupTransitionName, stackPeople } from './people'
 import { useGroupsRealtime, useMyGroups } from './use-groups'
 
 function GroupCard({ group, index }: { group: GroupDetail; index: number }) {

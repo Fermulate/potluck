@@ -2,13 +2,8 @@ import { t } from '@potluck/i18n'
 import { cn, Field, Input } from '@potluck/ui'
 import { Check } from 'lucide-react'
 import { useId } from 'react'
+import { GROUP_EMOJIS } from './group-emojis'
 import { GROUP_COLORS, normalizeGroupColor, type GroupColor } from '@/lib/group-colors'
-
-export const GROUP_EMOJIS = [
-  '🍲', '🍕', '🌮', '🥟', '🍜', '🍣', '🍷', '🍻', '☕', '🧁',
-  '🏠', '🏕️', '🥾', '✈️', '🏖️', '🚗', '🎉', '🎳', '⚽', '🎲',
-  '🎬', '🎶', '💼', '🐶',
-] as const
 
 /** Emoji grid as a radio group, plus a free text box for anything else. */
 export function EmojiPicker({

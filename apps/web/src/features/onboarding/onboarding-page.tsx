@@ -1,10 +1,16 @@
-import { avatarUrl, meKeys, myProfileQueryOptions, updateMyProfile } from '@potluck/api'
+import {
+  avatarUrl,
+  meKeys,
+  myProfileQueryOptions,
+  updateMyProfile,
+  type ProfileRow,
+} from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, Field, Input, Skeleton, toast } from '@potluck/ui'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Link2, Plus } from 'lucide-react'
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { AvatarPicker } from '@/features/me/avatar-picker'
 import { CurrencyField, TimezoneField } from '@/features/me/profile-fields'
 import { Wordmark } from '@/features/shell/brand'
@@ -56,30 +62,19 @@ function ChoiceCard({
   )
 }
 
-/**
- * First run after sign up: name, face, time zone and currency, then a nudge to start or join a
- * group. Clears the `needs_onboarding` flag on the auth user when the profile is saved.
- */
-export function OnboardingPage({ userId, redirect }: { userId: string; redirect: string }) {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { data: profile, isPending } = useQuery(myProfileQueryOptions(supabase, userId))
-  const [step, setStep] = useState<1 | 2>(1)
-  const [name, setName] = useState('')
-  const [avatarPath, setAvatarPath] = useState<string | null>(null)
+function ProfileForm({
+  profile,
+  onSaved,
+}: {
+  profile: ProfileRow
+  onSaved: (saved: ProfileRow) => Promise<void>
+}) {
+  const [name, setName] = useState(profile.display_name)
+  const [avatarPath, setAvatarPath] = useState(profile.avatar_path)
   const [timezone, setTimezone] = useState(detectTimezone)
   const [currency, setCurrency] = useState(guessCurrency)
   const [busy, setBusy] = useState(false)
-  const [inviteLink, setInviteLink] = useState('')
-  const [showJoin, setShowJoin] = useState(false)
-
-  useEffect(() => {
-    if (!profile) return
-    setName((n) => n || profile.display_name)
-    setAvatarPath((p) => p ?? profile.avatar_path)
-  }, [profile])
-
-  const goingSomewhere = redirect !== '/home'
+  const userId = profile.id
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault()
@@ -92,18 +87,70 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
         timezone,
         default_currency: currency,
       })
-      queryClient.setQueryData(meKeys.profile(userId), saved)
-      const { error } = await supabase.auth.updateUser({ data: { needs_onboarding: false } })
-      if (error) throw error
-      if (goingSomewhere) {
-        await navigate({ href: redirect, replace: true })
-      } else {
-        setStep(2)
-      }
+      await onSaved(saved)
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
       setBusy(false)
+    }
+  }
+
+  return (
+    <form className="grid gap-5" onSubmit={saveProfile}>
+      <AvatarPicker
+        userId={userId}
+        name={name}
+        src={avatarUrl(supabase, avatarPath)}
+        onUploaded={setAvatarPath}
+      />
+      <Field label={t('onboarding.profile.nameLabel')}>
+        <Input
+          required
+          maxLength={80}
+          autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t('auth.fields.namePlaceholder')}
+        />
+      </Field>
+      <TimezoneField
+        value={timezone}
+        onChange={setTimezone}
+        hint={t('onboarding.profile.timezoneHint')}
+      />
+      <CurrencyField
+        value={currency}
+        onChange={setCurrency}
+        hint={t('onboarding.profile.currencyHint')}
+      />
+      <Button type="submit" size="lg" block loading={busy} disabled={!name.trim()}>
+        {t('onboarding.profile.save')}
+      </Button>
+    </form>
+  )
+}
+
+/**
+ * First run after sign up: name, face, time zone and currency, then a nudge to start or join a
+ * group. Clears the `needs_onboarding` flag on the auth user when the profile is saved.
+ */
+export function OnboardingPage({ userId, redirect }: { userId: string; redirect: string }) {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { data: profile, isPending } = useQuery(myProfileQueryOptions(supabase, userId))
+  const [step, setStep] = useState<1 | 2>(1)
+  const [inviteLink, setInviteLink] = useState('')
+  const [showJoin, setShowJoin] = useState(false)
+  const goingSomewhere = redirect !== '/home'
+
+  async function onSaved(saved: ProfileRow) {
+    queryClient.setQueryData(meKeys.profile(userId), saved)
+    const { error } = await supabase.auth.updateUser({ data: { needs_onboarding: false } })
+    if (error) throw error
+    if (goingSomewhere) {
+      await navigate({ href: redirect, replace: true })
+    } else {
+      setStep(2)
     }
   }
 
@@ -130,44 +177,14 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
               </h1>
               <p className="mt-3 text-mute">{t('onboarding.profile.body')}</p>
             </header>
-            {isPending ? (
+            {isPending || !profile ? (
               <div className="grid gap-4">
                 <Skeleton shape="circle" className="size-20" />
                 <Skeleton className="h-12" />
                 <Skeleton className="h-12" />
               </div>
             ) : (
-              <form className="grid gap-5" onSubmit={saveProfile}>
-                <AvatarPicker
-                  userId={userId}
-                  name={name}
-                  src={avatarUrl(supabase, avatarPath)}
-                  onUploaded={setAvatarPath}
-                />
-                <Field label={t('onboarding.profile.nameLabel')}>
-                  <Input
-                    required
-                    maxLength={80}
-                    autoComplete="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={t('auth.fields.namePlaceholder')}
-                  />
-                </Field>
-                <TimezoneField
-                  value={timezone}
-                  onChange={setTimezone}
-                  hint={t('onboarding.profile.timezoneHint')}
-                />
-                <CurrencyField
-                  value={currency}
-                  onChange={setCurrency}
-                  hint={t('onboarding.profile.currencyHint')}
-                />
-                <Button type="submit" size="lg" block loading={busy} disabled={!name.trim()}>
-                  {t('onboarding.profile.save')}
-                </Button>
-              </form>
+              <ProfileForm profile={profile} onSaved={onSaved} />
             )}
           </>
         ) : (
