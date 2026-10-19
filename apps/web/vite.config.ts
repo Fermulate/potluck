@@ -15,16 +15,41 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png'],
+      workbox: {
+        // Push and notification click handlers live in a plain script next to the app.
+        importScripts: ['push-sw.js'],
+        navigateFallback: '/index.html',
+      },
       manifest: {
+        id: '/',
         name: 'Potluck',
         short_name: 'Potluck',
         description: 'Split expenses and plan group events.',
         theme_color: '#1d1a16',
         background_color: '#fbf5ea',
         display: 'standalone',
-        start_url: '/',
-        icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        start_url: '/home',
+        scope: '/',
+        categories: ['finance', 'lifestyle', 'social'],
+        icons: [
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
+        shortcuts: [
+          {
+            name: 'Add expense',
+            url: '/new/expense',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Plan something',
+            url: '/new/plan',
+            icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }],
+          },
+        ],
       },
     }),
   ],
