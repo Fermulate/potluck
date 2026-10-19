@@ -12,6 +12,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Link2, Plus } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { AvatarPicker } from '@/features/me/avatar-picker'
+import { inviteCodeFrom } from '@/features/invites/join-notice'
 import { CurrencyField, TimezoneField } from '@/features/me/profile-fields'
 import { Wordmark } from '@/features/shell/brand'
 import { errorMessage } from '@/lib/errors'
@@ -158,7 +159,12 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
 
   function joinFromLink(event: FormEvent) {
     event.preventDefault()
-    const code = inviteLink.trim().match(/(?:join\/)?([A-Za-z0-9_-]{10,64})\/?$/)?.[1]
+    let code: string | undefined
+    try {
+      code = inviteCodeFrom(new URL(inviteLink.trim(), window.location.origin).pathname)
+    } catch {
+      code = undefined
+    }
     if (!code) {
       toast.error(t('invites.invalid.notFound'))
       return
