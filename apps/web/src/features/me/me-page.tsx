@@ -130,7 +130,7 @@ function ProfileSection({ profile }: { profile: ProfileRow }) {
         </Field>
         <Button
           type="submit"
-          variant="ink"
+          variant={dirty ? 'ink' : 'secondary'}
           className="h-12"
           disabled={!dirty}
           loading={patch.isPending}
@@ -401,10 +401,7 @@ function DeleteAccount() {
 function AccountSection() {
   const navigate = useNavigate()
   return (
-    <section aria-labelledby="me-account" className="grid gap-3">
-      <h2 id="me-account" className="sr-only">
-        {t('account.delete.title')}
-      </h2>
+    <section className="grid gap-3">
       <div className="flex flex-wrap gap-3">
         <Button
           variant="secondary"
