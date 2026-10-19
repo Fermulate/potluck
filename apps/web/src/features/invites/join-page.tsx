@@ -58,7 +58,10 @@ function Frame({ children }: { children: ReactNode }) {
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-[60dvh] bg-[radial-gradient(ellipse_at_50%_0%,color-mix(in_oklab,var(--pl-saffron)_35%,transparent),transparent_65%)]"
       />
-      <main id="main" className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-6 pb-10">
+      <main
+        id="main"
+        className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-6 pb-10"
+      >
         <Link to="/" className="self-center rounded-pill" aria-label={t('app.name')}>
           <Wordmark />
         </Link>
@@ -128,10 +131,13 @@ export function JoinPage({ code }: { code: string }) {
 
   const group = preview.data
   // Only the first few names are public; pad so the stack counts everyone.
-  const faces = Array.from({ length: Math.max(group.member_count, group.first_names.length) }, (_, i) => {
-    const name = group.first_names[i] ?? '?'
-    return { id: `${group.group_id}-${i}`, name }
-  })
+  const faces = Array.from(
+    { length: Math.max(group.member_count, group.first_names.length) },
+    (_, i) => {
+      const name = group.first_names[i] ?? '?'
+      return { id: `${group.group_id}-${i}`, name }
+    },
+  )
   const line = namesLine(group)
   const host = group.first_names[0]
 
@@ -163,7 +169,9 @@ export function JoinPage({ code }: { code: string }) {
       <div className="mt-2 grid w-full gap-3">
         {group.is_member ? (
           <>
-            <p className="font-semibold">{t('invites.join.alreadyMember', { group: group.name })}</p>
+            <p className="font-semibold">
+              {t('invites.join.alreadyMember', { group: group.name })}
+            </p>
             <Button asChild size="lg" block>
               <Link to="/groups/$groupId" params={{ groupId: group.group_id }}>
                 {t('invites.join.open')}

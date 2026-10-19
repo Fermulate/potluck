@@ -203,7 +203,8 @@ export const friends = {
   opening: 'Opening...',
   add: 'Add a friend',
   addTitle: 'Add a friend',
-  addBody: 'Friends are people you share a group with. Send someone an invite to one of your groups and they show up here when they join.',
+  addBody:
+    'Friends are people you share a group with. Send someone an invite to one of your groups and they show up here when they join.',
   pickGroup: 'Invite them to',
   noGroups: 'Start a group first, then share its link.',
   empty: {

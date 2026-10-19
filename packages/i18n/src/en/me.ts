@@ -81,7 +81,8 @@ export const settings = {
     pushHint: 'A ping on this device when something needs you.',
     pushOn: 'Push is on for this device.',
     pushOff: 'Push is off for this device.',
-    pushUnsupported: 'This browser cannot do push notifications. On iPhone, add Potluck to your home screen first.',
+    pushUnsupported:
+      'This browser cannot do push notifications. On iPhone, add Potluck to your home screen first.',
     pushNotConfigured: 'Push is not set up on this server yet.',
     pushFailed: 'Push could not be turned on. Try again?',
     inApp: 'You will always see updates in your inbox.',

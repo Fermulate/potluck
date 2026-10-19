@@ -49,7 +49,7 @@ function TableArt() {
 export function AuthLayout({ title, subtitle, notice, footer, children }: AuthLayoutProps) {
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-      <aside className="on-hero relative hidden overflow-hidden lg:block">
+      <aside className="relative hidden overflow-hidden on-hero lg:block">
         <TableArt />
         <div className="absolute inset-x-12 bottom-12">
           <p className="max-w-md font-display text-5xl leading-[1.02] italic">

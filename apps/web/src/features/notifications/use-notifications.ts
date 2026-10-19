@@ -25,9 +25,13 @@ export function useNotifications() {
 export function useNotificationsRealtime() {
   const userId = useUserId()
   const queryClient = useQueryClient()
-  useRealtime(`notifications-${userId}`, [{ table: 'notifications', filter: `user_id=eq.${userId}` }], () => {
-    void queryClient.invalidateQueries({ queryKey: meKeys.notifications(userId) })
-  })
+  useRealtime(
+    `notifications-${userId}`,
+    [{ table: 'notifications', filter: `user_id=eq.${userId}` }],
+    () => {
+      void queryClient.invalidateQueries({ queryKey: meKeys.notifications(userId) })
+    },
+  )
 }
 
 /** Marks notifications read with an optimistic update of the list and the badge. */
@@ -62,7 +66,8 @@ export function useMarkRead() {
     },
     onError: (_error, _ids, context) => {
       if (context?.previous) queryClient.setQueryData(listKey, context.previous)
-      if (context?.previousUnread !== undefined) queryClient.setQueryData(unreadKey, context.previousUnread)
+      if (context?.previousUnread !== undefined)
+        queryClient.setQueryData(unreadKey, context.previousUnread)
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: listKey })

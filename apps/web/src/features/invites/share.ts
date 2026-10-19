@@ -14,7 +14,11 @@ export async function copyText(text: string): Promise<boolean> {
 /** Native share sheet where there is one, clipboard otherwise. */
 export async function shareInvite(groupName: string, code: string) {
   const url = inviteUrl(code)
-  const data = { title: t('invites.shareTitle', { group: groupName }), text: t('invites.shareText', { group: groupName, url }), url }
+  const data = {
+    title: t('invites.shareTitle', { group: groupName }),
+    text: t('invites.shareText', { group: groupName, url }),
+    url,
+  }
   if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(data))) {
     try {
       await navigator.share({ title: data.title, url })

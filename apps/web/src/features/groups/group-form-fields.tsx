@@ -83,7 +83,9 @@ export function ColorPicker({
             className={cn(
               'relative grid size-11 cursor-pointer place-items-center rounded-full transition-transform duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
               swatch[color],
-              current === color ? 'scale-110 ring-2 ring-ink ring-offset-2 ring-offset-card' : 'hover:scale-105',
+              current === color
+                ? 'scale-110 ring-2 ring-ink ring-offset-2 ring-offset-card'
+                : 'hover:scale-105',
             )}
           >
             <input
@@ -96,7 +98,11 @@ export function ColorPicker({
             />
             <span className="sr-only">{t(`groups.colors.${color}`)}</span>
             {current === color && (
-              <Check aria-hidden className="size-5 text-white mix-blend-difference" strokeWidth={3} />
+              <Check
+                aria-hidden
+                className="size-5 text-white mix-blend-difference"
+                strokeWidth={3}
+              />
             )}
           </label>
         ))}

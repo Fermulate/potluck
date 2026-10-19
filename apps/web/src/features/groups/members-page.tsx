@@ -25,7 +25,15 @@ import {
 } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowUpRight, Crown, LogOut, MoreHorizontal, ShieldCheck, UserMinus, UserPlus } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Crown,
+  LogOut,
+  MoreHorizontal,
+  ShieldCheck,
+  UserMinus,
+  UserPlus,
+} from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
@@ -35,13 +43,20 @@ import { supabase } from '@/lib/supabase'
 import { displayName } from './people'
 import { useGroup } from './use-groups'
 
-const roleTone: Record<GroupRole, BadgeTone> = { owner: 'saffron', admin: 'plum', member: 'neutral' }
+const roleTone: Record<GroupRole, BadgeTone> = {
+  owner: 'saffron',
+  admin: 'plum',
+  member: 'neutral',
+}
 
 function MemberBalance({ member, currency }: { member: GroupMember; currency: string }) {
-  if (member.net_cents === 0) return <span className="text-sm text-mute">{t('members.settled')}</span>
+  if (member.net_cents === 0)
+    return <span className="text-sm text-mute">{t('members.settled')}</span>
   const amount = formatMoney(Math.abs(member.net_cents), currency)
   const label =
-    member.net_cents > 0 ? t('members.balanceOwed', { amount }) : t('members.balanceOwes', { amount })
+    member.net_cents > 0
+      ? t('members.balanceOwed', { amount })
+      : t('members.balanceOwes', { amount })
   return (
     <span className="flex flex-col items-end text-right leading-tight">
       <span className="sr-only">{label}</span>
@@ -168,7 +183,8 @@ function hasMemberActions(group: GroupDetail, member: GroupMember, viewerId: str
   const role = group.my_role
   return (
     can(role, 'group.transferOwnership') ||
-    (member.role !== 'owner' && (role === 'owner' || (role === 'admin' && member.role === 'member')))
+    (member.role !== 'owner' &&
+      (role === 'owner' || (role === 'admin' && member.role === 'member')))
   )
 }
 
@@ -207,7 +223,8 @@ export function MembersPage({ groupId }: { groupId: string }) {
     })
   const lastMember = group.members.length === 1
   const canLeave = me
-    ? can(me.role, 'group.leave', { netCents: me.net_cents }) || (me.role === 'owner' && lastMember && me.net_cents === 0)
+    ? can(me.role, 'group.leave', { netCents: me.net_cents }) ||
+      (me.role === 'owner' && lastMember && me.net_cents === 0)
     : false
   const leaveNote = !me
     ? undefined

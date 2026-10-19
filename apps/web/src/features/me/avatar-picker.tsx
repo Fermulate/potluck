@@ -102,7 +102,9 @@ export function AvatarPicker({ userId, name, src, onUploaded, label }: AvatarPic
           htmlFor={id}
           className="cursor-pointer rounded-pill text-[0.9375rem] font-semibold underline decoration-tomato decoration-2 underline-offset-4"
         >
-          {busy ? t('onboarding.profile.uploading') : (label ?? t('onboarding.profile.avatarLabel'))}
+          {busy
+            ? t('onboarding.profile.uploading')
+            : (label ?? t('onboarding.profile.avatarLabel'))}
         </label>
         <input
           ref={input}

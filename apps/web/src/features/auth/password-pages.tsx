@@ -10,7 +10,10 @@ import { PasswordInput } from './auth-parts'
 import { MIN_PASSWORD } from './sign-up-page'
 
 const backLink = (
-  <Link to="/sign-in" className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4">
+  <Link
+    to="/sign-in"
+    className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+  >
     {t('auth.forgotPassword.back')}
   </Link>
 )

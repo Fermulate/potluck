@@ -153,11 +153,7 @@ export const myGroupsQueryOptions = (client: PotluckClient, viewerId: string) =>
     queryFn: () => fetchMyGroups(client, viewerId),
   })
 
-export const groupDetailQueryOptions = (
-  client: PotluckClient,
-  groupId: string,
-  viewerId: string,
-) =>
+export const groupDetailQueryOptions = (client: PotluckClient, groupId: string, viewerId: string) =>
   queryOptions({
     queryKey: groupKeys.detail(groupId),
     queryFn: () => fetchGroup(client, groupId, viewerId),
@@ -337,12 +333,11 @@ export async function fetchFriends(client: PotluckClient, viewerId: string): Pro
   const [friendships, direct] = await Promise.all([
     client
       .from('friendships')
-      .select('friend:profiles!friendships_friend_id_fkey(id, display_name, avatar_path, deleted_at)')
+      .select(
+        'friend:profiles!friendships_friend_id_fkey(id, display_name, avatar_path, deleted_at)',
+      )
       .eq('user_id', viewerId),
-    client
-      .from('groups')
-      .select('id, currency, group_members(user_id)')
-      .eq('is_direct', true),
+    client.from('groups').select('id, currency, group_members(user_id)').eq('is_direct', true),
   ])
   if (friendships.error) throw friendships.error
   if (direct.error) throw direct.error

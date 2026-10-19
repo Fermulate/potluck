@@ -67,7 +67,14 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
         title={t('groups.create.title')}
         closeLabel={t('common.close')}
         footer={
-          <Button type="submit" form={FORM_ID} block size="lg" loading={busy} disabled={!name.trim()}>
+          <Button
+            type="submit"
+            form={FORM_ID}
+            block
+            size="lg"
+            loading={busy}
+            disabled={!name.trim()}
+          >
             {t('groups.create.submit')}
           </Button>
         }

@@ -1,13 +1,6 @@
 import { profilesByIdsQueryOptions, type NotificationRow } from '@potluck/api'
 import { formatRelative, t } from '@potluck/i18n'
-import {
-  Button,
-  cn,
-  EmptyState,
-  PageHeader,
-  Skeleton,
-  usePrefersReducedMotion,
-} from '@potluck/ui'
+import { Button, cn, EmptyState, PageHeader, Skeleton, usePrefersReducedMotion } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
@@ -67,7 +60,10 @@ function Row({
       >
         <span
           aria-hidden
-          className={cn('grid size-10 shrink-0 place-items-center rounded-[0.75rem] [&_svg]:size-5', style.tile)}
+          className={cn(
+            'grid size-10 shrink-0 place-items-center rounded-[0.75rem] [&_svg]:size-5',
+            style.tile,
+          )}
         >
           {style.icon}
         </span>
@@ -76,7 +72,7 @@ function Row({
             {view.title}
           </span>
           <span className="mt-0.5 block text-sm text-mute">{view.body}</span>
-          <span className="mt-1 block text-xs text-mute tabular">
+          <span className="mt-1 block tabular text-xs text-mute">
             {formatRelative(row.created_at, { timeZone })}
           </span>
         </span>
@@ -132,7 +128,13 @@ export function NotificationsPage() {
         {items.map((row) => {
           const view = describeNotification(row, ctx)
           return (
-            <Row key={row.id} row={row} view={view} timeZone={timeZone} onOpen={() => open(row, view)} />
+            <Row
+              key={row.id}
+              row={row}
+              view={view}
+              timeZone={timeZone}
+              onOpen={() => open(row, view)}
+            />
           )
         })}
       </AnimatePresence>
