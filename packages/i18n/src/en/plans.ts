@@ -196,7 +196,7 @@ export const availability = {
   youHaveNotResponded: 'You have not added your times yet.',
   liveLabel: 'Live',
   gridLabel: 'Your availability for {event}',
-  heatGridLabel: 'Everyone\'s availability for {event}',
+  heatGridLabel: "Everyone's availability for {event}",
   mySlots_one: '{count} slot painted',
   mySlots_other: '{count} slots painted',
   closed: 'This poll is closed.',
