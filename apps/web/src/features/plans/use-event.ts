@@ -1,0 +1,173 @@
+import { plansKeys, setAvailability, type PlanAvailabilityRow } from '@potluck/api'
+import { t } from '@potluck/i18n'
+import { toast } from '@potluck/ui'
+import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { slotKey, type PaintLevel } from '@/features/availability/grid'
+import { planErrorMessage } from './format'
+
+/**
+ * Live updates for one event: availability (the heatmap), the event row (locked, cancelled),
+ * RSVPs, and new comments (via the group's activity feed, since comments are not published
+ * themselves). Invalidations are batched so a burst of rows refetches once.
+ */
+export function useEventRealtime(eventId: string, groupId: string | undefined) {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!groupId) return
+    const pending = new Map<string, QueryKey>()
+    let timer: number | undefined
+    const flush = () => {
+      timer = undefined
+      for (const key of pending.values()) void queryClient.invalidateQueries({ queryKey: key })
+      pending.clear()
+    }
+    const bump = (...keys: QueryKey[]) => {
+      for (const key of keys) pending.set(JSON.stringify(key), key)
+      timer ??= window.setTimeout(flush, 300)
+    }
+
+    const channel = supabase
+      .channel(`plan:${eventId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'availability', filter: `event_id=eq.${eventId}` },
+        () =>
+          bump(
+            plansKeys.availability(eventId),
+            plansKeys.bestSlots(eventId),
+            plansKeys.requests(eventId),
+          ),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
+        () =>
+          bump(plansKeys.event(eventId), plansKeys.timelineAll(), plansKeys.groupEvents(groupId)),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'event_rsvps', filter: `event_id=eq.${eventId}` },
+        () => bump(plansKeys.rsvps(eventId)),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'activity', filter: `group_id=eq.${groupId}` },
+        (payload) => {
+          const row = payload.new as { verb?: string; data?: { event_id?: string } }
+          if (row.verb === 'comment.created' && row.data?.event_id === eventId) {
+            bump(plansKeys.comments(eventId))
+          }
+          if (row.verb === 'availability.requested') bump(plansKeys.requests(eventId))
+        },
+      )
+      .subscribe()
+
+    return () => {
+      if (timer) window.clearTimeout(timer)
+      void supabase.removeChannel(channel)
+    }
+  }, [eventId, groupId, queryClient])
+}
+
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+function writeCache(
+  queryClient: QueryClient,
+  eventId: string,
+  userId: string,
+  value: ReadonlyMap<string, PaintLevel>,
+) {
+  queryClient.setQueryData<PlanAvailabilityRow[]>(plansKeys.availability(eventId), (rows) => [
+    ...(rows ?? []).filter((r) => r.user_id !== userId),
+    ...[...value].map(([slot, level]) => ({
+      event_id: eventId,
+      user_id: userId,
+      slot_start: slot,
+      level,
+    })),
+  ])
+}
+
+/** The viewer's painted slots from the server rows. */
+export function mySlots(rows: readonly PlanAvailabilityRow[], userId: string) {
+  const map = new Map<string, PaintLevel>()
+  for (const r of rows) if (r.user_id === userId) map.set(slotKey(r.slot_start), r.level)
+  return map
+}
+
+/**
+ * Local, optimistic copy of the viewer's availability. Every change shows immediately (the
+ * heatmap reads the same cache) and is saved after a short pause. A pending save is flushed
+ * when the component unmounts or the tab is hidden.
+ */
+export function useMyAvailability(
+  eventId: string,
+  userId: string,
+  initial: Map<string, PaintLevel>,
+) {
+  const queryClient = useQueryClient()
+  const [value, setValue] = useState(initial)
+  const [state, setState] = useState<SaveState>('idle')
+  const pending = useRef<Map<string, PaintLevel> | null>(null)
+  const timer = useRef<number | undefined>(undefined)
+
+  const saveRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  const save = useCallback(async () => {
+    window.clearTimeout(timer.current)
+    timer.current = undefined
+    const next = pending.current
+    if (!next) return
+    pending.current = null
+    setState('saving')
+    try {
+      await setAvailability(
+        supabase,
+        eventId,
+        [...next].map(([slot_start, level]) => ({ slot_start, level })),
+      )
+      setState((s) => (s === 'saving' ? 'saved' : s))
+      void queryClient.invalidateQueries({ queryKey: plansKeys.bestSlots(eventId) })
+      void queryClient.invalidateQueries({ queryKey: plansKeys.requests(eventId) })
+      void queryClient.invalidateQueries({ queryKey: plansKeys.timelineAll() })
+    } catch (error) {
+      // Keep the failed copy unless something newer is already waiting.
+      if (!pending.current) pending.current = next
+      setState('error')
+      toast.error(planErrorMessage(error), {
+        id: `availability-${eventId}`,
+        action: { label: t('common.retry'), onClick: () => void saveRef.current() },
+      })
+    }
+  }, [eventId, queryClient])
+
+  useEffect(() => {
+    saveRef.current = save
+  }, [save])
+
+  const change = useCallback(
+    (next: Map<string, PaintLevel>) => {
+      setValue(next)
+      writeCache(queryClient, eventId, userId, next)
+      pending.current = next
+      setState('saving')
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => void save(), 700)
+    },
+    [eventId, userId, queryClient, save],
+  )
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') void save()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      void save()
+    }
+  }, [save])
+
+  return { value, change, state }
+}

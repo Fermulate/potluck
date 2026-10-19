@@ -5,7 +5,10 @@ import { formatTime, hasMessage, t } from '@potluck/i18n'
 export function formatDuration(minutes: number): string {
   if (minutes % 60 === 0) return t('events.durationHours', { count: minutes / 60 })
   if (minutes < 60) return t('events.durationMinutes', { count: minutes })
-  return t('events.durationHoursMinutes', { hours: Math.floor(minutes / 60), minutes: minutes % 60 })
+  return t('events.durationHoursMinutes', {
+    hours: Math.floor(minutes / 60),
+    minutes: minutes % 60,
+  })
 }
 
 /** Minutes after midnight as a wall clock label ("7:30 PM"), independent of any zone. */
@@ -21,7 +24,7 @@ export function planErrorMessage(error: unknown): string {
   const code = error instanceof PlanError ? error.code : null
   if (code) {
     const key = `events.errors.${code}`
-    if (hasMessage(key)) return t(key)
+    if (hasMessage(key)) return (t as (k: string) => string)(key)
   }
   return t('errors.generic')
 }

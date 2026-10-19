@@ -160,6 +160,7 @@ export const events = {
 export const availability = {
   title: 'When are you free?',
   instructions: 'Press and drag to paint the times that work.',
+  instructionsHeat: 'Hover or tap a time to see who is free.',
   keyboardHint: 'Arrow keys move, Space paints, Shift and an arrow paints as you go.',
   levels: {
     yes: 'Works for me',
