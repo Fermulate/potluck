@@ -30,7 +30,7 @@ export function SignInPage({ redirect, notice }: AuthPageProps) {
       email,
       options: {
         emailRedirectTo: authCallbackUrl(target),
-        data: { needs_onboarding: true, timezone: detectTimezone() },
+        data: { timezone: detectTimezone() },
       },
     })
     if (error) throw error

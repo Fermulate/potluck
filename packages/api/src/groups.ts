@@ -293,6 +293,15 @@ export async function revokeInvite(client: PotluckClient, inviteId: string) {
   if (error) throw error
 }
 
+/** Undoes `revokeInvite`. */
+export async function restoreInvite(client: PotluckClient, inviteId: string) {
+  const { error } = await client
+    .from('group_invites')
+    .update({ revoked_at: null })
+    .eq('id', inviteId)
+  if (error) throw error
+}
+
 /** Public preview of an invite. Works signed out. Throws `invite_not_found` for unknown codes. */
 export async function fetchInvitePreview(
   client: PotluckClient,

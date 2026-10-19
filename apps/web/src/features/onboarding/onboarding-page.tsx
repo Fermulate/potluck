@@ -134,7 +134,7 @@ function ProfileForm({
 
 /**
  * First run after sign up: name, face, time zone and currency, then a nudge to start or join a
- * group. Clears the `needs_onboarding` flag on the auth user when the profile is saved.
+ * group. Marks the auth user `onboarded` when the profile is saved.
  */
 export function OnboardingPage({ userId, redirect }: { userId: string; redirect: string }) {
   const navigate = useNavigate()
@@ -147,7 +147,7 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
 
   async function onSaved(saved: ProfileRow) {
     queryClient.setQueryData(meKeys.profile(userId), saved)
-    const { error } = await supabase.auth.updateUser({ data: { needs_onboarding: false } })
+    const { error } = await supabase.auth.updateUser({ data: { onboarded: true } })
     if (error) throw error
     if (goingSomewhere) {
       await navigate({ href: redirect, replace: true })

@@ -37,7 +37,6 @@ export function SignUpPage({ redirect, notice }: AuthPageProps) {
           data: {
             display_name: name.trim(),
             timezone: detectTimezone(),
-            needs_onboarding: true,
           },
         },
       })

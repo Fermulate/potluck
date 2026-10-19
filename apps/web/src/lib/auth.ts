@@ -76,7 +76,10 @@ export function authCallbackUrl(next?: string): string {
   return url.toString()
 }
 
-/** New accounts carry this flag until they finish onboarding. */
+/**
+ * Whether to send the person through onboarding first. Accounts carry the `onboarded` flag once
+ * they have saved their profile, so this holds for every sign in method, OAuth included.
+ */
 export function needsOnboarding(session: Session | null): boolean {
-  return session?.user.user_metadata?.needs_onboarding === true
+  return session ? session.user.user_metadata?.onboarded !== true : false
 }
