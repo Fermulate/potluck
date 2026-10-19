@@ -155,9 +155,9 @@ export const invites = {
   used_one: '{count} joined',
   used_other: '{count} joined',
   uses: {
-    one: '1 person',
-    five: '5 people',
-    many: '25 people',
+    one: '1',
+    five: '5',
+    many: '25',
   },
   expiry: {
     day: '1 day',
