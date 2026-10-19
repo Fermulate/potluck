@@ -69,7 +69,7 @@ describe('JoinPage', () => {
   })
 
   it('joins in one tap when signed in and opens the group', async () => {
-    state.session = { user: { id: 'u-fay', user_metadata: {} } }
+    state.session = { user: { id: 'u-fay', user_metadata: { onboarded: true } } }
     const { router } = renderWithProviders(<JoinPage code="hikecrew-demo" />, {
       path: '/join/hikecrew-demo',
     })
@@ -78,6 +78,17 @@ describe('JoinPage', () => {
       expect(state.acceptInvite).toHaveBeenCalledWith(expect.anything(), 'hikecrew-demo'),
     )
     await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-hike'))
+  })
+
+  it('sends a signed in account that has not finished onboarding to welcome first', async () => {
+    state.session = { user: { id: 'u-fay', user_metadata: {} } }
+    renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
+    expect(await screen.findByRole('link', { name: 'Continue' })).toHaveAttribute(
+      'href',
+      '/welcome?redirect=%2Fjoin%2Fhikecrew-demo',
+    )
+    expect(screen.queryByRole('button', { name: 'Join Hike crew' })).not.toBeInTheDocument()
+    expect(state.acceptInvite).not.toHaveBeenCalled()
   })
 
   it('explains a dead link', async () => {
