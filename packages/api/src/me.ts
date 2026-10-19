@@ -35,6 +35,27 @@ export const myProfileQueryOptions = (client: PotluckClient, userId: string) =>
     staleTime: 5 * 60_000,
   })
 
+/** Names and faces for a set of people (RLS: yourself, group mates and friends). */
+export async function fetchProfilesByIds(client: PotluckClient, ids: string[]) {
+  const unique = [...new Set(ids)].filter(Boolean).sort()
+  if (unique.length === 0) return []
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, display_name, avatar_path, deleted_at')
+    .in('id', unique)
+  if (error) throw error
+  return data ?? []
+}
+
+export const profilesByIdsQueryOptions = (client: PotluckClient, ids: string[]) => {
+  const unique = [...new Set(ids)].filter(Boolean).sort()
+  return queryOptions({
+    queryKey: ['potluck', 'me', 'people', ...unique] as const,
+    queryFn: () => fetchProfilesByIds(client, unique),
+    staleTime: 5 * 60_000,
+  })
+}
+
 export type ProfilePatch = Partial<
   Pick<ProfileRow, 'display_name' | 'avatar_path' | 'timezone' | 'default_currency' | 'locale'>
 >
