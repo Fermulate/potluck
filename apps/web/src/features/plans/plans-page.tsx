@@ -13,26 +13,13 @@ import { PlanRow } from '@/features/timeline/plan-row'
 import { fromEvent, fromTimeline, type PlanRowData } from '@/features/timeline/plan-row-data'
 import { PollCards } from './poll-cards'
 import { useNow } from './use-now'
+import { useTimelineRange } from './use-range'
 import { useViewer } from './viewer'
-
-const HOUR = 3_600_000
-
-/** Query range starting at the top of the current hour so the key stays stable. */
-function useRange(days: number) {
-  const [range] = useState(() => {
-    const from = Math.floor(Date.now() / HOUR) * HOUR
-    return {
-      from: new Date(from).toISOString(),
-      to: new Date(from + days * 24 * HOUR).toISOString(),
-    }
-  })
-  return range
-}
 
 export function PlansPage() {
   const { timeZone } = useViewer()
   const now = useNow()
-  const range = useRange(60)
+  const range = useTimelineRange()
   const timeline = useQuery(planQueries.timeline(supabase, range))
   const past = useQuery(planQueries.past(supabase, range.from))
   const groups = useQuery(planQueries.groups(supabase))
