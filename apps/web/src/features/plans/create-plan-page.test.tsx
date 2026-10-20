@@ -1,3 +1,4 @@
+import type * as Api from '@potluck/api'
 import type { PlanMember } from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -26,7 +27,7 @@ const members: PlanMember[] = [
 const createPlanEvent = vi.fn()
 const requestAvailability = vi.fn()
 vi.mock('@potluck/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@potluck/api')>()
+  const actual = await importOriginal<typeof Api>()
   return {
     ...actual,
     createPlanEvent: (...args: unknown[]) => createPlanEvent(...args),
