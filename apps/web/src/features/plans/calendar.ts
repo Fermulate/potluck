@@ -10,12 +10,18 @@ export interface CalendarEvent {
 
 /** 20260612T180000Z */
 function icsStamp(value: string | Date): string {
-  return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  return new Date(value)
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '')
 }
 
 /** Escape TEXT values per RFC 5545. */
 function icsText(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, (c) => `\\${c}`)
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/[,;]/g, (c) => `\\${c}`)
 }
 
 /** Fold lines longer than 75 octets (approximated by characters). */
@@ -68,7 +74,13 @@ export function downloadIcs(event: CalendarEvent) {
   const href = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = href
-  a.download = `${event.title.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'plan'}.ics`
+  a.download = `${
+    event.title
+      .replace(/[^\w\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase() || 'plan'
+  }.ics`
   document.body.appendChild(a)
   a.click()
   a.remove()

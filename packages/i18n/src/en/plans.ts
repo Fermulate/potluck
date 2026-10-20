@@ -63,6 +63,7 @@ export const events = {
   nudge: 'Nudge',
   nudged: 'Nudged {when}',
   nudgedShort: 'Nudged',
+  nudgeAgain: 'Nudge again',
   allResponded: 'Everyone has added their times.',
   requestSent_one: 'Nudged {count} person.',
   requestSent_other: 'Nudged {count} people.',
