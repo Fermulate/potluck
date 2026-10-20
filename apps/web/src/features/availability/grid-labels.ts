@@ -35,5 +35,5 @@ export function rowHour(model: GridModel, row: number): string | null {
     f = new Intl.DateTimeFormat(undefined, { hour: 'numeric', timeZone: model.timeZone })
     hourFormats.set(model.timeZone, f)
   }
-  return f.format(new Date(slot)).replace(/[  ]/g, ' ')
+  return f.format(new Date(slot)).replace(/\s+/g, ' ')
 }
