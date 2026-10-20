@@ -257,12 +257,11 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 </span>
               </a>
             )}
-            <div className="lg:hidden">{comments}</div>
+            {comments}
           </div>
           <aside className="flex flex-col gap-4">
             <div className="hidden lg:block">{details}</div>
             {cancelButton}
-            <div className="hidden lg:block">{comments}</div>
           </aside>
         </div>
       )}
@@ -451,7 +450,9 @@ function PollingBody({
   }, [preview, model])
 
   const iResponded = responded.has(viewerId)
-  const view = tab ?? (rows && !iResponded ? 'mine' : 'group')
+  // Pick the starting tab once, when availability first loads: painting must not flip it.
+  if (tab === null && rows) setTab(iResponded ? 'group' : 'mine')
+  const view = tab ?? 'group'
 
   const best = (
     <BestTimes
