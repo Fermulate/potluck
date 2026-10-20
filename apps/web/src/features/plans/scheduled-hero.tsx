@@ -1,5 +1,5 @@
 import { formatDate, formatTime, t } from '@potluck/i18n'
-import { Badge, Button, Card, Stamp, StampAnimation, cn } from '@potluck/ui'
+import { Button, Card, Stamp, StampAnimation, cn } from '@potluck/ui'
 import { CalendarPlus, MapPin } from 'lucide-react'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from './calendar'
 
@@ -62,10 +62,7 @@ export function ScheduledHero({ calendar, timeZone, location, justLocked }: Sche
     <Card padding="roomy" className="flex flex-col gap-5 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Badge tone="olive" dot>
-            {t('events.status.scheduled')}
-          </Badge>
-          <p className="mt-3 text-[2rem] leading-[1.05] font-extrabold tracking-tight text-balance">
+          <p className="text-[2rem] leading-[1.05] font-extrabold tracking-tight text-balance">
             {formatDate(calendar.startsAt, { timeZone, style: 'full' }).replace(/,? \d{4}$/, '')}
           </p>
           <p className="mt-1 tabular text-lg font-semibold">

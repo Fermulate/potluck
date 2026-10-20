@@ -230,6 +230,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 justLocked={justLocked}
               />
             )}
+            <div className="lg:hidden">{details}</div>
             {event.status === 'scheduled' && (
               <ScheduledRsvp
                 event={event}
@@ -259,7 +260,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
             <div className="lg:hidden">{comments}</div>
           </div>
           <aside className="flex flex-col gap-4">
-            {details}
+            <div className="hidden lg:block">{details}</div>
             {cancelButton}
             <div className="hidden lg:block">{comments}</div>
           </aside>

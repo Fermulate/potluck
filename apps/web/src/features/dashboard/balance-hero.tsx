@@ -1,34 +1,43 @@
-import type { HomeBalance } from '@potluck/api'
-import { formatMoney, t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import { Amount } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
+import { ChevronRight } from 'lucide-react'
 import type { BalanceSummary } from './summary'
 
 // Perforated bottom edge, like a bill torn off the pad.
 const TEAR =
   'radial-gradient(circle 6px at 50% 100%, #0000 5.5px, #000 6px) 50% 100% / 16px 100% repeat-x'
 
-function GroupLinks({ groups, currency }: { groups: HomeBalance[]; currency: string }) {
-  if (groups.length === 0) {
-    return <p className="mt-1 text-sm text-hero-mute">{t('home.balance.nobody')}</p>
-  }
+function GroupLinks({ summary }: { summary: BalanceSummary }) {
+  const groups = [...summary.oweGroups, ...summary.owedGroups].slice(0, 5)
+  if (groups.length === 0) return null
   return (
-    <ul className="mt-1.5 flex flex-col gap-0.5">
-      {groups.slice(0, 3).map((g) => (
+    <ul className="mt-4 flex flex-col">
+      {groups.map((g) => (
         <li key={g.groupId}>
           <Link
             to="/groups/$groupId"
             params={{ groupId: g.groupId }}
-            aria-label={t('home.balance.seeGroup', { group: g.groupName })}
-            className="-mx-1.5 flex items-center gap-1.5 rounded-[0.5rem] px-1.5 py-1 text-sm hover:bg-on-hero/10"
+            aria-label={`${t('home.balance.seeGroup', { group: g.groupName })}: ${
+              g.netCents < 0
+                ? t('home.balance.owe', { amount: formatMoney(-g.netCents, summary.currency) })
+                : t('home.balance.owed', { amount: formatMoney(g.netCents, summary.currency) })
+            }`}
+            className="-mx-2 flex items-center gap-2.5 rounded-[0.625rem] px-2 py-1.5 text-sm hover:bg-on-hero/10"
           >
-            <span aria-hidden className="shrink-0">
+            <span aria-hidden className="w-5 shrink-0 text-center">
               {g.groupEmoji ?? '•'}
             </span>
-            <span className="min-w-0 flex-1 truncate text-hero-mute">{g.groupName}</span>
-            <span className="tabular font-semibold">
-              {formatMoney(Math.abs(g.netCents), currency)}
-            </span>
+            <span className="min-w-0 flex-1 truncate">{g.groupName}</span>
+            <Amount
+              cents={g.netCents}
+              currency={summary.currency}
+              locale={DEFAULT_LOCALE}
+              surface="hero"
+              sign="never"
+              className="font-semibold"
+            />
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-hero-mute" />
           </Link>
         </li>
       ))}
@@ -74,6 +83,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
           <Amount
             cents={Math.abs(net)}
             currency={currency}
+            locale={DEFAULT_LOCALE}
             surface="hero"
             tone={net > 0 ? 'owed' : 'owe'}
             split
@@ -88,18 +98,29 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
         <div className="min-w-0">
           <p className="text-sm text-hero-mute">{t('home.balance.youOwe')}</p>
           <p className="mt-0.5 text-lg font-bold">
-            <Amount cents={-summary.owe} currency={currency} surface="hero" tone="owe" />
+            <Amount
+              cents={-summary.owe}
+              currency={currency}
+              locale={DEFAULT_LOCALE}
+              surface="hero"
+              tone="owe"
+            />
           </p>
-          <GroupLinks groups={summary.oweGroups} currency={currency} />
         </div>
         <div className="min-w-0">
           <p className="text-sm text-hero-mute">{t('home.balance.owedToYou')}</p>
           <p className="mt-0.5 text-lg font-bold">
-            <Amount cents={summary.owed} currency={currency} surface="hero" tone="owed" />
+            <Amount
+              cents={summary.owed}
+              currency={currency}
+              locale={DEFAULT_LOCALE}
+              surface="hero"
+              tone="owed"
+            />
           </p>
-          <GroupLinks groups={summary.owedGroups} currency={currency} />
         </div>
       </div>
+      <GroupLinks summary={summary} />
       {summary.otherCurrencies.length > 0 && (
         <p className="mt-4 text-xs text-hero-mute">
           {t('home.balance.otherCurrencies', { currencies: summary.otherCurrencies.join(', ') })}
