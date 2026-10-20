@@ -471,7 +471,7 @@ function PollingBody({
     <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
       <div className="flex min-w-0 flex-col gap-6">
         {!desktop && best}
-        <Card padding="roomy" className="flex flex-col gap-4">
+        <Card className="flex flex-col gap-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-bold tracking-tight">
               {view === 'mine' ? t('availability.title') : t('availability.heatmapTitle')}
@@ -541,7 +541,7 @@ function PollingBody({
           />
         </div>
         <div className="flex flex-col gap-4 lg:hidden">{aside}</div>
-        <div className="lg:hidden">{comments}</div>
+        {comments}
       </div>
       <aside className="hidden flex-col gap-4 lg:flex">
         {desktop && best}
@@ -554,7 +554,6 @@ function PollingBody({
           requests={requestsQ.data}
         />
         {aside}
-        {comments}
       </aside>
     </div>
   )

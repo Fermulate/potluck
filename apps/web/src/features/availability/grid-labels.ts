@@ -23,3 +23,17 @@ export function rowTime(model: GridModel, row: number): string | null {
   const slot = model.cells[row]?.find((s) => s)
   return slot ? formatTime(slot, { timeZone: model.timeZone }) : null
 }
+
+const hourFormats = new Map<string, Intl.DateTimeFormat>()
+
+/** Compact hour label for the row axis: "10 AM" (or "10" on a 24 hour clock). */
+export function rowHour(model: GridModel, row: number): string | null {
+  const slot = model.cells[row]?.find((s) => s)
+  if (!slot) return null
+  let f = hourFormats.get(model.timeZone)
+  if (!f) {
+    f = new Intl.DateTimeFormat(undefined, { hour: 'numeric', timeZone: model.timeZone })
+    hourFormats.set(model.timeZone, f)
+  }
+  return f.format(new Date(slot)).replace(/[  ]/g, ' ')
+}

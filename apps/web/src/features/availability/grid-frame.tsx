@@ -1,7 +1,7 @@
 import { cn } from '@potluck/ui'
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react'
 import type { GridModel } from './grid'
-import { dayNum, fullDay, month, rowTime, weekday } from './grid-labels'
+import { dayNum, fullDay, month, rowHour, rowTime, weekday } from './grid-labels'
 
 export interface GridFrameProps extends HTMLAttributes<HTMLDivElement> {
   model: GridModel
@@ -19,7 +19,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
   { model, label, renderCell, rowHeight = 1.5, className, ...props },
   ref,
 ) {
-  const columns = `3.25rem repeat(${model.days.length}, minmax(2.5rem, 1fr))`
+  const columns = `2.75rem repeat(${model.days.length}, minmax(2.25rem, 1fr))`
   return (
     <div className="-mx-4 scrollbar-none overflow-x-auto px-4 pb-1">
       <div
@@ -33,7 +33,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
         {...props}
       >
         <div role="row" className="contents">
-          <span role="columnheader" className="sticky left-0 z-10 bg-inherit" />
+          <span role="columnheader" className="sticky left-0 z-10 bg-card" />
           {model.days.map((day, i) => {
             const m = month.format(day.date)
             const prev = model.days[i - 1]
@@ -66,17 +66,17 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
         </div>
         {model.rows.map((row, r) => {
           const time = rowTime(model, r) ?? ''
+          const hour = rowHour(model, r) ?? time
           const onHour = row.minute % 60 === 0
           return (
             <div role="row" key={row.minute} className="contents">
               <span
                 role="rowheader"
-                className="sticky left-0 z-10 -mt-[0.45rem] bg-paper pr-1.5 text-right tabular text-[0.6875rem] leading-none font-medium text-mute"
+                className="sticky left-0 z-10 -mt-[0.45rem] bg-card pr-1.5 text-right tabular text-[0.6875rem] leading-none font-medium whitespace-nowrap text-mute"
                 style={{ height: `${rowHeight}rem` }}
               >
-                <span aria-hidden={!onHour} className={cn(!onHour && 'sr-only')}>
-                  {time}
-                </span>
+                <span className="sr-only">{time}</span>
+                {onHour && <span aria-hidden>{hour}</span>}
               </span>
               {model.days.map((day, c) => {
                 const slot = model.cells[r]![c]
