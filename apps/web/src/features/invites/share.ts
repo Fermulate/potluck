@@ -21,7 +21,7 @@ export async function shareInvite(groupName: string, code: string) {
   }
   if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(data))) {
     try {
-      await navigator.share({ title: data.title, url })
+      await navigator.share(data)
       return
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return

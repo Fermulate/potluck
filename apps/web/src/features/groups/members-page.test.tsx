@@ -89,6 +89,28 @@ describe('MembersPage', () => {
     expect(screen.queryByRole('button', { name: /Make owner/ })).not.toBeInTheDocument()
   })
 
+  it('lets the owner remove a settled closed account', async () => {
+    api.group = group({
+      members: [
+        member(VIEWER, 'Ava Chen', 'owner', 0),
+        { ...member('u-eli', 'Eli Novak', 'member', 0), deleted_at: '2026-10-01T00:00:00Z' },
+      ],
+    })
+    renderWithProviders(<MembersPage groupId="g-hike" />)
+    await screen.findByText('Former member')
+    fireEvent.click(
+      within(rowFor('Former member')).getByRole('button', { name: 'Actions for Former member' }),
+    )
+    const remove = await screen.findByRole('button', { name: /Remove from group/ })
+    expect(remove).toBeEnabled()
+    fireEvent.click(remove)
+    const dialog = await screen.findByRole('dialog', { name: 'Remove from group' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    await waitFor(() =>
+      expect(api.removeMember).toHaveBeenCalledWith(expect.anything(), 'g-hike', 'u-eli'),
+    )
+  })
+
   it('will not remove someone who still has a balance', async () => {
     renderWithProviders(<MembersPage groupId="g-hike" />)
     await screen.findByText('Cleo Park')
