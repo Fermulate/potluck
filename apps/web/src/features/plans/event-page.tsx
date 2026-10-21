@@ -592,6 +592,7 @@ function MyPainter({
   value,
   change,
   state,
+  rejection,
 }: {
   event: PlanEventWithGroup
   model: GridModel
@@ -606,12 +607,12 @@ function MyPainter({
         busy={busy}
         label={t('availability.gridLabel', { event: event.title })}
       />
-      <SaveIndicator state={state} />
+      <SaveIndicator state={state} rejection={rejection} />
     </div>
   )
 }
 
-function SaveIndicator({ state }: { state: SaveState }) {
+function SaveIndicator({ state, rejection }: { state: SaveState; rejection: string | null }) {
   const label =
     state === 'saving'
       ? t('availability.saving')
@@ -621,15 +622,14 @@ function SaveIndicator({ state }: { state: SaveState }) {
           ? t('events.errors.saveFailed')
           : state === 'failed'
             ? t('events.errors.saveGaveUp')
-            : ''
+            : state === 'rejected'
+              ? (rejection ?? '')
+              : ''
+  const alarmed = state === 'error' || state === 'failed' || state === 'rejected'
   return (
     <p
       role="status"
-      className={
-        state === 'error' || state === 'failed'
-          ? 'text-xs font-semibold text-tomato-ink'
-          : 'text-xs text-mute'
-      }
+      className={alarmed ? 'text-xs font-semibold text-tomato-ink' : 'text-xs text-mute'}
     >
       {label}
     </p>

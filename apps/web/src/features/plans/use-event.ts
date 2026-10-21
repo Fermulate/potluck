@@ -5,7 +5,7 @@ import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { slotKey, type PaintLevel } from '@/features/availability/grid'
-import { planErrorMessage } from './format'
+import { planErrorCode, planErrorMessage } from './format'
 
 /**
  * Live updates for one event: availability (the heatmap), the event row (locked, cancelled),
@@ -71,7 +71,7 @@ export function useEventRealtime(eventId: string, groupId: string | undefined) {
   }, [eventId, groupId, queryClient])
 }
 
-export type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'failed'
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'failed' | 'rejected'
 
 function writeCache(
   queryClient: QueryClient,
@@ -104,8 +104,10 @@ const RETRY_DELAY = 1_000
  * Local, optimistic copy of the viewer's availability. Until the first paint it mirrors the
  * server rows; every change then shows immediately (the heatmap reads the same cache) and is
  * saved after a short pause. Saves run one at a time so the server always ends on the latest
- * map; a failed save is retried with backoff, then marked failed. A pending save is flushed
- * when the owner unmounts or the tab is hidden, so mount this where it outlives the painter.
+ * map; a save that fails for a passing reason is retried with backoff, then marked failed,
+ * while one the server rejects outright (poll closed, not a member, bad slots) is dropped and
+ * the server state refetched. A pending save is flushed when the owner unmounts or the tab is
+ * hidden, so mount this where it outlives the painter.
  */
 export function useMyAvailability(
   eventId: string,
@@ -116,6 +118,7 @@ export function useMyAvailability(
   const [edits, setEdits] = useState<Map<string, PaintLevel> | null>(null)
   const value = edits ?? initial
   const [state, setState] = useState<SaveState>('idle')
+  const [rejection, setRejection] = useState<string | null>(null)
   const pending = useRef<Map<string, PaintLevel> | null>(null)
   const inFlight = useRef<Promise<boolean> | null>(null)
   const attempts = useRef(0)
@@ -147,6 +150,18 @@ export function useMyAvailability(
         void queryClient.invalidateQueries({ queryKey: plansKeys.timelineAll() })
         return true
       } catch (error) {
+        if (planErrorCode(error)) {
+          window.clearTimeout(timer.current)
+          timer.current = undefined
+          pending.current = null
+          setEdits(null)
+          setRejection(planErrorMessage(error))
+          setState('rejected')
+          toast.error(planErrorMessage(error), { id: `availability-${eventId}` })
+          void queryClient.invalidateQueries({ queryKey: plansKeys.event(eventId) })
+          void queryClient.invalidateQueries({ queryKey: plansKeys.availability(eventId) })
+          return false
+        }
         // Keep the failed copy unless something newer is already waiting.
         if (!pending.current) pending.current = next
         const willRetry = timer.current !== undefined || attempts.current < RETRIES
@@ -181,6 +196,7 @@ export function useMyAvailability(
       writeCache(queryClient, eventId, userId, next)
       pending.current = next
       attempts.current = 0
+      setRejection(null)
       setState('saving')
       window.clearTimeout(timer.current)
       timer.current = window.setTimeout(() => void save(), 700)
@@ -199,5 +215,5 @@ export function useMyAvailability(
     }
   }, [save])
 
-  return { value, change, state }
+  return { value, change, state, rejection }
 }
