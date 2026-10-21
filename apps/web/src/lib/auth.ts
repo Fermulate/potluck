@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { useSyncExternalStore } from 'react'
 import { supabase } from './supabase'
+import { forgetPushSubscription } from './web-push'
 
 let current: Session | null = null
 let lastUserId: string | null = null
@@ -54,7 +55,13 @@ export function useUserId(): string {
   return id
 }
 
+/**
+ * Ends the session. This browser's push registration goes first so the next account on the
+ * device does not get this one's notifications; sign out proceeds even if that fails.
+ */
 export async function signOut() {
+  const userId = current?.user.id ?? lastUserId
+  if (userId) await forgetPushSubscription(userId).catch(() => undefined)
   await supabase.auth.signOut()
 }
 

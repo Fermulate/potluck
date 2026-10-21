@@ -1,6 +1,30 @@
+import type * as ApiModule from '@potluck/api'
 import type { Session } from '@supabase/supabase-js'
-import { describe, expect, it } from 'vitest'
-import { needsOnboarding, safeRedirect } from './auth'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getSession, needsOnboarding, safeRedirect, signOut } from './auth'
+
+const fake = vi.hoisted(() => ({
+  session: null as null | { user: { id: string } },
+  authSignOut: vi.fn(async () => ({ error: null })),
+  deletePushToken: vi.fn(async () => undefined),
+  unsubscribe: vi.fn(async () => true),
+  subscription: null as null | { endpoint: string; unsubscribe: () => Promise<boolean> },
+}))
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: async () => ({ data: { session: fake.session } }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }),
+      signOut: fake.authSignOut,
+    },
+  },
+}))
+
+vi.mock('@potluck/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof ApiModule>()),
+  deletePushToken: fake.deletePushToken,
+}))
 
 describe('safeRedirect', () => {
   it('keeps same-origin paths, including search', () => {
@@ -35,5 +59,51 @@ describe('needsOnboarding', () => {
 
   it('is false without a session', () => {
     expect(needsOnboarding(null)).toBe(false)
+  })
+})
+
+describe('signOut', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    fake.session = { user: { id: 'u-ava' } }
+    fake.subscription = { endpoint: 'https://push.example/ava-device', unsubscribe: fake.unsubscribe }
+    vi.stubGlobal('PushManager', class {})
+    vi.stubGlobal('Notification', { permission: 'granted' })
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        getRegistration: async () => ({
+          pushManager: { getSubscription: async () => fake.subscription },
+        }),
+      },
+    })
+    await getSession()
+  })
+
+  it("drops this browser's push registration for the account before ending the session", async () => {
+    await signOut()
+    expect(fake.deletePushToken).toHaveBeenCalledWith(
+      expect.anything(),
+      'u-ava',
+      'https://push.example/ava-device',
+    )
+    expect(fake.unsubscribe).toHaveBeenCalled()
+    expect(fake.authSignOut).toHaveBeenCalled()
+    expect(fake.deletePushToken.mock.invocationCallOrder[0]).toBeLessThan(
+      fake.authSignOut.mock.invocationCallOrder[0]!,
+    )
+  })
+
+  it('still ends the session when the push cleanup fails', async () => {
+    fake.deletePushToken.mockRejectedValueOnce(new Error('offline'))
+    await expect(signOut()).resolves.toBeUndefined()
+    expect(fake.authSignOut).toHaveBeenCalled()
+  })
+
+  it('has nothing to clean up on a device without a subscription', async () => {
+    fake.subscription = null
+    await signOut()
+    expect(fake.deletePushToken).not.toHaveBeenCalled()
+    expect(fake.authSignOut).toHaveBeenCalled()
   })
 })
