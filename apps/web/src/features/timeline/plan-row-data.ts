@@ -19,7 +19,6 @@ export interface PlanRowData {
   needsTimes?: boolean
   /** Scheduled and the viewer has not answered. */
   needsRsvp?: boolean
-  responded?: boolean
 }
 
 export function fromTimeline(item: PlanTimelineItem): PlanRowData {
@@ -39,7 +38,6 @@ export function fromTimeline(item: PlanTimelineItem): PlanRowData {
     goingCount: item.going_count,
     needsTimes: item.status === 'polling' && !item.availability_submitted,
     needsRsvp: item.status === 'scheduled' && !item.my_rsvp,
-    responded: item.availability_submitted,
   }
 }
 

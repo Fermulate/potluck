@@ -26,6 +26,7 @@ const members: PlanMember[] = [
 
 const createPlanEvent = vi.fn()
 const requestAvailability = vi.fn()
+let loadMembers: () => Promise<PlanMember[]> = async () => members
 vi.mock('@potluck/api', async (importOriginal) => {
   const actual = await importOriginal<typeof Api>()
   return {
@@ -36,7 +37,7 @@ vi.mock('@potluck/api', async (importOriginal) => {
       ...actual.planQueries,
       members: (_client: unknown, groupId: string) => ({
         queryKey: ['members', groupId],
-        queryFn: async () => members,
+        queryFn: () => loadMembers(),
       }),
     },
   }
@@ -66,10 +67,12 @@ describe('PlanForm', () => {
     createPlanEvent.mockReset().mockResolvedValue({ id: 'new-event' })
     requestAvailability.mockReset().mockResolvedValue(2)
     navigate.mockReset()
+    loadMembers = async () => members
   })
 
   it('asks for a title before creating anything', async () => {
     renderForm()
+    await screen.findByText('Ben Ortiz')
     fireEvent.click(screen.getByRole('button', { name: 'Start the poll' }))
     expect(await screen.findByText('Required.')).toBeInTheDocument()
     expect(screen.getByLabelText("What's the plan?")).toHaveAttribute('aria-invalid', 'true')
@@ -105,5 +108,32 @@ describe('PlanForm', () => {
       to: '/plans/$eventId',
       params: { eventId: 'new-event' },
     })
+  })
+
+  it('will not start the poll until the member list has loaded', async () => {
+    loadMembers = () => new Promise(() => {})
+    renderForm()
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Taco night' },
+    })
+    const submit = screen.getByRole('button', { name: 'Start the poll' })
+    expect(submit).toBeDisabled()
+    fireEvent.submit(submit.closest('form')!)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Start the poll' })).toBeDisabled(),
+    )
+    expect(createPlanEvent).not.toHaveBeenCalled()
+  })
+
+  it('shows the error and blocks the poll when members fail to load', async () => {
+    loadMembers = () => Promise.reject(new Error('boom'))
+    renderForm()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try again?')
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Taco night' },
+    })
+    expect(screen.getByRole('button', { name: 'Start the poll' })).toBeDisabled()
+    fireEvent.submit(screen.getByRole('button', { name: 'Start the poll' }).closest('form')!)
+    expect(createPlanEvent).not.toHaveBeenCalled()
   })
 })

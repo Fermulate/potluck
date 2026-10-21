@@ -33,7 +33,7 @@ import { supabase } from '@/lib/supabase'
 import { dayKey } from '@/features/timeline/days'
 import { BackToPlans } from './back-link'
 import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
-import { useViewer } from './viewer'
+import { useViewer, useViewerProfile } from './viewer'
 
 const EMOJIS = ['🍽️', '🍕', '🌮', '🍜', '🥾', '🎲', '🎬', '🏖️', '🎉', '☕']
 const DURATIONS = [30, 60, 90, 120, 180, 240, 360, 480, 720]
@@ -65,11 +65,12 @@ export interface CreatePlanPageProps {
 
 export function CreatePlanPage({ groupId: initialGroup }: CreatePlanPageProps) {
   const viewer = useViewer()
+  const profile = useViewerProfile()
   const groups = useQuery(planQueries.groups(supabase))
   const [groupId, setGroupId] = useState<string | undefined>(initialGroup)
   const effectiveGroup = groupId ?? groups.data?.[0]?.id
 
-  if (groups.isPending) {
+  if (groups.isPending || profile.isPending) {
     return (
       <Page>
         <div aria-busy className="flex flex-col gap-4">
@@ -99,7 +100,6 @@ export function CreatePlanPage({ groupId: initialGroup }: CreatePlanPageProps) {
   return (
     <Page>
       <PlanForm
-        key={viewer.timeZone}
         groups={groups.data.map((g) => ({ id: g.id, name: g.name, emoji: g.emoji }))}
         groupId={effectiveGroup}
         onGroupChange={setGroupId}
@@ -171,6 +171,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    if (!members.isSuccess) return
     const parsed = eventCreateSchema.safeParse({
       group_id: groupId,
       title,
@@ -437,6 +438,10 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
         </p>
         {members.isPending ? (
           <Skeleton className="h-32" />
+        ) : members.isError ? (
+          <p role="alert" className="text-sm font-semibold text-tomato-ink">
+            {planErrorMessage(members.error)}
+          </p>
         ) : (
           <WhoList members={others} selected={selected} onChange={setSelected} />
         )}
@@ -451,7 +456,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
         </p>
       )}
 
-      <Button type="submit" size="lg" block loading={submitting}>
+      <Button type="submit" size="lg" block loading={submitting} disabled={!members.isSuccess}>
         {t('events.create.submit')}
       </Button>
     </form>

@@ -12,15 +12,9 @@ export function browserTimeZone(): string {
   }
 }
 
-/**
- * The zone to render times in: the profile's zone, falling back to the browser. New profiles
- * start at the column default `UTC`, which almost always means "not set yet", so UTC also
- * defers to the browser.
- */
+/** The zone to render times in: the profile's zone, or the browser's until the profile loads. */
 export function resolveTimeZone(profile: Pick<PlanProfile, 'timezone'> | undefined): string {
-  const zone = profile?.timezone
-  if (zone && zone !== 'UTC') return zone
-  return browserTimeZone()
+  return profile?.timezone || browserTimeZone()
 }
 
 export function useViewerProfile() {
