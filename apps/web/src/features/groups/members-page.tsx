@@ -123,10 +123,13 @@ function ActionRow({
  */
 function memberActions(group: GroupDetail, member: GroupMember) {
   const role = group.my_role
+  const active = !member.deleted_at
   return {
-    promote: can(role, 'member.changeRole', { targetRole: member.role, newRole: 'admin' }),
-    demote: can(role, 'member.changeRole', { targetRole: member.role, newRole: 'member' }),
-    transfer: can(role, 'group.transferOwnership') && !member.deleted_at,
+    promote:
+      active && can(role, 'member.changeRole', { targetRole: member.role, newRole: 'admin' }),
+    demote:
+      active && can(role, 'member.changeRole', { targetRole: member.role, newRole: 'member' }),
+    transfer: active && can(role, 'group.transferOwnership'),
     remove: can(role, 'member.remove', { targetRole: member.role, targetNetCents: 0 }),
     removable: can(role, 'member.remove', {
       targetRole: member.role,
