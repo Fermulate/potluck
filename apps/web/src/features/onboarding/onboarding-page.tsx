@@ -216,7 +216,7 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
                       autoFocus
                       value={inviteLink}
                       onChange={(e) => setInviteLink(e.target.value)}
-                      placeholder="https://.../join/..."
+                      placeholder={t('invites.linkPlaceholder')}
                     />
                   </Field>
                   <Button type="submit" variant="ink" size="lg" className="h-12">

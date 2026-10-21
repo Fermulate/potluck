@@ -11,7 +11,6 @@ export const notifications = {
   anEvent: 'a plan',
   anExpense: 'an expense',
   generic: { title: 'Something happened', body: 'Tap to take a look.' },
-  markRead: 'Mark as read',
   unreadLabel: 'Unread',
   earlier: 'Earlier',
   new: 'New',
@@ -21,7 +20,12 @@ export const notifications = {
       updated: { title: 'Expense updated', body: '{actor} changed {description} in {group}' },
     },
     settlement: {
-      created: { title: 'You got paid', body: '{actor} paid you {amount}' },
+      created: { title: 'You got paid', body: '{payer} paid you {amount}' },
+      sent: { title: 'Payment recorded', body: '{payee} marked your {amount} payment as received' },
+      recorded: {
+        title: 'Payment recorded',
+        body: '{actor} recorded your {amount} payment to {payee}',
+      },
     },
     member: {
       joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
@@ -80,7 +84,6 @@ export const settings = {
     push: 'Push notifications',
     pushHint: 'A ping on this device when something needs you.',
     pushOn: 'Push is on for this device.',
-    pushOff: 'Push is off for this device.',
     pushUnsupported:
       'This browser cannot do push notifications. On iPhone, add Potluck to your home screen first.',
     pushNotConfigured: 'Push is not set up on this server yet.',
@@ -105,8 +108,6 @@ export const settings = {
     connected: 'Connected',
     disconnect: 'Disconnect',
     comingSoon: 'Coming soon',
-    google: 'Google Calendar',
-    microsoft: 'Outlook',
   },
   privacy: {
     title: 'Privacy',

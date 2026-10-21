@@ -16,7 +16,6 @@ export const meKeys = {
   profile: (userId: string) => ['potluck', 'me', 'profile', userId] as const,
   notifications: (userId: string) => ['potluck', 'me', 'notifications', userId] as const,
   unread: (userId: string) => ['potluck', 'me', 'notifications', userId, 'unread'] as const,
-  pushTokens: (userId: string) => ['potluck', 'me', 'push-tokens', userId] as const,
   appConfig: ['potluck', 'app-config'] as const,
 }
 
@@ -169,12 +168,6 @@ export async function fetchPushTokens(client: PotluckClient, userId: string) {
   if (error) throw error
   return data ?? []
 }
-
-export const pushTokensQueryOptions = (client: PotluckClient, userId: string) =>
-  queryOptions({
-    queryKey: meKeys.pushTokens(userId),
-    queryFn: () => fetchPushTokens(client, userId),
-  })
 
 /** Stores (or refreshes) a push registration. For web push `token` is the endpoint URL. */
 export async function savePushToken(

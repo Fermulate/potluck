@@ -69,12 +69,12 @@ export function useWebPush() {
       }
       const reg = await pushRegistration()
       if (!reg) throw new Error('no_service_worker')
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: base64UrlToBytes(vapidKey),
-        }))
+      const stale = await reg.pushManager.getSubscription()
+      if (stale) await stale.unsubscribe()
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64UrlToBytes(vapidKey),
+      })
       await savePushToken(supabase, userId, {
         token: sub.endpoint,
         platform: 'web',

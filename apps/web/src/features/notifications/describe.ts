@@ -79,13 +79,38 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         kind: 'money',
         target: toExpense(),
       }
-    case 'settlement.created':
-      return {
-        title: t('notifications.types.settlement.created.title'),
-        body: t('notifications.types.settlement.created.body', { actor, amount }),
-        kind: 'payment',
-        target: toGroup('balances'),
-      }
+    case 'settlement.created': {
+      const fromUser = str(d.from_user)
+      const toUser = str(d.to_user)
+      const name = (id: string | undefined) =>
+        firstName(ctx.people.get(id ?? '')) ?? t('notifications.someone')
+      const view =
+        n.user_id !== fromUser
+          ? {
+              title: t('notifications.types.settlement.created.title'),
+              body: t('notifications.types.settlement.created.body', {
+                payer: fromUser ? name(fromUser) : actor,
+                amount,
+              }),
+            }
+          : str(d.actor_id) === toUser
+            ? {
+                title: t('notifications.types.settlement.sent.title'),
+                body: t('notifications.types.settlement.sent.body', {
+                  payee: name(toUser),
+                  amount,
+                }),
+              }
+            : {
+                title: t('notifications.types.settlement.recorded.title'),
+                body: t('notifications.types.settlement.recorded.body', {
+                  actor,
+                  payee: name(toUser),
+                  amount,
+                }),
+              }
+      return { ...view, kind: 'payment', target: toGroup('balances') }
+    }
     case 'member.joined':
       return {
         title: t('notifications.types.member.joined.title', { group }),

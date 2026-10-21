@@ -66,7 +66,10 @@ describe('signOut', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     fake.session = { user: { id: 'u-ava' } }
-    fake.subscription = { endpoint: 'https://push.example/ava-device', unsubscribe: fake.unsubscribe }
+    fake.subscription = {
+      endpoint: 'https://push.example/ava-device',
+      unsubscribe: fake.unsubscribe,
+    }
     vi.stubGlobal('PushManager', class {})
     vi.stubGlobal('Notification', { permission: 'granted' })
     Object.defineProperty(navigator, 'serviceWorker', {
@@ -94,9 +97,10 @@ describe('signOut', () => {
     )
   })
 
-  it('still ends the session when the push cleanup fails', async () => {
+  it('still kills the browser subscription and ends the session when the row delete fails', async () => {
     fake.deletePushToken.mockRejectedValueOnce(new Error('offline'))
     await expect(signOut()).resolves.toBeUndefined()
+    expect(fake.unsubscribe).toHaveBeenCalled()
     expect(fake.authSignOut).toHaveBeenCalled()
   })
 

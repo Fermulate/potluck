@@ -34,6 +34,9 @@ export async function currentPushSubscription(): Promise<PushSubscription | null
 export async function forgetPushSubscription(userId: string): Promise<void> {
   const sub = await currentPushSubscription()
   if (!sub) return
-  await deletePushToken(supabase, userId, sub.endpoint)
-  await sub.unsubscribe()
+  try {
+    await deletePushToken(supabase, userId, sub.endpoint)
+  } finally {
+    await sub.unsubscribe()
+  }
 }
