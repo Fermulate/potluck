@@ -148,6 +148,7 @@ export const events = {
     member_not_found: 'Someone you picked is no longer in the group.',
     starts_at_required: 'Pick a start time.',
     saveFailed: 'Your times did not save. We will keep trying.',
+    saveGaveUp: 'Your times still did not save. Tap Try again to resend.',
   },
 } as const
 

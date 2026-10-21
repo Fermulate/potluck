@@ -11,12 +11,25 @@ export const fullDay = new Intl.DateTimeFormat(undefined, {
   timeZone: 'UTC',
 })
 
-/** "Friday, June 12, 7:30 PM" for a cell's accessible name. */
+const zonedFormats = new Map<string, Intl.DateTimeFormat>()
+
+function zonedFormat(timeZone: string, options: Intl.DateTimeFormatOptions) {
+  const key = `${timeZone}|${JSON.stringify(options)}`
+  let format = zonedFormats.get(key)
+  if (!format) {
+    format = new Intl.DateTimeFormat(undefined, { ...options, timeZone })
+    zonedFormats.set(key, format)
+  }
+  return format
+}
+
+/**
+ * "Friday, June 12, 7:30 PM" for a cell's accessible name: the slot's own calendar day in the
+ * viewer's zone, which can differ from its column once an evening rolls past local midnight.
+ */
 export function cellName(model: GridModel, slot: string): string {
-  const pos = model.index.get(slot)
-  const day = pos ? model.days[pos.col] : undefined
-  const time = formatTime(slot, { timeZone: model.timeZone })
-  return day ? `${fullDay.format(day.date)}, ${time}` : time
+  const day = zonedFormat(model.timeZone, { weekday: 'long', month: 'long', day: 'numeric' })
+  return `${day.format(new Date(slot))}, ${formatTime(slot, { timeZone: model.timeZone })}`
 }
 
 export function rowTime(model: GridModel, row: number): string | null {
@@ -24,16 +37,10 @@ export function rowTime(model: GridModel, row: number): string | null {
   return slot ? formatTime(slot, { timeZone: model.timeZone }) : null
 }
 
-const hourFormats = new Map<string, Intl.DateTimeFormat>()
-
 /** Compact hour label for the row axis: "10 AM" (or "10" on a 24 hour clock). */
 export function rowHour(model: GridModel, row: number): string | null {
   const slot = model.cells[row]?.find((s) => s)
   if (!slot) return null
-  let f = hourFormats.get(model.timeZone)
-  if (!f) {
-    f = new Intl.DateTimeFormat(undefined, { hour: 'numeric', timeZone: model.timeZone })
-    hourFormats.set(model.timeZone, f)
-  }
+  const f = zonedFormat(model.timeZone, { hour: 'numeric' })
   return f.format(new Date(slot)).replace(/\s+/g, ' ')
 }
