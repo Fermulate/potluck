@@ -599,6 +599,7 @@ function MyPainter({
   change,
   state,
   rejection,
+  retry,
 }: {
   event: PlanEventWithGroup
   model: GridModel
@@ -613,12 +614,20 @@ function MyPainter({
         busy={busy}
         label={t('availability.gridLabel', { event: event.title })}
       />
-      <SaveIndicator state={state} rejection={rejection} />
+      <SaveIndicator state={state} rejection={rejection} onRetry={() => void retry()} />
     </div>
   )
 }
 
-function SaveIndicator({ state, rejection }: { state: SaveState; rejection: string | null }) {
+function SaveIndicator({
+  state,
+  rejection,
+  onRetry,
+}: {
+  state: SaveState
+  rejection: string | null
+  onRetry: () => void
+}) {
   const label =
     state === 'saving'
       ? t('availability.saving')
@@ -633,11 +642,18 @@ function SaveIndicator({ state, rejection }: { state: SaveState; rejection: stri
               : ''
   const alarmed = state === 'error' || state === 'failed' || state === 'rejected'
   return (
-    <p
-      role="status"
-      className={alarmed ? 'text-xs font-semibold text-tomato-ink' : 'text-xs text-mute'}
-    >
-      {label}
-    </p>
+    <div className="flex min-h-9 items-center justify-between gap-3">
+      <p
+        role="status"
+        className={alarmed ? 'text-xs font-semibold text-tomato-ink' : 'text-xs text-mute'}
+      >
+        {label}
+      </p>
+      {state === 'failed' && (
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          {t('common.retry')}
+        </Button>
+      )}
+    </div>
   )
 }

@@ -19,7 +19,7 @@ export interface GridDay {
 }
 
 export interface GridRow {
-  /** Minutes after local midnight in the viewer's zone. */
+  /** Wall minute in the viewer's zone of the row's first slot, for the row label. */
   minute: number
 }
 
@@ -85,43 +85,28 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
     timeZone: event.timezone,
   })
 
-  // Columns are the poll's own days (in the event zone) so an evening never splits across two
-  // columns; rows are wall times in the viewer's zone, starting after the widest gap in the
-  // clock so a poll evening reads top to bottom even when the viewer's zone shifts DST mid poll.
+  // Columns and rows are the poll's own days and wall times (in the event zone), so every slot
+  // has exactly one cell whatever the viewer's zone does with DST; labels show the viewer's zone.
   const located = slots.map((slot) => {
     const date = new Date(slot)
-    return {
-      slot,
-      eventDay: zonedParts(date, event.timezone).day,
-      ...zonedParts(date, viewerTimeZone),
-    }
+    const at = zonedParts(date, event.timezone)
+    const mine = zonedParts(date, viewerTimeZone)
+    return { slot, eventDay: at.day, eventMinute: at.minute, day: mine.day, minute: mine.minute }
   })
-  const clock = [...new Set(located.map((l) => l.minute))].sort((a, b) => a - b)
-  let anchor = clock[0] ?? 0
-  let widest = -1
-  for (let i = 0; i < clock.length; i++) {
-    const next = clock[(i + 1) % clock.length]!
-    const gap = (next - clock[i]! + 1440) % 1440 || 1440
-    if (gap >= widest) {
-      widest = gap
-      anchor = next
-    }
-  }
-  const order = (minute: number) => (minute - anchor + 1440) % 1440
   const dayKeys = [...new Set(located.map((l) => l.eventDay))].sort()
-  const minutes = clock.sort((a, b) => order(a) - order(b))
+  const eventMinutes = [...new Set(located.map((l) => l.eventMinute))].sort((a, b) => a - b)
   const col = new Map(dayKeys.map((d, i) => [d, i]))
-  const row = new Map(minutes.map((m, i) => [m, i]))
+  const row = new Map(eventMinutes.map((m, i) => [m, i]))
   const labelDay = new Map<string, string>()
+  const labelMinute: number[] = []
 
-  const cells: (string | null)[][] = minutes.map(() => dayKeys.map(() => null))
+  const cells: (string | null)[][] = eventMinutes.map(() => dayKeys.map(() => null))
   const index = new Map<string, { row: number; col: number }>()
   for (const l of located) {
-    const r = row.get(l.minute)!
+    const r = row.get(l.eventMinute)!
     const c = col.get(l.eventDay)!
     if (!labelDay.has(l.eventDay)) labelDay.set(l.eventDay, l.day)
-    // Fall back: two slots on the same local wall time keep the first one.
-    if (cells[r]![c]) continue
+    labelMinute[r] ??= l.minute
     cells[r]![c] = l.slot
     index.set(l.slot, { row: r, col: c })
   }
@@ -131,9 +116,9 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
       const key = labelDay.get(eventDay)!
       return { key, date: new Date(`${key}T12:00:00Z`) }
     }),
-    rows: minutes.map((minute) => ({ minute })),
+    rows: eventMinutes.map((_, r) => ({ minute: labelMinute[r]! })),
     cells,
-    slots: slots.filter((s) => index.has(s)),
+    slots,
     index,
     slotMinutes: event.slot_minutes,
     timeZone: viewerTimeZone,

@@ -215,5 +215,5 @@ export function useMyAvailability(
     }
   }, [save])
 
-  return { value, change, state, rejection }
+  return { value, change, state, rejection, retry: save }
 }

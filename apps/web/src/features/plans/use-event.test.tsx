@@ -153,6 +153,16 @@ describe('useMyAvailability', () => {
     }
     expect(calls).toHaveLength(4)
     expect(result.current.state).toBe('failed')
+
+    await act(async () => {
+      void result.current.retry()
+    })
+    await flush()
+    expect(calls).toHaveLength(5)
+    expect(calls[4]!.slots.map((s) => s.slot_start)).toEqual([slotA])
+    calls[4]!.deferred.resolve()
+    await flush()
+    expect(result.current.state).toBe('saved')
   })
 
   it('drops the map and refetches when the server rejects the save outright', async () => {
