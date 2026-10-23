@@ -11,7 +11,7 @@ import {
   type PlanMember,
 } from '@potluck/api'
 import { can } from '@potluck/core'
-import { formatDateRange, t } from '@potluck/i18n'
+import { formatDateRange, formatTime, t } from '@potluck/i18n'
 import {
   Badge,
   Button,
@@ -34,7 +34,7 @@ import { buildGridModel, busySlots, slotKey, type GridModel } from '@/features/a
 import { BackToPlans } from './back-link'
 import { BestTimes } from './best-times'
 import { CommentsThread } from './comments-thread'
-import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
+import { formatDuration, minuteOfDayIn, planErrorMessage } from './format'
 import { NudgePanel } from './nudge-panel'
 import { RsvpPanel } from './rsvp-panel'
 import { ScheduledHero } from './scheduled-hero'
@@ -369,8 +369,14 @@ function Details({
             <dd>
               {t('events.windowRange', {
                 range: formatDateRange(event.window_start, event.window_end, { timeZone }),
-                from: formatMinuteOfDay(event.day_start_minute),
-                to: formatMinuteOfDay(event.day_end_minute),
+                from: formatTime(
+                  minuteOfDayIn(event.window_start, event.day_start_minute, event.timezone),
+                  { timeZone },
+                ),
+                to: formatTime(
+                  minuteOfDayIn(event.window_start, event.day_end_minute, event.timezone),
+                  { timeZone },
+                ),
               })}
               <br />
               {t('events.durationShort', { duration: formatDuration(event.duration_minutes) })}

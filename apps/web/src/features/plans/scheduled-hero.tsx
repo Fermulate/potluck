@@ -1,4 +1,4 @@
-import { formatDate, formatTime, t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, formatDate, formatTime, t } from '@potluck/i18n'
 import { Button, Card, Stamp, StampAnimation, cn } from '@potluck/ui'
 import { CalendarPlus, MapPin } from 'lucide-react'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from './calendar'
@@ -26,9 +26,12 @@ function localDayKey(date: Date, timeZone: string): string {
   return f.format(date)
 }
 
-const weekdayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'narrow', timeZone: 'UTC' })
-const dayFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', timeZone: 'UTC' })
-const stampCaption = new Intl.DateTimeFormat(undefined, {
+const weekdayFmt = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+  weekday: 'narrow',
+  timeZone: 'UTC',
+})
+const dayFmt = new Intl.DateTimeFormat(DEFAULT_LOCALE, { day: 'numeric', timeZone: 'UTC' })
+const stampCaption = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
   weekday: 'short',
   month: 'short',
   day: 'numeric',

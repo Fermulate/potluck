@@ -86,7 +86,8 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
   })
 
   // Columns are the poll's own days (in the event zone) so an evening never splits across two
-  // columns; rows are wall times in the viewer's zone, starting from the first slot's time.
+  // columns; rows are wall times in the viewer's zone, starting after the widest gap in the
+  // clock so a poll evening reads top to bottom even when the viewer's zone shifts DST mid poll.
   const located = slots.map((slot) => {
     const date = new Date(slot)
     return {
@@ -95,10 +96,20 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
       ...zonedParts(date, viewerTimeZone),
     }
   })
-  const anchor = located[0]?.minute ?? 0
+  const clock = [...new Set(located.map((l) => l.minute))].sort((a, b) => a - b)
+  let anchor = clock[0] ?? 0
+  let widest = -1
+  for (let i = 0; i < clock.length; i++) {
+    const next = clock[(i + 1) % clock.length]!
+    const gap = (next - clock[i]! + 1440) % 1440 || 1440
+    if (gap >= widest) {
+      widest = gap
+      anchor = next
+    }
+  }
   const order = (minute: number) => (minute - anchor + 1440) % 1440
   const dayKeys = [...new Set(located.map((l) => l.eventDay))].sort()
-  const minutes = [...new Set(located.map((l) => l.minute))].sort((a, b) => order(a) - order(b))
+  const minutes = clock.sort((a, b) => order(a) - order(b))
   const col = new Map(dayKeys.map((d, i) => [d, i]))
   const row = new Map(minutes.map((m, i) => [m, i]))
   const labelDay = new Map<string, string>()

@@ -1,5 +1,6 @@
 import { PlanError } from '@potluck/api'
 import { formatTime, hasMessage, t } from '@potluck/i18n'
+import { fromZonedTime } from 'date-fns-tz'
 
 /** "2 hours", "90 minutes" -> "1 h 30 min". */
 export function formatDuration(minutes: number): string {
@@ -17,6 +18,13 @@ export function formatMinuteOfDay(minute: number): string {
   const m = minute - day * 1440
   const date = new Date(Date.UTC(2000, 0, 1 + day, Math.floor(m / 60), m % 60))
   return formatTime(date, { timeZone: 'UTC' })
+}
+
+/** The instant `minute` minutes after local midnight of calendar day `day` in `timeZone`. */
+export function minuteOfDayIn(day: string, minute: number, timeZone: string): Date {
+  const wall = new Date(`${day}T00:00:00Z`)
+  wall.setUTCMinutes(minute)
+  return fromZonedTime(wall.toISOString().slice(0, 19), timeZone)
 }
 
 /** The server's own error code when it is one the plans RPCs raise on purpose. */

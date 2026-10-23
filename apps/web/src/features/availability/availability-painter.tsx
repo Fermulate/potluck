@@ -14,7 +14,6 @@ export interface AvailabilityPainterProps {
   onChange: (next: Map<string, PaintLevel>) => void
   /** Slots that overlap the viewer's imported busy time (hatched). */
   busy?: ReadonlySet<string>
-  disabled?: boolean
   label: string
 }
 
@@ -52,7 +51,6 @@ export function AvailabilityPainter({
   value,
   onChange,
   busy,
-  disabled,
   label,
 }: AvailabilityPainterProps) {
   const [brush, setBrush] = useState<Brush>('yes')
@@ -94,7 +92,7 @@ export function AvailabilityPainter({
   }
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (disabled || (e.pointerType === 'mouse' && e.button !== 0)) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     const slot = slotAt(e.target)
     const pos = slot ? model.index.get(slot) : undefined
     if (!slot || !pos) return
@@ -139,7 +137,6 @@ export function AvailabilityPainter({
 
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault()
-      if (disabled) return
       const paint = paintFor(slot)
       keyPaint.current = paint
       applyRect(value, pos, pos, paint)
@@ -154,7 +151,7 @@ export function AvailabilityPainter({
     e.preventDefault()
     const next = step(model, pos, dir[0], dir[1])
     if (!next) return
-    if (e.shiftKey && !disabled) {
+    if (e.shiftKey) {
       // Extend: carry the last painted value (or start one from this cell) onto the next cell.
       let paint = keyPaint.current
       let base: ReadonlyMap<string, PaintLevel> = value
@@ -217,14 +214,13 @@ export function AvailabilityPainter({
         model={model}
         label={label}
         aria-multiselectable
-        aria-disabled={disabled || undefined}
         aria-describedby={undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onKeyDown={onKeyDown}
-        className={cn(dragging && 'cursor-crosshair', disabled && 'opacity-60')}
+        className={cn(dragging && 'cursor-crosshair')}
         renderCell={(slot, row, col) => {
           const level = value.get(slot)
           const isBusy = busy?.has(slot) ?? false
@@ -242,8 +238,7 @@ export function AvailabilityPainter({
               busy={isBusy}
               onFocus={() => setFocus({ row, col })}
               className={cn(
-                'min-h-0 touch-none outline-offset-1',
-                !disabled && 'cursor-pointer',
+                'min-h-0 cursor-pointer touch-none outline-offset-1',
                 level === 'yes' && 'shadow-[inset_0_-2px_0_rgb(0_0_0/0.12)]',
               )}
               style={{ height: '1.5rem' }}
