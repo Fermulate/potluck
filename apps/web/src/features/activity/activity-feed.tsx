@@ -1,4 +1,4 @@
-import { ACTIVITY_PAGE_SIZE, fetchActivity, moneyKeys } from '@potluck/api'
+import { activityInfiniteQueryOptions, moneyKeys } from '@potluck/api'
 import { formatTime, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -45,13 +45,7 @@ export function ActivityFeed() {
   const nameOf = useNameOf()
   const timeZone = useTimeZone()
   const reduced = usePrefersReducedMotion()
-  const feed = useInfiniteQuery({
-    queryKey: moneyKeys.activity(),
-    queryFn: ({ pageParam }) => fetchActivity(supabase, { before: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) =>
-      last.length < ACTIVITY_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at,
-  })
+  const feed = useInfiniteQuery(activityInfiniteQueryOptions(supabase))
 
   const sections = useMemo(() => {
     // The hidden 1:1 groups are an implementation detail; their creation is not news.

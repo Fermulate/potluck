@@ -1,7 +1,7 @@
 /**
  * money queries and mutations. Platform-neutral: no DOM imports.
  */
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
 
@@ -406,6 +406,16 @@ export async function fetchActivity(
   if (before) query = query.lt('created_at', before)
   return unwrap(await query) as unknown as ActivityItem[]
 }
+
+/** The feed as an infinite query, shared by the screen and its route loader. */
+export const activityInfiniteQueryOptions = (client: PotluckClient) =>
+  infiniteQueryOptions({
+    queryKey: moneyKeys.activity(),
+    queryFn: ({ pageParam }) => fetchActivity(client, { before: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: ActivityItem[]) =>
+      last.length < ACTIVITY_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at,
+  })
 
 export async function fetchReceiptUrl(client: PotluckClient, path: string): Promise<string> {
   const data = unwrap(await client.storage.from('receipts').createSignedUrl(path, 60 * 60))
