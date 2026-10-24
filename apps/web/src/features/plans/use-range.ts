@@ -7,12 +7,15 @@ const HOUR = 3_600_000
  * Rounded so every screen reuses the same cached query.
  */
 export function useTimelineRange(days = 60) {
-  const [range] = useState(() => {
-    const from = Math.floor(Date.now() / HOUR) * HOUR
-    return {
-      from: new Date(from).toISOString(),
-      to: new Date(from + days * 24 * HOUR).toISOString(),
-    }
-  })
+  const [range] = useState(() => timelineRange(days))
   return range
+}
+
+/** The same window as a plain value, for route loaders. */
+export function timelineRange(days = 60) {
+  const from = Math.floor(Date.now() / HOUR) * HOUR
+  return {
+    from: new Date(from).toISOString(),
+    to: new Date(from + days * 24 * HOUR).toISOString(),
+  }
 }
