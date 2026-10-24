@@ -1,5 +1,36 @@
-import { useEffect, useRef } from 'react'
+import { useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
+
+/**
+ * Invalidation that coalesces bursts. One expense save sends several change events (the row,
+ * its activity, notifications); refetching per event cancels and restarts the same requests.
+ * Keys bumped within `delay` ms are invalidated once. Pending keys are flushed on unmount so a
+ * quick navigation never leaves stale data behind.
+ */
+export function useBatchedInvalidate(delay = 300) {
+  const queryClient = useQueryClient()
+  const pending = useRef(new Map<string, QueryKey>())
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const flush = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = undefined
+    const keys = [...pending.current.values()]
+    pending.current.clear()
+    for (const queryKey of keys) void queryClient.invalidateQueries({ queryKey })
+  }, [queryClient])
+
+  useEffect(() => flush, [flush])
+
+  return useCallback(
+    (...keys: QueryKey[]) => {
+      for (const key of keys) pending.current.set(JSON.stringify(key), key)
+      timer.current ??= setTimeout(flush, delay)
+    },
+    [flush, delay],
+  )
+}
 
 type PostgresEvent = '*' | 'INSERT' | 'UPDATE' | 'DELETE'
 
