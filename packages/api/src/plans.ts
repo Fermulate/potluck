@@ -6,6 +6,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { Database } from './database.types'
 import type { PotluckClient } from './index'
+import { fetchMyProfile, meKeys, type ProfileRow } from './me'
 
 type Tables = Database['public']['Tables']
 type Functions = Database['public']['Functions']
@@ -109,6 +110,22 @@ export const plansKeys = {
 
 // Queries --------------------------------------------------------------------
 
+function toPlanProfile(
+  data: Pick<
+    ProfileRow,
+    'id' | 'display_name' | 'timezone' | 'default_currency' | 'locale' | 'avatar_path'
+  >,
+): PlanProfile {
+  return {
+    id: data.id,
+    displayName: data.display_name,
+    timezone: data.timezone,
+    defaultCurrency: data.default_currency,
+    locale: data.locale,
+    avatarPath: data.avatar_path,
+  }
+}
+
 export async function fetchPlanProfile(
   client: PotluckClient,
   userId: string,
@@ -119,14 +136,7 @@ export async function fetchPlanProfile(
     .eq('id', userId)
     .single()
   if (error) fail(error)
-  return {
-    id: data.id,
-    displayName: data.display_name,
-    timezone: data.timezone,
-    defaultCurrency: data.default_currency,
-    locale: data.locale,
-    avatarPath: data.avatar_path,
-  }
+  return toPlanProfile(data)
 }
 
 export async function fetchMyTimeline(
@@ -332,11 +342,13 @@ export function planAvatarUrl(client: PotluckClient, path: string | null): strin
 // Query options --------------------------------------------------------------
 
 export const planQueries = {
+  /** Same cache entry as the Me screen's profile, so one request serves both and edits show up. */
   profile: (client: PotluckClient, userId: string) =>
     queryOptions({
-      queryKey: plansKeys.profile(userId),
-      queryFn: () => fetchPlanProfile(client, userId),
+      queryKey: meKeys.profile(userId),
+      queryFn: () => fetchMyProfile(client, userId),
       staleTime: 5 * 60_000,
+      select: toPlanProfile,
     }),
   timeline: (client: PotluckClient, range: { from: string; to: string }) =>
     queryOptions({

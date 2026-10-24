@@ -1,12 +1,19 @@
-import { moneyErrorCode, moneyKeys, moneyQueries, type MoneyPerson } from '@potluck/api'
+import {
+  moneyErrorCode,
+  moneyKeys,
+  moneyQueries,
+  myProfileQueryOptions,
+  type MoneyPerson,
+} from '@potluck/api'
 import { hasMessage, t } from '@potluck/i18n'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 
+/** The viewer's profile. Shares the Me cache entry, so screens never fetch it twice. */
 export function useViewer() {
-  return useQuery(moneyQueries.viewer(supabase))
+  return useQuery(myProfileQueryOptions(supabase, useUserId()))
 }
 
 /** Everyone the viewer can see, by id. */
