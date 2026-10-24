@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as UseEvent from './use-event'
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
@@ -13,7 +14,7 @@ vi.mock('./viewer', () => ({
   useViewer: () => ({ userId: 'me', timeZone: 'UTC', profile: undefined }),
 }))
 vi.mock('./use-event', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./use-event')>()),
+  ...(await importOriginal<typeof UseEvent>()),
   useEventRealtime: () => {},
 }))
 
