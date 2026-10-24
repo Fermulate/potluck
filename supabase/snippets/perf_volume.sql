@@ -193,17 +193,17 @@ insert into public.events (
 )
 select
   e.id, e.group_id, 'Perf plan ' || e.n, '📅',
-  case when e.kind = 'polling' then 'polling' else 'scheduled' end::public.event_status,
+  (case e.kind when 'polling' then 'polling' when 'scheduled' then 'scheduled' else 'done' end)::public.event_status,
   'America/Los_Angeles',
   current_date + (e.n % 7), current_date + (e.n % 7) + e.window_days,
   480, 1320, e.slot_minutes, 120, 2,
   case
-    when e.kind = 'scheduled' then now() + ((e.n % 50) || ' days')::interval
-    when e.kind = 'scheduled_past' then now() - ((e.n % 90) || ' days')::interval
+    when e.kind = 'scheduled' then now() + ((2 + e.n % 50) || ' days')::interval
+    when e.kind = 'scheduled_past' then now() - ((1 + e.n % 90) || ' days')::interval
   end,
   case
-    when e.kind = 'scheduled' then now() + ((e.n % 50) || ' days')::interval + interval '2 hours'
-    when e.kind = 'scheduled_past' then now() - ((e.n % 90) || ' days')::interval + interval '2 hours'
+    when e.kind = 'scheduled' then now() + ((2 + e.n % 50) || ' days')::interval + interval '2 hours'
+    when e.kind = 'scheduled_past' then now() - ((1 + e.n % 90) || ' days')::interval + interval '2 hours'
   end,
   (select m.user_id from perf_members m where m.group_id = e.group_id and m.ord = 1),
   now() - interval '3 days'
