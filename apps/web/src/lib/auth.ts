@@ -1,30 +1,84 @@
-import type { Session } from '@supabase/supabase-js'
+import type { PotluckClient } from '@potluck/api'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { useSyncExternalStore } from 'react'
-import { supabase } from './supabase'
-import { forgetPushSubscription } from './web-push'
 
 let current: Session | null = null
 let lastUserId: string | null = null
 let ready: Promise<Session | null> | null = null
+let attached: PotluckClient | null = null
 const listeners = new Set<() => void>()
+const eventListeners = new Set<(event: AuthChangeEvent) => void>()
 
 function emit() {
   for (const listener of listeners) listener()
 }
 
-function start(): Promise<Session | null> {
-  if (ready) return ready
-  ready = supabase.auth.getSession().then(({ data }) => {
-    current = data.session
-    if (current) lastUserId = current.user.id
-    emit()
-    return current
+/**
+ * The Supabase client is a large download that a signed-out visitor on the landing page never
+ * needs, so it is loaded on first use. Everything that talks to the database lives in lazily
+ * loaded screens, which import `./supabase` themselves.
+ */
+export function loadSupabase(): Promise<PotluckClient> {
+  return import('./supabase').then(({ supabase }) => {
+    attachAuth(supabase)
+    return supabase
   })
-  supabase.auth.onAuthStateChange((_event, session) => {
+}
+
+/**
+ * Follows the client's auth state. Called when `./supabase` is first evaluated, whoever
+ * imported it, so a sign in on a page that skipped the session lookup still lands here.
+ */
+export function attachAuth(client: PotluckClient) {
+  if (attached) return
+  attached = client
+  client.auth.onAuthStateChange((event, session) => {
     current = session
     if (session) lastUserId = session.user.id
     emit()
+    for (const listener of eventListeners) listener(event)
   })
+}
+
+/** Auth events (sign out in another tab, password recovery) without loading the client. */
+export function onAuthEvent(listener: (event: AuthChangeEvent) => void): () => void {
+  eventListeners.add(listener)
+  return () => eventListeners.delete(listener)
+}
+
+/**
+ * Whether reading the session needs the client now. Only the landing page, with no session
+ * saved in this browser and no auth result in the URL, can answer "signed out" on its own.
+ */
+function sessionMayExist(): boolean {
+  if (typeof window === 'undefined') return true
+  const { pathname, search, hash } = window.location
+  if (pathname !== '/') return true
+  if (/(access_token|refresh_token|code|token_hash|error_description)=/.test(search + hash)) {
+    return true
+  }
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      if (/^sb-.+-auth-token$/.test(localStorage.key(i) ?? '')) return true
+    }
+    return false
+  } catch {
+    return true
+  }
+}
+
+function start(): Promise<Session | null> {
+  if (ready) return ready
+  ready = sessionMayExist()
+    ? loadSupabase()
+        .then((supabase) => supabase.auth.getSession())
+        .then(({ data }) => {
+          current = data.session
+          if (current) lastUserId = current.user.id
+          emit()
+          return current
+        })
+    : Promise.resolve(null)
   return ready
 }
 
@@ -61,7 +115,11 @@ export function useUserId(): string {
  */
 export async function signOut() {
   const userId = current?.user.id ?? lastUserId
-  if (userId) await forgetPushSubscription(userId).catch(() => undefined)
+  if (userId) {
+    const { forgetPushSubscription } = await import('./web-push')
+    await forgetPushSubscription(userId).catch(() => undefined)
+  }
+  const supabase = await loadSupabase()
   await supabase.auth.signOut()
 }
 
