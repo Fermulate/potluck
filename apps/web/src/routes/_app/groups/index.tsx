@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { z } from 'zod'
 import { GroupsPage } from '@/features/groups/groups-page'
 import { prefetch } from '@/lib/prefetch'
+import { booleanParam } from '@/lib/search'
 
 export const Route = createFileRoute('/_app/groups/')({
-  validateSearch: z.object({ new: z.boolean().optional() }),
+  validateSearch: booleanParam('new'),
   loader: ({ context }) => prefetch.groups(context.queryClient, context.session.user.id),
   component: GroupsRoute,
 })
