@@ -1,6 +1,61 @@
 export const app = {
   name: 'Potluck',
   tagline: 'Split the bill. Pick the night. Stay friends.',
+  skipToContent: 'Skip to content',
+  landing: {
+    signIn: 'Sign in',
+    getStarted: 'Get started',
+    title: 'Split the bill. Pick the night. Stay friends.',
+    body: 'Potluck keeps a running tab for your people and finds the evening everyone can actually make. Free, open source, and no ads at the table.',
+    cta: 'Start a table',
+    secondary: 'I already have an account',
+    demo: {
+      label:
+        'A short demo: a dinner bill splits four ways, then friends paint when they are free and a night gets locked in.',
+      receipt: 'Dim sum, Saturday',
+      paidBy: '{name} paid',
+      items: {
+        dumplings: 'Har gow x3',
+        buns: 'Char siu bao',
+        noodles: 'Chow fun',
+        tea: 'Pot of oolong',
+      },
+      total: 'Total',
+      split: 'Split four ways',
+      grid: 'Who is free next week?',
+      locked: 'Locked in',
+      lockedWhen: 'Thu 7 pm',
+      days: {
+        mon: 'Mon',
+        tue: 'Tue',
+        wed: 'Wed',
+        thu: 'Thu',
+        fri: 'Fri',
+      },
+    },
+    features: {
+      tab: {
+        title: 'The tab',
+        body: 'Split evenly, by shares, by percent, or item by item. Potluck does the rounding and nobody pays a cent more than they should.',
+      },
+      night: {
+        title: 'The night',
+        body: 'Everyone drags across the hours they are free. The grid warms up where it works and the best slot floats to the top.',
+      },
+      square: {
+        title: 'The square up',
+        body: 'Fewer payments, same totals. Record who paid whom and watch the balance tick to zero.',
+      },
+    },
+    closing: {
+      title: 'Pull up a chair.',
+      body: 'It takes a minute to start a group. Send the link, and your friends are in with one tap.',
+    },
+    footer: {
+      license: 'Free software under the AGPL-3.0.',
+      source: 'Source code',
+    },
+  },
 } as const
 
 export const toast = {
@@ -48,6 +103,9 @@ export const nav = {
   add: 'Add',
   plans: 'Plans',
   me: 'Me',
+  main: 'Main',
+  friends: 'Friends',
+  notifications: 'Notifications',
   quickAdd: {
     title: 'What are we doing?',
     expense: 'Add expense',
@@ -105,6 +163,39 @@ export const errors = {
   sessionExpired: 'Your session timed out. Sign in again.',
   rateLimited: 'Easy there. Try again in a moment.',
   updateRequired: 'This version is out of date. Refresh to get the latest.',
+  groupNotFound: 'That group is not on your list. Maybe you left, or the link is off.',
+  /** Stable codes raised by the database RPCs (error.message). */
+  codes: {
+    not_authenticated: 'Sign in to do that.',
+    account_deleted: 'This account has been closed.',
+    not_a_member: 'You are not in this group.',
+    not_allowed: 'You do not have permission to do that.',
+    member_not_found: 'That person is not in this group anymore.',
+    member_has_balance: 'They still have an open balance here. Settle up first.',
+    owner_must_transfer: 'Hand ownership to someone else before you go.',
+    use_transfer_ownership: 'Use transfer ownership to make someone the owner.',
+    use_leave_group: 'Use leave group to remove yourself.',
+    cannot_change_owner: 'The owner keeps their role. Transfer ownership instead.',
+    cannot_remove_owner: 'The owner cannot be removed.',
+    already_owner: 'You already own this group.',
+    group_name_required: 'Give the group a name.',
+    invalid_currency: 'Pick a currency.',
+    group_currency_locked: 'The currency is locked once money has been added.',
+    group_owner_required: 'A group always needs an owner.',
+    group_archived: 'This group is archived.',
+    direct_group: 'One-on-one tabs cannot have invite links.',
+    invalid_role: 'Invites cannot make someone the owner.',
+    invalid_max_uses: 'Uses must be at least 1.',
+    invalid_expiry: 'Pick an expiry in the future.',
+    invite_not_found: 'We could not find that invite.',
+    invite_expired: 'This link has expired. Ask for a fresh one.',
+    invite_used_up: 'This link has been used up.',
+    invite_revoked: 'This link was revoked.',
+    invite_wrong_email: 'This invite was sent to a different email address.',
+    invalid_friend: 'You cannot split with yourself.',
+    not_a_friend: 'You can only split with friends.',
+    blocked: 'You cannot split with this person.',
+  },
   auth: {
     invalidCredentials: 'That email and password do not match.',
     emailTaken: 'That email already has an account. Try signing in.',

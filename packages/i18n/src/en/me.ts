@@ -6,13 +6,26 @@ export const notifications = {
   unread_other: '{count} unread',
   enablePush: 'Turn on push notifications',
   pushBlocked: 'Notifications are blocked in your browser settings.',
+  someone: 'Someone',
+  aGroup: 'your group',
+  anEvent: 'a plan',
+  anExpense: 'an expense',
+  generic: { title: 'Something happened', body: 'Tap to take a look.' },
+  unreadLabel: 'Unread',
+  earlier: 'Earlier',
+  new: 'New',
   types: {
     expense: {
       created: { title: 'New expense in {group}', body: '{actor} added {description}: {amount}' },
       updated: { title: 'Expense updated', body: '{actor} changed {description} in {group}' },
     },
     settlement: {
-      created: { title: 'You got paid', body: '{actor} paid you {amount}' },
+      created: { title: 'You got paid', body: '{payer} paid you {amount}' },
+      sent: { title: 'Payment recorded', body: '{payee} marked your {amount} payment as received' },
+      recorded: {
+        title: 'Payment recorded',
+        body: '{actor} recorded your {amount} payment to {payee}',
+      },
     },
     member: {
       joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
@@ -40,8 +53,10 @@ export const notifications = {
 
 export const settings = {
   title: 'Me',
+  subtitle: 'Your profile, your preferences, your exit.',
   profile: {
     title: 'Profile',
+    nameRequired: 'Your name cannot be empty.',
     name: 'Display name',
     photo: 'Photo',
     changePhoto: 'Change photo',
@@ -58,13 +73,22 @@ export const settings = {
     currencyHint: 'Used for new groups.',
     language: 'Language',
     theme: 'Appearance',
-    themeSystem: 'Match my device',
+    themeSystem: 'System',
     themeLight: 'Light',
     themeDark: 'Dark',
+    saved: 'Preferences saved.',
   },
   notifications: {
     title: 'Notifications',
+    inbox: 'Open inbox',
     push: 'Push notifications',
+    pushHint: 'A ping on this device when something needs you.',
+    pushOn: 'Push is on for this device.',
+    pushUnsupported:
+      'This browser cannot do push notifications. On iPhone, add Potluck to your home screen first.',
+    pushNotConfigured: 'Push is not set up on this server yet.',
+    pushFailed: 'Push could not be turned on. Try again?',
+    inApp: 'You will always see updates in your inbox.',
     email: 'Email notifications',
     expenses: 'New expenses',
     payments: 'Payments',
@@ -76,6 +100,7 @@ export const settings = {
     feed: 'Calendar feed',
     feedHint: 'Subscribe to your Potluck plans from any calendar app.',
     copyFeed: 'Copy feed link',
+    subscribe: 'Subscribe',
     resetFeed: 'Reset link',
     resetFeedHint: 'The old link stops working.',
     connect: 'Connect a calendar',

@@ -6,12 +6,14 @@ export const auth = {
     magicLink: 'Email me a sign-in link',
     noAccount: 'New here?',
     createAccount: 'Create an account',
+    usePassword: 'Use a password instead',
   },
   signUp: {
     title: 'Join the table',
     subtitle: 'Shared tabs and plans, minus the awkward math.',
     submit: 'Create account',
     haveAccount: 'Already have an account?',
+    signInLink: 'Sign in',
     terms: 'By continuing you agree to the terms and privacy policy.',
   },
   fields: {
@@ -21,12 +23,16 @@ export const auth = {
     passwordHint: 'At least 8 characters.',
     name: 'Your name',
     namePlaceholder: 'What do friends call you?',
+    newPassword: 'New password',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
   },
   checkEmail: {
     title: 'Check your inbox',
     body: 'We sent a link to {email}. Tap it and you are in.',
     resend: 'Send it again',
     resent: 'Sent. Give it a minute.',
+    back: 'Use a different email',
   },
   forgotPassword: {
     link: 'Forgot password?',
@@ -34,12 +40,24 @@ export const auth = {
     body: 'Tell us your email and we will send a reset link.',
     submit: 'Send reset link',
     sent: 'If that email has an account, a link is on its way.',
+    back: 'Back to sign in',
   },
   resetPassword: {
     title: 'Choose a new password',
     submit: 'Update password',
     done: 'Password updated. Carry on.',
+    expired: 'That reset link has expired. Ask for a new one.',
   },
+  callback: {
+    working: 'Setting your place...',
+    failed: 'That link has expired or was already used.',
+    tryAgain: 'Back to sign in',
+  },
+  side: {
+    quote: 'Everyone brings something. We keep track of who.',
+    caption: 'Splitting, planning, and squaring up for groups of friends.',
+  },
+  joinNotice: 'Sign in or create an account to join {group}.',
   signOut: 'Sign out',
   signedOut: 'Signed out. See you soon.',
   continueWithGoogle: 'Continue with Google',
@@ -48,13 +66,17 @@ export const auth = {
 } as const
 
 export const onboarding = {
-  welcome: {
-    title: 'Welcome to Potluck',
-    body: 'Everyone brings something. We keep track of who.',
-    start: "Let's go",
-  },
+  step: 'Step {step} of {total}',
   profile: {
     title: 'First, the basics',
+    body: 'This is how your friends will see you on shared tabs and plans.',
+    uploading: 'Uploading...',
+    photoTooBig: 'That photo is over 5 MB. Try a smaller one.',
+    photoType: 'Use a PNG, JPG, WebP, or GIF.',
+    photoFailed: 'The photo did not upload. Try again?',
+    timezoneHint: 'We guessed this from your device.',
+    currencyHint: 'New groups start in this currency.',
+    save: 'Looks good',
     nameLabel: 'Display name',
     avatarLabel: 'Add a photo',
     timezoneLabel: 'Time zone',
@@ -67,11 +89,4 @@ export const onboarding = {
     join: 'I have an invite link',
     skip: 'Maybe later',
   },
-  notifications: {
-    title: 'Want a heads up?',
-    body: 'We will ping you when someone adds an expense or a plan needs your vote.',
-    allow: 'Turn on notifications',
-    skip: 'Not now',
-  },
-  done: "You're all set. Dig in.",
 } as const

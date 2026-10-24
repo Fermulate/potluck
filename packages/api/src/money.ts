@@ -208,7 +208,7 @@ export async function fetchMoneyGroup(client: PotluckClient, groupId: string): P
 }
 
 /** Groups the viewer can add expenses to (not archived), alphabetical. */
-export async function fetchMyGroups(client: PotluckClient): Promise<MoneyGroup[]> {
+export async function fetchMoneyGroups(client: PotluckClient): Promise<MoneyGroup[]> {
   const rows = unwrap(
     await client.from('groups').select(GROUP_SELECT).is('archived_at', null).order('name'),
   )
@@ -515,7 +515,7 @@ export const moneyQueries = {
   people: (client: PotluckClient) =>
     queryOptions({ queryKey: moneyKeys.people(), queryFn: () => fetchPeople(client) }),
   myGroups: (client: PotluckClient) =>
-    queryOptions({ queryKey: moneyKeys.myGroups(), queryFn: () => fetchMyGroups(client) }),
+    queryOptions({ queryKey: moneyKeys.myGroups(), queryFn: () => fetchMoneyGroups(client) }),
   group: (client: PotluckClient, groupId: string) =>
     queryOptions({
       queryKey: moneyKeys.groupInfo(groupId),

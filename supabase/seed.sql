@@ -31,7 +31,7 @@ select
   '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated',
   u.handle || '@potluck.test', extensions.crypt('potluck-demo', extensions.gen_salt('bf')), now() - interval '90 days',
   '{"provider": "email", "providers": ["email"]}',
-  jsonb_build_object('display_name', u.full_name, 'timezone', u.tz),
+  jsonb_build_object('display_name', u.full_name, 'timezone', u.tz, 'onboarded', true),
   now() - interval '90 days', now() - interval '90 days',
   '', '', '', ''
 from seed_users u;

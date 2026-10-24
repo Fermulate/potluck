@@ -1,6 +1,6 @@
 import { app, toast, common, nav, empty, errors } from './en/shell'
 import { auth, onboarding } from './en/auth'
-import { groups, members, roles, invites } from './en/groups'
+import { groups, members, roles, invites, friends } from './en/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './en/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './en/plans'
 import { notifications, settings, account } from './en/me'
@@ -28,6 +28,7 @@ export const en = {
   members,
   roles,
   invites,
+  friends,
   expenses,
   categories,
   splitTypes,
