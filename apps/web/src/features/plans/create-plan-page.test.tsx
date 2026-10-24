@@ -110,6 +110,26 @@ describe('PlanForm', () => {
     })
   })
 
+  it('keeps a multi code point emoji whole and only the last one typed', async () => {
+    renderForm()
+    await screen.findByText('Ben Ortiz')
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Family dinner' },
+    })
+    const custom = screen.getByLabelText('Your own')
+    fireEvent.change(custom, { target: { value: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}' } })
+    expect(custom).toHaveValue('\u{1F468}\u200D\u{1F469}\u200D\u{1F467}')
+    fireEvent.change(custom, { target: { value: 'ab\u{1F354}' } })
+    expect(custom).toHaveValue('\u{1F354}')
+    fireEvent.change(custom, { target: { value: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start the poll' }))
+
+    await waitFor(() => expect(createPlanEvent).toHaveBeenCalledTimes(1))
+    expect(createPlanEvent.mock.calls[0]![1]).toMatchObject({
+      emoji: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}',
+    })
+  })
+
   it('will not start the poll until the member list has loaded', async () => {
     loadMembers = () => new Promise(() => {})
     renderForm()

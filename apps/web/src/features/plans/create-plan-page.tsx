@@ -42,6 +42,10 @@ const DAY = 86_400_000
 const addDays = (key: string, n: number) =>
   new Date(Date.parse(`${key}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10)
 
+/** The last user-perceived character typed, so a multi code point emoji stays whole. */
+const lastGrapheme = (value: string) =>
+  [...new Intl.Segmenter().segment(value)].at(-1)?.segment ?? ''
+
 type FormField =
   | 'group_id'
   | 'title'
@@ -77,6 +81,21 @@ export function CreatePlanPage({ groupId: initialGroup }: CreatePlanPageProps) {
           <Skeleton className="h-48" />
           <Skeleton className="h-64" />
         </div>
+      </Page>
+    )
+  }
+
+  if (groups.isError) {
+    return (
+      <Page>
+        <EmptyState
+          title={t('errors.generic')}
+          action={
+            <Button variant="ink" onClick={() => void groups.refetch()}>
+              {t('common.retry')}
+            </Button>
+          }
+        />
       </Page>
     )
   }
@@ -266,7 +285,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
               aria-label={t('events.create.emojiCustom')}
               placeholder={t('events.create.emojiCustom')}
               value={EMOJIS.includes(emoji) ? '' : emoji}
-              onChange={(e) => setEmoji([...e.target.value].slice(-2).join('') || EMOJIS[0]!)}
+              onChange={(e) => setEmoji(lastGrapheme(e.target.value) || EMOJIS[0]!)}
               className="h-11 w-28"
             />
           </div>
