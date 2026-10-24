@@ -29,7 +29,10 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   useUserId: () => VIEWER,
 }))
 
-vi.mock('@/lib/realtime', () => ({ useRealtime: () => undefined }))
+vi.mock('@/lib/realtime', () => ({
+  useRealtime: () => undefined,
+  useBatchedInvalidate: () => () => undefined,
+}))
 
 describe('GroupsPage', () => {
   beforeEach(() => {
