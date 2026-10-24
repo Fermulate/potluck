@@ -2,9 +2,12 @@ import { t } from '@potluck/i18n'
 import { Button } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, CalendarHeart, Receipt } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Wordmark } from './brand'
-import { HeroDemo } from './hero-demo'
+import { heroFrame } from './hero-frame'
+
+// The animated demo pulls in the motion library; the headline and buttons paint without it.
+const HeroDemo = lazy(() => import('./hero-demo').then((m) => ({ default: m.HeroDemo })))
 
 /** Tomato gingham: the tablecloth the demo cards sit on. */
 const gingham =
@@ -77,7 +80,9 @@ export function LandingPage() {
               </div>
             </div>
             <div className="relative z-10 -mb-28 lg:-mb-32">
-              <HeroDemo />
+              <Suspense fallback={<div aria-hidden className={heroFrame} />}>
+                <HeroDemo />
+              </Suspense>
             </div>
           </div>
           {/* The table edge */}
