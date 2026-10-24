@@ -167,8 +167,10 @@ const PERSON = 'id, display_name, avatar_path, deleted_at'
 // Reads ---------------------------------------------------------------------------------------
 
 export async function fetchViewer(client: PotluckClient): Promise<Viewer | null> {
-  const { data: auth } = await client.auth.getUser()
-  const uid = auth.user?.id
+  // The id is only used to pick the row; RLS still decides what the caller may read, so the
+  // stored session is enough and saves a round trip to the auth server.
+  const { data: auth } = await client.auth.getSession()
+  const uid = auth.session?.user.id
   if (!uid) return null
   return unwrap(
     await client
