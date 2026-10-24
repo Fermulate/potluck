@@ -13,7 +13,7 @@ Tables that need multi-row consistency get no insert or update policy at all. Wr
 
 - Each one starts with `private.require_user()` (signed in, account not closed) and usually `private.require_member(group_id)`, then checks the role rules itself.
 - Each one sets `search_path = ''` and schema-qualifies every name, so a caller cannot shadow a table or function.
-- Errors use one shape: `message` is a stable snake_case code, `detail` is readable English, `errcode` is one of `42501`, `P0002`, `22023` or `23514`. Clients translate the code, never the English.
+- Errors use one shape: `message` is a stable snake_case code, `detail` is readable English, `errcode` is one of `42501`, `PT404` (HTTP 404), `22023` or `23514`. Clients translate the code, never the English.
 - Invariants that must hold whatever path wrote the row are deferred constraint triggers checked at commit: one owner per group, splits sum to the amount.
 - `execute` is revoked from `public` and `anon` and granted to `authenticated` (and `service_role`). `invite_preview` is the one exception callable by `anon`.
 

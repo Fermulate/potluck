@@ -70,7 +70,7 @@ select lives_ok(
 );
 select throws_ok(
   $$ select set_member_role(tests.id('g'), tests.uid('outsider'), 'admin') $$,
-  'P0002', 'member_not_found', 'target must be a member'
+  'PT404', 'member_not_found', 'target must be a member'
 );
 
 -- remove_member
@@ -144,7 +144,7 @@ select throws_ok(
 select tests.login('owner');
 select throws_ok(
   $$ select transfer_ownership(tests.id('g'), tests.uid('outsider')) $$,
-  'P0002', 'member_not_found', 'new owner must be a member'
+  'PT404', 'member_not_found', 'new owner must be a member'
 );
 select lives_ok($$ select transfer_ownership(tests.id('g'), tests.uid('admin')) $$, 'owner hands over');
 select results_eq(

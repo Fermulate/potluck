@@ -310,7 +310,7 @@ export async function fetchInvitePreview(
   const { data, error } = await client.rpc('invite_preview', { code })
   if (error) throw error
   const row = data?.[0]
-  if (!row) throw Object.assign(new Error('invite_not_found'), { code: 'P0002' })
+  if (!row) throw Object.assign(new Error('invite_not_found'), { code: 'PT404' })
   return {
     ...row,
     status: row.status as InvitePreview['status'],
