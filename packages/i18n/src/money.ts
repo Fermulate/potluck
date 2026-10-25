@@ -43,5 +43,6 @@ export function formatMoney(
   options: MoneyFormatOptions = {},
 ): string {
   const code = currency.toUpperCase()
-  return formatter(code, options).format(amountMinor / 10 ** minorUnits(code))
+  // `|| 0` folds -0 into 0, so a negated zero never formats as "-$0.00".
+  return formatter(code, options).format((amountMinor || 0) / 10 ** minorUnits(code))
 }
