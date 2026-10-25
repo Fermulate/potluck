@@ -80,7 +80,7 @@ export function LandingPage() {
               </div>
             </div>
             <div className="relative z-10 -mb-28 lg:-mb-32">
-              <Suspense fallback={<div aria-hidden className={heroFrame} />}>
+              <Suspense fallback={<div aria-hidden data-hero-slot className={heroFrame} />}>
                 <HeroDemo />
               </Suspense>
             </div>
