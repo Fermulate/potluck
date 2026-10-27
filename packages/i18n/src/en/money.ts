@@ -134,6 +134,8 @@ export const expenses = {
     remove: 'Remove {item}',
     assign: 'Who had {item}?',
     untitled: 'Item {number}',
+    tipPercent: '{percent}%',
+    tipPercentLabel: 'Tip {percent}% of the subtotal',
   },
   receiptUpload: {
     uploading: 'Uploading receipt...',

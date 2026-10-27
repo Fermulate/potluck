@@ -8,6 +8,7 @@ import {
   previewSplit,
   setPercent,
   splitsPayload,
+  tipFor,
   toggleParticipant,
 } from './split-state'
 
@@ -16,6 +17,14 @@ const B = 'bbbbbbbb-0000-4000-8000-000000000002'
 const C = 'cccccccc-0000-4000-8000-000000000003'
 const ids = [A, B, C]
 const sum = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0)
+
+describe('tip shortcuts', () => {
+  it('works out a tip from the subtotal, to the cent', () => {
+    expect(tipFor(14800, 18)).toBe(2664)
+    expect(tipFor(4999, 15)).toBe(750)
+    expect(tipFor(0, 20)).toBe(0)
+  })
+})
 
 describe('percent rebalancing', () => {
   it('starts even and always totals 100%', () => {

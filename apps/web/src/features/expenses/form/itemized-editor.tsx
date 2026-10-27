@@ -6,7 +6,14 @@ import { Money } from '../money'
 import { Plus, X } from 'lucide-react'
 import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
-import { itemsTotal, newItem, type ItemDraft, type SplitDraft } from './split-state'
+import {
+  TIP_PERCENTS,
+  itemsTotal,
+  newItem,
+  tipFor,
+  type ItemDraft,
+  type SplitDraft,
+} from './split-state'
 
 /**
  * Line items, each shared equally by the people who had it. Tax and tip are spread in
@@ -34,6 +41,8 @@ export function ItemizedEditor({
       items: draft.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     })
   const subtotal = draft.items.reduce((a, i) => a + (i.amountCents ?? 0), 0)
+  // You first, so your own chip is always in the same spot.
+  const chips = [...members].sort((a, b) => Number(b.id === viewerId) - Number(a.id === viewerId))
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,7 +84,7 @@ export function ItemizedEditor({
                 aria-label={t('expenses.itemizedEditor.assign', { item: label })}
                 className="mt-2.5 flex flex-wrap gap-1.5"
               >
-                {members.map((m) => {
+                {chips.map((m) => {
                   const on = item.userIds.includes(m.id)
                   return (
                     <button
@@ -103,7 +112,7 @@ export function ItemizedEditor({
                         seed={m.id}
                         src={avatarUrl(m.avatar_path)}
                         size="xs"
-                        className={cn(!on && 'opacity-50')}
+                        className={cn(on ? 'ring-1 ring-paper/60' : 'opacity-50')}
                       />
                       {name(m)}
                     </button>
@@ -145,10 +154,35 @@ export function ItemizedEditor({
             className="h-10 w-28"
           />
         </dd>
-        <dt>
+        <dt className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <label htmlFor="itemized-tip" className="text-sm text-mute">
             {t('expenses.itemized.tip')}
           </label>
+          {subtotal > 0 && (
+            <span className="flex gap-1">
+              {TIP_PERCENTS.map((percent) => {
+                const cents = tipFor(subtotal, percent)
+                const on = draft.tipCents === cents
+                return (
+                  <button
+                    key={percent}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={t('expenses.itemizedEditor.tipPercentLabel', { percent })}
+                    onClick={() => onChange({ ...draft, tipCents: on ? null : cents })}
+                    className={cn(
+                      'h-7 rounded-pill border px-2 text-xs font-semibold tabular transition-colors',
+                      on
+                        ? 'border-ink bg-ink text-paper'
+                        : 'border-line-strong bg-card text-ink hover:border-ink/40',
+                    )}
+                  >
+                    {t('expenses.itemizedEditor.tipPercent', { percent })}
+                  </button>
+                )
+              })}
+            </span>
+          )}
         </dt>
         <dd>
           <CompactMoneyInput

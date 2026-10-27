@@ -132,4 +132,23 @@ describe('ExpenseForm', () => {
       { user_id: BEN, share_cents: 1800 },
     ])
   })
+
+  it('fills the tip from a percent of the subtotal', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'By item' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item' }), {
+      target: { value: 'Dinner' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dinner' }), {
+      target: { value: '80' },
+    })
+    const twenty = screen.getByRole('button', { name: 'Tip 20% of the subtotal' })
+    fireEvent.click(twenty)
+    expect(twenty).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Tip')).toHaveValue('16')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].amount_cents).toBe(9600)
+  })
 })
