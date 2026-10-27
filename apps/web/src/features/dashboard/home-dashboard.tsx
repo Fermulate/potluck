@@ -43,6 +43,8 @@ export function HomeDashboard() {
       Date.parse(i.starts_at) < now + UPCOMING_DAYS * 86_400_000,
   )
   const waiting = needsTimes.length + needsRsvp.length
+  // A lone card fills the row; several peek in from the edge so you know to swipe.
+  const cardWidth = waiting === 1 ? 'w-full shrink-0' : 'w-64 shrink-0 snap-start'
 
   const name = firstName(viewer.profile?.displayName ?? '')
   const summary = balances.data
@@ -89,12 +91,12 @@ export function HomeDashboard() {
               </div>
               <ul className="scrollbar-none flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 lg:flex-wrap lg:px-0">
                 {needsTimes.map((item) => (
-                  <li key={item.event_id} className="w-64 shrink-0 snap-start">
+                  <li key={item.event_id} className={cardWidth}>
                     <TimesCard item={item} />
                   </li>
                 ))}
                 {needsRsvp.map((item) => (
-                  <li key={item.event_id} className="w-64 shrink-0 snap-start">
+                  <li key={item.event_id} className={cardWidth}>
                     <RsvpCard item={item} viewerId={viewer.userId} timeZone={viewer.timeZone} />
                   </li>
                 ))}
