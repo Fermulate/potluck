@@ -90,6 +90,10 @@ export const groups = {
 export const members = {
   title: 'Members',
   invite: 'Invite people',
+  alone: {
+    title: 'Just you so far',
+    body: 'A table for one is no fun. Send the link to whoever you split things with.',
+  },
   you: '{name} (you)',
   joined: 'Joined {date}',
   changeRole: 'Change role',

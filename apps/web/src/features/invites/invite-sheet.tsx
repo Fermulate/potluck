@@ -114,7 +114,14 @@ function InviteRow({
 }
 
 /** Create, share and revoke invite links for one group. */
-export function InvitePanel({ group }: { group: GroupDetail }) {
+export function InvitePanel({
+  group,
+  intro = true,
+}: {
+  group: GroupDetail
+  /** Show the one-line explainer before the first link exists. Off when the host page has its own. */
+  intro?: boolean
+}) {
   const queryClient = useQueryClient()
   const invites = useQuery(groupInvitesQueryOptions(supabase, group.id))
   const [role, setRole] = useState<'member' | 'admin'>('member')
@@ -215,9 +222,9 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
           groupName={group.name}
           onRevoke={() => revoke.mutate(latest)}
         />
-      ) : (
+      ) : intro ? (
         <p className="text-pretty text-mute">{t('invites.intro', { group: group.name })}</p>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-card border border-line bg-card p-4">
         <div className="flex items-start justify-between gap-3">
