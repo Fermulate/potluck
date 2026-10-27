@@ -171,6 +171,7 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-sunken px-4 py-3 lg:flex-col lg:items-stretch">
         <ViewerBalance
+          sentence
           cents={group.my_net_cents}
           currency={group.currency}
           className="text-[0.9375rem]"
