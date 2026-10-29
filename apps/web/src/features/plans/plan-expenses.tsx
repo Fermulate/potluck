@@ -28,7 +28,7 @@ export function PlanExpenses({ groupId, eventId }: { groupId: string; eventId: s
           {t('events.spent.title')}
         </h2>
         {sameCurrency && (
-          <p className="text-sm text-mute tabular">
+          <p className="tabular text-sm text-mute">
             {t('events.spent.total', { amount: formatMoney(total, currency) })}
           </p>
         )}

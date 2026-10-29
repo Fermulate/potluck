@@ -55,7 +55,8 @@ export const Avatar = forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
         delayMs={src ? 400 : undefined}
         className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--pl-ink)_14%,transparent)]"
         style={{
-          backgroundColor: color.bg === AVATAR_INK ? `var(--pl-avatar-ink, ${AVATAR_INK})` : color.bg,
+          backgroundColor:
+            color.bg === AVATAR_INK ? `var(--pl-avatar-ink, ${AVATAR_INK})` : color.bg,
           color: color.fg,
         }}
       >

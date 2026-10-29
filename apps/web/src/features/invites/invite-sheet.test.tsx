@@ -27,7 +27,10 @@ vi.mock('@potluck/api', async (importOriginal) => {
   const actual = await importOriginal<typeof ApiModule>()
   return {
     ...actual,
-    groupInvitesQueryOptions: () => ({ queryKey: ['test', 'invites'], queryFn: async () => api.open }),
+    groupInvitesQueryOptions: () => ({
+      queryKey: ['test', 'invites'],
+      queryFn: async () => api.open,
+    }),
     myProfileQueryOptions: () => ({
       queryKey: ['test', 'profile'],
       queryFn: async () => ({ id: VIEWER, timezone: 'UTC' }),
@@ -75,9 +78,7 @@ describe('InvitePanel', () => {
 
   it('creates a member link in one tap, with sensible defaults', async () => {
     renderWithProviders(<InvitePanel group={group()} />)
-    expect(
-      await screen.findByText('Member link: anyone, expires in 7 days.'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Member link: anyone, expires in 7 days.')).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: '5' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
     await waitFor(() => expect(api.createInvite).toHaveBeenCalled())

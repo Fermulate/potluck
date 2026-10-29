@@ -171,7 +171,7 @@ export function ItemizedEditor({
                     aria-label={t('expenses.itemizedEditor.tipPercentLabel', { percent })}
                     onClick={() => onChange({ ...draft, tipCents: on ? null : cents })}
                     className={cn(
-                      'h-7 rounded-pill border px-2 text-xs font-semibold tabular transition-colors',
+                      'h-7 rounded-pill border px-2 tabular text-xs font-semibold transition-colors',
                       on
                         ? 'border-ink bg-ink text-paper'
                         : 'border-line-strong bg-card text-ink hover:border-ink/40',
