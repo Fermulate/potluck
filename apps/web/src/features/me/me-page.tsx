@@ -433,7 +433,7 @@ function AccountSection() {
 export function MePage() {
   const { data: profile, isPending } = useMyProfile()
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
+    <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-32 lg:max-w-5xl lg:px-8 lg:pt-10 lg:pb-12">
       <header className="mb-8">
         <h1 className="font-display text-5xl leading-[0.95] sm:text-6xl">{t('settings.title')}</h1>
         <p className="mt-2 text-mute">{t('settings.subtitle')}</p>
@@ -444,7 +444,8 @@ export function MePage() {
           <Skeleton className="h-64" />
         </div>
       ) : (
-        <div className="grid gap-8">
+        // Two newspaper-style columns on desktop; reading order stays the same as on a phone.
+        <div className="grid gap-8 lg:block lg:columns-2 lg:gap-10 lg:[&>*]:mb-8 lg:[&>*]:break-inside-avoid">
           <ProfileSection key={profile.updated_at} profile={profile} />
           <PreferencesSection profile={profile} />
           <NotificationsSection />
