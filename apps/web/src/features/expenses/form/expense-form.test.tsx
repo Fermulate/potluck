@@ -56,7 +56,7 @@ describe('ExpenseForm', () => {
 
   it('snaps a dragged handle to whole percents and keeps the total at 100%', async () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Percentages' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
     const [first] = screen.getAllByRole('slider')
     for (let i = 0; i < 5; i++) fireEvent.keyDown(first!, { key: 'ArrowRight' })
 
@@ -76,7 +76,7 @@ describe('ExpenseForm', () => {
 
   it('rebalances everyone else when a percent is typed', () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Percentages' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
     fireEvent.change(percentOf('You'), { target: { value: '50' } })
     fireEvent.blur(percentOf('You'))
     expect(percentOf('Ben').value).toBe('25')
@@ -85,7 +85,7 @@ describe('ExpenseForm', () => {
 
   it('does not save exact amounts that do not add up', async () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Exact amounts' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Exact' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
       target: { value: '50' },
     })
