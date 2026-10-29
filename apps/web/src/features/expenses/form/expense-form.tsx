@@ -9,7 +9,7 @@ import {
   type RecurrenceValue,
 } from '@potluck/api'
 import { CATEGORIES, type CategoryId } from '@potluck/core'
-import { DEFAULT_LOCALE, t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
   Button,
@@ -163,7 +163,21 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
       void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expense.id) })
       void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
-      toast.success(editing ? t('expenses.updated') : t('expenses.saved'))
+      // Say what was added and what it means for you, not just that something happened.
+      const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
+      toast.success(
+        editing
+          ? t('expenses.updated', { description: description.trim() })
+          : mine > 0
+            ? t('expenses.saved', {
+                description: description.trim(),
+                share: formatMoney(mine, currency),
+              })
+            : t('expenses.savedNotIn', {
+                description: description.trim(),
+                amount: formatMoney(total, currency),
+              }),
+      )
       props.onDone(expense.id)
     },
     onError: (error) => {
