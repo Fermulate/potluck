@@ -150,6 +150,10 @@ export const expenses = {
   recurring: {
     title: 'Repeating',
     hint: 'A copy is added automatically on the day it is due.',
+    activeCount_one: '{count} running',
+    activeCount_other: '{count} running',
+    pausedCount_one: '{count} paused',
+    pausedCount_other: '{count} paused',
     nextOn: 'Next on {date}',
     paused: 'Paused',
     pause: 'Pause',
