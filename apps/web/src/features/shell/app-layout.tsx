@@ -33,7 +33,7 @@ function useActiveTab(): TabId {
   // An expense lives in a group, so its page keeps Groups lit.
   if (path.startsWith('/groups') || path.startsWith('/friends') || path.startsWith('/expenses'))
     return 'groups'
-  if (path.startsWith('/plans')) return 'plans'
+  if (path.startsWith('/plans') || path.startsWith('/new/plan')) return 'plans'
   if (path.startsWith('/notifications')) return 'notifications'
   if (path.startsWith('/me')) return 'me'
   return 'home'
