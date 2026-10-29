@@ -20,7 +20,7 @@ export const groups = {
   create: {
     title: 'New group',
     nameLabel: 'Group name',
-    namePlaceholder: 'Lisbon trip, Flat 4B, Taco Tuesdays...',
+    namePlaceholder: 'Lisbon trip, Flat 4B...',
     emojiLabel: 'Emoji',
     colorLabel: 'Color',
     currencyLabel: 'Currency',
