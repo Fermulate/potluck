@@ -37,6 +37,12 @@ export function BalancesTab({ groupId }: { groupId: string }) {
     .sort((a, b) => b.cents - a.cents)
   const scale = Math.max(1, ...rows.map((r) => Math.abs(r.cents)))
   const myDebts = debts.filter((d) => d.from_user === me)
+  // Your own lines first: they are the ones you can act on.
+  const mineFirst = [...debts].sort(
+    (a, b) =>
+      Number(b.from_user === me || b.to_user === me) -
+      Number(a.from_user === me || a.to_user === me),
+  )
   const personOf = (id: string) => people.get(id) ?? group.data!.members.find((m) => m.id === id)
 
   return (
@@ -109,7 +115,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
             </div>
             <Card padding="none" className="overflow-hidden">
               <ul className="divide-y divide-line">
-                {debts.map((d) => {
+                {mineFirst.map((d) => {
                   const from = personOf(d.from_user)
                   const to = personOf(d.to_user)
                   const amount = formatMoney(d.amount_cents, currency)
