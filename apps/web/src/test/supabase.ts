@@ -33,14 +33,18 @@ interface Listener {
   handler: Handler
 }
 
+type Row = Record<string, unknown>
+
 let fake = fakeSupabase()
+let tables: Record<string, Row[]> = {}
 let listeners: Listener[] = []
 let authCalls: { method: string; args: unknown[] }[] = []
 let authResults = new Map<string, FakeResult>()
 
 /** Starts every test from an empty database; returns the fake for seeding and assertions. */
 export function resetDb(options: FakeOptions = {}) {
-  fake = fakeSupabase(options)
+  tables = options.tables ?? {}
+  fake = fakeSupabase({ ...options, tables })
   listeners = []
   authCalls = []
   authResults = new Map()
@@ -49,6 +53,83 @@ export function resetDb(options: FakeOptions = {}) {
 
 export function db() {
   return fake
+}
+
+/** Current rows of a seeded table, after any writes the screen made. */
+export function rowsOf(table: string): Row[] {
+  return tables[table] ?? []
+}
+
+const WRITES = ['insert', 'upsert', 'update', 'delete']
+
+/**
+ * The api fake only reads seeded tables. Writes to a seeded table (with no canned answer) are
+ * applied here instead: filters pick the rows, and `.select()` gets the written rows back.
+ */
+function applyWrite(table: string, call: QueryCall): FakeResult {
+  const rows = tables[table]!
+  const write = call.ops.find((op) => WRITES.includes(op.method))!
+  const matches = (row: Row) =>
+    call.ops.every(({ method, args }) => {
+      const [column, value] = args as [string, unknown]
+      if (method === 'eq' || method === 'is') return row[column] === value
+      if (method === 'neq') return row[column] !== value
+      if (method === 'in') return (value as unknown[]).includes(row[column])
+      return true
+    })
+  let written: Row[] = []
+  if (write.method === 'insert' || write.method === 'upsert') {
+    const input = write.args[0] as Row | Row[]
+    written = (Array.isArray(input) ? input : [input]).map((row) => ({ ...row }))
+    const conflict = (write.args[1] as { onConflict?: string } | undefined)?.onConflict
+    for (const row of written) {
+      const keys = conflict ? conflict.split(',') : ['id']
+      const at = rows.findIndex((r) => keys.every((k) => r[k] !== undefined && r[k] === row[k]))
+      if (write.method === 'upsert' && at >= 0) rows[at] = { ...rows[at], ...row }
+      else rows.push(row)
+    }
+  } else if (write.method === 'update') {
+    const patch = write.args[0] as Row
+    rows.forEach((row, i) => {
+      if (matches(row)) {
+        rows[i] = { ...row, ...patch }
+        written.push(rows[i]!)
+      }
+    })
+  } else {
+    written = rows.filter(matches)
+    tables[table] = rows.filter((row) => !written.includes(row))
+  }
+  const single = call.ops.some((op) => op.method === 'single' || op.method === 'maybeSingle')
+  return { data: single ? (written[0] ?? null) : written, error: null }
+}
+
+function from(table: string) {
+  const builder = fake.client.from(table as never) as unknown as Row
+  const call = fake.calls[fake.calls.length - 1] as QueryCall
+  const wrapped: unknown = new Proxy(builder, {
+    get(target, prop) {
+      if (prop === 'then') {
+        return (onFulfilled?: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
+          (target.then as (a: unknown, b: unknown) => Promise<unknown>)(
+            (value: unknown) => value,
+            (error: unknown) => {
+              if (tables[table] && call.ops.some((op) => WRITES.includes(op.method))) {
+                return applyWrite(table, call)
+              }
+              throw error
+            },
+          ).then(onFulfilled, onRejected)
+      }
+      const value = target[prop as string]
+      if (typeof value !== 'function') return value
+      return (...args: unknown[]) => {
+        ;(value as (...a: unknown[]) => unknown)(...args)
+        return wrapped
+      }
+    },
+  })
+  return wrapped
 }
 
 /** Canned answer for one `supabase.auth.<method>()`; anything else resolves without data. */
@@ -116,6 +197,7 @@ export const supabase = new Proxy(
         }
       }
       if (prop === 'auth') return auth
+      if (prop === 'from') return from
       return (fake.client as unknown as Record<string | symbol, unknown>)[prop]
     },
   },
