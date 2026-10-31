@@ -37,6 +37,10 @@ describe('formatMoney', () => {
     expect(formatMoney(-500, 'USD', { signDisplay: 'never' })).toBe('$5.00')
   })
 
+  it('formats a negated zero without a minus', () => {
+    expect(formatMoney(-0, 'USD')).toBe('$0.00')
+  })
+
   it('accepts lowercase currency codes', () => {
     expect(formatMoney(1500, 'jpy')).toBe('¥1,500')
   })

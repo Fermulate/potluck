@@ -56,7 +56,7 @@ describe('ExpenseForm', () => {
 
   it('snaps a dragged handle to whole percents and keeps the total at 100%', async () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Percentages' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
     const [first] = screen.getAllByRole('slider')
     for (let i = 0; i < 5; i++) fireEvent.keyDown(first!, { key: 'ArrowRight' })
 
@@ -76,7 +76,7 @@ describe('ExpenseForm', () => {
 
   it('rebalances everyone else when a percent is typed', () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Percentages' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
     fireEvent.change(percentOf('You'), { target: { value: '50' } })
     fireEvent.blur(percentOf('You'))
     expect(percentOf('Ben').value).toBe('25')
@@ -85,7 +85,7 @@ describe('ExpenseForm', () => {
 
   it('does not save exact amounts that do not add up', async () => {
     setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'Exact amounts' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Exact' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
       target: { value: '50' },
     })
@@ -131,5 +131,54 @@ describe('ExpenseForm', () => {
       { user_id: ME, share_cents: 1800 },
       { user_id: BEN, share_cents: 1800 },
     ])
+  })
+
+  it('fills the tip from a percent of the subtotal', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'By item' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item' }), {
+      target: { value: 'Dinner' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dinner' }), {
+      target: { value: '80' },
+    })
+    const twenty = screen.getByRole('button', { name: 'Tip 20% of the subtotal' })
+    fireEvent.click(twenty)
+    expect(twenty).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Tip')).toHaveValue('16')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].amount_cents).toBe(9600)
+  })
+
+  it('follows the subtotal after a percent is picked, until a tip is typed', () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'By item' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item' }), {
+      target: { value: 'Dinner' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dinner' }), {
+      target: { value: '80' },
+    })
+    const eighteen = screen.getByRole('button', { name: 'Tip 18% of the subtotal' })
+    fireEvent.click(eighteen)
+    expect(screen.getByLabelText('Tip')).toHaveValue('14.40')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    const [, dessert] = screen.getAllByRole('textbox', { name: 'Item' })
+    fireEvent.change(dessert!, { target: { value: 'Dessert' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dessert' }), {
+      target: { value: '20' },
+    })
+    expect(eighteen).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Tip')).toHaveValue('18')
+
+    fireEvent.change(screen.getByLabelText('Tip'), { target: { value: '15' } })
+    expect(eighteen).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dessert' }), {
+      target: { value: '40' },
+    })
+    expect(screen.getByLabelText('Tip')).toHaveValue('15')
   })
 })

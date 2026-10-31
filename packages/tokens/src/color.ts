@@ -67,6 +67,9 @@ export interface ThemeColors {
   heroSaffron: string
   heroOlive: string
 
+  /** Fill for the ink avatar, lifted in the dark so it does not vanish into the page. */
+  avatarInk: string
+
   /** Focus ring color. */
   focus: string
   /** Modal scrim. */
@@ -111,6 +114,8 @@ export const lightColors: ThemeColors = {
   heroSaffron: '#f5b53d',
   heroOlive: '#a6c47c',
 
+  avatarInk: '#1d1a16',
+
   focus: '#1d1a16',
   scrim: 'rgba(29, 26, 22, 0.42)',
 }
@@ -152,6 +157,8 @@ export const darkColors: ThemeColors = {
   heroTomato: '#b23a22',
   heroSaffron: '#8a5800',
   heroOlive: '#4f6a2c',
+
+  avatarInk: '#4a4038',
 
   focus: '#f6efe3',
   scrim: 'rgba(5, 4, 3, 0.62)',
@@ -202,6 +209,9 @@ export function hashString(input: string): number {
   }
   return hash >>> 0
 }
+
+/** The palette's ink fill. Render it through the `avatarInk` theme color so dark mode can lift it. */
+export const AVATAR_INK = avatarPalette[6].bg
 
 export function avatarColor(seed: string): (typeof avatarPalette)[number] {
   return avatarPalette[hashString(seed) % avatarPalette.length]!

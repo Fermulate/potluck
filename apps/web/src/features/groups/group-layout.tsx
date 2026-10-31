@@ -13,7 +13,7 @@ import {
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { ChevronLeft, UserPlus } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
@@ -54,10 +54,35 @@ function GroupTabs({ group }: { group: GroupDetail }) {
   const reduced = usePrefersReducedMotion()
   const path = useRouterState({ select: (s) => s.location.pathname })
   const rest = path.split(`/groups/${group.id}`)[1]?.replace(/^\//, '').split('/')[0] ?? ''
+  const navRef = useRef<HTMLElement>(null)
+  // On phones the tabs scroll sideways. Fade the edge that has more tabs behind it, and bring
+  // the current tab into view, so Members and Settings never hide off screen unannounced.
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const update = () => setMore(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4)
+    const current = nav.querySelector<HTMLElement>('[aria-current="page"]')?.parentElement
+    if (current) {
+      const right = current.offsetLeft + current.offsetWidth - nav.clientWidth + 16
+      if (right > nav.scrollLeft) nav.scrollLeft = right
+    }
+    update()
+    nav.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    return () => {
+      nav.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [rest])
   return (
     <nav
+      ref={navRef}
       aria-label={t('groups.tabs.label')}
-      className="-mx-4 scrollbar-none overflow-x-auto px-4 lg:mx-0 lg:px-0"
+      className={cn(
+        '-mx-4 scrollbar-none overflow-x-auto px-4 lg:mx-0 lg:px-0',
+        more && '[mask-image:linear-gradient(to_right,black_80%,transparent)]',
+      )}
     >
       <ul className="flex min-w-max gap-1 border-b border-line">
         {tabsFor(group).map((tab) => {
@@ -67,6 +92,8 @@ function GroupTabs({ group }: { group: GroupDetail }) {
               <Link
                 to={tab.to}
                 params={{ groupId: group.id }}
+                // Exact, or the Expenses (index) tab is announced as current on every tab.
+                activeOptions={{ exact: true }}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'inline-flex h-11 items-center px-3.5 text-[0.9375rem] font-semibold transition-colors duration-150',
@@ -144,6 +171,7 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-sunken px-4 py-3 lg:flex-col lg:items-stretch">
         <ViewerBalance
+          sentence
           cents={group.my_net_cents}
           currency={group.currency}
           className="text-[0.9375rem]"

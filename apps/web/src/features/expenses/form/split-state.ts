@@ -38,6 +38,8 @@ export interface SplitDraft {
   items: ItemDraft[]
   taxCents: number | null
   tipCents: number | null
+  /** A tip shortcut that was picked; the tip follows the subtotal until a tip is typed. */
+  tipPercent: number | null
 }
 
 let itemSeq = 0
@@ -70,6 +72,7 @@ export function initialDraft(memberIds: readonly string[]): SplitDraft {
     items: [newItem([...memberIds])],
     taxCents: null,
     tipCents: null,
+    tipPercent: null,
   }
 }
 
@@ -184,12 +187,26 @@ export function moveBoundary(
   return { ...percent, [left]: leftValue, [right]: pair - leftValue }
 }
 
+/** Quick tip choices, as a percent of the item subtotal. */
+export const TIP_PERCENTS = [15, 18, 20] as const
+
+/** A tip of `percent` on `subtotalCents`, rounded to the nearest minor unit. */
+export function tipFor(subtotalCents: number, percent: number): number {
+  return Math.round((subtotalCents * percent) / 100)
+}
+
+export function itemsSubtotal(items: readonly ItemDraft[]): number {
+  return items.reduce((a, item) => a + (item.amountCents ?? 0), 0)
+}
+
+/** Keeps a picked tip percent true to the current subtotal; a typed tip is left alone. */
+export function withTip(draft: SplitDraft): SplitDraft {
+  if (draft.tipPercent === null) return draft
+  return { ...draft, tipCents: tipFor(itemsSubtotal(draft.items), draft.tipPercent) }
+}
+
 export function itemsTotal(draft: Pick<SplitDraft, 'items' | 'taxCents' | 'tipCents'>): number {
-  return (
-    draft.items.reduce((a, item) => a + (item.amountCents ?? 0), 0) +
-    (draft.taxCents ?? 0) +
-    (draft.tipCents ?? 0)
-  )
+  return itemsSubtotal(draft.items) + (draft.taxCents ?? 0) + (draft.tipCents ?? 0)
 }
 
 /** Everyone's share in minor units for the current draft, via the core split functions. */

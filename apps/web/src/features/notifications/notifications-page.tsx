@@ -151,11 +151,16 @@ export function NotificationsPage() {
     <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
       <PageHeader title={t('notifications.title')} />
       <div className="mt-3 flex min-h-9 flex-wrap items-center justify-between gap-3">
-        <p className="text-[0.9375rem] text-mute">
-          {unread.length > 0
-            ? t('notifications.unread', { count: unread.length })
-            : t('notifications.allCaughtUp')}
-        </p>
+        {/* Nothing until the list is in: "All caught up" over a loading list is a fib. */}
+        {isPending ? (
+          <Skeleton shape="line" className="w-28" />
+        ) : (
+          <p className="text-[0.9375rem] text-mute">
+            {unread.length > 0
+              ? t('notifications.unread', { count: unread.length })
+              : t('notifications.allCaughtUp')}
+          </p>
+        )}
         {unread.length > 0 && (
           <Button
             size="sm"

@@ -36,6 +36,7 @@ import { BestTimes } from './best-times'
 import { CommentsThread } from './comments-thread'
 import { formatDuration, minuteOfDayIn, planErrorMessage } from './format'
 import { NudgePanel } from './nudge-panel'
+import { PlanExpenses } from './plan-expenses'
 import { RsvpPanel } from './rsvp-panel'
 import { ScheduledHero } from './scheduled-hero'
 import { mySlots, useEventRealtime, useMyAvailability, type SaveState } from './use-event'
@@ -247,6 +248,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 timeZone={timeZone}
               />
             )}
+            <PlanExpenses groupId={event.group_id} eventId={event.id} />
             {event.status !== 'cancelled' && (
               <a
                 href={expenseHref}
@@ -442,6 +444,7 @@ function PollingBody({
   )
   const busyQ = useQuery(planQueries.busy(supabase, viewerId, range))
   const [tab, setTab] = useState<'mine' | 'group' | null>(null)
+  const [answered, setAnswered] = useState<boolean | null>(null)
   const [preview, setPreview] = useState<PlanBestSlot | null>(null)
 
   const model = useMemo(() => buildGridModel(event, timeZone), [event, timeZone])
@@ -466,9 +469,11 @@ function PollingBody({
   }, [preview, model])
 
   const iResponded = responded.has(viewerId)
-  // Pick the starting tab once, when availability first loads: painting must not flip it.
-  if (tab === null && rows) setTab(iResponded ? 'group' : 'mine')
-  const view = tab ?? 'group'
+  // Decide once, when availability first loads, whether the viewer had already answered.
+  // Painting writes to the same cache, so the starting tab and the phone layout must not
+  // follow the live value or the grid would jump under the finger on the first stroke.
+  if (answered === null && rows) setAnswered(iResponded)
+  const view = tab ?? (answered === false ? 'mine' : 'group')
 
   const best = (
     <BestTimes
@@ -477,10 +482,9 @@ function PollingBody({
       timeZone={timeZone}
       canLock={canLock}
       onLock={onLock}
-      onPreview={(slot) => {
-        setPreview(slot)
-        if (slot && view !== 'group') setTab('group')
-      }}
+      // Outline the slot on the heatmap only. Hovering or scrolling past a card must not
+      // swap the painter out from under someone who is still adding their times.
+      onPreview={setPreview}
       avatarUrl={avatarUrl}
     />
   )
@@ -488,7 +492,8 @@ function PollingBody({
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
       <div className="flex min-w-0 flex-col gap-6">
-        {!desktop && best}
+        {/* On a phone, someone who still owes their times gets the painter first. */}
+        {!desktop && answered !== false && best}
         <Card className="flex flex-col gap-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-bold tracking-tight">
@@ -541,6 +546,7 @@ function PollingBody({
             </p>
           )}
         </Card>
+        {!desktop && answered === false && best}
         <div className="lg:hidden">
           <NudgeBlock
             event={event}
