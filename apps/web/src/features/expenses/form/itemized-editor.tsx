@@ -8,9 +8,10 @@ import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
 import {
   TIP_PERCENTS,
+  itemsSubtotal,
   itemsTotal,
   newItem,
-  tipFor,
+  withTip,
   type ItemDraft,
   type SplitDraft,
 } from './split-state'
@@ -35,12 +36,13 @@ export function ItemizedEditor({
   shares: Shares | null
 }) {
   const name = (m: MoneyMember) => (m.id === viewerId ? t('common.you') : firstName(m.display_name))
+  const change = (next: SplitDraft) => onChange(withTip(next))
   const update = (id: string, patch: Partial<ItemDraft>) =>
-    onChange({
+    change({
       ...draft,
       items: draft.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     })
-  const subtotal = draft.items.reduce((a, i) => a + (i.amountCents ?? 0), 0)
+  const subtotal = itemsSubtotal(draft.items)
   // You first, so your own chip is always in the same spot.
   const chips = [...members].sort((a, b) => Number(b.id === viewerId) - Number(a.id === viewerId))
 
@@ -74,7 +76,7 @@ export function ItemizedEditor({
                     label={t('expenses.itemizedEditor.remove', { item: label })}
                     icon={<X />}
                     onClick={() =>
-                      onChange({ ...draft, items: draft.items.filter((i) => i.id !== item.id) })
+                      change({ ...draft, items: draft.items.filter((i) => i.id !== item.id) })
                     }
                   />
                 )}
@@ -129,7 +131,7 @@ export function ItemizedEditor({
         leadingIcon={<Plus />}
         className="self-start"
         onClick={() =>
-          onChange({ ...draft, items: [...draft.items, newItem(members.map((m) => m.id))] })
+          change({ ...draft, items: [...draft.items, newItem(members.map((m) => m.id))] })
         }
       >
         {t('expenses.itemized.addItem')}
@@ -161,15 +163,16 @@ export function ItemizedEditor({
           {subtotal > 0 && (
             <span className="flex gap-1">
               {TIP_PERCENTS.map((percent) => {
-                const cents = tipFor(subtotal, percent)
-                const on = draft.tipCents === cents
+                const on = draft.tipPercent === percent
                 return (
                   <button
                     key={percent}
                     type="button"
                     aria-pressed={on}
                     aria-label={t('expenses.itemizedEditor.tipPercentLabel', { percent })}
-                    onClick={() => onChange({ ...draft, tipCents: on ? null : cents })}
+                    onClick={() =>
+                      change({ ...draft, tipPercent: on ? null : percent, tipCents: null })
+                    }
                     className={cn(
                       'h-7 rounded-pill border px-2 tabular text-xs font-semibold transition-colors',
                       on
@@ -189,7 +192,7 @@ export function ItemizedEditor({
             id="itemized-tip"
             currency={currency}
             value={draft.tipCents}
-            onValueChange={(tipCents) => onChange({ ...draft, tipCents })}
+            onValueChange={(tipCents) => onChange({ ...draft, tipCents, tipPercent: null })}
             className="h-10 w-28"
           />
         </dd>

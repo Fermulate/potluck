@@ -151,4 +151,34 @@ describe('ExpenseForm', () => {
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     expect(create.mock.calls[0]![1].amount_cents).toBe(9600)
   })
+
+  it('follows the subtotal after a percent is picked, until a tip is typed', () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'By item' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Item' }), {
+      target: { value: 'Dinner' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dinner' }), {
+      target: { value: '80' },
+    })
+    const eighteen = screen.getByRole('button', { name: 'Tip 18% of the subtotal' })
+    fireEvent.click(eighteen)
+    expect(screen.getByLabelText('Tip')).toHaveValue('14.40')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }))
+    const [, dessert] = screen.getAllByRole('textbox', { name: 'Item' })
+    fireEvent.change(dessert!, { target: { value: 'Dessert' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dessert' }), {
+      target: { value: '20' },
+    })
+    expect(eighteen).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Tip')).toHaveValue('18')
+
+    fireEvent.change(screen.getByLabelText('Tip'), { target: { value: '15' } })
+    expect(eighteen).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Price, Dessert' }), {
+      target: { value: '40' },
+    })
+    expect(screen.getByLabelText('Tip')).toHaveValue('15')
+  })
 })
