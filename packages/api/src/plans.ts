@@ -89,7 +89,6 @@ function fail(error: { message: string; details?: string | null } | null): never
 
 export const plansKeys = {
   all: ['potluck', 'plans'] as const,
-  profile: (userId: string) => ['potluck', 'plans', 'profile', userId] as const,
   timeline: (from: string, to: string) => ['potluck', 'plans', 'timeline', from, to] as const,
   timelineAll: () => ['potluck', 'plans', 'timeline'] as const,
   past: () => ['potluck', 'plans', 'past'] as const,
@@ -124,19 +123,6 @@ function toPlanProfile(
     locale: data.locale,
     avatarPath: data.avatar_path,
   }
-}
-
-export async function fetchPlanProfile(
-  client: PotluckClient,
-  userId: string,
-): Promise<PlanProfile> {
-  const { data, error } = await client
-    .from('profiles')
-    .select('id, display_name, timezone, default_currency, locale, avatar_path')
-    .eq('id', userId)
-    .single()
-  if (error) fail(error)
-  return toPlanProfile(data)
 }
 
 export async function fetchMyTimeline(

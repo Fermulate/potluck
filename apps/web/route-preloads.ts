@@ -1,4 +1,5 @@
 import type { Plugin, Rolldown } from 'vite'
+import { AUTH_RESULT_IN_URL, STORED_SESSION_KEY } from './src/lib/boot-rule.ts'
 
 type OutputChunk = Rolldown.OutputChunk
 
@@ -14,8 +15,9 @@ type OutputChunk = Rolldown.OutputChunk
  *
  * Only files the entry does not already preload are listed. The script also marks the document
  * `data-boot="app"` whenever the app has to start instead of the prerendered landing page
- * (prerender-landing.ts): any other URL, a stored session, or an auth result in the URL. The
- * same rule decides in main.tsx whether the app renders.
+ * (prerender-landing.ts): any other URL, a stored session, or an auth result in the URL
+ * (patterns from src/lib/boot-rule.ts, shared with auth.ts). The same rule decides in main.tsx
+ * whether the app renders.
  */
 export function routePreloads(apiUrl: string | undefined): Plugin {
   return {
@@ -58,10 +60,10 @@ export function routePreloads(apiUrl: string | undefined): Plugin {
           api: apiUrl ? new URL(apiUrl).origin : null,
         }
         const script = `(function(){var m=${JSON.stringify(map)},p=location.pathname,s=false,l,i,e;
-try{for(i=0;i<localStorage.length;i++)if(/^sb-.+-auth-token$/.test(localStorage.key(i)||''))s=true}catch(x){}
+try{for(i=0;i<localStorage.length;i++)if(${STORED_SESSION_KEY}.test(localStorage.key(i)||''))s=true}catch(x){}
 l=s?m.app.concat(p==='/'||p==='/home'?m.home:[]):p==='/'?m.landing:[];
 function add(r,h){e=document.createElement('link');e.rel=r;e.href=h;e.crossOrigin='';document.head.appendChild(e)}
-if(p!=='/'||s||/(access_token|refresh_token|code|token_hash|error_description)=/.test(location.search+location.hash))document.documentElement.setAttribute('data-boot','app');
+if(p!=='/'||s||${AUTH_RESULT_IN_URL}.test(location.search+location.hash))document.documentElement.setAttribute('data-boot','app');
 if(s&&m.api)add('preconnect',m.api);
 for(i=0;i<l.length;i++)add('modulepreload',l[i])})()`
         return [{ tag: 'script', children: script, injectTo: 'head' }]

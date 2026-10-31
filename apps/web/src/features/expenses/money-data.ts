@@ -86,8 +86,9 @@ export function useGroupMoneyRealtime(groupId: string | undefined) {
  * and the balances shown on the group list and the home screen (which otherwise stay cached for
  * up to the default stale time after you come back to them).
  */
-export function invalidateMoney(queryClient: QueryClient, groupId: string) {
+export function invalidateMoney(queryClient: QueryClient, groupId: string, expenseId?: string) {
   void queryClient.invalidateQueries({ queryKey: moneyKeys.group(groupId) })
+  if (expenseId) void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expenseId) })
   void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
   void queryClient.invalidateQueries({ queryKey: groupKeys.all })
   void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })

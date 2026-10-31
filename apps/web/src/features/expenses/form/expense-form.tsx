@@ -1,6 +1,5 @@
 import {
   createExpense,
-  moneyKeys,
   updateExpense,
   uploadReceipt,
   type ExpensePayload,
@@ -166,8 +165,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       })
     },
     onSuccess: (expense) => {
-      invalidateMoney(queryClient, group.id)
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expense.id) })
+      invalidateMoney(queryClient, group.id, expense.id)
       toast.success(editing ? t('expenses.updated') : t('expenses.saved'))
       props.onDone(expense.id)
     },
