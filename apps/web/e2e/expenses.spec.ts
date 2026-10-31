@@ -1,3 +1,5 @@
+import { fetchFxRate } from '@potluck/api'
+import { convert } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import type { Page } from '@playwright/test'
 import { addEqualExpense, groupWith, type TestGroup } from './support/api'
@@ -204,5 +206,37 @@ test.describe('expenses', () => {
 
     await page.goto(`/groups/${group.id}`)
     await expect(page.getByRole('link', { name: new RegExp(description) })).toBeVisible()
+  })
+
+  test('a euro expense in a dollar group shows what it comes to', async ({ newUser, openAs }) => {
+    const { me, ben, cleo, group } = await threePeople(newUser)
+    const page = await openAs(me)
+    const description = unique('Museum')
+    const today = new Date().toISOString().slice(0, 10)
+    const quote = await fetchFxRate(me.client, 'EUR', 'USD', today)
+    expect(quote, 'global setup seeds an EUR to USD rate').not.toBeNull()
+    const converted = usd(convert(5000, quote!.rate, { from: 'EUR', to: 'USD' }))
+
+    await startExpense(page, group, '50', description)
+    await page.getByRole('button', { name: `${t('expenses.fields.currency')}, USD` }).click()
+    const picker = page.getByRole('dialog', { name: t('expenses.currencyPicker.title') })
+    await picker.getByRole('button', { name: /^EUR/ }).click()
+    await expect(page.getByText(converted).first()).toBeVisible()
+
+    await saveAndOpen(page, group, description)
+    await expect(
+      page.getByText(
+        t('expenses.detail.converted', {
+          amount: converted,
+          currency: 'USD',
+          rate: String(quote!.rate),
+        }),
+      ),
+    ).toBeVisible()
+    // Shares stay in the currency the bill was paid in: 50 EUR three ways.
+    const share = new RegExp(`${formatMoney(1666, 'EUR')}|${formatMoney(1667, 'EUR')}`)
+    for (const person of [ben, cleo]) {
+      await expect(page.getByRole('listitem').filter({ hasText: person.name })).toContainText(share)
+    }
   })
 })
