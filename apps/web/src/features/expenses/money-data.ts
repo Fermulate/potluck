@@ -1,12 +1,14 @@
 import {
+  groupKeys,
   moneyErrorCode,
   moneyKeys,
+  plansKeys,
   moneyQueries,
   myProfileQueryOptions,
   type MoneyPerson,
 } from '@potluck/api'
 import { hasMessage, t } from '@potluck/i18n'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
 import { useBatchedInvalidate } from '@/lib/realtime'
@@ -77,6 +79,18 @@ export function useGroupMoneyRealtime(groupId: string | undefined) {
       void supabase.removeChannel(channel)
     }
   }, [groupId, bump])
+}
+
+/**
+ * Everything a new or changed expense or payment moves: the group's money screens, the feed,
+ * and the balances shown on the group list and the home screen (which otherwise stay cached for
+ * up to the default stale time after you come back to them).
+ */
+export function invalidateMoney(queryClient: QueryClient, groupId: string) {
+  void queryClient.invalidateQueries({ queryKey: moneyKeys.group(groupId) })
+  void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+  void queryClient.invalidateQueries({ queryKey: groupKeys.all })
+  void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })
 }
 
 /** Public URL for a profile photo in the `avatars` bucket. */
