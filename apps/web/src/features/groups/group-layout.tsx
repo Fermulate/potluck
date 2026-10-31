@@ -92,8 +92,9 @@ function GroupTabs({ group }: { group: GroupDetail }) {
               <Link
                 to={tab.to}
                 params={{ groupId: group.id }}
-                // Exact, or the Expenses (index) tab is announced as current on every tab.
-                activeOptions={{ exact: true }}
+                // The index tab is a prefix of every other tab: match it exactly, or the router
+                // marks it as the current page everywhere in the group.
+                activeOptions={{ exact: tab.segment === '' }}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'inline-flex h-11 items-center px-3.5 text-[0.9375rem] font-semibold transition-colors duration-150',
