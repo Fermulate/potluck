@@ -18,11 +18,6 @@ function GroupLinks({ summary }: { summary: BalanceSummary }) {
           <Link
             to="/groups/$groupId"
             params={{ groupId: g.groupId }}
-            aria-label={`${t('home.balance.seeGroup', { group: g.groupName })}: ${
-              g.netCents < 0
-                ? t('home.balance.owe', { amount: formatMoney(-g.netCents, summary.currency) })
-                : t('home.balance.owed', { amount: formatMoney(g.netCents, summary.currency) })
-            }`}
             className="-mx-2 flex items-center gap-2.5 rounded-[0.625rem] px-2 py-1.5 text-sm hover:bg-on-hero/10"
           >
             <span aria-hidden className="w-5 shrink-0 text-center">
@@ -35,6 +30,11 @@ function GroupLinks({ summary }: { summary: BalanceSummary }) {
               locale={DEFAULT_LOCALE}
               surface="hero"
               sign="never"
+              srLabel={
+                g.netCents < 0
+                  ? t('home.balance.owe', { amount: formatMoney(-g.netCents, summary.currency) })
+                  : t('home.balance.owed', { amount: formatMoney(g.netCents, summary.currency) })
+              }
               className="font-semibold"
             />
             <ChevronRight aria-hidden className="size-4 shrink-0 text-hero-mute" />
