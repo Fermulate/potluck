@@ -45,9 +45,18 @@ function Badge({ value }: { value: number | boolean }) {
   )
 }
 
-function badgeText(label: string, badge: NavItem['badge']): string | undefined {
-  if (typeof badge === 'number' && badge > 0) return `${label} (${badge})`
-  return undefined
+/**
+ * The count for screen readers. It lives in the link text (not an `aria-label`) so the
+ * accessible name still starts with the visible label, which voice control relies on.
+ */
+function BadgeText({ badge }: { badge: NavItem['badge'] }) {
+  if (typeof badge !== 'number' || badge <= 0) return null
+  return (
+    <>
+      {' '}
+      <span className="sr-only">({badge})</span>
+    </>
+  )
 }
 
 export interface BottomTabBarProps {
@@ -80,7 +89,6 @@ export function BottomTabBar({
         {renderLink({
           href: item.href,
           'aria-current': active ? 'page' : undefined,
-          'aria-label': badgeText(item.label, item.badge),
           className: cn(
             'relative flex h-14 w-full max-w-24 flex-col items-center justify-center gap-1 rounded-card text-[0.6875rem] font-semibold transition-colors duration-150 [&_svg]:size-6',
             active ? 'text-ink' : 'text-mute hover:text-ink',
@@ -98,7 +106,10 @@ export function BottomTabBar({
                 )}
                 {active ? (item.activeIcon ?? item.icon) : item.icon}
               </span>
-              <span>{item.label}</span>
+              <span>
+                {item.label}
+                <BadgeText badge={item.badge} />
+              </span>
               {item.badge !== undefined && <Badge value={item.badge} />}
             </>
           ),
@@ -172,7 +183,6 @@ export function SideRail({
                 {renderLink({
                   href: item.href,
                   'aria-current': active ? 'page' : undefined,
-                  'aria-label': badgeText(item.label, item.badge),
                   className: cn(
                     'relative isolate flex h-11 items-center gap-3 rounded-pill px-3.5 text-[0.9375rem] font-semibold transition-colors duration-150 [&_svg]:size-5',
                     active ? 'text-ink' : 'text-mute hover:bg-ink/[0.04] hover:text-ink',
@@ -188,7 +198,10 @@ export function SideRail({
                         />
                       )}
                       {active ? (item.activeIcon ?? item.icon) : item.icon}
-                      <span className="flex-1">{item.label}</span>
+                      <span className="flex-1">
+                        {item.label}
+                        <BadgeText badge={item.badge} />
+                      </span>
                       {typeof item.badge === 'number' && item.badge > 0 && (
                         <span
                           aria-hidden
