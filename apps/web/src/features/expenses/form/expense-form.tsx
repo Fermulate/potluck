@@ -20,7 +20,6 @@ import {
   Skeleton,
   TextArea,
   cn,
-  controlClassName,
   toast,
 } from '@potluck/ui'
 import { Money } from '../money'
@@ -328,11 +327,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               <Select value={paidBy} onValueChange={setPaidBy} options={payerOptions} />
             </Field>
             <Field label={t('expenses.fields.date')}>
-              <input
+              <Input
                 type="date"
                 value={spentAt}
                 onChange={(e) => e.target.value && setSpentAt(e.target.value)}
-                className={cn(controlClassName, 'h-12')}
               />
             </Field>
           </div>
