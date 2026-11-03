@@ -26,7 +26,10 @@ export interface ConfirmDialogProps {
   children?: ReactNode
 }
 
-/** Asks before doing something consequential. Closes after `onConfirm` resolves. */
+/**
+ * Asks before doing something consequential. Closes after `onConfirm` resolves; if it rejects,
+ * the dialog stays open so the person can retry or cancel (the caller reports the error).
+ */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -46,6 +49,8 @@ export function ConfirmDialog({
     try {
       await onConfirm()
       onOpenChange(false)
+    } catch {
+      // Reported by the caller. Nothing above a click handler could catch it anyway.
     } finally {
       setBusy(false)
     }
