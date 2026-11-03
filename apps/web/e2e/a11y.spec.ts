@@ -1,0 +1,117 @@
+import AxeBuilder from '@axe-core/playwright'
+import { createPlanEvent } from '@potluck/api'
+import { t } from '@potluck/i18n'
+import type { Page, TestInfo } from '@playwright/test'
+import { addEqualExpense, groupWith } from './support/api'
+import { expect, test, unique, type TestUser } from './support/fixtures'
+
+/** Serious and critical WCAG 2.1 A/AA violations fail the test; the rest are reported. */
+async function audit(page: Page, testInfo: TestInfo) {
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze()
+  await testInfo.attach('axe-results', {
+    body: JSON.stringify(results.violations, null, 2),
+    contentType: 'application/json',
+  })
+  const blocking = results.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => ({
+      id: v.id,
+      impact: v.impact,
+      help: v.help,
+      targets: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
+    }))
+  expect(blocking, 'serious or critical accessibility violations').toEqual([])
+
+  // Layout contract: never a sideways page scroll.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow, 'horizontal page overflow in px').toBeLessThanOrEqual(0)
+}
+
+async function setup(newUser: () => Promise<TestUser>) {
+  const [me, ben] = await Promise.all([newUser(), newUser()])
+  const group = await groupWith(me, [ben], { name: unique('Book club') })
+  await addEqualExpense(ben, group, [me, ben], 4200, unique('Snacks'))
+  return { me, ben, group }
+}
+
+test.describe('accessibility', () => {
+  test('landing', async ({ page }, testInfo) => {
+    // The hero demo is decorative and loops fade-ins; audit its settled state.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/')
+    await expect(page.getByRole('link', { name: t('app.landing.getStarted') })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('home', async ({ newUser, openAs }, testInfo) => {
+    const { me } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto('/home')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(me.name)
+    await audit(page, testInfo)
+  })
+
+  test('group expenses', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}`)
+    await expect(page.getByRole('link', { name: /Snacks/ })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('add expense', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/new/expense?groupId=${group.id}`)
+    await expect(page.getByRole('textbox', { name: t('expenses.fields.amount') })).toBeVisible()
+    await page.getByRole('textbox', { name: t('expenses.fields.amount') }).fill('24')
+    await audit(page, testInfo)
+  })
+
+  test('balances', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}/balances`)
+    await expect(page.getByText(t('balances.youOweTotal'), { exact: true })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('event page', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+    const title = unique('Game night')
+    const event = await createPlanEvent(me.client, {
+      group_id: group.id,
+      title,
+      description: null,
+      location: 'Ben and Cleo place',
+      emoji: '🎲',
+      window_start: day(1),
+      window_end: day(5),
+      day_start_minute: 18 * 60,
+      day_end_minute: 23 * 60,
+      slot_minutes: 30,
+      duration_minutes: 120,
+      min_attendees: 2,
+      rsvp_deadline: null,
+      timezone: 'UTC',
+    })
+    const page = await openAs(me)
+    await page.goto(`/plans/${event.id}`)
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+    await expect(page.getByRole('grid').first()).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('me', async ({ newUser, openAs }, testInfo) => {
+    const page = await openAs(await newUser())
+    await page.goto('/me')
+    await expect(page.getByRole('textbox', { name: t('settings.calendar.feed') })).toBeVisible()
+    await audit(page, testInfo)
+  })
+})
