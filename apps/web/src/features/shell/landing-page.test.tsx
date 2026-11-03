@@ -39,7 +39,10 @@ describe('LandingPage', () => {
     expect(
       screen.getByRole('heading', { name: t('app.landing.features.tab.title') }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('figure', { name: t('app.landing.demo.label') })).toBeInTheDocument()
+    // The demo loads after the headline and buttons have painted.
+    expect(
+      await screen.findByRole('figure', { name: t('app.landing.demo.label') }),
+    ).toBeInTheDocument()
   })
 })
 
