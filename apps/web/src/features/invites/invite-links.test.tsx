@@ -93,7 +93,7 @@ describe('InvitePanel links', () => {
   })
 
   it('shares through the native sheet when there is one', async () => {
-    const share = vi.fn(async () => undefined)
+    const share = vi.fn(async (_data: ShareData) => undefined)
     Object.defineProperty(navigator, 'share', { configurable: true, value: share })
     renderPanel()
     await screen.findByText(/code-i-1-xyz/)
