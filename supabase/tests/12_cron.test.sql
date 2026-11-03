@@ -151,6 +151,9 @@ insert into public.event_rsvps (event_id, user_id, status) values
   (tests.id('soon'), tests.uid('m1'), 'going'),
   (tests.id('soon'), tests.uid('m2'), 'declined');
 delete from public.notifications;
+-- Ignore events that exist outside this test (seed or dev data) so the counts below are this test's only.
+update public.events set reminder_sent_at = now()
+where reminder_sent_at is null and id not in (tests.id('soon'), tests.id('later'));
 
 select is(private.send_event_reminders(), 1, 'only events starting within 24h are reminded');
 select results_eq(
