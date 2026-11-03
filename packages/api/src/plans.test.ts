@@ -16,7 +16,6 @@ import {
   fetchPlanEvent,
   fetchPlanGroups,
   fetchPlanMembers,
-  fetchPlanProfile,
   planAvatarUrl,
   PlanError,
   planQueries,
@@ -51,36 +50,6 @@ describe('PlanError', () => {
 
     const blank = fakeSupabase().respond('rpc:cancel_event', { error: { message: '' } })
     await expect(cancelEvent(blank.client, 'e1')).rejects.toMatchObject({ code: 'unknown' })
-  })
-})
-
-describe('fetchPlanProfile', () => {
-  it('maps the profile to camelCase', async () => {
-    const fake = fakeSupabase().respond('from:profiles', {
-      data: {
-        id: 'u1',
-        display_name: 'Ada',
-        timezone: 'Europe/Berlin',
-        default_currency: 'EUR',
-        locale: 'de',
-        avatar_path: null,
-      },
-    })
-
-    expect(await fetchPlanProfile(fake.client, 'u1')).toEqual({
-      id: 'u1',
-      displayName: 'Ada',
-      timezone: 'Europe/Berlin',
-      defaultCurrency: 'EUR',
-      locale: 'de',
-      avatarPath: null,
-    })
-    expect(argsOf(fake.queries('profiles')[0]!, 'eq')).toEqual([['id', 'u1']])
-  })
-
-  it('throws a PlanError', async () => {
-    const fake = fakeSupabase().respond('from:profiles', { error: { message: 'not_allowed' } })
-    await expect(fetchPlanProfile(fake.client, 'u1')).rejects.toBeInstanceOf(PlanError)
   })
 })
 
@@ -364,7 +333,10 @@ describe('planQueries', () => {
     const run = (o: { queryFn?: unknown }) => (o.queryFn as () => Promise<unknown>)()
     const range = { from: 'a', to: 'b' }
 
-    expect(await run(planQueries.profile(client, 'u1'))).toMatchObject({ displayName: 'A' })
+    const profile = planQueries.profile(client, 'u1')
+    const row = await run(profile)
+    expect(row).toMatchObject({ display_name: 'A' })
+    expect((profile.select as (r: unknown) => unknown)(row)).toMatchObject({ displayName: 'A' })
     expect(await run(planQueries.timeline(client, range))).toEqual([])
     expect(await run(planQueries.past(client, '2026-01-01'))).toEqual([])
     expect(await run(planQueries.groups(client))).toEqual([])

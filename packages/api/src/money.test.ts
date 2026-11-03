@@ -20,7 +20,6 @@ import {
   fetchReceiptUrl,
   fetchRecurringExpenses,
   fetchSimplifiedDebts,
-  fetchViewer,
   moneyErrorCode,
   moneyKeys,
   moneyQueries,
@@ -52,29 +51,6 @@ describe('moneyErrorCode', () => {
     expect(moneyErrorCode({ message: 42 })).toBeNull()
     expect(moneyErrorCode(new Error('Failed to fetch'))).toBeNull()
     expect(moneyErrorCode({ message: 'Not_allowed' })).toBeNull()
-  })
-})
-
-describe('fetchViewer', () => {
-  it('is null when signed out, without touching profiles', async () => {
-    const fake = fakeSupabase()
-    expect(await fetchViewer(fake.client)).toBeNull()
-    expect(fake.queries()).toHaveLength(0)
-  })
-
-  it('reads the signed in profile', async () => {
-    const viewer = { id: 'u1', display_name: 'Ada', timezone: 'UTC' }
-    const fake = fakeSupabase({ user: { id: 'u1' } }).respond('from:profiles', { data: viewer })
-
-    expect(await fetchViewer(fake.client)).toEqual(viewer)
-    const [query] = fake.queries('profiles')
-    expect(argsOf(query!, 'eq')).toEqual([['id', 'u1']])
-    expect(argsOf(query!, 'single')).toHaveLength(1)
-  })
-
-  it('throws the query error', async () => {
-    const fake = fakeSupabase({ user: { id: 'u1' } }).respond('from:profiles', { error: boom })
-    await expect(fetchViewer(fake.client)).rejects.toBe(boom)
   })
 })
 
@@ -525,7 +501,6 @@ describe('uploadReceipt', () => {
 describe('moneyQueries', () => {
   it('keys every query under the money namespace and its group or expense', () => {
     const { client } = fakeSupabase()
-    expect(moneyQueries.viewer(client).queryKey).toEqual(['potluck', 'money', 'viewer'])
     expect(moneyQueries.expenses(client, 'g1').queryKey).toEqual(moneyKeys.expenses('g1'))
     expect(moneyKeys.expenses('g1').slice(0, 4)).toEqual(moneyKeys.group('g1'))
     expect(moneyQueries.comments(client, 'e1').queryKey).toEqual([
@@ -560,7 +535,6 @@ describe('moneyQueries', () => {
     const { client } = fake
     const run = (o: { queryFn?: unknown }) => (o.queryFn as () => Promise<unknown>)()
 
-    await run(moneyQueries.viewer(client))
     await run(moneyQueries.people(client))
     await run(moneyQueries.group(client, 'g1'))
     await run(moneyQueries.expenses(client, 'g1'))
@@ -575,7 +549,6 @@ describe('moneyQueries', () => {
     expect(await run(moneyQueries.receiptUrl(client, 'g1/r.jpg'))).toBe('u')
 
     expect(fake.queries().map((q) => q.table)).toEqual([
-      'profiles',
       'profiles',
       'groups',
       'expenses',

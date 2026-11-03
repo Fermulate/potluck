@@ -89,13 +89,13 @@ describe('fetchMyGroups', () => {
     const [groups] = fake.queries('groups')
     expect(argsOf(groups!, 'order')).toEqual([['updated_at', { ascending: false }]])
     const [balances] = fake.queries('group_balances')
-    expect(argsOf(balances!, 'in')).toEqual([['group_id', ['g1', 'g2']]])
+    // Balances load in parallel with the groups, so the read is not filtered by group id.
+    expect(argsOf(balances!, 'in')).toEqual([])
   })
 
-  it('skips the balance read when the viewer has no groups', async () => {
+  it('returns nothing when the viewer has no groups', async () => {
     const fake = fakeSupabase().respond('from:groups', { data: null })
     expect(await fetchMyGroups(fake.client, 'u1')).toEqual([])
-    expect(fake.queries('group_balances')).toHaveLength(0)
   })
 
   it('treats missing balance data as no balances', async () => {
@@ -138,7 +138,6 @@ describe('fetchGroup', () => {
   it('is null when the group is not visible', async () => {
     const fake = fakeSupabase().respond('from:groups', { data: null })
     expect(await fetchGroup(fake.client, 'g1', 'u1')).toBeNull()
-    expect(fake.queries('group_balances')).toHaveLength(0)
   })
 
   it('throws the read error', async () => {
@@ -301,7 +300,7 @@ describe('invites', () => {
     const fake = fakeSupabase().respond('rpc:invite_preview', { data: [] })
     await expect(fetchInvitePreview(fake.client, 'nope')).rejects.toMatchObject({
       message: 'invite_not_found',
-      code: 'P0002',
+      code: 'PT404',
     })
 
     const failing = fakeSupabase().respond('rpc:invite_preview', { error: boom })
