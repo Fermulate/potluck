@@ -603,14 +603,20 @@ The service-role client (`_shared/admin.ts`) bypasses RLS, so each function auth
 
 The `supabase_realtime` publication carries `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway.
 
-Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. One channel per screen:
+Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. Each screen owns one channel, mounted while it is open; `notifications-<userId>` lives in the app layout and is the only one open on every screen. Channels opened through `useRealtime` (`apps/web/src/lib/realtime.ts`) get a `:<n>` mount counter suffix so a remount never joins the topic the previous mount is still leaving.
 
-| Channel           | Tables (filter)                                                                                       | Refetches                                          |
-| ----------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `money:<groupId>` | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                               | group money queries, the changed expense, comments |
-| `plan:<eventId>`  | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests, RSVPs, comments   |
+| Channel                  | Mounted by                                                 | Tables (filter)                                                                                       | Refetches                                                                                    |
+| ------------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `notifications-<userId>` | app layout                                                 | `notifications` (`user_id=eq.<userId>`)                                                               | the notification list and the unread badge                                                   |
+| `groups-live`            | the Groups tab                                             | `group_members`, `expenses`, `settlements` (unfiltered; RLS limits the stream to the viewer's groups) | every `groups` key: list, detail, invites, friends                                           |
+| `groups-live-<groupId>`  | the group layout                                           | same three tables (`group_id=eq.<groupId>`)                                                           | same                                                                                         |
+| `friends-live`           | the Friends page                                           | `expenses`, `settlements`, `group_members` (unfiltered)                                               | the friends list with its net balances                                                       |
+| `money:<groupId>`        | the Expenses tab, the Balances tab, an expense detail page | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                               | group money queries, the changed expense, the activity feed, comments on a commented expense |
+| `activity-feed`          | the Activity tab                                           | `activity` inserts (unfiltered)                                                                       | the activity feed                                                                            |
+| `group-plans:<groupId>`  | the group's Plans tab                                      | `events` (`group_id=eq.<groupId>`)                                                                    | the group's event list and the timeline                                                      |
+| `plan:<eventId>`         | an event page                                              | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests; the event, timeline and group event list; RSVPs; comments   |
 
-Channels batch invalidations for 300 ms (`useBatchedInvalidate` in `apps/web/src/lib/realtime.ts`; the plan channel has its own copy) so a friend dragging across twenty cells, or the several change events one expense save emits, cause one refetch, not twenty.
+Channels batch invalidations for 300 ms (`useBatchedInvalidate` in `apps/web/src/lib/realtime.ts`; the plan channel has its own copy) so a friend dragging across twenty cells, or the several change events one expense save emits, cause one refetch, not twenty. The notifications and group plans channels invalidate per event; both fire rarely enough that batching would not matter.
 
 ## Scheduled jobs
 
