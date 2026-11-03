@@ -56,7 +56,12 @@ function renderSection(list = rows) {
 async function expand() {
   const toggle = await screen.findByRole('button', { name: /Repeating/ })
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  expect(toggle).toHaveTextContent('1/2')
+  expect(toggle).toHaveTextContent(
+    [
+      t('expenses.recurring.activeCount', { count: 1 }),
+      t('expenses.recurring.pausedCount', { count: 1 }),
+    ].join(', '),
+  )
   fireEvent.click(toggle)
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
 }
@@ -70,6 +75,13 @@ describe('RecurringSection', () => {
     const { router } = renderSection([])
     await waitFor(() => expect(router.state.status).toBe('idle'))
     expect(screen.queryByRole('button', { name: /Repeating/ })).not.toBeInTheDocument()
+  })
+
+  it('leaves paused out of the summary when everything runs', async () => {
+    renderSection([rows[0]!])
+    const toggle = await screen.findByRole('button', { name: /Repeating/ })
+    expect(toggle).toHaveTextContent(t('expenses.recurring.activeCount', { count: 1 }))
+    expect(toggle).not.toHaveTextContent(/paused/)
   })
 
   it('folds out the schedule for each repeating expense', async () => {
