@@ -21,7 +21,6 @@ export interface NavLinkRenderProps {
   href: string
   className: string
   'aria-current': 'page' | undefined
-  'aria-label'?: string
   children: ReactNode
 }
 

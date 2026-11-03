@@ -34,7 +34,7 @@ export function resolveStackEnv(): StackEnv {
   const local = readEnvLocal()
   const url = process.env.E2E_SUPABASE_URL ?? local.VITE_SUPABASE_URL ?? 'http://127.0.0.1:54321'
   let publishableKey = process.env.E2E_PUBLISHABLE_KEY ?? local.VITE_SUPABASE_PUBLISHABLE_KEY
-  let serviceRoleKey = process.env.E2E_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+  let serviceRoleKey = process.env.E2E_SERVICE_ROLE_KEY
 
   if (!serviceRoleKey || !publishableKey) {
     const status = parseEnv(
