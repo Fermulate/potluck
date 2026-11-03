@@ -16,12 +16,18 @@ window.scrollTo = () => {}
 /**
  * Renders `ui` at `path` inside a throwaway router and query client, so components that use
  * `Link`, `useNavigate` or `useQuery` work. Navigations land on a catch-all route whose
- * pathname is exposed through `router.state.location`.
+ * pathname is exposed through `router.state.location`. Pass `url` to open a route pattern like
+ * `/groups/$groupId` at a concrete address, and `client` to start from a seeded query cache.
  */
-export function renderWithProviders(ui: ReactNode, { path = '/' }: { path?: string } = {}) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
-  })
+export function renderWithProviders(
+  ui: ReactNode,
+  { path = '/', url = path, client }: { path?: string; url?: string; client?: QueryClient } = {},
+) {
+  const queryClient =
+    client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    })
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const start = createRoute({ getParentRoute: () => rootRoute, path, component: () => <>{ui}</> })
   const elsewhere = createRoute({
@@ -31,7 +37,7 @@ export function renderWithProviders(ui: ReactNode, { path = '/' }: { path?: stri
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([start, elsewhere]),
-    history: createMemoryHistory({ initialEntries: [path] }),
+    history: createMemoryHistory({ initialEntries: [url] }),
   })
   const result = render(
     <QueryClientProvider client={queryClient}>

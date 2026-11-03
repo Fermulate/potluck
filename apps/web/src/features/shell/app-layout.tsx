@@ -93,7 +93,11 @@ export function AppLayout() {
         renderLink={renderLink}
         label={t('nav.main')}
         brand={
-          <Link to="/home" className="rounded-pill" aria-label={t('nav.home')}>
+          <Link
+            to="/home"
+            className="rounded-pill"
+            aria-label={`${t('app.name')}, ${t('nav.home')}`}
+          >
             <Wordmark />
           </Link>
         }

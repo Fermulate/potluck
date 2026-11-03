@@ -317,7 +317,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const copy = pending ? confirmCopy(pending) : null
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-3xl">{t('members.title')}</h2>
         {canInvite && !alone && (
@@ -327,7 +327,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
         )}
       </div>
 
-      <ul className="grid gap-2">
+      <ul className="grid grid-cols-1 gap-2">
         {group.members.map((member) => {
           const name = displayName(member)
           const isMe = member.id === viewerId
