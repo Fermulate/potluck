@@ -610,7 +610,7 @@ Clients do not patch their cache from the payload. A change invalidates the matc
 | `money:<groupId>` | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                               | group money queries, the changed expense, comments |
 | `plan:<eventId>`  | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests, RSVPs, comments   |
 
-The plan channel batches invalidations for 300 ms so a friend dragging across twenty cells causes one refetch, not twenty.
+Channels batch invalidations for 300 ms (`useBatchedInvalidate` in `apps/web/src/lib/realtime.ts`; the plan channel has its own copy) so a friend dragging across twenty cells, or the several change events one expense save emits, cause one refetch, not twenty.
 
 ## Scheduled jobs
 

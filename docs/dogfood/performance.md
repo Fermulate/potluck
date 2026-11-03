@@ -86,7 +86,7 @@ What changed:
 - **No group, then balances waterfall.** `fetchMyGroups` and `fetchGroup` waited for the group rows before asking for balances. Balances do not need the ids (RLS already scopes the view), so both go out together.
 - **Route loaders.** Every main screen's route starts its queries in a loader, while its code is still downloading, and on hover or focus of a link (the router already preloads on intent). Loaders never block navigation; screens keep their skeletons. On `/home` requests now start about 100 ms earlier; on the event page the availability, best times and requests panels start right after the event row instead of after the first render.
 - **Batched realtime invalidation.** One expense save emits several change events; each used to cancel and restart the same refetches. Bursts within 300 ms now invalidate once (groups list, friends, activity feed, a group's money screens).
-- **Fresher totals after writes.** Saving an expense or a payment now also invalidates the group list and the home balances, which otherwise showed the old numbers for up to 30 seconds after you came back.
+- **Fresher totals after writes.** Saving, deleting or restoring an expense, and saving a payment, now also invalidate the group list and the home balances, which otherwise showed the old numbers for up to 30 seconds after you came back.
 
 Not changed, on purpose: list queries stay at the default 30 second `staleTime` (realtime keeps them fresh), and the full expense list stays in one request because PostgREST pages it in thousands and a 200-expense group answers in under 10 ms.
 
