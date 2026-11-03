@@ -1,4 +1,10 @@
-import { moneyKeys, type ExpenseWithSplits, type MoneyGroup, type MoneyMember } from '@potluck/api'
+import {
+  meKeys,
+  moneyKeys,
+  type ExpenseWithSplits,
+  type MoneyGroup,
+  type MoneyMember,
+} from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import { createElement, type ReactElement } from 'react'
@@ -71,7 +77,7 @@ export function seededClient(seed: (client: QueryClient) => void = () => {}) {
       mutations: { retry: false },
     },
   })
-  client.setQueryData(moneyKeys.viewer(), {
+  client.setQueryData(meKeys.profile(ME), {
     id: ME,
     display_name: 'Ava Chen',
     avatar_path: null,

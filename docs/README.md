@@ -2,16 +2,17 @@
 
 Start with [development.md](development.md) to get Potluck running, then read [architecture.md](architecture.md) before you change anything under `supabase/` or `packages/core`.
 
-| Doc                                | Read it when                                                                                  |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| [development.md](development.md)   | setting up, running the local stack, writing a migration, adding strings or routes            |
-| [architecture.md](architecture.md) | you need the system diagrams, the schema, the RPC list, the security model or the money rules |
-| [sequences.md](sequences.md)       | you want to know what actually happens when someone adds an expense, joins a group or deploys |
-| [testing.md](testing.md)           | writing tests, checking coverage, running pgTAP                                               |
-| [deployment.md](deployment.md)     | configuring CI, setting secrets, rolling back, or running your own copy                       |
-| [security.md](security.md)         | you touch auth, RLS, storage or edge functions, or want to know what data we keep             |
-| [design.md](design.md)             | building UI: palette, type, motion, accessibility                                             |
-| [adr/](adr/README.md)              | you wonder why something is the way it is                                                     |
+| Doc                                              | Read it when                                                                                  |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| [development.md](development.md)                 | setting up, running the local stack, writing a migration, adding strings or routes            |
+| [architecture.md](architecture.md)               | you need the system diagrams, the schema, the RPC list, the security model or the money rules |
+| [sequences.md](sequences.md)                     | you want to know what actually happens when someone adds an expense, joins a group or deploys |
+| [testing.md](testing.md)                         | writing tests, checking coverage, running pgTAP                                               |
+| [deployment.md](deployment.md)                   | configuring CI, setting secrets, rolling back, or running your own copy                       |
+| [security.md](security.md)                       | you touch auth, RLS, storage or edge functions, or want to know what data we keep             |
+| [design.md](design.md)                           | building UI: palette, type, motion, accessibility                                             |
+| [dogfood/performance.md](dogfood/performance.md) | the performance pass: what was measured, what changed and what it bought                      |
+| [adr/](adr/README.md)                            | you wonder why something is the way it is                                                     |
 
 Outside this folder: [CONTRIBUTING.md](../CONTRIBUTING.md) (branches, commits, PRs), [SECURITY.md](../SECURITY.md) (reporting vulnerabilities), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md).
 
@@ -31,6 +32,7 @@ packages/ui/           web React components
 supabase/migrations/   schema, RLS, RPCs, triggers, storage, realtime, cron
 supabase/functions/    edge functions: notify, fx-sync, ics-feed, delete-account
 supabase/tests/        pgTAP tests
+supabase/snippets/     local only: perf volume data and explain plans for the hot paths
 supabase/seed.sql      demo users and data
 .github/workflows/     ci, deploy, codeql, keepalive
 ```

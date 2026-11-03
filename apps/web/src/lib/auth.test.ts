@@ -65,6 +65,9 @@ describe('needsOnboarding', () => {
 describe('signOut', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    // supabase-js keeps the session under sb-<ref>-auth-token; with none stored the landing
+    // page answers "signed out" without loading the client.
+    localStorage.setItem('sb-test-auth-token', '{}')
     fake.session = { user: { id: 'u-ava' } }
     fake.subscription = {
       endpoint: 'https://push.example/ava-device',

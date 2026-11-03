@@ -4,7 +4,7 @@ import { toast } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { moneyErrorMessage } from './money-data'
+import { invalidateMoney, moneyErrorMessage } from './money-data'
 
 /**
  * Soft deletes an expense right away (it disappears from the list optimistically) and offers
@@ -20,11 +20,7 @@ export function useDeleteExpense() {
       queryClient.setQueryData<ExpenseWithSplits[]>(listKey, (rows) =>
         rows?.filter((row) => row.id !== expense.id),
       )
-      const refresh = () => {
-        void queryClient.invalidateQueries({ queryKey: moneyKeys.group(expense.group_id) })
-        void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expense.id) })
-        void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
-      }
+      const refresh = () => invalidateMoney(queryClient, expense.group_id, expense.id)
       try {
         await deleteExpense(supabase, expense.id)
       } catch (error) {

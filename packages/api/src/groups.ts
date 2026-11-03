@@ -106,13 +106,15 @@ function assemble(
   }
 }
 
-async function balancesFor(client: PotluckClient, groupIds: string[]) {
+/**
+ * Balances keyed `group:user`. `groupIds` null means every group the viewer is in: RLS already
+ * limits the view to those, so the request does not have to wait for the group list.
+ */
+async function balancesFor(client: PotluckClient, groupIds: string[] | null) {
   const map = new Map<string, number>()
-  if (groupIds.length === 0) return map
-  const { data, error } = await client
-    .from('group_balances')
-    .select('group_id, user_id, net_cents')
-    .in('group_id', groupIds)
+  if (groupIds && groupIds.length === 0) return map
+  const query = client.from('group_balances').select('group_id, user_id, net_cents')
+  const { data, error } = await (groupIds ? query.in('group_id', groupIds) : query)
   if (error) throw error
   for (const row of data ?? []) {
     if (row.group_id && row.user_id) map.set(`${row.group_id}:${row.user_id}`, row.net_cents ?? 0)
@@ -122,28 +124,23 @@ async function balancesFor(client: PotluckClient, groupIds: string[]) {
 
 /** Every group the viewer belongs to (direct groups included), newest activity first. */
 export async function fetchMyGroups(client: PotluckClient, viewerId: string) {
-  const { data, error } = await client
-    .from('groups')
-    .select(GROUP_SELECT)
-    .order('updated_at', { ascending: false })
+  // Both requests go out together instead of one after the other.
+  const [{ data, error }, balances] = await Promise.all([
+    client.from('groups').select(GROUP_SELECT).order('updated_at', { ascending: false }),
+    balancesFor(client, null),
+  ])
   if (error) throw error
   const groups = (data ?? []) as unknown as GroupWithMembers[]
-  const balances = await balancesFor(
-    client,
-    groups.map((g) => g.id),
-  )
   return groups.map((g) => assemble(g, balances, viewerId))
 }
 
 export async function fetchGroup(client: PotluckClient, groupId: string, viewerId: string) {
-  const { data, error } = await client
-    .from('groups')
-    .select(GROUP_SELECT)
-    .eq('id', groupId)
-    .maybeSingle()
+  const [{ data, error }, balances] = await Promise.all([
+    client.from('groups').select(GROUP_SELECT).eq('id', groupId).maybeSingle(),
+    balancesFor(client, [groupId]),
+  ])
   if (error) throw error
   if (!data) return null
-  const balances = await balancesFor(client, [groupId])
   return assemble(data as unknown as GroupWithMembers, balances, viewerId)
 }
 

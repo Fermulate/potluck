@@ -23,10 +23,17 @@ declare module '@tanstack/react-router' {
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Root element #root not found')
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-)
+if (document.getElementById('prerender') && document.documentElement.dataset.boot !== 'app') {
+  // A signed-out visit to /: the landing page is already in the HTML (prerender-landing.ts).
+  // Rendering it again would replace every node and repaint the page, so it stays as delivered;
+  // only the animated demo needs React. Its links are plain links into the app.
+  void import('@/features/shell/hero-island').then((m) => m.mountHeroDemo())
+} else {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+}

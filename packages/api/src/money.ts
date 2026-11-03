@@ -1,7 +1,7 @@
 /**
  * money queries and mutations. Platform-neutral: no DOM imports.
  */
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
 
@@ -78,12 +78,6 @@ export interface ActivityItem {
   group: { id: string; name: string; emoji: string | null; is_direct: boolean } | null
 }
 
-export interface Viewer extends MoneyPerson {
-  timezone: string
-  default_currency: string
-  locale: string
-}
-
 export interface FxQuote {
   /** Units of `to` per unit of `from`. */
   rate: number
@@ -127,7 +121,6 @@ export interface SettleUpInput {
 
 export const moneyKeys = {
   all: ['potluck', 'money'] as const,
-  viewer: () => [...moneyKeys.all, 'viewer'] as const,
   people: () => [...moneyKeys.all, 'people'] as const,
   myGroups: () => [...moneyKeys.all, 'my-groups'] as const,
   group: (groupId: string) => [...moneyKeys.all, 'group', groupId] as const,
@@ -165,19 +158,6 @@ function unwrap<T>(result: { data: T | null; error: unknown }): T {
 const PERSON = 'id, display_name, avatar_path, deleted_at'
 
 // Reads ---------------------------------------------------------------------------------------
-
-export async function fetchViewer(client: PotluckClient): Promise<Viewer | null> {
-  const { data: auth } = await client.auth.getUser()
-  const uid = auth.user?.id
-  if (!uid) return null
-  return unwrap(
-    await client
-      .from('profiles')
-      .select(`${PERSON}, timezone, default_currency, locale`)
-      .eq('id', uid)
-      .single(),
-  )
-}
 
 /** Everyone the viewer can see (group mates and friends). */
 export async function fetchPeople(client: PotluckClient): Promise<MoneyPerson[]> {
@@ -405,6 +385,16 @@ export async function fetchActivity(
   return unwrap(await query) as unknown as ActivityItem[]
 }
 
+/** The feed as an infinite query, shared by the screen and its route loader. */
+export const activityInfiniteQueryOptions = (client: PotluckClient) =>
+  infiniteQueryOptions({
+    queryKey: moneyKeys.activity(),
+    queryFn: ({ pageParam }) => fetchActivity(client, { before: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: ActivityItem[]) =>
+      last.length < ACTIVITY_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at,
+  })
+
 export async function fetchReceiptUrl(client: PotluckClient, path: string): Promise<string> {
   const data = unwrap(await client.storage.from('receipts').createSignedUrl(path, 60 * 60))
   if (!data?.signedUrl) throw new Error('receipt_unavailable')
@@ -510,8 +500,6 @@ export async function uploadReceipt(
 // Query options -------------------------------------------------------------------------------
 
 export const moneyQueries = {
-  viewer: (client: PotluckClient) =>
-    queryOptions({ queryKey: moneyKeys.viewer(), queryFn: () => fetchViewer(client) }),
   people: (client: PotluckClient) =>
     queryOptions({ queryKey: moneyKeys.people(), queryFn: () => fetchPeople(client) }),
   myGroups: (client: PotluckClient) =>

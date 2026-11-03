@@ -11,6 +11,7 @@ import {
 } from '@potluck/ui'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { heroFrame } from './hero-frame'
 
 const CURRENCY = 'USD'
 
@@ -243,10 +244,7 @@ export function HeroDemo() {
   const reduced = usePrefersReducedMotion()
   const { phase, painted, cycle } = usePhase(reduced)
   return (
-    <figure
-      className="relative mx-auto h-[40rem] w-full max-w-[34rem] lg:h-[39rem]"
-      aria-label={t('app.landing.demo.label')}
-    >
+    <figure className={heroFrame} aria-label={t('app.landing.demo.label')}>
       <div aria-hidden className="absolute top-0 left-0 sm:left-2">
         <AnimatePresence mode="wait">
           <motion.div

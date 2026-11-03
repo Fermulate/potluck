@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { onAuthEvent } from '@/lib/auth'
 
 /**
  * Reacts to auth changes that happen outside a form: signing out (here or in another tab)
@@ -11,7 +11,7 @@ export function useAuthRedirects() {
   const router = useRouter()
   const queryClient = useQueryClient()
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
+    return onAuthEvent((event) => {
       if (event === 'SIGNED_OUT') {
         queryClient.clear()
         void router.invalidate()
@@ -28,6 +28,5 @@ export function useAuthRedirects() {
         void router.navigate({ to: '/reset-password', replace: true })
       }
     })
-    return () => data.subscription.unsubscribe()
   }, [router, queryClient])
 }

@@ -1,4 +1,4 @@
-import { moneyKeys, settleUp, type MoneyGroup, type MoneyMember } from '@potluck/api'
+import { settleUp, type MoneyGroup, type MoneyMember } from '@potluck/api'
 import { springs } from '@potluck/tokens'
 import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
@@ -25,6 +25,7 @@ import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import {
   avatarUrl,
   firstName,
+  invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,
 } from '@/features/expenses/money-data'
@@ -220,8 +221,7 @@ function PaymentForm({
         note: note.trim() || null,
       }),
     onSuccess: (_row, cents) => {
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+      invalidateMoney(queryClient, group.id)
       onDone({ to: recipient, owedBefore: owed, paid: cents })
     },
     onError: (e) => toast.error(moneyErrorMessage(e)),

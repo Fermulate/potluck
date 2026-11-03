@@ -1,6 +1,5 @@
 import {
   createExpense,
-  moneyKeys,
   updateExpense,
   uploadReceipt,
   type ExpensePayload,
@@ -32,7 +31,13 @@ import { supabase } from '@/lib/supabase'
 import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
-import { avatarUrl, moneyErrorMessage, useMoneyGroup, useTimeZone } from '../money-data'
+import {
+  avatarUrl,
+  invalidateMoney,
+  moneyErrorMessage,
+  useMoneyGroup,
+  useTimeZone,
+} from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
 import { receiptExtension } from './receipt'
@@ -160,9 +165,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       })
     },
     onSuccess: (expense) => {
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expense.id) })
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+      invalidateMoney(queryClient, group.id, expense.id)
       // Say what was added and what it means for you, not just that something happened.
       const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
       toast.success(

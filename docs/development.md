@@ -30,12 +30,12 @@ pnpm dev                      # http://localhost:5173
 
 The web app reads `.env.local` from the repo root (`envDir` in `apps/web/vite.config.ts`). Only `VITE_*` variables reach the browser, and everything in them is public.
 
-| Variable                        | Local value                                        | What it is                                                |
-| ------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                          |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do        |
-| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects)    |
-| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally |
+| Variable                        | Local value                                        | What it is                                                                                             |
+| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                                                                       |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do                                                     |
+| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects) and for the social preview tags in `index.html` |
+| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally                                              |
 
 `.env` and `.env.*` are git-ignored except `.env.example`. Server-side secrets never go in these files; see [deployment.md](deployment.md#edge-function-secrets).
 
@@ -101,6 +101,8 @@ To exercise the hooks end to end, create the two Vault secrets in your local dat
 
 Password for all of them: `potluck-demo`. Open http://localhost:5173/join/hikecrew-demo to try the invite flow. The seed also has about 30 expenses across every split type (one in EUR), settlements, a polling hike with availability from five people and an open request, and a scheduled taco night with RSVPs.
 
+For performance work, `supabase/snippets/perf_volume.sql` adds 40 more accounts (`perf01`..`perf40@perf.potluck.test`, same password) with 15 groups, 3,000 expenses, settlements and 40 events, and `supabase/snippets/perf_hot_paths.sql` prints `EXPLAIN (ANALYZE, BUFFERS)` for the hot read paths as one of them. Both are for the local database only; see [dogfood/performance.md](dogfood/performance.md).
+
 ## Scripts
 
 Run from the repo root. Turbo runs the per-package scripts in dependency order and caches what it can.
@@ -151,8 +153,8 @@ Commit the regenerated file in the same PR as the migration. Do not edit it by h
 1. `npx supabase migration new <short_name>` creates `supabase/migrations/<timestamp>_<short_name>.sql`.
 2. Follow the existing patterns:
    - `revoke all ... from anon, authenticated`, then grant the exact columns clients need.
-   - `alter table ... enable row level security` and policies for every new table in `public`. Use `(select auth.uid())` and the helpers in `private` (`my_group_ids()`, `is_group_admin()`, ...).
-   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'`.
+   - `alter table ... enable row level security` and policies for every new table in `public`. Use `(select auth.uid())` and the helpers in `private`. For membership checks on read policies write `group_id = any (array(select private.my_group_ids()))`: it runs once per statement and, unlike `in (select ...)`, can use the `group_id` index.
+   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'`. One exception: small immutable SQL helpers evaluated per row (`private.minor_units`, `private.convert_minor`) use a SQL-standard body (`return ...`) and no `set` clause, so the planner can inline them. Those bodies are bound when the function is created, so the caller's search path cannot change them. `supabase db advisors` reports them as `function_search_path_mutable`; that warning is expected.
    - Helpers that clients must not call go in `private` and get an explicit `grant execute` only if a policy needs them.
    - Additive only. A breaking RPC change is a new `_v2` function ([ADR 8](adr/0008-additive-migrations-and-versioned-rpcs.md)).
 3. If the change affects money or scheduling rules, change the matching function in `packages/core` too and test both.
@@ -223,6 +225,8 @@ Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router 
 - Files and folders starting with `-` are ignored by the router (`routes/-dev-kit/`), so colocated helpers go there.
 - Keep route files thin. Put screens and hooks in `apps/web/src/features/<feature>/` and import them.
 - Code splitting is automatic (`autoCodeSplitting: true`).
+- Route files are part of the first download, so keep their non-component parts light: no schema libraries (search params use `src/lib/search.ts`) and no feature modules. A `loader` that calls `prefetch.<screen>()` from `src/lib/prefetch.ts` starts the screen's queries while its code loads; it must not await them.
+- `/` is prerendered at build time (`prerender-landing.ts`) and, for signed-out visitors, stays static apart from the demo. A change to the landing page shows up there automatically; anything on it must render without a browser (no `window` during render). `pnpm dev` does not prerender.
 
 ```tsx
 // apps/web/src/routes/_app/groups/$groupId/recurring.tsx

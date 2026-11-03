@@ -11,6 +11,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Potluck" />
     <title>Potluck</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Potluck" />
+    <meta property="og:title" content="Potluck" />
+    <meta
+      property="og:description"
+      content="Split expenses and plan get-togethers with your people."
+    />
+    <meta property="og:url" content="%VITE_APP_URL%/" />
+    <meta property="og:image" content="%VITE_APP_URL%/pwa-512x512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Potluck" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Potluck" />
+    <meta
+      name="twitter:description"
+      content="Split expenses and plan get-togethers with your people."
+    />
     <style>
       /* First paint before the token stylesheet loads. Values mirror @potluck/tokens. */
       html {
@@ -26,6 +44,10 @@
           background: #14110e;
           color: #f6efe3;
         }
+      }
+      /* The prerendered landing page is only for signed-out visits to /. */
+      html[data-boot='app'] #prerender {
+        display: none;
       }
     </style>
     <script>

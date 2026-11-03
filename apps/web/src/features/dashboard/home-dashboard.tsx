@@ -1,10 +1,11 @@
 import { planQueries, type PlanGroup, type PlanTimelineItem } from '@potluck/api'
 import { formatDate, formatTime, greeting, t } from '@potluck/i18n'
-import { Badge, Button, Card, EmptyState, Skeleton } from '@potluck/ui'
+import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CalendarHeart, ChevronRight, Plus } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { firstName } from '@/features/plans/format'
 import { useNow } from '@/features/plans/use-now'
@@ -19,6 +20,7 @@ import { BalanceHero } from './balance-hero'
 import { summarizeBalances } from './summary'
 
 const UPCOMING_DAYS = 14
+const HOLD_MS = 1500
 
 export function HomeDashboard() {
   const viewer = useViewer()
@@ -46,17 +48,34 @@ export function HomeDashboard() {
   // A lone card fills the row; several peek in from the edge so you know to swipe.
   const cardWidth = waiting === 1 ? 'w-full shrink-0' : 'w-64 shrink-0 snap-start'
 
-  const name = firstName(viewer.profile?.displayName ?? '')
+  // The session carries the name from sign up, so the greeting (the largest text on the
+  // screen) can paint before the profile request returns. The profile wins once it is in.
+  const session = useSession()
+  const metaName = session?.user.user_metadata?.display_name
+  const displayName =
+    viewer.profile?.displayName ?? (typeof metaName === 'string' ? metaName : undefined)
+  const name = firstName(displayName ?? '')
   const summary = balances.data
     ? summarizeBalances(balances.data, viewer.profile?.defaultCurrency)
     : null
   const todayKey = dayKey(now, viewer.timeZone)
+  // On phones everything stacks, so "Needs you" (known once the timeline is in) and the real
+  // balance card (taller than its skeleton) would push down whatever was already on screen.
+  // What sits below them waits, invisible but laid out, until both have answered (with data or
+  // an error) or a moment has passed, whichever comes first.
+  const [heldLongEnough, setHeldLongEnough] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setHeldLongEnough(true), HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const settled = heldLongEnough || (!timeline.isPending && !balances.isPending)
+  const holdBelow = settled ? undefined : 'max-lg:invisible'
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 lg:px-8 lg:pb-12">
       <header className="flex items-end justify-between gap-4">
         <div className="min-w-0">
-          {viewer.profile ? (
+          {displayName ? (
             <h1 className="flourish text-[2.25rem] leading-none text-ink sm:text-5xl">
               {greeting(name, { timeZone: viewer.timeZone, now })}
             </h1>
@@ -84,7 +103,11 @@ export function HomeDashboard() {
           </Appear>
 
           {(needsTimes.length > 0 || needsRsvp.length > 0) && (
-            <Appear as="section" index={1} className="-mx-4 flex flex-col gap-3 lg:mx-0">
+            <Appear
+              as="section"
+              index={1}
+              className={cn('-mx-4 flex flex-col gap-3 lg:mx-0', holdBelow)}
+            >
               <div className="flex items-baseline justify-between px-4 lg:px-0">
                 <h2 className="text-xl font-bold tracking-tight">{t('home.needsYou')}</h2>
                 <Badge tone="tomato">{t('home.needsYouCount', { count: waiting })}</Badge>
@@ -105,7 +128,7 @@ export function HomeDashboard() {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-8">
+        <div className={cn('flex min-w-0 flex-col gap-8', holdBelow)}>
           <Appear as="section" index={2} className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between">
               <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>

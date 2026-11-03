@@ -6,6 +6,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { Database } from './database.types'
 import type { PotluckClient } from './index'
+import { fetchMyProfile, meKeys, type ProfileRow } from './me'
 
 type Tables = Database['public']['Tables']
 type Functions = Database['public']['Functions']
@@ -88,7 +89,6 @@ function fail(error: { message: string; details?: string | null } | null): never
 
 export const plansKeys = {
   all: ['potluck', 'plans'] as const,
-  profile: (userId: string) => ['potluck', 'plans', 'profile', userId] as const,
   timeline: (from: string, to: string) => ['potluck', 'plans', 'timeline', from, to] as const,
   timelineAll: () => ['potluck', 'plans', 'timeline'] as const,
   past: () => ['potluck', 'plans', 'past'] as const,
@@ -109,16 +109,12 @@ export const plansKeys = {
 
 // Queries --------------------------------------------------------------------
 
-export async function fetchPlanProfile(
-  client: PotluckClient,
-  userId: string,
-): Promise<PlanProfile> {
-  const { data, error } = await client
-    .from('profiles')
-    .select('id, display_name, timezone, default_currency, locale, avatar_path')
-    .eq('id', userId)
-    .single()
-  if (error) fail(error)
+function toPlanProfile(
+  data: Pick<
+    ProfileRow,
+    'id' | 'display_name' | 'timezone' | 'default_currency' | 'locale' | 'avatar_path'
+  >,
+): PlanProfile {
   return {
     id: data.id,
     displayName: data.display_name,
@@ -332,11 +328,13 @@ export function planAvatarUrl(client: PotluckClient, path: string | null): strin
 // Query options --------------------------------------------------------------
 
 export const planQueries = {
+  /** Same cache entry as the Me screen's profile, so one request serves both and edits show up. */
   profile: (client: PotluckClient, userId: string) =>
     queryOptions({
-      queryKey: plansKeys.profile(userId),
-      queryFn: () => fetchPlanProfile(client, userId),
+      queryKey: meKeys.profile(userId),
+      queryFn: () => fetchMyProfile(client, userId),
       staleTime: 5 * 60_000,
+      select: toPlanProfile,
     }),
   timeline: (client: PotluckClient, range: { from: string; to: string }) =>
     queryOptions({

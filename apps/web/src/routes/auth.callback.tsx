@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { z } from 'zod'
 import { AuthCallbackPage } from '@/features/auth/callback-page'
+import { redirectSearch } from '@/lib/search'
 
 export const Route = createFileRoute('/auth/callback')({
-  validateSearch: z.object({ redirect: z.string().optional() }),
+  validateSearch: redirectSearch,
   component: AuthCallbackRoute,
 })
 
