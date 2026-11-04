@@ -14,7 +14,10 @@ test('balances follow expenses and settling up squares them', async ({ newUser, 
 
   const page = await openAs(me)
   await page.goto(`/groups/${group.id}/balances`)
-  await expect(page.getByText(t('balances.youOweTotal'), { exact: true })).toBeVisible()
+  // The group header also reads "You owe ..."; the total is the paragraph on the tab.
+  await expect(
+    page.getByRole('paragraph').filter({ hasText: new RegExp(`^${t('balances.youOweTotal')}$`) }),
+  ).toBeVisible()
   await expect(page.getByText(t('balances.youOwe', { name: ben.name, amount: owed }))).toBeVisible()
 
   await page
