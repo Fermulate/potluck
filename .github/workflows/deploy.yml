@@ -66,6 +66,7 @@ jobs:
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_APP_URL: ${{ vars.VITE_APP_URL }}
           VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
+          VITE_DOCS_URL: ${{ vars.VITE_DOCS_URL || 'https://potluck-docs.potluck-web.workers.dev' }}
       - name: Deploy production
         if: env.HAS_CLOUDFLARE == 'true' && github.event_name != 'pull_request'
         uses: cloudflare/wrangler-action@v3
