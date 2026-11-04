@@ -4,6 +4,7 @@ import { formatDate, formatMoney, t } from '@potluck/i18n'
 import { Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRightLeft } from 'lucide-react'
+import { Help } from '@/features/help/help'
 import { supabase } from '@/lib/supabase'
 
 /**
@@ -88,15 +89,21 @@ function ConversionLine({
 }) {
   const converted = convert(amountCents, rate, { from: currency, to: groupCurrency })
   return (
-    <div className="flex flex-col items-center gap-0.5 text-center" aria-live="polite">
-      <p className="inline-flex items-center gap-1.5 text-[0.9375rem] font-semibold text-ink">
+    <div className="flex flex-col items-center gap-0.5 text-center">
+      <p
+        aria-live="polite"
+        className="inline-flex items-center gap-1.5 text-[0.9375rem] font-semibold text-ink"
+      >
         <ArrowRightLeft aria-hidden className="size-4 text-mute" />
         {t('expenses.conversion.about', {
           amount: formatMoney(converted, groupCurrency),
           currency: groupCurrency,
         })}
       </p>
-      <p className="text-xs text-mute">{detail}</p>
+      <p className="flex items-center justify-center gap-2 text-xs text-mute">
+        <span>{detail}</span>
+        <Help topic="exchangeRates" />
+      </p>
     </div>
   )
 }

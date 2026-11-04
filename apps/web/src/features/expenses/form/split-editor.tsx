@@ -5,6 +5,8 @@ import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
 import { Money } from '../money'
 import { Check, Equal, Layers, Minus, PencilLine, Percent, Plus, ReceiptText } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Help } from '@/features/help/help'
+import { SPLIT_HELP } from '@/features/help/topics'
 import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput, PercentInput } from './compact-inputs'
 import { ItemizedEditor } from './itemized-editor'
@@ -227,7 +229,10 @@ export function SplitEditor({
           size="sm"
         />
       </div>
-      <p className="-mt-2 text-sm text-mute">{t(`splitTypes.${draft.mode}.hint`)}</p>
+      <div className="-mt-2 flex items-start justify-between gap-3">
+        <p className="text-sm text-mute">{t(`splitTypes.${draft.mode}.hint`)}</p>
+        <Help topic={SPLIT_HELP[draft.mode]} className="mt-px" />
+      </div>
 
       {draft.mode === 'itemized' ? (
         <ItemizedEditor

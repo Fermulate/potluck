@@ -4,6 +4,7 @@ import { Button, IconButton, toast } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Camera, FileText, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef } from 'react'
+import { Help } from '@/features/help/help'
 import { supabase } from '@/lib/supabase'
 
 export interface ReceiptValue {
@@ -62,9 +63,12 @@ export function ReceiptField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span id={`${id}-label`} className="text-sm font-semibold text-ink">
-        {t('expenses.fields.receipt')}
-      </span>
+      <div className="flex items-baseline justify-between gap-3">
+        <span id={`${id}-label`} className="text-sm font-semibold text-ink">
+          {t('expenses.fields.receipt')}
+        </span>
+        <Help topic="receipts" />
+      </div>
       <input
         ref={inputRef}
         type="file"

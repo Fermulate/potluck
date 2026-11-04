@@ -21,6 +21,7 @@ import {
   cn,
   toast,
 } from '@potluck/ui'
+import { Help } from '@/features/help/help'
 import { Money } from '../money'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarHeart } from 'lucide-react'
@@ -380,6 +381,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             <Field
               label={t('expenses.fields.recurring')}
               hint={recurrence !== 'none' ? t('expenses.recurring.hint') : undefined}
+              aside={<Help topic="recurring" />}
             >
               <Select
                 value={recurrence}

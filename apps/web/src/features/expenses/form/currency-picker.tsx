@@ -3,6 +3,7 @@ import { t } from '@potluck/i18n'
 import { Sheet, SheetContent, Skeleton, cn } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
+import { Help } from '@/features/help/help'
 import { supabase } from '@/lib/supabase'
 
 let names: Intl.DisplayNames | null = null
@@ -108,6 +109,9 @@ export function CurrencyPicker({
         ) : (
           <p className="px-3 text-sm text-mute">{t('expenses.currencyPicker.noRate')}</p>
         )}
+        <div className="mt-4 border-t border-line px-3 pt-4">
+          <Help topic="currencies" showLabel />
+        </div>
       </SheetContent>
     </Sheet>
   )
