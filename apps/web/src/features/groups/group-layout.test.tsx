@@ -33,7 +33,7 @@ describe('GroupLayout', () => {
       'href',
       '/groups/g-hike/members',
     )
-    expect(screen.getByText('you owe $60.51')).toBeInTheDocument()
+    expect(screen.getByText(t('groups.header.youOwe', { amount: '$60.51' }))).toBeInTheDocument()
     expect(
       tabs()
         .getAllByRole('link')
@@ -86,7 +86,7 @@ describe('GroupLayout', () => {
       screen.queryByRole('button', { name: t('groups.header.invite') }),
     ).not.toBeInTheDocument()
     expect(screen.getByText(t('groups.settings.archived', { group: 'Hike crew' }))).toBeVisible()
-    expect(screen.getByText(t('groups.settledUp'))).toBeInTheDocument()
+    expect(screen.getByText(t('groups.header.settled'))).toBeInTheDocument()
   })
 
   it('shows the friend instead of group chrome in a one to one tab', async () => {
