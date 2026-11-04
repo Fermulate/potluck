@@ -22,6 +22,7 @@ import { supabase } from '@/lib/supabase'
 import { useDebts } from '@/features/balances/use-debts'
 import { groupTitle } from '@/features/expenses/format'
 import { MoneyPageShell } from '@/features/expenses/money-page-shell'
+import { GoodToKnow } from '@/features/help/help'
 import {
   avatarUrl,
   firstName,
@@ -35,6 +36,8 @@ interface Done {
   owedBefore: number
   paid: number
 }
+
+const settleHelp = <GoodToKnow topic="settleUp" tip="settleUp" className="mr-2" />
 
 export function SettleFlow({
   groupId,
@@ -88,7 +91,7 @@ export function SettleFlow({
   const recipient = to ? group.data.members.find((m) => m.id === to && m.id !== me) : undefined
   if (!recipient) {
     return (
-      <MoneyPageShell title={t('settle.title')} onClose={onClose}>
+      <MoneyPageShell title={t('settle.title')} onClose={onClose} aside={settleHelp}>
         <PersonPicker
           group={group.data}
           owedTo={owedTo}
@@ -237,6 +240,7 @@ function PaymentForm({
     <MoneyPageShell
       title={t('settle.title')}
       onClose={onClose}
+      aside={settleHelp}
       footer={
         <Button
           type="submit"

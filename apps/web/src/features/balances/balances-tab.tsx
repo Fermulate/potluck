@@ -7,6 +7,7 @@ import { ArrowRight, Plus } from 'lucide-react'
 import { useDebts } from './use-debts'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { GoodToKnow } from '@/features/help/help'
 import { Money } from '@/features/expenses/money'
 import {
   avatarUrl,
@@ -104,9 +105,16 @@ export function BalancesTab({ groupId }: { groupId: string }) {
         <>
           <section aria-labelledby="debts-title" className="flex flex-col gap-3">
             <div>
-              <h2 id="debts-title" className="font-display text-2xl">
-                {group.data.simplify_debts ? t('balances.debts') : t('balances.everyDebt')}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 id="debts-title" className="font-display text-2xl">
+                  {group.data.simplify_debts ? t('balances.debts') : t('balances.everyDebt')}
+                </h2>
+                <GoodToKnow
+                  topic="simplifiedDebts"
+                  tip={group.data.simplify_debts ? 'simplifiedDebts' : 'everyDebt'}
+                  align="start"
+                />
+              </div>
               <p className="text-sm text-mute">
                 {group.data.simplify_debts
                   ? t('balances.simplifiedHint')
