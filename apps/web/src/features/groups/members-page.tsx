@@ -35,6 +35,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { Help } from '@/features/help/help'
 import { InvitePanel, InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
@@ -319,7 +320,10 @@ export function MembersPage({ groupId }: { groupId: string }) {
   return (
     <div className="grid grid-cols-1 gap-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-3xl">{t('members.title')}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-3xl">{t('members.title')}</h2>
+          <Help topic="roles" align="start" />
+        </div>
         {canInvite && !alone && (
           <Button size="sm" leadingIcon={<UserPlus />} onClick={() => setInviteOpen(true)}>
             {t('members.invite')}

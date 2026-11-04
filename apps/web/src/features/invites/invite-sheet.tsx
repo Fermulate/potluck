@@ -22,6 +22,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronDown, Copy, Link2, Share2, X } from 'lucide-react'
 import { useState } from 'react'
+import { Help } from '@/features/help/help'
 import { inviteUrl } from '@/lib/app-url'
 import { errorMessage } from '@/lib/errors'
 import { useViewerTimezone } from '@/lib/queries'
@@ -294,6 +295,7 @@ export function InvitePanel({
                 ]}
               />
             </div>
+            <Help topic="invites" showLabel className="justify-self-start" />
           </div>
         )}
         <Button
