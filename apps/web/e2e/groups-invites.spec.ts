@@ -22,15 +22,17 @@ test('create a group, share an invite, and a signed out friend joins', async ({
   await sheet.getByLabel(t('groups.create.currencyLabel')).selectOption('USD')
   await sheet.getByRole('button', { name: t('groups.create.submit') }).click()
 
-  // A new group opens on its members tab, ready to invite people.
+  // A new group opens on its members tab with the invite panel right there. One tap makes a
+  // link with the default settings, and the newest link sits on top ready to copy.
   await expect(page).toHaveURL(/\/groups\/[^/]+\/members$/)
   await expect(page.getByRole('heading', { name: groupName })).toBeVisible()
-  await page.getByRole('button', { name: t('members.invite') }).click()
-
-  const invites = page.getByRole('dialog', { name: t('invites.title') })
+  const invites = page.getByRole('region', { name: t('members.alone.title') })
+  await expect(invites.getByRole('button', { name: t('invites.settings') })).toBeVisible()
   await invites.getByRole('button', { name: t('invites.create') }).click()
-  const link = invites.getByText(/\/join\//).first()
+  const latest = invites.getByRole('region', { name: t('invites.latest') })
+  const link = latest.getByText(/\/join\//)
   await expect(link).toBeVisible()
+  await expect(latest.getByRole('button', { name: t('invites.copyLink') })).toBeVisible()
   const code = /\/join\/(\S+)/.exec((await link.textContent()) ?? '')?.[1]
   expect(code).toBeTruthy()
 
