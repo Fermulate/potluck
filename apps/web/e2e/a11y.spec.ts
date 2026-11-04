@@ -7,6 +7,16 @@ import { expect, test, unique, type TestUser } from './support/fixtures'
 
 /** Serious and critical WCAG 2.1 A/AA violations fail the test; the rest are reported. */
 async function audit(page: Page, testInfo: TestInfo) {
+  // Sections fade in as their data lands; a half faded button reads as low contrast. Audit the
+  // settled page (looping animations, like skeleton shimmer, are left alone).
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  )
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze()
@@ -76,7 +86,10 @@ test.describe('accessibility', () => {
     const { me, group } = await setup(newUser)
     const page = await openAs(me)
     await page.goto(`/groups/${group.id}/balances`)
-    await expect(page.getByText(t('balances.youOweTotal'), { exact: true })).toBeVisible()
+    // The group header also reads "You owe ..."; the total is the paragraph on the tab.
+    await expect(
+      page.getByRole('paragraph').filter({ hasText: new RegExp(`^${t('balances.youOweTotal')}$`) }),
+    ).toBeVisible()
     await audit(page, testInfo)
   })
 
