@@ -8,12 +8,6 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
-# local tooling (not part of the project)
-.lavish/
-.claude/
-.agents/
-.mcp.json
-skills-lock.json
 supabase/.temp/
 supabase/.branches/
 playwright-report/
@@ -25,4 +19,3 @@ dev-dist/
 .vscode/*
 !.vscode/extensions.json
 .idea/
-.playwright-mcp/
