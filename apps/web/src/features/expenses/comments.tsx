@@ -17,11 +17,9 @@ import { avatarUrl, moneyErrorMessage, useNameOf, usePeople, useTimeZone } from 
 /** Comment thread on an expense. New comments show up instantly and for everyone (realtime). */
 export function ExpenseComments({
   expenseId,
-  groupId,
   canModerate,
 }: {
   expenseId: string
-  groupId: string
   canModerate: boolean
 }) {
   const me = useUserId()
@@ -34,8 +32,7 @@ export function ExpenseComments({
   const [body, setBody] = useState('')
 
   const send = useMutation({
-    mutationFn: (text: string) =>
-      addExpenseComment(supabase, { expenseId, groupId, authorId: me, body: text }),
+    mutationFn: (text: string) => addExpenseComment(supabase, { expenseId, body: text }),
     onMutate: async (text) => {
       await queryClient.cancelQueries({ queryKey: key })
       const previous = queryClient.getQueryData<ExpenseComment[]>(key)

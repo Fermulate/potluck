@@ -405,19 +405,19 @@ export async function restoreExpense(client: PotluckClient, expenseId: string): 
   return unwrap(await client.rpc('restore_expense', { id: expenseId }))
 }
 
+/**
+ * Clients may only send `expense_id` and `body`: the author defaults to the caller and a
+ * trigger copies `group_id` from the expense.
+ */
 export async function addExpenseComment(
   client: PotluckClient,
-  input: { expenseId: string; groupId: string; authorId: string; body: string },
+  input: { expenseId: string; body: string },
 ): Promise<ExpenseComment> {
+  const row = { expense_id: input.expenseId, body: input.body }
   return unwrap(
     await client
       .from('comments')
-      .insert({
-        expense_id: input.expenseId,
-        group_id: input.groupId,
-        author_id: input.authorId,
-        body: input.body,
-      })
+      .insert(row as Tables['comments']['Insert'])
       .select('id, expense_id, author_id, body, created_at')
       .single(),
   )
