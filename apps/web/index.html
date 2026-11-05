@@ -45,6 +45,10 @@
           color: #f6efe3;
         }
       }
+      /* The prerendered landing page is only for signed-out visits to /. */
+      html[data-boot='app'] #prerender {
+        display: none;
+      }
     </style>
     <script>
       // Apply the saved theme before first paint to avoid a flash.
