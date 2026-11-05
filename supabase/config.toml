@@ -421,6 +421,20 @@ enabled = true
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
 
+
+# Edge functions that authenticate callers themselves (shared secret or feed token).
+[functions.notify]
+verify_jwt = false
+
+[functions.fx-sync]
+verify_jwt = false
+
+[functions.ics-feed]
+verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = true
+
 # Hosted project overrides, applied with `supabase config push`.
 [remotes.production]
 project_id = "mzotlkpghnrwbezcazld"
