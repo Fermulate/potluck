@@ -1,11 +1,6 @@
 import { t, type en } from '@potluck/i18n'
 import { HelpLink, HelpTip } from '@potluck/ui'
-import { docsUrl } from '@/lib/docs'
-import { HELP_TOPICS, type HelpTopic } from './topics'
-
-export function helpHref(topic: HelpTopic): string {
-  return docsUrl(HELP_TOPICS[topic])
-}
+import { helpHref, type HelpTopic } from './topics'
 
 /** A "?" that opens the guide at `topic` in a new tab. */
 export function Help({

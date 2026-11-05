@@ -1,4 +1,5 @@
 import type { SplitTypeValue } from '@potluck/api'
+import { docsUrl } from '@/lib/docs'
 
 /**
  * Where each help affordance points in the user guide. Paths are guide page slugs plus the
@@ -31,6 +32,11 @@ export const HELP_TOPICS = {
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS
+
+/** Full URL of a topic in the guide. */
+export function helpHref(topic: HelpTopic): string {
+  return docsUrl(HELP_TOPICS[topic])
+}
 
 export const SPLIT_HELP: Record<SplitTypeValue, HelpTopic> = {
   equal: 'splitEqual',

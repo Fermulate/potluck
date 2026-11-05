@@ -5,7 +5,7 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { viewerLine } from './expense-math'
+import { settlementText, viewerLine } from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -136,25 +136,6 @@ export function ExpenseRow({
       />
     </Link>
   )
-}
-
-/** "You paid Kai $20.00", "Kai paid you $20.00" or "Kai paid Lena $20.00". */
-export function settlementText(
-  settlement: Settlement,
-  viewerId: string,
-  nameOf: (id: string) => string,
-  locale?: string,
-): string {
-  const amount = formatMoney(settlement.amount_cents, settlement.currency, { locale })
-  return settlement.from_user === viewerId
-    ? t('settle.youPaid', { name: nameOf(settlement.to_user), amount })
-    : settlement.to_user === viewerId
-      ? t('settle.paidYou', { name: nameOf(settlement.from_user), amount })
-      : t('settle.paid', {
-          from: nameOf(settlement.from_user),
-          to: nameOf(settlement.to_user),
-          amount,
-        })
 }
 
 export function SettlementRow({

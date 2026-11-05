@@ -19,8 +19,8 @@ import { useUserId } from '@/lib/auth'
 import { ActivityIconLink } from '@/features/activity/activity-link'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
-import { expensesToCsv } from './expense-math'
-import { ExpenseRow, SettlementRow, settlementText } from './expense-row'
+import { expensesToCsv, settlementText } from './expense-math'
+import { ExpenseRow, SettlementRow } from './expense-row'
 import { categoryEmoji, categoryLabel, dayLabel, dayOf, groupByDay } from './format'
 import {
   useGroupExpenses,
