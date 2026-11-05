@@ -30,7 +30,9 @@ type TabId = 'home' | 'groups' | 'plans' | 'notifications' | 'me'
 
 function useActiveTab(): TabId {
   const path = useRouterState({ select: (s) => s.location.pathname })
-  if (path.startsWith('/groups') || path.startsWith('/friends')) return 'groups'
+  // An expense lives in a group, so its page keeps Groups lit.
+  if (path.startsWith('/groups') || path.startsWith('/friends') || path.startsWith('/expenses'))
+    return 'groups'
   if (path.startsWith('/plans')) return 'plans'
   if (path.startsWith('/notifications')) return 'notifications'
   if (path.startsWith('/me')) return 'me'
