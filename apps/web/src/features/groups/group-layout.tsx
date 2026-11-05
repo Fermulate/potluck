@@ -88,14 +88,14 @@ function GroupTabs({ group }: { group: GroupDetail }) {
   )
 }
 
-function BackLink() {
+function BackLink({ direct }: { direct?: boolean }) {
   return (
     <Link
-      to="/groups"
+      to={direct ? '/friends' : '/groups'}
       className="-ml-2 inline-flex h-11 items-center gap-1 rounded-pill pr-3 pl-1 text-sm font-semibold text-mute hover:text-ink lg:hidden"
     >
       <ChevronLeft aria-hidden className="size-5" />
-      {t('groups.header.back')}
+      {direct ? t('nav.friends') : t('groups.header.back')}
     </Link>
   )
 }
@@ -228,7 +228,7 @@ export function GroupLayout({ groupId }: { groupId: string }) {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pt-3 pb-32 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:pt-10 lg:pb-12">
       <aside className="lg:sticky lg:top-10 lg:self-start">
-        <BackLink />
+        <BackLink direct={group?.is_direct} />
         {group ? (
           group.is_direct ? (
             <DirectHeader group={group} />
