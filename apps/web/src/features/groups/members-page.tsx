@@ -426,7 +426,9 @@ export function MembersPage({ groupId }: { groupId: string }) {
         />
       )}
 
-      {canInvite && !alone && <InviteSheet group={group} open={inviteOpen} onOpenChange={setInviteOpen} />}
+      {canInvite && !alone && (
+        <InviteSheet group={group} open={inviteOpen} onOpenChange={setInviteOpen} />
+      )}
     </div>
   )
 }
