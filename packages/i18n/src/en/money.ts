@@ -313,6 +313,8 @@ export const settle = {
 export const activity = {
   title: 'Activity',
   loading: 'Loading activity',
+  recent: 'Recent activity',
+  recentHint: 'Who added, changed and paid what, across your groups',
   loadMore: 'Show older',
   someone: 'Someone',
   you: 'You',

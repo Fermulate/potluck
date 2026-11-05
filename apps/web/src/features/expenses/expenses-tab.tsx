@@ -16,6 +16,7 @@ import { Download, Plus, Search, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useUserId } from '@/lib/auth'
+import { ActivityIconLink } from '@/features/activity/activity-link'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { expensesToCsv } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
@@ -146,6 +147,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
           onClick={exportCsv}
           disabled={loading || !expenses.data?.length}
         />
+        <ActivityIconLink />
         <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
           <Link to="/new/expense" search={{ groupId }}>
             {t('expenses.add')}

@@ -7,6 +7,7 @@ import { CalendarHeart, ChevronRight, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { RecentActivityRow } from '@/features/activity/activity-link'
 import { firstName } from '@/features/plans/format'
 import { useNow } from '@/features/plans/use-now'
 import { useTimelineRange } from '@/features/plans/use-range'
@@ -186,6 +187,10 @@ export function HomeDashboard() {
             ) : (
               <GroupsRow groups={groups.data ?? []} />
             )}
+          </Appear>
+
+          <Appear index={4}>
+            <RecentActivityRow />
           </Appear>
         </div>
       </div>

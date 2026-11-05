@@ -1,4 +1,5 @@
 import { moneyKeys } from '@potluck/api'
+import { t } from '@potluck/i18n'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ExpensesTab } from './expenses-tab'
@@ -49,6 +50,15 @@ describe('ExpensesTab', () => {
 
     const firewood = screen.getByText('Firewood').closest('a')!
     expect(within(firewood).getByText('not involved')).toBeInTheDocument()
+  })
+
+  it('links to the activity feed from the toolbar', async () => {
+    setup()
+    await screen.findByText('Tacos')
+    expect(screen.getByRole('link', { name: t('activity.recent') })).toHaveAttribute(
+      'href',
+      '/activity',
+    )
   })
 
   it('links each row to the expense', async () => {
