@@ -40,7 +40,7 @@ function Section({
 
 function Screens() {
   return (
-    <div className="-mx-4 scrollbar-none flex snap-x snap-mandatory gap-8 overflow-x-auto px-4 pb-2 xl:mx-0 xl:justify-center xl:px-0">
+    <div className="-mx-4 scrollbar-none flex snap-x snap-mandatory gap-8 overflow-x-auto px-4 pb-2 max-sm:gap-0 max-sm:px-0 xl:mx-0 xl:justify-center xl:px-0">
       <Phone label="Home" activeTab="home" className="snap-center">
         <HomeScreen />
       </Phone>

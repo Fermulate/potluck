@@ -382,7 +382,7 @@ function Moments() {
         <Card tone="sunken" className="flex flex-col items-center justify-center gap-4 py-6">
           <div className="grid h-20 place-items-center">
             <StampAnimation show={stamp}>
-              <Stamp caption="Sat, Nov 22">Locked in</Stamp>
+              <Stamp caption="Sun, Nov 22">Locked in</Stamp>
             </StampAnimation>
           </div>
           <Button
@@ -462,7 +462,7 @@ function Overlays() {
               </Button>
             }
           >
-            <div className="flex flex-col gap-5">
+            <div className="flex min-w-0 flex-col gap-5">
               <div className="py-4">
                 <MoneyInput
                   label="Amount"
@@ -695,8 +695,8 @@ function TabBarPreview() {
 
 export function Gallery() {
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-2">
-      <div className="flex flex-col gap-5">
+    <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+      <div className="flex min-w-0 flex-col gap-5">
         <Buttons />
         <Inputs />
         <Choices />
@@ -704,7 +704,7 @@ export function Gallery() {
         <Moments />
         <Heat />
       </div>
-      <div className="flex flex-col gap-5">
+      <div className="flex min-w-0 flex-col gap-5">
         <People />
         <Dates />
         <Overlays />

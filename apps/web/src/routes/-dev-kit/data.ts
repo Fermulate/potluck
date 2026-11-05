@@ -122,7 +122,7 @@ export const mySlots: Array<[number, number]> = [
   [5, 2],
   [4, 1],
 ]
-/** Best slot: column 2 (Sat), rows 3 to 6 (7:30 to 9:30). */
+/** Best slot: column 2 (Sun), rows 3 to 6 (7:30 to 9:30). */
 export const best = { col: 2, from: 3, to: 6 }
 
 export const timeline = [

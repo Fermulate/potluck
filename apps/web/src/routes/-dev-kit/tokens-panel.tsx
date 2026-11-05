@@ -46,7 +46,7 @@ function Palette({ name }: { name: ThemeName }) {
 export function TokensPanel() {
   const steps = Object.entries(typeScale).reverse()
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <div className="flex flex-col gap-5">
         <Palette name="light" />
         <Palette name="dark" />
@@ -60,7 +60,13 @@ export function TokensPanel() {
               className="truncate font-display"
               style={{ fontSize: `${step.size}rem`, lineHeight: step.lineHeight }}
             >
-              {name === '7xl' ? 'Supper club' : name === '6xl' ? 'Lake day' : 'Ramen night'}
+              {name === '7xl'
+                ? 'Supper club'
+                : name === '6xl'
+                  ? 'Lake day'
+                  : name === '5xl'
+                    ? 'Ramen night'
+                    : 'Friendsgiving'}
             </span>
           </div>
         ))}
