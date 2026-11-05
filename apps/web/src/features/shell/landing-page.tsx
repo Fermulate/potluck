@@ -10,10 +10,23 @@ import { HeroDemo } from './hero-demo'
 const gingham =
   'bg-paper [background-image:linear-gradient(90deg,color-mix(in_oklab,var(--pl-tomato)_42%,transparent)_50%,transparent_50%),linear-gradient(color-mix(in_oklab,var(--pl-tomato)_42%,transparent)_50%,transparent_50%)] [background-size:44px_44px]'
 
-function Feature({ icon, tile, title, body }: { icon: ReactNode; tile: string; title: string; body: string }) {
+function Feature({
+  icon,
+  tile,
+  title,
+  body,
+}: {
+  icon: ReactNode
+  tile: string
+  title: string
+  body: string
+}) {
   return (
     <div className="grid content-start gap-3">
-      <span aria-hidden className={`grid size-12 place-items-center rounded-[0.875rem] [&_svg]:size-6 ${tile}`}>
+      <span
+        aria-hidden
+        className={`grid size-12 place-items-center rounded-[0.875rem] [&_svg]:size-6 ${tile}`}
+      >
         {icon}
       </span>
       <h3 className="font-display text-3xl leading-none">{title}</h3>

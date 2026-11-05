@@ -13,7 +13,8 @@ export const app = {
     cta: 'Start a table',
     secondary: 'I already have an account',
     demo: {
-      label: 'A short demo: a dinner bill splits four ways, then friends paint when they are free and a night gets locked in.',
+      label:
+        'A short demo: a dinner bill splits four ways, then friends paint when they are free and a night gets locked in.',
       receipt: 'Dim sum, Saturday',
       paidBy: '{name} paid',
       items: {

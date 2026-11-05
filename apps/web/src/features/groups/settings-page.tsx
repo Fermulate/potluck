@@ -7,16 +7,7 @@ import {
 } from '@potluck/api'
 import { can } from '@potluck/core'
 import { t } from '@potluck/i18n'
-import {
-  Button,
-  Card,
-  ConfirmDialog,
-  Field,
-  Input,
-  Skeleton,
-  Switch,
-  toast,
-} from '@potluck/ui'
+import { Button, Card, ConfirmDialog, Field, Input, Skeleton, Switch, toast } from '@potluck/ui'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Archive, ArchiveRestore, LogOut, Trash2 } from 'lucide-react'
@@ -99,7 +90,12 @@ function DetailsForm({ group }: { group: GroupDetail }) {
         value={currency}
         onChange={setCurrency}
       />
-      <Button type="submit" className="justify-self-start" disabled={!dirty || !name.trim()} loading={patch.isPending}>
+      <Button
+        type="submit"
+        className="justify-self-start"
+        disabled={!dirty || !name.trim()}
+        loading={patch.isPending}
+      >
         {t('common.save')}
       </Button>
     </form>
@@ -171,7 +167,9 @@ function SettingsBody({ group }: { group: GroupDetail }) {
     <div className="grid gap-8">
       <h2 className="font-display text-3xl">{t('groups.settings.title')}</h2>
       {!editable && (
-        <p className="rounded-card bg-sunken p-4 text-sm text-mute">{t('groups.settings.readOnly')}</p>
+        <p className="rounded-card bg-sunken p-4 text-sm text-mute">
+          {t('groups.settings.readOnly')}
+        </p>
       )}
 
       {editable && (
@@ -218,7 +216,9 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           {me && me.role !== 'owner' && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="max-w-sm text-sm text-mute">
-                {me.net_cents !== 0 ? t('groups.settings.leaveBlocked') : t('groups.settings.leaveConfirm', { group: group.name })}
+                {me.net_cents !== 0
+                  ? t('groups.settings.leaveBlocked')
+                  : t('groups.settings.leaveConfirm', { group: group.name })}
               </p>
               <Button asChild variant="secondary">
                 <Link to="/groups/$groupId/members" params={{ groupId: group.id }}>
@@ -231,7 +231,9 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           {deletable && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="max-w-sm text-sm text-mute">
-                {allSquare ? t('groups.settings.deleteConfirm', { group: group.name }) : t('groups.settings.deleteBlocked')}
+                {allSquare
+                  ? t('groups.settings.deleteConfirm', { group: group.name })
+                  : t('groups.settings.deleteBlocked')}
               </p>
               <Button
                 variant="danger"

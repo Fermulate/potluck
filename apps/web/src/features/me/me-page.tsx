@@ -97,7 +97,10 @@ function ProfileSection({ profile }: { profile: ProfileRow }) {
       toast.error(t('settings.profile.nameRequired'))
       return
     }
-    patch.mutate({ display_name: name.trim() }, { onSuccess: () => toast.success(t('settings.profile.saved')) })
+    patch.mutate(
+      { display_name: name.trim() },
+      { onSuccess: () => toast.success(t('settings.profile.saved')) },
+    )
   }
 
   async function onAvatar(path: string) {
@@ -118,9 +121,20 @@ function ProfileSection({ profile }: { profile: ProfileRow }) {
       />
       <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={onSubmit}>
         <Field label={t('settings.profile.name')} className="flex-1">
-          <Input maxLength={80} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+          <Input
+            maxLength={80}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+          />
         </Field>
-        <Button type="submit" variant="ink" className="h-12" disabled={!dirty} loading={patch.isPending}>
+        <Button
+          type="submit"
+          variant="ink"
+          className="h-12"
+          disabled={!dirty}
+          loading={patch.isPending}
+        >
           {t('common.save')}
         </Button>
       </form>
@@ -205,7 +219,10 @@ function NotificationsSection() {
         to="/notifications"
         className="-m-2 flex items-center gap-3 rounded-card p-2 transition-colors hover:bg-sunken"
       >
-        <span aria-hidden className="grid size-10 place-items-center rounded-full bg-saffron-soft text-saffron-ink">
+        <span
+          aria-hidden
+          className="grid size-10 place-items-center rounded-full bg-saffron-soft text-saffron-ink"
+        >
           <Bell className="size-5" />
         </span>
         <span className="flex-1 font-semibold">{t('settings.notifications.inbox')}</span>
@@ -256,7 +273,12 @@ function CalendarSection() {
           <Skeleton className="h-12" />
         ) : url ? (
           <>
-            <Input readOnly value={url} aria-label={t('settings.calendar.feed')} onFocus={(e) => e.target.select()} />
+            <Input
+              readOnly
+              value={url}
+              aria-label={t('settings.calendar.feed')}
+              onFocus={(e) => e.target.select()}
+            />
             <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -276,7 +298,12 @@ function CalendarSection() {
                   </a>
                 </Button>
               )}
-              <Button size="sm" variant="ghost" leadingIcon={<RefreshCw />} onClick={() => setConfirmReset(true)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                leadingIcon={<RefreshCw />}
+                onClick={() => setConfirmReset(true)}
+              >
                 {t('settings.calendar.resetFeed')}
               </Button>
             </div>
@@ -358,7 +385,12 @@ function DeleteAccount() {
           }
         >
           <Field label={t('account.delete.confirmPhrase')} className="pt-2">
-            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" />
+            <Input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
           </Field>
         </DialogContent>
       </Dialog>

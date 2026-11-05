@@ -68,7 +68,12 @@ export function OAuthButtons({ redirect }: { redirect?: string }) {
   return (
     <div className="grid gap-3">
       {google && (
-        <Button variant="secondary" block leadingIcon={<GoogleGlyph />} onClick={() => start('google')}>
+        <Button
+          variant="secondary"
+          block
+          leadingIcon={<GoogleGlyph />}
+          onClick={() => start('google')}
+        >
           {t('auth.continueWithGoogle')}
         </Button>
       )}

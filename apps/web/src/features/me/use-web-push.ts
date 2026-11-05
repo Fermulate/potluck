@@ -4,16 +4,12 @@ import { useUserId } from '@/lib/auth'
 import { useAppConfig } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 
-export type PushState =
-  | 'loading'
-  | 'unsupported'
-  | 'not-configured'
-  | 'blocked'
-  | 'off'
-  | 'on'
+export type PushState = 'loading' | 'unsupported' | 'not-configured' | 'blocked' | 'off' | 'on'
 
 function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const padded = (value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/')
+  const padded = (value + '='.repeat((4 - (value.length % 4)) % 4))
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
   const raw = atob(padded)
   const bytes = new Uint8Array(new ArrayBuffer(raw.length))
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)

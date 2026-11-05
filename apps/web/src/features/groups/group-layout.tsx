@@ -55,7 +55,10 @@ function GroupTabs({ group }: { group: GroupDetail }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
   const rest = path.split(`/groups/${group.id}`)[1]?.replace(/^\//, '').split('/')[0] ?? ''
   return (
-    <nav aria-label={t('groups.tabs.label')} className="-mx-4 overflow-x-auto px-4 scrollbar-none lg:mx-0 lg:px-0">
+    <nav
+      aria-label={t('groups.tabs.label')}
+      className="-mx-4 scrollbar-none overflow-x-auto px-4 lg:mx-0 lg:px-0"
+    >
       <ul className="flex min-w-max gap-1 border-b border-line">
         {tabsFor(group).map((tab) => {
           const active = tab.segment === rest
@@ -77,7 +80,9 @@ function GroupTabs({ group }: { group: GroupDetail }) {
                   layoutId={indicator}
                   aria-hidden
                   className="absolute inset-x-2 -bottom-px h-[3px] rounded-pill bg-tomato"
-                  transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 38 }}
+                  transition={
+                    reduced ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 38 }
+                  }
                 />
               )}
             </li>
@@ -138,7 +143,11 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-sunken px-4 py-3 lg:flex-col lg:items-stretch">
-        <ViewerBalance cents={group.my_net_cents} currency={group.currency} className="text-[0.9375rem]" />
+        <ViewerBalance
+          cents={group.my_net_cents}
+          currency={group.currency}
+          className="text-[0.9375rem]"
+        />
         {canInvite && (
           <Button size="sm" variant="ink" leadingIcon={<UserPlus />} onClick={onInvite}>
             {t('groups.header.invite')}

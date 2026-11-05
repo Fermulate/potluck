@@ -49,14 +49,19 @@ function InviteRow({
       ? t('invites.usesLeft', { count: Math.max(0, invite.max_uses - invite.uses) })
       : t('invites.unlimited'),
     invite.expires_at
-      ? t('invites.expiresOn', { date: formatDate(invite.expires_at, { timeZone, style: 'dayMonth' }) })
+      ? t('invites.expiresOn', {
+          date: formatDate(invite.expires_at, { timeZone, style: 'dayMonth' }),
+        })
       : null,
     invite.uses > 0 ? t('invites.used', { count: invite.uses }) : null,
   ].filter(Boolean)
 
   return (
     <li className="flex items-center gap-3 rounded-card border border-line bg-card p-3">
-      <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full bg-saffron-soft text-saffron-ink">
+      <span
+        aria-hidden
+        className="grid size-10 shrink-0 place-items-center rounded-full bg-saffron-soft text-saffron-ink"
+      >
         <Link2 className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
@@ -117,7 +122,8 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
         groupId: group.id,
         role: canAdminInvite ? role : 'member',
         maxUses: uses === 'unlimited' ? null : Number(uses),
-        expiresAt: expiry === 'never' ? null : new Date(Date.now() + Number(expiry) * DAY).toISOString(),
+        expiresAt:
+          expiry === 'never' ? null : new Date(Date.now() + Number(expiry) * DAY).toISOString(),
       }),
     onSuccess: async (invite) => {
       queryClient.setQueryData<GroupInviteRow[]>(key, (rows) => [invite, ...(rows ?? [])])
@@ -132,7 +138,9 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
     onMutate: async (invite) => {
       await queryClient.cancelQueries({ queryKey: key })
       const previous = queryClient.getQueryData<GroupInviteRow[]>(key)
-      queryClient.setQueryData<GroupInviteRow[]>(key, (rows) => rows?.filter((r) => r.id !== invite.id))
+      queryClient.setQueryData<GroupInviteRow[]>(key, (rows) =>
+        rows?.filter((r) => r.id !== invite.id),
+      )
       return { previous }
     },
     onError: (error, _invite, context) => {
@@ -158,7 +166,9 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
 
   if (group.is_direct) return null
   if (!canInvite) {
-    return <p className="rounded-card bg-sunken p-4 text-sm text-mute">{t('invites.noPermission')}</p>
+    return (
+      <p className="rounded-card bg-sunken p-4 text-sm text-mute">{t('invites.noPermission')}</p>
+    )
   }
 
   return (
@@ -211,7 +221,13 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
             ]}
           />
         </div>
-        <Button block size="lg" leadingIcon={<Link2 />} loading={create.isPending} onClick={() => create.mutate()}>
+        <Button
+          block
+          size="lg"
+          leadingIcon={<Link2 />}
+          loading={create.isPending}
+          onClick={() => create.mutate()}
+        >
           {t('invites.create')}
         </Button>
       </div>

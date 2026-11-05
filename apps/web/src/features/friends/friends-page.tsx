@@ -33,7 +33,8 @@ import { useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
 function FriendBalance({ friend }: { friend: Friend }) {
-  if (!friend.direct_group_id) return <span className="text-sm text-mute">{t('friends.noTab')}</span>
+  if (!friend.direct_group_id)
+    return <span className="text-sm text-mute">{t('friends.noTab')}</span>
   if (friend.net_cents === 0 || !friend.currency) {
     return <span className="text-sm text-mute">{t('friends.settled')}</span>
   }
@@ -63,20 +64,33 @@ function weekFromNow(): string {
   return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 }
 
-function AddFriendSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function AddFriendSheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+}) {
   const { data: groups = [] } = useMyGroups()
   const [busy, setBusy] = useState<string | null>(null)
   const invitable = groups.filter(
     (g) =>
       !g.is_direct &&
       !g.archived_at &&
-      can(g.my_role, 'invite.create', { membersCanInvite: g.members_can_invite, inviteRole: 'member' }),
+      can(g.my_role, 'invite.create', {
+        membersCanInvite: g.members_can_invite,
+        inviteRole: 'member',
+      }),
   )
 
   async function invite(groupId: string, name: string) {
     setBusy(groupId)
     try {
-      const created = await createInvite(supabase, { groupId, maxUses: 1, expiresAt: weekFromNow() })
+      const created = await createInvite(supabase, {
+        groupId,
+        maxUses: 1,
+        expiresAt: weekFromNow(),
+      })
       await shareInvite(name, created.code)
     } catch (error) {
       toast.error(errorMessage(error))
@@ -115,7 +129,11 @@ function AddFriendSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (
               >
                 <GroupTile emoji={g.emoji} color={g.color} size="sm" />
                 <span className="flex-1 font-semibold">{g.name}</span>
-                {busy === g.id ? <LoadingDots size={16} /> : <ChevronRight aria-hidden className="size-4 text-mute" />}
+                {busy === g.id ? (
+                  <LoadingDots size={16} />
+                ) : (
+                  <ChevronRight aria-hidden className="size-4 text-mute" />
+                )}
               </button>
             ))}
           </div>
@@ -132,9 +150,13 @@ export function FriendsPage() {
   const { data: friends, isPending } = useQuery(friendsQueryOptions(supabase, userId))
   const [opening, setOpening] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  useRealtime('friends-live', [{ table: 'expenses' }, { table: 'settlements' }, { table: 'group_members' }], () => {
-    void queryClient.invalidateQueries({ queryKey: groupKeys.friends(userId) })
-  })
+  useRealtime(
+    'friends-live',
+    [{ table: 'expenses' }, { table: 'settlements' }, { table: 'group_members' }],
+    () => {
+      void queryClient.invalidateQueries({ queryKey: groupKeys.friends(userId) })
+    },
+  )
 
   async function open(friend: Friend) {
     setOpening(friend.id)
@@ -162,7 +184,12 @@ export function FriendsPage() {
         title={t('friends.title')}
         subtitle={t('friends.subtitle')}
         actions={
-          <Button size="sm" variant="secondary" leadingIcon={<UserPlus />} onClick={() => setAddOpen(true)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<UserPlus />}
+            onClick={() => setAddOpen(true)}
+          >
             {t('friends.add')}
           </Button>
         }
@@ -199,9 +226,19 @@ export function FriendsPage() {
                   aria-label={t('friends.open', { name: friend.display_name })}
                   className="flex w-full items-center gap-3 rounded-card border border-line bg-card p-3 text-left transition-[border-color,transform] duration-150 hover:border-ink/25 active:scale-[0.99]"
                 >
-                  <Avatar name={friend.display_name} seed={friend.id} src={avatarSrc(friend.avatar_path)} />
-                  <span className="min-w-0 flex-1 truncate font-semibold">{friend.display_name}</span>
-                  {opening === friend.id ? <LoadingDots size={16} /> : <FriendBalance friend={friend} />}
+                  <Avatar
+                    name={friend.display_name}
+                    seed={friend.id}
+                    src={avatarSrc(friend.avatar_path)}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {friend.display_name}
+                  </span>
+                  {opening === friend.id ? (
+                    <LoadingDots size={16} />
+                  ) : (
+                    <FriendBalance friend={friend} />
+                  )}
                   <ChevronRight aria-hidden className="size-4 text-mute" />
                 </button>
               </li>

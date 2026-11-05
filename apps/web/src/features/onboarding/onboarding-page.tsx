@@ -29,7 +29,9 @@ function Steps({ step, total }: { step: number; total: number }) {
           />
         ))}
       </div>
-      <span className="text-sm font-semibold text-mute">{t('onboarding.step', { step, total })}</span>
+      <span className="text-sm font-semibold text-mute">
+        {t('onboarding.step', { step, total })}
+      </span>
     </div>
   )
 }

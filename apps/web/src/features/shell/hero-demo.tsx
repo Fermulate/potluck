@@ -1,6 +1,14 @@
 import { DEFAULT_LOCALE, t } from '@potluck/i18n'
 import { avatarColor } from '@potluck/tokens'
-import { Amount, cn, HeatCell, Stamp, StampAnimation, usePrefersReducedMotion, type HeatLevel } from '@potluck/ui'
+import {
+  Amount,
+  cn,
+  HeatCell,
+  Stamp,
+  StampAnimation,
+  usePrefersReducedMotion,
+  type HeatLevel,
+} from '@potluck/ui'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 
@@ -103,10 +111,20 @@ function Receipt({ phase, cycle }: { phase: Phase; cycle: number }) {
               className="flex justify-between gap-3"
               initial={reduced ? false : { opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: reduced ? 0 : i * 0.22, type: 'spring', stiffness: 380, damping: 30 }}
+              transition={{
+                delay: reduced ? 0 : i * 0.22,
+                type: 'spring',
+                stiffness: 380,
+                damping: 30,
+              }}
             >
               <span>{t(`app.landing.demo.items.${item.key}`)}</span>
-              <Amount cents={item.cents} currency={CURRENCY} locale={DEFAULT_LOCALE} tone="inherit" />
+              <Amount
+                cents={item.cents}
+                currency={CURRENCY}
+                locale={DEFAULT_LOCALE}
+                tone="inherit"
+              />
             </motion.li>
           ))}
         </ul>
@@ -225,7 +243,10 @@ export function HeroDemo() {
   const reduced = usePrefersReducedMotion()
   const { phase, painted, cycle } = usePhase(reduced)
   return (
-    <figure className="relative mx-auto h-[40rem] w-full max-w-[34rem] lg:h-[39rem]" aria-label={t('app.landing.demo.label')}>
+    <figure
+      className="relative mx-auto h-[40rem] w-full max-w-[34rem] lg:h-[39rem]"
+      aria-label={t('app.landing.demo.label')}
+    >
       <div aria-hidden className="absolute top-0 left-0 sm:left-2">
         <AnimatePresence mode="wait">
           <motion.div
@@ -241,7 +262,10 @@ export function HeroDemo() {
       </div>
       <div aria-hidden className="absolute right-0 bottom-0 sm:right-2">
         <motion.div
-          animate={{ scale: reached(phase, 'paint') ? 1 : 0.97, opacity: reached(phase, 'paint') ? 1 : 0.85 }}
+          animate={{
+            scale: reached(phase, 'paint') ? 1 : 0.97,
+            opacity: reached(phase, 'paint') ? 1 : 0.85,
+          }}
           transition={{ type: 'spring', stiffness: 300, damping: 26 }}
         >
           <Planner phase={phase} painted={painted} />

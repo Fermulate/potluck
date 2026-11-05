@@ -32,7 +32,12 @@ export function useRealtime(
     for (const sub of subs) {
       ch = ch.on(
         'postgres_changes' as never,
-        { event: sub.event ?? '*', schema: 'public', table: sub.table, filter: sub.filter } as never,
+        {
+          event: sub.event ?? '*',
+          schema: 'public',
+          table: sub.table,
+          filter: sub.filter,
+        } as never,
         (payload: { table: string; eventType: string; new: unknown; old: unknown }) =>
           handler.current(payload),
       )
