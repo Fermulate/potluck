@@ -27,10 +27,11 @@ select tests.remember('e_equal', (select id from create_expense(jsonb_build_obje
   'splits', tests.people('m1', 'm2', 'admin')))));
 select results_eq(
   $$ select user_id, share_cents from public.expense_splits where expense_id = tests.id('e_equal') order by share_cents desc, user_id $$,
-  $$ select * from (values (tests.uid('m1'), 34::bigint)) a
-     union all
-     select * from (select u, 33::bigint from unnest(array[tests.uid('m2'), tests.uid('admin')]) u order by u) b $$,
-  'equal split: leftover cent goes to the first person listed'
+  $$ select u, case when rn = 1 then 34::bigint else 33::bigint end
+     from (select u, row_number() over (order by u) as rn
+           from unnest(array[tests.uid('m1'), tests.uid('m2'), tests.uid('admin')]) u) x
+     order by 2 desc, 1 $$,
+  'equal split: leftover cent goes to the lowest user id'
 );
 reset role;
 select is(

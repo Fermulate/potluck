@@ -1,6 +1,6 @@
 -- group_balances, settle_up, delete_settlement, simplified_debts.
 begin;
-select plan(28);
+select plan(30);
 
 -- Ignore any seeded rates; each test adds the ones it needs.
 delete from public.fx_rates;
@@ -75,7 +75,7 @@ select is(
   0::bigint,
   'balances still add up to zero with fx rounding'
 );
-select is(pg_temp.net('a'), 506::bigint, 'payer is credited the sum of the converted splits');
+select is(pg_temp.net('a'), 505::bigint, 'payer is credited the converted total, rounded half away from zero');
 
 -- Settling exactly the suggested debts clears the group.
 select tests.login('c');
@@ -86,9 +86,18 @@ select settle_up(tests.id('g'), tests.uid('b'), 50);
 select tests.login('a');
 select set_eq(
   $$ select from_user, to_user, amount_cents from simplified_debts(tests.id('g')) $$,
-  $$ values (tests.uid('b'), tests.uid('a'), 2::bigint), (tests.uid('c'), tests.uid('a'), 2::bigint), (tests.uid('d'), tests.uid('a'), 2::bigint) $$,
-  'only the gum is left'
+  $$ select u, tests.uid('a'), case when rn <= 2 then 2::bigint else 1::bigint end
+     from (select u, row_number() over (order by u) as rn
+           from unnest(array[tests.uid('b'), tests.uid('c'), tests.uid('d')]) u) x $$,
+  'only the gum is left, its leftover cents split by user id'
 );
+
+-- Minor units: 1000 JPY (no decimals) at 0.0067 USD per yen is 6.70 USD.
+select tests.remember('jpy', (select id from create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Ramen',
+  'amount_cents', 1000, 'currency', 'JPY', 'fx_rate', 0.0067, 'splits', tests.people('b')))));
+select is(pg_temp.net('a'), 675::bigint, 'zero-decimal currencies convert by minor units');
+select delete_expense(tests.id('jpy'));
+select is(pg_temp.net('a'), 5::bigint, 'deleted expenses drop out of balances');
 
 -- Ties are broken by user id.
 select tests.remember('t', tests.group_with('a', array['b', 'c'], '{}', 'Ties'));
