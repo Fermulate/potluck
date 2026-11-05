@@ -1,10 +1,53 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
-
+import { ExpenseForm } from '@/features/expenses/form/expense-form'
+import { GroupPicker } from '@/features/expenses/group-picker'
+import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { validateNewExpenseSearch } from '@/features/expenses/search-params'
 
 export const Route = createFileRoute('/_app/new/expense')({
   validateSearch: validateNewExpenseSearch,
-  component: () => <RoutePlaceholder title={t('nav.quickAdd.expense')} />,
+  component: NewExpense,
 })
+
+function NewExpense() {
+  const { groupId, eventId } = Route.useSearch()
+  const navigate = useNavigate()
+  const router = useRouter()
+  const close = () => {
+    if (window.history.length > 1) router.history.back()
+    else if (groupId) void navigate({ to: '/groups/$groupId', params: { groupId } })
+    else void navigate({ to: '/home' })
+  }
+
+  if (!groupId) {
+    return (
+      <MoneyPageShell title={t('expenses.form.newTitle')} onClose={close}>
+        <div className="px-4 py-6 md:px-8">
+          <GroupPicker
+            title={t('expenses.pickGroup.title')}
+            hint={t('expenses.pickGroup.hint')}
+            onPick={(group) =>
+              void navigate({
+                to: '/new/expense',
+                search: { groupId: group.id, eventId },
+                replace: true,
+              })
+            }
+          />
+        </div>
+      </MoneyPageShell>
+    )
+  }
+
+  return (
+    <ExpenseForm
+      key={groupId}
+      mode="create"
+      groupId={groupId}
+      eventId={eventId}
+      onClose={close}
+      onDone={() => void navigate({ to: '/groups/$groupId', params: { groupId }, replace: true })}
+    />
+  )
+}
