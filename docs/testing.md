@@ -48,7 +48,7 @@ Every package with logic has `@vitest/coverage-v8`, a `test:coverage` script and
 | `packages/i18n` | 90%                  | 90%      | 90%       | `packages/i18n/vitest.config.ts` |
 | `packages/ui`   | 70%                  | 85%      | 90%       | `packages/ui/vitest.config.ts`   |
 | `packages/api`  | 60%                  | 90%      | 90%       | `packages/api/vitest.config.ts`  |
-| `apps/web`      | 70%                  | 60%      | 60%       | `apps/web/vite.config.ts`        |
+| `apps/web`      | 70%                  | 75%      | 85%       | `apps/web/vite.config.ts`        |
 
 ```sh
 pnpm test:coverage                          # every package, through turbo

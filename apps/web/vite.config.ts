@@ -78,7 +78,7 @@ export default defineConfig({
         'src/vite-env.d.ts',
       ],
       reporter: ['text-summary', 'lcov', 'json-summary'],
-      thresholds: { statements: 70, branches: 60, functions: 60, lines: 70 },
+      thresholds: { statements: 70, branches: 75, functions: 85, lines: 70 },
     },
   },
 })
