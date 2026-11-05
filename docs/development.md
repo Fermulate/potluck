@@ -151,8 +151,8 @@ Commit the regenerated file in the same PR as the migration. Do not edit it by h
 1. `npx supabase migration new <short_name>` creates `supabase/migrations/<timestamp>_<short_name>.sql`.
 2. Follow the existing patterns:
    - `revoke all ... from anon, authenticated`, then grant the exact columns clients need.
-   - `alter table ... enable row level security` and policies for every new table in `public`. Use `(select auth.uid())` and the helpers in `private` (`my_group_ids()`, `is_group_admin()`, ...).
-   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'`.
+   - `alter table ... enable row level security` and policies for every new table in `public`. Use `(select auth.uid())` and the helpers in `private`. For membership checks on read policies write `group_id = any (array(select private.my_group_ids()))`: it runs once per statement and, unlike `in (select ...)`, can use the `group_id` index.
+   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'`. One exception: small immutable SQL helpers evaluated per row (`private.minor_units`, `private.convert_minor`) use a SQL-standard body (`return ...`) and no `set` clause, so the planner can inline them. Those bodies are bound when the function is created, so the caller's search path cannot change them. `supabase db advisors` reports them as `function_search_path_mutable`; that warning is expected.
    - Helpers that clients must not call go in `private` and get an explicit `grant execute` only if a policy needs them.
    - Additive only. A breaking RPC change is a new `_v2` function ([ADR 8](adr/0008-additive-migrations-and-versioned-rpcs.md)).
 3. If the change affects money or scheduling rules, change the matching function in `packages/core` too and test both.
