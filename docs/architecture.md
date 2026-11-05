@@ -79,6 +79,7 @@ A native app (Expo) is planned. Everything below the screens is shared:
 - `notifications`: `id`, `user_id`, `type text`, `data jsonb`, `read_at`, `created_at`.
 - `push_tokens`: `(user_id, token)` pk, `platform push_platform`, `subscription jsonb` (web push), `last_seen_at`.
 - `app_config`: `key text pk`, `value jsonb` (feature flags, `min_client_version` per platform). Readable by everyone.
+- `calendar_feed_tokens`: `user_id pk`, `token text unique` (32+ chars), `created_at`. The only credential for the `ics-feed` URL. Owners can read their row; nobody writes it directly.
 
 ## Roles
 
@@ -118,6 +119,7 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `schedule_event(event_id, starts_at)` / `cancel_event(event_id)`                                                  |                                                                                                                                                               |
 | `my_timeline(from, to)`                                                                                           | upcoming events across all my groups with my RSVP and request state                                                                                           |
 | `delete_my_account()`                                                                                             | anonymizes profile (tombstone name), removes PII, deletes auth user via edge function                                                                         |
+| `calendar_feed_token(rotate bool default false)` → text                                                           | returns (and creates on first call) the caller's `.ics` feed token; `rotate` issues a new one and breaks old subscriptions                                    |
 
 ## Database implementation notes
 
@@ -146,7 +148,7 @@ Every RPC raises `message = <stable snake_case code>`, `detail = <readable Engli
 - `best_slots(event_id, limit = 5)`: candidates are the distinct `slot_start`s in current members' availability; durations round up to whole cells; yes needs yes on every covered cell, maybe needs yes or maybe on all of them; `missing` lists members who cannot make the whole duration, sorted by id; `min_attendees` counts yes + maybe; capped at 100 rows. Same rules as `rankSlots` in `packages/core`. Past candidates are not filtered out.
 - `schedule_event(event_id, starts_at)` also reschedules an already scheduled event and sets `ends_at = starts_at + duration`. `cancel_event` is idempotent. Owner, admins or the event creator.
 - `my_timeline(from = now(), to = now() + 60 days)` returns `event_id, group_id, group_name, group_emoji, group_color, title, emoji, location, status, timezone, starts_at, ends_at, window_start, window_end, rsvp_deadline, my_rsvp, going_count, availability_requested, availability_submitted` for scheduled events in range and open polls overlapping it.
-- `delete_my_account()` returns void. It tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set), hands owned groups to the longest-standing admin (else member) or deletes groups with nobody else, removes zero-balance memberships (open balances stay), deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites. Closed accounts get `account_deleted` from every RPC. Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused. Avatar files are left for the edge function too.
+- `delete_my_account()` returns void. It tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set), hands owned groups to the longest-standing admin (else member) or deletes groups with nobody else, removes zero-balance memberships (open balances stay), deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites. Closed accounts get `account_deleted` from every RPC. Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused. Two gaps remain: nothing removes the avatar files in the `avatars` bucket yet (the edge function does not), and the `calendar_feed_tokens` row survives, so an old feed URL keeps serving events from groups where the closed account still has an open balance.
 
 ### Schema additions
 
@@ -176,7 +178,8 @@ Notification types: `expense.created` (split members, with their `share_cents`),
 
 - Buckets: `avatars` (public, `<user_id>/...`, owner writes), `group-covers` (public, `<group_id>/...`, owner and admins write), `receipts` (private, `<group_id>/...`, members read and upload, uploader or admins replace and delete).
 - `supabase_realtime` publishes `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events`, `group_members`.
-- pg_cron: `materialize-recurring-expenses` daily at 00:10 UTC (catches up at most 12 periods per template per run; deactivates templates whose people left; retries when an FX rate is missing) and `event-reminders` hourly at :05 (reminders once per event starting within 24h, then marks ended events `done`).
+- pg_cron: `materialize-recurring-expenses` daily at 00:10 UTC (catches up at most 12 periods per template per run; deactivates templates whose people left; retries when an FX rate is missing), `event-reminders` hourly at :05 (reminders once per event starting within 24h, then marks ended events `done`) and `fx-sync` daily at 16:30 UTC (calls the `fx-sync` edge function through `private.invoke_edge_function`).
+- Database to edge function hooks (`20261105160000_edge_function_hooks.sql`): `private.invoke_edge_function(fn, body)` posts through `pg_net` with the `x-potluck-secret` header. It reads `project_url` and `edge_secret` from Vault and does nothing when either is missing, so the local stack and CI never call out. The `notifications_push` trigger calls `notify` for every new notification.
 
 ### Local demo data
 
