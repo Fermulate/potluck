@@ -490,6 +490,7 @@ function WhoList({
               >
                 <Checkbox
                   id={id}
+                  aria-label={m.displayName}
                   checked={checked}
                   onCheckedChange={(v) => {
                     const next = new Set(selected)
