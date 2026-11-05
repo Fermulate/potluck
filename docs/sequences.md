@@ -433,7 +433,7 @@ sequenceDiagram
   W->>W: sign out, go to landing
 ```
 
-After this every RPC answers `account_deleted` for that id, and closed accounts never receive notifications. Two things are not cleaned up yet: avatar files in the `avatars` bucket and the `calendar_feed_tokens` row.
+After this every RPC answers `account_deleted` for that id, and closed accounts never receive notifications. The edge function also deletes the avatar files, and a trigger drops the calendar feed token.
 
 ## Deploy pipeline
 

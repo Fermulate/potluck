@@ -42,11 +42,11 @@ describe('can', () => {
     expect(invite(true)).toEqual([true, true, true])
   })
 
-  it('only lets owners and admins create invites that grant admin', () => {
+  it('only lets the owner create invites that grant admin', () => {
     for (const membersCanInvite of [true, false]) {
       expect(
         everyone((r) => can(r, 'invite.create', { membersCanInvite, inviteRole: 'admin' })),
-      ).toEqual([true, true, false])
+      ).toEqual([true, false, false])
     }
   })
 

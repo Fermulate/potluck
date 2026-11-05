@@ -469,7 +469,7 @@ erDiagram
 
 A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid.
 
-`create_invite` is the source of truth for admin invites: only the owner can mint them. `can()` in `packages/core/src/roles` currently lets admins through for `invite.create` with `inviteRole: 'admin'`, so the UI can offer a button the server will reject.
+`create_invite` is the source of truth for admin invites: only the owner can mint them, and `can()` in `packages/core/src/roles` applies the same rule.
 
 ## RPCs
 
@@ -520,7 +520,7 @@ Every RPC raises `message = <stable snake_case code>`, `detail = <readable Engli
 - `best_slots(event_id, limit = 5)`: candidates are the distinct `slot_start`s in current members' availability; durations round up to whole cells; yes needs yes on every covered cell, maybe needs yes or maybe on all of them; `missing` lists members who cannot make the whole duration, sorted by id; `min_attendees` counts yes + maybe; capped at 100 rows. Same rules as `rankSlots` in `packages/core`. Past candidates are not filtered out.
 - `schedule_event(event_id, starts_at)` also reschedules an already scheduled event and sets `ends_at = starts_at + duration`. `cancel_event` is idempotent. Owner, admins or the event creator.
 - `my_timeline(from = now(), to = now() + 60 days)` returns `event_id, group_id, group_name, group_emoji, group_color, title, emoji, location, status, timezone, starts_at, ends_at, window_start, window_end, rsvp_deadline, my_rsvp, going_count, availability_requested, availability_submitted` for scheduled events in range and open polls overlapping it.
-- `delete_my_account()` returns void. It tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set), hands owned groups to the longest-standing admin (else member) or deletes groups with nobody else, removes zero-balance memberships (open balances stay), deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites. Closed accounts get `account_deleted` from every RPC. Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused. Two gaps remain: nothing removes the avatar files in the `avatars` bucket yet (the edge function does not), and the `calendar_feed_tokens` row survives, so an old feed URL keeps serving events from groups where the closed account still has an open balance.
+- `delete_my_account()` returns void. It tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set), hands owned groups to the longest-standing admin (else member) or deletes groups with nobody else, removes zero-balance memberships (open balances stay), deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites. Closed accounts get `account_deleted` from every RPC. Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused. The edge function also removes the avatar files under `<uid>/` in the `avatars` bucket, and a trigger on `profiles.deleted_at` drops the `calendar_feed_tokens` row so old feed URLs stop working.
 
 ### Schema additions
 
