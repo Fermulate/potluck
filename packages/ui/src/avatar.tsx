@@ -52,11 +52,11 @@ export const Avatar = forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
       {src && <AvatarPrimitive.Image src={src} alt={name} className="size-full object-cover" />}
       <AvatarPrimitive.Fallback
         delayMs={src ? 400 : 0}
-        className="grid size-full place-items-center leading-none font-bold tracking-tight"
+        className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)]"
         style={{ backgroundColor: color.bg, color: color.fg }}
       >
         <span role="img" aria-label={name}>
-          <span aria-hidden>{initials(name)}</span>
+          <span aria-hidden>{size === 'xs' ? Array.from(initials(name))[0] : initials(name)}</span>
         </span>
       </AvatarPrimitive.Fallback>
     </AvatarPrimitive.Root>
