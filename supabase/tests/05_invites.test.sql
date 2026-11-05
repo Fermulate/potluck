@@ -16,7 +16,7 @@ select tests.login('member');
 select lives_ok($$ select create_invite(tests.id('g')) $$, 'members can invite when members_can_invite');
 select throws_ok(
   $$ select create_invite(tests.id('g'), 'admin') $$,
-  '42501', 'Only the owner can invite admins', 'members cannot create admin invites'
+  '42501', 'not_allowed', 'members cannot create admin invites'
 );
 
 reset role;
@@ -24,32 +24,32 @@ update public.groups set members_can_invite = false where id = tests.id('g');
 select tests.login('member');
 select throws_ok(
   $$ select create_invite(tests.id('g')) $$,
-  '42501', 'Only admins can invite people to this group', 'members cannot invite when disabled'
+  '42501', 'not_allowed', 'members cannot invite when disabled'
 );
 
 select tests.login('admin');
 select lives_ok($$ select create_invite(tests.id('g')) $$, 'admins can always invite');
 select throws_ok(
   $$ select create_invite(tests.id('g'), 'admin') $$,
-  '42501', 'Only the owner can invite admins', 'admins cannot create admin invites'
+  '42501', 'not_allowed', 'admins cannot create admin invites'
 );
 select throws_ok(
   $$ select create_invite(tests.id('g'), 'owner') $$,
-  '22023', 'Invites cannot make someone the owner', 'owner invites are impossible'
+  '22023', 'invalid_role', 'owner invites are impossible'
 );
 select throws_ok(
   $$ select create_invite(tests.id('g'), 'member', 0) $$,
-  '22023', 'Max uses must be at least 1', 'max_uses must be positive'
+  '22023', 'invalid_max_uses', 'max_uses must be positive'
 );
 select throws_ok(
   $$ select create_invite(tests.id('g'), 'member', null, now() - interval '1 minute') $$,
-  '22023', 'Expiry must be in the future', 'expiry must be in the future'
+  '22023', 'invalid_expiry', 'expiry must be in the future'
 );
 
 select tests.login('joiner');
 select throws_ok(
   $$ select create_invite(tests.id('g')) $$,
-  '42501', 'You are not a member of this group', 'outsiders cannot invite'
+  '42501', 'not_a_member', 'outsiders cannot invite'
 );
 
 select tests.login('owner');
@@ -71,7 +71,7 @@ select results_eq(
 );
 select throws_ok(
   $$ select * from invite_preview('does-not-exist-123') $$,
-  'P0002', 'This invite link is not valid', 'unknown codes raise'
+  'P0002', 'invite_not_found', 'unknown codes raise'
 );
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code')) $$,
@@ -104,7 +104,7 @@ select lives_ok($$ select accept_invite(current_setting('tests.code')) $$, 'seco
 select tests.login('invited');
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code')) $$,
-  '23514', 'This invite has been used up', 'max_uses is enforced'
+  '23514', 'invite_used_up', 'max_uses is enforced'
 );
 select is((select status from invite_preview(current_setting('tests.code'))), 'used_up', 'preview shows used_up');
 
@@ -114,7 +114,7 @@ update public.group_invites set uses = 0, max_uses = null, expires_at = now() - 
 select tests.login('invited');
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code')) $$,
-  '23514', 'This invite has expired', 'expired invites are rejected'
+  '23514', 'invite_expired', 'expired invites are rejected'
 );
 select is((select status from invite_preview(current_setting('tests.code'))), 'expired', 'preview shows expired');
 
@@ -126,7 +126,7 @@ update public.group_invites set revoked_at = now() where id = tests.id('inv');
 select tests.login('invited');
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code')) $$,
-  '23514', 'This invite has been revoked', 'revoked invites are rejected'
+  '23514', 'invite_revoked', 'revoked invites are rejected'
 );
 select is((select status from invite_preview(current_setting('tests.code'))), 'revoked', 'preview shows revoked');
 
@@ -140,7 +140,7 @@ delete from public.group_members where group_id = tests.id('g') and user_id = te
 select tests.login('late');
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code2')) $$,
-  '42501', 'This invite was sent to a different email address', 'email-bound invites check the email'
+  '42501', 'invite_wrong_email', 'email-bound invites check the email'
 );
 select tests.login('invited');
 select lives_ok($$ select accept_invite(current_setting('tests.code2')) $$, 'the right email can join (case-insensitive)');

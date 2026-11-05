@@ -38,7 +38,7 @@ declare
   total_shares bigint;
 begin
   if splits is null or jsonb_typeof(splits) <> 'array' or jsonb_array_length(splits) = 0 then
-    raise exception using message = 'Add at least one person to the split', hint = 'splits_required', errcode = '22023';
+    raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
   end if;
 
   begin
@@ -50,28 +50,28 @@ begin
     from jsonb_array_elements(splits) with ordinality as e (elem, ord);
   exception
     when invalid_text_representation or numeric_value_out_of_range or cannot_coerce then
-      raise exception using message = 'The split is not valid', hint = 'invalid_splits', errcode = '22023';
+      raise exception using message = 'invalid_splits', detail = 'The split is not valid', errcode = '22023';
   end;
 
   n := cardinality(uids);
 
   if array_position(uids, null) is not null then
-    raise exception using message = 'Every split needs a person', hint = 'invalid_splits', errcode = '22023';
+    raise exception using message = 'invalid_splits', detail = 'Every split needs a person', errcode = '22023';
   end if;
   if (select count(distinct u) from unnest(uids) as u) <> n then
-    raise exception using message = 'A person appears twice in the split', hint = 'duplicate_split_member', errcode = '22023';
+    raise exception using message = 'duplicate_user', detail = 'A person appears twice in the split', errcode = '22023';
   end if;
 
   select count(s), coalesce(sum(s), 0) into explicit_n, total_shares from unnest(shares) as s;
 
   if explicit_n = n then
     if exists (select 1 from unnest(shares) as s where s < 0) then
-      raise exception using message = 'Shares cannot be negative', hint = 'invalid_splits', errcode = '22023';
+      raise exception using message = 'invalid_splits', detail = 'Shares cannot be negative', errcode = '22023';
     end if;
     if total_shares <> amount then
       raise exception using
-        message = format('Splits add up to %s but the expense is %s', total_shares, amount),
-        hint = 'splits_must_sum_to_amount',
+        message = 'splits_sum_mismatch',
+        detail = format('Splits add up to %s but the expense is %s', total_shares, amount),
         errcode = '22023';
     end if;
     return query
@@ -80,7 +80,7 @@ begin
   end if;
 
   if kind in ('exact', 'itemized') then
-    raise exception using message = 'Enter an amount for each person', hint = 'split_amount_required', errcode = '22023';
+    raise exception using message = 'split_amount_required', detail = 'Enter an amount for each person', errcode = '22023';
   end if;
 
   if kind = 'equal' then
@@ -88,17 +88,17 @@ begin
   else
     if array_position(weights, null) is not null
        or exists (select 1 from unnest(weights) as w where w < 0) then
-      raise exception using message = 'Enter a value for each person', hint = 'split_weight_required', errcode = '22023';
+      raise exception using message = 'invalid_weight', detail = 'Enter a value for each person', errcode = '22023';
     end if;
   end if;
 
   select sum(w) into total_weight from unnest(weights) as w;
 
   if kind = 'percent' and total_weight <> 100 then
-    raise exception using message = 'Percentages must add up to 100', hint = 'percent_must_total_100', errcode = '22023';
+    raise exception using message = 'percent_sum', detail = 'Percentages must add up to 100', errcode = '22023';
   end if;
   if total_weight <= 0 then
-    raise exception using message = 'At least one person needs a share', hint = 'split_weight_required', errcode = '22023';
+    raise exception using message = 'zero_shares', detail = 'At least one person needs a share', errcode = '22023';
   end if;
 
   return query
@@ -155,7 +155,7 @@ declare
   recurring uuid;
 begin
   if jsonb_typeof(p) <> 'object' then
-    raise exception using message = 'The expense is not valid', hint = 'invalid_payload', errcode = '22023';
+    raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
   end if;
 
   if eid is null then
@@ -165,36 +165,36 @@ begin
       gid := null;
     end;
     if gid is null then
-      raise exception using message = 'Pick a group for this expense', hint = 'group_required', errcode = '22023';
+      raise exception using message = 'group_required', detail = 'Pick a group for this expense', errcode = '22023';
     end if;
     my_role := private.require_member(gid);
   else
     select * into prev from public.expenses e where e.id = eid for update;
     if prev.id is null then
-      raise exception using message = 'Expense not found', hint = 'expense_not_found', errcode = 'P0002';
+      raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'P0002';
     end if;
     gid := prev.group_id;
     my_role := private.require_member(gid);
     if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by then
-      raise exception using message = 'You can only edit your own expenses', hint = 'not_allowed', errcode = '42501';
+      raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
     end if;
     if prev.deleted_at is not null then
-      raise exception using message = 'Restore this expense before editing it', hint = 'expense_deleted', errcode = '23514';
+      raise exception using message = 'expense_deleted', detail = 'Restore this expense before editing it', errcode = '23514';
     end if;
     if p ? 'group_id' and (p ->> 'group_id') is distinct from gid::text then
-      raise exception using message = 'An expense cannot move to another group', hint = 'invalid_payload', errcode = '22023';
+      raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
     end if;
   end if;
 
   select * into g from public.groups x where x.id = gid;
   if g.archived_at is not null then
-    raise exception using message = 'This group is archived', hint = 'group_archived', errcode = '23514';
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
   end if;
 
   -- Merge with the stored row on update.
   v_description := btrim(coalesce(p ->> 'description', prev.description, ''));
   if v_description = '' then
-    raise exception using message = 'Add a description', hint = 'description_required', errcode = '22023';
+    raise exception using message = 'description_required', detail = 'Add a description', errcode = '22023';
   end if;
 
   if p ? 'amount_cents' then
@@ -202,19 +202,19 @@ begin
        or (p ->> 'amount_cents')::numeric <> trunc((p ->> 'amount_cents')::numeric)
        or (p ->> 'amount_cents')::numeric <= 0
        or (p ->> 'amount_cents')::numeric > 100000000000 then
-      raise exception using message = 'Enter an amount greater than zero', hint = 'invalid_amount', errcode = '22023';
+      raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
     end if;
     v_amount := (p ->> 'amount_cents')::bigint;
   else
     v_amount := prev.amount_cents;
   end if;
   if v_amount is null then
-    raise exception using message = 'Enter an amount greater than zero', hint = 'invalid_amount', errcode = '22023';
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
   end if;
 
   v_currency := upper(coalesce(nullif(btrim(p ->> 'currency'), ''), prev.currency, g.currency));
   if v_currency !~ '^[A-Z]{3}$' then
-    raise exception using message = 'Unknown currency code', hint = 'invalid_currency', errcode = '22023';
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
   end if;
 
   begin
@@ -226,14 +226,14 @@ begin
     v_fx := (p ->> 'fx_rate')::numeric;
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
-      raise exception using message = 'The expense is not valid', hint = 'invalid_payload', errcode = '22023';
+      raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
   end;
 
   if v_currency = g.currency then
     v_fx := 1;
   elsif v_fx is not null then
     if v_fx <= 0 then
-      raise exception using message = 'Exchange rate must be positive', hint = 'invalid_fx_rate', errcode = '22023';
+      raise exception using message = 'invalid_fx_rate', detail = 'Exchange rate must be positive', errcode = '22023';
     end if;
   elsif prev.id is not null and prev.currency = v_currency then
     v_fx := prev.fx_rate;
@@ -241,25 +241,25 @@ begin
     v_fx := private.fx_rate(v_currency::char(3), g.currency, v_spent_at);
     if v_fx is null then
       raise exception using
-        message = format('No exchange rate from %s to %s yet', v_currency, g.currency),
-        hint = 'fx_rate_unavailable',
+        message = 'fx_rate_unavailable',
+        detail = format('No exchange rate from %s to %s yet', v_currency, g.currency),
         errcode = '23514';
     end if;
   end if;
 
   if not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = v_paid_by) then
-    raise exception using message = 'The payer is not in this group', hint = 'payer_not_in_group', errcode = '23514';
+    raise exception using message = 'payer_not_in_group', detail = 'The payer is not in this group', errcode = '23514';
   end if;
 
   if v_event is not null and not exists (
     select 1 from public.events ev where ev.id = v_event and ev.group_id = gid
   ) then
-    raise exception using message = 'That event is not in this group', hint = 'event_not_in_group', errcode = '22023';
+    raise exception using message = 'event_not_in_group', detail = 'That event is not in this group', errcode = '22023';
   end if;
 
   v_receipt := case when p ? 'receipt_path' then nullif(p ->> 'receipt_path', '') else prev.receipt_path end;
   if v_receipt is not null and v_receipt not like gid::text || '/%' then
-    raise exception using message = 'Receipts must be stored under the group folder', hint = 'invalid_receipt_path', errcode = '22023';
+    raise exception using message = 'invalid_receipt_path', detail = 'Receipts must be stored under the group folder', errcode = '22023';
   end if;
 
   -- Decide which splits to write.
@@ -267,7 +267,7 @@ begin
     split_input := p -> 'splits';
     rewrite_splits := true;
   elsif prev.id is null then
-    raise exception using message = 'Add at least one person to the split', hint = 'splits_required', errcode = '22023';
+    raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
   elsif v_amount <> prev.amount_cents or v_split_type <> prev.split_type then
     -- Re-derive from the stored people and weights.
     select jsonb_agg(jsonb_build_object('user_id', s.user_id, 'weight', s.weight) order by s.user_id)
@@ -286,7 +286,7 @@ begin
       select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric)
       where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
     ) then
-      raise exception using message = 'Everyone in the split must be in the group', hint = 'split_member_not_in_group', errcode = '23514';
+      raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
     end if;
   end if;
 
@@ -364,7 +364,7 @@ set search_path = ''
 as $$
 begin
   if update_expense.id is null then
-    raise exception using message = 'Expense not found', hint = 'expense_not_found', errcode = 'P0002';
+    raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'P0002';
   end if;
   return private.save_expense(update_expense.id, payload);
 end;
@@ -384,11 +384,11 @@ declare
 begin
   select * into e from public.expenses x where x.id = eid for update;
   if e.id is null then
-    raise exception using message = 'Expense not found', hint = 'expense_not_found', errcode = 'P0002';
+    raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'P0002';
   end if;
   my_role := private.require_member(e.group_id);
   if my_role = 'member' and uid is distinct from e.created_by and uid <> e.paid_by then
-    raise exception using message = 'You can only change your own expenses', hint = 'not_allowed', errcode = '42501';
+    raise exception using message = 'not_allowed', detail = 'You can only change your own expenses', errcode = '42501';
   end if;
   return e;
 end;
@@ -431,7 +431,7 @@ begin
     except
     select m.user_id from public.group_members m where m.group_id = e.group_id
   ) then
-    raise exception using message = 'Someone in this expense has left the group', hint = 'split_member_not_in_group', errcode = '23514';
+    raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
   end if;
 
   update public.expenses x set deleted_at = null where x.id = e.id returning * into e;

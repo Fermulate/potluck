@@ -107,8 +107,8 @@ begin
 
   if total <> amount then
     raise exception using
-      message = format('Splits add up to %s but the expense is %s', total, amount),
-      hint = 'splits_must_sum_to_amount',
+      message = 'splits_sum_mismatch',
+      detail = format('Splits add up to %s but the expense is %s', total, amount),
       errcode = '23514';
   end if;
 
@@ -203,8 +203,8 @@ begin
     or exists (select 1 from public.settlements s where s.group_id = new.id)
   ) then
     raise exception using
-      message = 'The currency of a group with expenses cannot be changed',
-      hint = 'group_currency_locked',
+      message = 'group_currency_locked',
+      detail = 'The currency of a group with expenses cannot be changed',
       errcode = '23514';
   end if;
   return new;

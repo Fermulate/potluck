@@ -2,6 +2,9 @@
 begin;
 select plan(28);
 
+-- Ignore any seeded rates; each test adds the ones it needs.
+delete from public.fx_rates;
+
 select tests.create_user('a');
 select tests.create_user('b');
 select tests.create_user('c');
@@ -105,12 +108,12 @@ select results_eq(
 
 -- settle_up validation and permissions
 select tests.login('b');
-select throws_ok($$ select settle_up(tests.id('g'), tests.uid('outsider'), 100) $$, 'P0002', 'Both people must be in the group', 'recipient must be a member');
-select throws_ok($$ select settle_up(tests.id('g'), tests.uid('a'), 0) $$, '22023', 'Enter an amount greater than zero', 'amount must be positive');
-select throws_ok($$ select settle_up(tests.id('g'), tests.uid('b'), 100) $$, '22023', 'Pick who you paid', 'cannot pay yourself');
+select throws_ok($$ select settle_up(tests.id('g'), tests.uid('outsider'), 100) $$, 'P0002', 'member_not_found', 'recipient must be a member');
+select throws_ok($$ select settle_up(tests.id('g'), tests.uid('a'), 0) $$, '22023', 'invalid_amount', 'amount must be positive');
+select throws_ok($$ select settle_up(tests.id('g'), tests.uid('b'), 100) $$, '22023', 'invalid_recipient', 'cannot pay yourself');
 select throws_ok(
   $$ select settle_up(tests.id('g'), tests.uid('a'), 100, null, null, tests.uid('c')) $$,
-  '42501', 'You can only record payments you made or received', 'members cannot record payments between others'
+  '42501', 'not_allowed', 'members cannot record payments between others'
 );
 select lives_ok(
   $$ select settle_up(tests.id('g'), tests.uid('b'), 100, null, null, tests.uid('c')) $$,
@@ -118,7 +121,7 @@ select lives_ok(
 );
 select throws_ok(
   $$ select settle_up(tests.id('g'), tests.uid('a'), 100, 'CHF') $$,
-  '23514', 'No exchange rate from CHF to USD yet', 'foreign settlements need a rate'
+  '23514', 'fx_rate_unavailable', 'foreign settlements need a rate'
 );
 reset role;
 insert into public.fx_rates (base, quote, day, rate) values ('CHF', 'USD', current_date, 1.2);
@@ -138,8 +141,8 @@ select lives_ok(
 );
 
 select tests.login('outsider');
-select throws_ok($$ select settle_up(tests.id('g'), tests.uid('a'), 100) $$, '42501', 'You are not a member of this group', 'outsiders cannot settle');
-select throws_ok($$ select * from simplified_debts(tests.id('g')) $$, '42501', 'You are not a member of this group', 'outsiders cannot see debts');
+select throws_ok($$ select settle_up(tests.id('g'), tests.uid('a'), 100) $$, '42501', 'not_a_member', 'outsiders cannot settle');
+select throws_ok($$ select * from simplified_debts(tests.id('g')) $$, '42501', 'not_a_member', 'outsiders cannot see debts');
 select is((select count(*)::int from public.group_balances where group_id = tests.id('g')), 0, 'outsiders see no balances');
 select is((select count(*)::int from public.settlements where group_id = tests.id('g')), 0, 'outsiders see no settlements');
 
@@ -149,10 +152,10 @@ select tests.remember('s2', (select id from settle_up(tests.id('g'), tests.uid('
 reset role;
 update public.group_members set role = 'member' where group_id = tests.id('g') and user_id = tests.uid('d');
 select tests.login('d');
-select throws_ok($$ select delete_settlement(tests.id('s2')) $$, '42501', 'You can only remove payments you were part of', 'uninvolved members cannot remove payments');
+select throws_ok($$ select delete_settlement(tests.id('s2')) $$, '42501', 'not_allowed', 'uninvolved members cannot remove payments');
 select tests.login('a');
 select lives_ok($$ select delete_settlement(tests.id('s2')) $$, 'the other party can remove it');
-select throws_ok($$ select delete_settlement(gen_random_uuid()) $$, 'P0002', 'Payment not found', 'unknown settlement');
+select throws_ok($$ select delete_settlement(gen_random_uuid()) $$, 'P0002', 'settlement_not_found', 'unknown settlement');
 
 select tests.login_anon();
 select throws_ok($$ select * from public.group_balances $$, '42501', null, 'anon cannot read balances');

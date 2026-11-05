@@ -13,7 +13,7 @@ declare
 begin
   select * into ev from public.events e where e.id = eid;
   if ev.id is null then
-    raise exception using message = 'Event not found', hint = 'event_not_found', errcode = 'P0002';
+    raise exception using message = 'event_not_found', detail = 'Event not found', errcode = 'P0002';
   end if;
   perform private.require_member(ev.group_id);
   return ev;
@@ -38,13 +38,13 @@ declare
   saved int;
 begin
   if ev.status <> 'polling' then
-    raise exception using message = 'This event is no longer collecting availability', hint = 'event_not_polling', errcode = '23514';
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
   end if;
   if slots is null or jsonb_typeof(slots) <> 'array' then
-    raise exception using message = 'Availability is not valid', hint = 'invalid_slots', errcode = '22023';
+    raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
   end if;
   if jsonb_array_length(slots) > 5000 then
-    raise exception using message = 'Too many slots', hint = 'invalid_slots', errcode = '22023';
+    raise exception using message = 'invalid_slots', detail = 'Too many slots', errcode = '22023';
   end if;
 
   begin
@@ -64,7 +64,7 @@ begin
     ) x;
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
-      raise exception using message = 'Availability is not valid', hint = 'invalid_slots', errcode = '22023';
+      raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
   end;
 
   if exists (
@@ -87,14 +87,14 @@ begin
        or t.minute + ev.slot_minutes > ev.day_end_minute
        or (t.minute - ev.day_start_minute) % ev.slot_minutes <> 0
   ) then
-    raise exception using message = 'Some times are outside this event''s grid', hint = 'invalid_slot', errcode = '22023';
+    raise exception using message = 'invalid_slot', detail = 'Some times are outside this event''s grid', errcode = '22023';
   end if;
 
   if (select count(*) from jsonb_array_elements(parsed)) <> (
     select count(distinct (s.slot_start))
     from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
   ) then
-    raise exception using message = 'A time appears twice', hint = 'duplicate_slot', errcode = '22023';
+    raise exception using message = 'duplicate_slot', detail = 'A time appears twice', errcode = '22023';
   end if;
 
   delete from public.availability a
@@ -130,7 +130,7 @@ declare
   targets uuid[];
 begin
   if ev.status <> 'polling' then
-    raise exception using message = 'This event is no longer collecting availability', hint = 'event_not_polling', errcode = '23514';
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
   end if;
 
   if user_ids is null or cardinality(user_ids) = 0 then
@@ -146,7 +146,7 @@ begin
       select 1 from unnest(user_ids) as t (id)
       where not exists (select 1 from public.group_members m where m.group_id = ev.group_id and m.user_id = t.id)
     ) then
-      raise exception using message = 'Everyone asked must be in the group', hint = 'member_not_found', errcode = 'P0002';
+      raise exception using message = 'member_not_found', detail = 'Everyone asked must be in the group', errcode = 'P0002';
     end if;
     select coalesce(array_agg(distinct t.id), '{}') into targets
     from unnest(user_ids) as t (id)

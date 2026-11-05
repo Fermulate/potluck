@@ -25,7 +25,7 @@ declare
   heir uuid;
 begin
   if uid is null then
-    raise exception using message = 'You need to be signed in', hint = 'not_authenticated', errcode = '42501';
+    raise exception using message = 'not_authenticated', detail = 'You need to be signed in', errcode = '42501';
   end if;
 
   if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is not null) then
