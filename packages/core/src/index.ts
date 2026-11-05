@@ -4,6 +4,7 @@
  */
 export * from './availability'
 export * from './balances'
+export * from './categories'
 export * from './currency'
 export * from './money'
 export * from './recurrence'
