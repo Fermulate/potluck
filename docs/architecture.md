@@ -5,7 +5,7 @@ Potluck is a static web app (installable PWA) backed entirely by Supabase. There
 ```
 apps/web  ──supabase-js──▶  Supabase (Auth · Postgres+RLS · Realtime · Storage · Edge Functions · pg_cron)
    │
-Cloudflare Pages (static hosting)
+Cloudflare Workers static assets (SPA fallback)
 ```
 
 A native app (Expo) is planned. Everything below the screens is shared:
@@ -182,14 +182,15 @@ Notification types: `expense.created` (split members, with their `share_cents`),
 
 ## Edge functions
 
-- `notify`: fans a notification out to web push (VAPID) and, later, Expo push.
+- `notify`: fans a notification out to web push (VAPID). Expo push tokens are skipped until the native app ships.
 - `ics-feed`: per-user `.ics` subscription URL (token in query string).
-- `og-invite`: Open Graph HTML for invite links.
 - `fx-sync`: daily FX rates from Frankfurter.
-- `delete-account`: service-role deletion of the auth user.
+- `delete-account`: runs `delete_my_account()` as the caller, then soft deletes the auth user with the service role.
+
+There is no `og-invite` function yet. Invite links render the SPA, so link previews show the generic app title.
 
 ## Hosting
 
-- Web: Cloudflare Pages, project `potluck`, `potluck.pages.dev` (no custom domain yet).
+- Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.potluck-web.workers.dev (no custom domain yet). PR previews are worker versions with a `pr-<number>` alias.
 - Backend: Supabase project `mzotlkpghnrwbezcazld`.
 - Email: Supabase built-in SMTP for now (rate-limited). Swap to Resend when a domain exists.
