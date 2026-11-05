@@ -1,7 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { GroupSettingsPage } from '@/features/groups/settings-page'
 
 export const Route = createFileRoute('/_app/groups/$groupId/settings')({
-  component: () => <RoutePlaceholder title={t('settings.title')} />,
+  component: SettingsRoute,
 })
+
+function SettingsRoute() {
+  const { groupId } = Route.useParams()
+  return <GroupSettingsPage groupId={groupId} />
+}
