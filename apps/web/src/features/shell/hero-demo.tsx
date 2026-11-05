@@ -260,10 +260,8 @@ export function HeroDemo() {
       </div>
       <div aria-hidden className="absolute right-0 bottom-0 sm:right-2">
         <motion.div
-          animate={{
-            scale: reached(phase, 'paint') ? 1 : 0.97,
-            opacity: reached(phase, 'paint') ? 1 : 0.85,
-          }}
+          // Scale only: dimming the planner would drop its small labels below AA contrast.
+          animate={{ scale: reached(phase, 'paint') ? 1 : 0.97 }}
           transition={{ type: 'spring', stiffness: 300, damping: 26 }}
         >
           <Planner phase={phase} painted={painted} />

@@ -368,7 +368,7 @@ export async function fetchFriends(client: PotluckClient, viewerId: string): Pro
     friends.push({
       ...person,
       direct_group_id: group?.id ?? null,
-      net_cents: -theirNet,
+      net_cents: theirNet === 0 ? 0 : -theirNet,
       currency: group?.currency ?? null,
     })
   }
