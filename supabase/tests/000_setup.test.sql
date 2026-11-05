@@ -7,6 +7,7 @@
 --   tests.login_anon()                    become an anonymous visitor
 --   reset role                            back to the superuser (plain SQL)
 --   tests.group_with(owner, members[], admins[], name)  group built directly, returns id
+--   tests.remember('g', id) / tests.id('g')             stash ids for later statements
 
 create extension if not exists pgtap with schema extensions;
 
@@ -118,6 +119,24 @@ begin
 
   return gid;
 end;
+$$;
+
+-- Stash ids in transaction-local settings so any role can read them back.
+create or replace function tests.remember(key text, value uuid)
+returns uuid
+language sql
+set search_path = ''
+as $$
+  select set_config('tests.' || key, value::text, true)::uuid;
+$$;
+
+create or replace function tests.id(key text)
+returns uuid
+language sql
+stable
+set search_path = ''
+as $$
+  select nullif(current_setting('tests.' || key, true), '')::uuid;
 $$;
 
 grant execute on all functions in schema tests to anon, authenticated, service_role;
