@@ -57,6 +57,20 @@ describe('MembersPage', () => {
     expect(screen.getByText('is owed $47.50')).toBeInTheDocument()
   })
 
+  it('puts the invite link on the page while the group is just you', async () => {
+    api.group = group({ members: [member(VIEWER, 'Ava Chen', 'owner')] })
+    renderWithProviders(<MembersPage groupId="g-hike" />)
+    expect(await screen.findByRole('heading', { name: 'Just you so far' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Create link' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Invite people' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the invite behind a button once people have joined', async () => {
+    renderWithProviders(<MembersPage groupId="g-hike" />)
+    expect(await screen.findByRole('button', { name: 'Invite people' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Just you so far' })).not.toBeInTheDocument()
+  })
+
   it('lets the owner remove a settled member after confirming', async () => {
     renderWithProviders(<MembersPage groupId="g-hike" />)
     await screen.findByText('Dev Patel')

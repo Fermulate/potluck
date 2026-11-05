@@ -35,7 +35,7 @@ import {
   UserPlus,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { InviteSheet } from '@/features/invites/invite-sheet'
+import { InvitePanel, InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc, useViewerTimezone } from '@/lib/queries'
@@ -230,6 +230,8 @@ export function MembersPage({ groupId }: { groupId: string }) {
       inviteRole: 'member',
     })
   const lastMember = group.members.length === 1
+  // A brand new group: put the invite link right here instead of behind a button.
+  const alone = canInvite && lastMember
   const canLeave = me
     ? can(me.role, 'group.leave', { netCents: me.net_cents }) ||
       (me.role === 'owner' && lastMember && me.net_cents === 0)
@@ -318,7 +320,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
     <div className="grid gap-6">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-3xl">{t('members.title')}</h2>
-        {canInvite && (
+        {canInvite && !alone && (
           <Button size="sm" leadingIcon={<UserPlus />} onClick={() => setInviteOpen(true)}>
             {t('members.invite')}
           </Button>
@@ -366,6 +368,21 @@ export function MembersPage({ groupId }: { groupId: string }) {
         })}
       </ul>
 
+      {alone && (
+        <section
+          aria-labelledby="members-alone"
+          className="grid gap-4 rounded-card border border-dashed border-line-strong p-4 sm:p-6"
+        >
+          <div>
+            <h3 id="members-alone" className="flourish text-3xl leading-tight">
+              {t('members.alone.title')}
+            </h3>
+            <p className="mt-1 text-pretty text-mute">{t('members.alone.body')}</p>
+          </div>
+          <InvitePanel group={group} intro={false} />
+        </section>
+      )}
+
       {me && !group.is_direct && (
         <div className="grid justify-items-start gap-2 border-t border-line pt-6">
           <Button
@@ -409,7 +426,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
         />
       )}
 
-      {canInvite && <InviteSheet group={group} open={inviteOpen} onOpenChange={setInviteOpen} />}
+      {canInvite && !alone && <InviteSheet group={group} open={inviteOpen} onOpenChange={setInviteOpen} />}
     </div>
   )
 }
