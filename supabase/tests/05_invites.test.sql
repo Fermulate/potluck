@@ -71,7 +71,7 @@ select results_eq(
 );
 select throws_ok(
   $$ select * from invite_preview('does-not-exist-123') $$,
-  'P0002', 'invite_not_found', 'unknown codes raise'
+  'PT404', 'invite_not_found', 'unknown codes raise'
 );
 select throws_ok(
   $$ select accept_invite(current_setting('tests.code')) $$,

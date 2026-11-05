@@ -101,7 +101,7 @@ select throws_ok(
 select tests.login('other');
 select throws_ok(
   $$ select transfer_ownership(tests.id('debt'), tests.uid('leaver')) $$,
-  'P0002', 'member_not_found', 'closed accounts cannot receive ownership'
+  'PT404', 'member_not_found', 'closed accounts cannot receive ownership'
 );
 select set_config('tests.code', (select code from create_invite(tests.id('debt'))), true);
 select is(

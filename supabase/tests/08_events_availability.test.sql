@@ -91,7 +91,7 @@ select is(
 select tests.login('m1');
 select throws_ok(
   $$ select request_availability(tests.id('ev'), array[tests.uid('outsider')]) $$,
-  'P0002', 'member_not_found', 'cannot ask outsiders'
+  'PT404', 'member_not_found', 'cannot ask outsiders'
 );
 select is(request_availability(tests.id('ev'), array[tests.uid('m2'), tests.uid('m1')]), 1, 'explicit list, never yourself');
 reset role;
@@ -333,7 +333,7 @@ select throws_ok(
   $$ select schedule_event(tests.id('ev'), pg_temp.at(1, '10:00')) $$,
   '23514', 'event_not_schedulable', 'cancelled events stay cancelled'
 );
-select throws_ok($$ select schedule_event(gen_random_uuid(), now()) $$, 'P0002', 'event_not_found', 'unknown event');
+select throws_ok($$ select schedule_event(gen_random_uuid(), now()) $$, 'PT404', 'event_not_found', 'unknown event');
 
 select * from finish();
 rollback;
