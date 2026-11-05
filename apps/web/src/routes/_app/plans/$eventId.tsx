@@ -1,7 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { EventPage } from '@/features/plans/event-page'
 
 export const Route = createFileRoute('/_app/plans/$eventId')({
-  component: () => <RoutePlaceholder title={t('nav.plans')} />,
+  component: EventRoute,
 })
+
+function EventRoute() {
+  const { eventId } = Route.useParams()
+  return <EventPage key={eventId} eventId={eventId} />
+}

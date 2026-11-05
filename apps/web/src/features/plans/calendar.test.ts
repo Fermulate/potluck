@@ -18,7 +18,9 @@ describe('buildIcs', () => {
     expect(ics).toContain('DTEND:20260612T030000Z\r\n')
     expect(ics).toContain('SUMMARY:Tacos\\, gear swap\\; bring stuff\r\n')
     expect(ics).toContain('UID:abc@potluck')
-    expect(ics).toContain('DESCRIPTION:Line one\\nLine two\\n\\nhttps://potluck.pages.dev/plans/abc')
+    expect(ics).toContain(
+      'DESCRIPTION:Line one\\nLine two\\n\\nhttps://potluck.pages.dev/plans/abc',
+    )
     expect(ics.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true)
     expect(ics.split('\r\n').every((line) => line.length <= 75)).toBe(true)
   })
