@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { emitAuth, respondAuth } from '@/test/supabase'
 import { authCallbackUrl, getSession, useSession, useUserId } from './auth'
 
@@ -10,6 +10,10 @@ const ben = { user: { id: 'u-ben' } }
 
 // The session store lives for the whole module, so these run in order on purpose.
 describe('session hooks', () => {
+  // Off the landing page the stored session is always read, so the client loads.
+  beforeAll(() => window.history.replaceState(null, '', '/home'))
+  afterAll(() => window.history.replaceState(null, '', '/'))
+
   it('refuses to name a user before anyone signed in', async () => {
     respondAuth('getSession', { data: { session: null } })
     expect(await getSession()).toBeNull()
