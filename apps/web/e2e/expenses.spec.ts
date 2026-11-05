@@ -51,7 +51,7 @@ test.describe('expenses', () => {
     const description = unique('Groceries')
 
     await startExpense(page, group, '90', description)
-    await page.getByRole('radio', { name: t('splitTypes.equal.label') }).click()
+    await page.getByRole('radio', { name: t('splitTypes.equal.short') }).click()
     await saveAndOpen(page, group, description)
     await expectShares(page, me, [
       [me, 3000],
@@ -77,7 +77,7 @@ test.describe('expenses', () => {
     const description = unique('Tickets')
 
     await startExpense(page, group, '100', description)
-    await page.getByRole('radio', { name: t('splitTypes.exact.label') }).click()
+    await page.getByRole('radio', { name: t('splitTypes.exact.short') }).click()
     const amountOf = (name: string) =>
       page.getByRole('textbox', { name: t('expenses.splitEditor.amountOf', { name }) })
     await amountOf(t('common.you')).fill('50')
@@ -99,7 +99,7 @@ test.describe('expenses', () => {
     const description = unique('Cabin')
 
     await startExpense(page, group, '200', description)
-    await page.getByRole('radio', { name: t('splitTypes.percent.label') }).click()
+    await page.getByRole('radio', { name: t('splitTypes.percent.short') }).click()
     const mine = page.getByRole('textbox', {
       name: t('expenses.splitEditor.percentOf', { name: t('common.you') }),
     })
@@ -120,7 +120,7 @@ test.describe('expenses', () => {
     const description = unique('Gas')
 
     await startExpense(page, group, '60', description)
-    await page.getByRole('radio', { name: t('splitTypes.shares.label') }).click()
+    await page.getByRole('radio', { name: t('splitTypes.shares.short') }).click()
     // Everyone starts on one share: Ben goes to two, Cleo to three.
     await page
       .getByRole('button', { name: t('expenses.splitEditor.more', { name: ben.name }) })
@@ -148,7 +148,7 @@ test.describe('expenses', () => {
 
     await page.goto(`/new/expense?groupId=${group.id}`)
     await page.getByRole('textbox', { name: t('expenses.fields.description') }).fill(description)
-    await page.getByRole('radio', { name: t('splitTypes.itemized.label') }).click()
+    await page.getByRole('radio', { name: t('splitTypes.itemized.short') }).click()
 
     // Dumplings for Ben only.
     await page
