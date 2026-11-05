@@ -1,7 +1,8 @@
 import type { MoneyMember, SplitTypeValue } from '@potluck/api'
 import { SPLIT_TYPES, type SplitResult } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
-import { Amount, Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
+import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
+import { Money } from '../money'
 import { Check, Equal, Layers, Minus, PencilLine, Percent, Plus, ReceiptText } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { avatarUrl, firstName } from '../money-data'
@@ -64,7 +65,7 @@ export function SplitEditor({
   const shareCell = (id: string) => (
     <span className="w-20 shrink-0 text-right tabular text-[0.9375rem] font-bold">
       {shares ? (
-        <Amount cents={shares[id] ?? 0} currency={currency} tone="neutral" />
+        <Money cents={shares[id] ?? 0} currency={currency} tone="neutral" />
       ) : (
         <span className="text-mute">...</span>
       )}

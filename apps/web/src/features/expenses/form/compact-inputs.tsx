@@ -1,4 +1,5 @@
 import { minorUnits } from '@potluck/core'
+import { DEFAULT_LOCALE } from '@potluck/i18n'
 import { cn, parseMoneyInput } from '@potluck/ui'
 import { useState, type InputHTMLAttributes } from 'react'
 
@@ -34,7 +35,7 @@ export function CompactMoneyInput({
   const [last, setLast] = useState(value)
   if (value !== last) {
     setLast(value)
-    if (value !== parseMoneyInput(text, currency)) setText(toText(value, currency))
+    if (value !== parseMoneyInput(text, currency, DEFAULT_LOCALE)) setText(toText(value, currency))
   }
   return (
     <input
@@ -45,7 +46,7 @@ export function CompactMoneyInput({
       onChange={(e) => {
         const raw = e.target.value.replace(/[^\d.,]/g, '')
         setText(raw)
-        const cents = parseMoneyInput(raw, currency)
+        const cents = parseMoneyInput(raw, currency, DEFAULT_LOCALE)
         setLast(cents)
         onValueChange(cents)
       }}

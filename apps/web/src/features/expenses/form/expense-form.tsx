@@ -9,9 +9,8 @@ import {
   type RecurrenceValue,
 } from '@potluck/api'
 import { CATEGORIES, type CategoryId } from '@potluck/core'
-import { t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, t } from '@potluck/i18n'
 import {
-  Amount,
   Avatar,
   Button,
   Field,
@@ -24,6 +23,7 @@ import {
   controlClassName,
   toast,
 } from '@potluck/ui'
+import { Money } from '../money'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarHeart } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
@@ -227,7 +227,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             {draft.mode === 'itemized' ? (
               <>
                 <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
-                  <Amount cents={total} currency={currency} tone="neutral" split />
+                  <Money cents={total} currency={currency} tone="neutral" split />
                 </span>
                 <p className="text-sm text-mute">{t('expenses.form.itemizedTotal')}</p>
               </>
@@ -239,6 +239,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 className="w-full items-center"
               >
                 <MoneyInput
+                  locale={DEFAULT_LOCALE}
                   value={amount}
                   onValueChange={setAmount}
                   currency={currency}
