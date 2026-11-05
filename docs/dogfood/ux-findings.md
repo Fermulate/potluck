@@ -42,6 +42,7 @@ We used Potluck the way real people would, with fresh accounts on a local stack,
 | 20  | By item: your own chip sat in the middle of the list, and on selected (ink) chips the ink avatar had no edge.                                                                                                                    | Low      |                                                                       | `cafcf3c`            |
 | 21  | The group name placeholder ("Lisbon trip, Flat 4B, Taco Tuesdays...") was cut off on a phone.                                                                                                                                    | Low      |                                                                       | `eb216b2`            |
 | 22  | Plan form: the Grid size switcher spilled out of its cell on desktop.                                                                                                                                                            | Low      | [09](before/09-plan-form-desktop.png)                                 | `0965112`            |
+| 23  | On a phone, a poll with a few runners up pushed the painter below the fold, so someone who still owed their times scrolled past four "Pick this one" buttons first.                                                              | Medium   |                                                                       | `c8d7099`            |
 
 ## Signature moments, checked
 
