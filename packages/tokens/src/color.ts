@@ -118,7 +118,7 @@ export const lightColors: ThemeColors = {
 export const darkColors: ThemeColors = {
   paper: '#14110e',
   card: '#1f1b17',
-  sunken: '#1a1613',
+  sunken: '#0f0d0a',
   ink: '#f6efe3',
   mute: '#a89d8f',
   line: '#322b24',
