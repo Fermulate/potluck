@@ -70,7 +70,6 @@ export const onboarding = {
   profile: {
     title: 'First, the basics',
     body: 'This is how your friends will see you on shared tabs and plans.',
-    changePhoto: 'Change photo',
     uploading: 'Uploading...',
     photoTooBig: 'That photo is over 5 MB. Try a smaller one.',
     photoType: 'Use a PNG, JPG, WebP, or GIF.',

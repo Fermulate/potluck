@@ -15,7 +15,6 @@ export const groups = {
     ink: 'Ink',
   },
   emojiPicker: {
-    label: 'Pick an emoji',
     custom: 'Or type your own',
   },
   create: {

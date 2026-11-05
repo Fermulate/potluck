@@ -2,9 +2,6 @@ export const app = {
   name: 'Potluck',
   tagline: 'Split the bill. Pick the night. Stay friends.',
   skipToContent: 'Skip to content',
-  offline: 'You are offline. Changes will sync when you are back.',
-  updateReady: 'A fresh version is ready.',
-  reload: 'Reload',
   landing: {
     signIn: 'Sign in',
     getStarted: 'Get started',
@@ -25,7 +22,6 @@ export const app = {
       },
       total: 'Total',
       split: 'Split four ways',
-      owes: 'owes {amount}',
       grid: 'Who is free next week?',
       locked: 'Locked in',
       lockedWhen: 'Thu 7 pm',
@@ -110,8 +106,6 @@ export const nav = {
   main: 'Main',
   friends: 'Friends',
   notifications: 'Notifications',
-  notificationsUnread_one: 'Notifications, {count} unread',
-  notificationsUnread_other: 'Notifications, {count} unread',
   quickAdd: {
     title: 'What are we doing?',
     expense: 'Add expense',
