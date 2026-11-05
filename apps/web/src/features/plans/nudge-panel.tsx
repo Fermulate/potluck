@@ -69,8 +69,11 @@ export function NudgePanel({
             {t('events.respondedCount', { count: done, total: people.length })}
           </p>
         </div>
-        {nudgeable.length > 1 && (
+      </div>
+      {nudgeable.length > 1 && (
+        <div className="px-4 pb-3">
           <Button
+            block
             size="sm"
             variant="secondary"
             leadingIcon={<BellRing aria-hidden />}
@@ -79,8 +82,8 @@ export function NudgePanel({
           >
             {t('events.nudgeAll')}
           </Button>
-        )}
-      </div>
+        </div>
+      )}
       {waiting.length === 0 ? (
         <p className="flex items-center gap-2 border-t border-line px-4 py-3 text-sm text-olive-ink">
           <Check aria-hidden className="size-4" />
