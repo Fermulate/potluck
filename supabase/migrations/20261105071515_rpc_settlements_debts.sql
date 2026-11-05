@@ -15,7 +15,6 @@ set search_path = ''
 as $$
 #variable_conflict use_column
 declare
-  my_role public.group_role := private.require_member(settle_up.group_id);
   uid uuid := auth.uid();
   payer uuid := uid;
   g public.groups;
@@ -23,6 +22,7 @@ declare
   fx numeric;
   result public.settlements;
 begin
+  perform private.require_member(settle_up.group_id);
   select * into g from public.groups x where x.id = settle_up.group_id;
 
   if settle_up.amount_cents is null or settle_up.amount_cents <= 0 or settle_up.amount_cents > 100000000000 then
