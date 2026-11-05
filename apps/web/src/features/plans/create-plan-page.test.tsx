@@ -1,0 +1,159 @@
+import type * as Api from '@potluck/api'
+import type { PlanMember } from '@potluck/api'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Radix measures controls with ResizeObserver, which jsdom lacks.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver
+
+const navigate = vi.fn()
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  Link: ({ children }: { children: ReactNode }) => <a href="#">{children}</a>,
+}))
+
+const members: PlanMember[] = [
+  { userId: 'me', displayName: 'Ava Chen', role: 'owner', avatarPath: null, deleted: false },
+  { userId: 'ben', displayName: 'Ben Ortiz', role: 'member', avatarPath: null, deleted: false },
+  { userId: 'cleo', displayName: 'Cleo Park', role: 'member', avatarPath: null, deleted: false },
+]
+
+const createPlanEvent = vi.fn()
+const requestAvailability = vi.fn()
+let loadMembers: () => Promise<PlanMember[]> = async () => members
+vi.mock('@potluck/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof Api>()
+  return {
+    ...actual,
+    createPlanEvent: (...args: unknown[]) => createPlanEvent(...args),
+    requestAvailability: (...args: unknown[]) => requestAvailability(...args),
+    planQueries: {
+      ...actual.planQueries,
+      members: (_client: unknown, groupId: string) => ({
+        queryKey: ['members', groupId],
+        queryFn: () => loadMembers(),
+      }),
+    },
+  }
+})
+
+const { PlanForm } = await import('./create-plan-page')
+
+const GROUP = '10000000-0000-4000-8000-000000000001'
+
+function renderForm() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <PlanForm
+        groups={[{ id: GROUP, name: 'Hike crew', emoji: '🥾' }]}
+        groupId={GROUP}
+        onGroupChange={() => {}}
+        timeZone="America/Los_Angeles"
+        viewerId="me"
+      />
+    </QueryClientProvider>,
+  )
+}
+
+describe('PlanForm', () => {
+  beforeEach(() => {
+    createPlanEvent.mockReset().mockResolvedValue({ id: 'new-event' })
+    requestAvailability.mockReset().mockResolvedValue(2)
+    navigate.mockReset()
+    loadMembers = async () => members
+  })
+
+  it('asks for a title before creating anything', async () => {
+    renderForm()
+    await screen.findByText('Ben Ortiz')
+    fireEvent.click(screen.getByRole('button', { name: 'Start the poll' }))
+    expect(await screen.findByText('Required.')).toBeInTheDocument()
+    expect(screen.getByLabelText("What's the plan?")).toHaveAttribute('aria-invalid', 'true')
+    expect(createPlanEvent).not.toHaveBeenCalled()
+  })
+
+  it('creates the poll in the viewer zone, nudges the picked members, then opens it', async () => {
+    renderForm()
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Taco night' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '🌮' }))
+    // Everyone is picked by default; drop Cleo.
+    await screen.findByText('Cleo Park')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Cleo Park' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start the poll' }))
+
+    await waitFor(() => expect(createPlanEvent).toHaveBeenCalledTimes(1))
+    expect(createPlanEvent.mock.calls[0]![1]).toMatchObject({
+      group_id: GROUP,
+      title: 'Taco night',
+      emoji: '🌮',
+      timezone: 'America/Los_Angeles',
+      slot_minutes: 30,
+      duration_minutes: 120,
+      min_attendees: 2,
+      location: null,
+    })
+    await waitFor(() =>
+      expect(requestAvailability).toHaveBeenCalledWith(expect.anything(), 'new-event', ['ben']),
+    )
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/plans/$eventId',
+      params: { eventId: 'new-event' },
+    })
+  })
+
+  it('keeps a multi code point emoji whole and only the last one typed', async () => {
+    renderForm()
+    await screen.findByText('Ben Ortiz')
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Family dinner' },
+    })
+    const custom = screen.getByLabelText('Your own')
+    fireEvent.change(custom, { target: { value: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}' } })
+    expect(custom).toHaveValue('\u{1F468}\u200D\u{1F469}\u200D\u{1F467}')
+    fireEvent.change(custom, { target: { value: 'ab\u{1F354}' } })
+    expect(custom).toHaveValue('\u{1F354}')
+    fireEvent.change(custom, { target: { value: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start the poll' }))
+
+    await waitFor(() => expect(createPlanEvent).toHaveBeenCalledTimes(1))
+    expect(createPlanEvent.mock.calls[0]![1]).toMatchObject({
+      emoji: '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}',
+    })
+  })
+
+  it('will not start the poll until the member list has loaded', async () => {
+    loadMembers = () => new Promise(() => {})
+    renderForm()
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Taco night' },
+    })
+    const submit = screen.getByRole('button', { name: 'Start the poll' })
+    expect(submit).toBeDisabled()
+    fireEvent.submit(submit.closest('form')!)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Start the poll' })).toBeDisabled(),
+    )
+    expect(createPlanEvent).not.toHaveBeenCalled()
+  })
+
+  it('shows the error and blocks the poll when members fail to load', async () => {
+    loadMembers = () => Promise.reject(new Error('boom'))
+    renderForm()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try again?')
+    fireEvent.change(screen.getByLabelText("What's the plan?"), {
+      target: { value: 'Taco night' },
+    })
+    expect(screen.getByRole('button', { name: 'Start the poll' })).toBeDisabled()
+    fireEvent.submit(screen.getByRole('button', { name: 'Start the poll' }).closest('form')!)
+    expect(createPlanEvent).not.toHaveBeenCalled()
+  })
+})
