@@ -89,12 +89,14 @@ A native app (Expo) is planned. Everything below the screens is shared:
 | Lock / cancel an event                              | yes   | yes                            | creator only            |
 | Edit/delete others' expenses                        | yes   | yes                            | no                      |
 | Create invites                                      | yes   | yes                            | if `members_can_invite` |
-| Create admin invites                                | yes   | yes                            | no                      |
+| Create admin invites                                | yes   | no                             | no                      |
 | Remove members, change roles                        | yes   | admins can manage members only | no                      |
 | Edit group settings                                 | yes   | yes                            | no                      |
 | Delete group, transfer ownership                    | yes   | no                             | no                      |
 
-A member cannot leave or be removed while their `net_cents` in that group is non-zero.
+A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid.
+
+`create_invite` is the source of truth for admin invites: only the owner can mint them. `can()` in `packages/core/src/roles` currently lets admins through for `invite.create` with `inviteRole: 'admin'`, so the UI can offer a button the server will reject.
 
 ## RPCs
 
