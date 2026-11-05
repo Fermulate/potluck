@@ -100,7 +100,7 @@ export function SegmentedControl<T extends string>({
               <motion.span
                 layoutId={layoutId}
                 aria-hidden
-                className="absolute inset-0 -z-10 rounded-pill bg-card shadow-[0_1px_2px_rgb(60_40_15/0.12),0_0_0_1px_var(--color-line)]"
+                className="absolute inset-0 -z-10 rounded-pill bg-card shadow-[0_1px_2px_rgb(60_40_15/0.12),0_0_0_1px_var(--pl-line)]"
                 transition={reduced ? { duration: 0 } : springs.snappy}
               />
             )}

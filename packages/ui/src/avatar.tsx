@@ -45,14 +45,14 @@ export const Avatar = forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
       className={cn(
         'relative inline-flex shrink-0 overflow-hidden rounded-full align-middle select-none',
         sizes[size],
-        ring && 'ring-2 ring-[var(--avatar-ring,var(--color-paper))]',
+        ring && 'ring-2 ring-[var(--avatar-ring,var(--pl-paper))]',
         className,
       )}
     >
       {src && <AvatarPrimitive.Image src={src} alt={name} className="size-full object-cover" />}
       <AvatarPrimitive.Fallback
         delayMs={src ? 400 : 0}
-        className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-ink)_14%,transparent)]"
+        className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--pl-ink)_14%,transparent)]"
         style={{ backgroundColor: color.bg, color: color.fg }}
       >
         <span role="img" aria-label={name}>
@@ -125,7 +125,7 @@ export function AvatarStack({
       {extra > 0 && (
         <span
           className={cn(
-            'relative inline-grid place-items-center rounded-full bg-sunken font-semibold text-mute tabular ring-2 ring-[var(--avatar-ring,var(--color-paper))]',
+            'relative inline-grid place-items-center rounded-full bg-sunken font-semibold text-mute tabular ring-2 ring-[var(--avatar-ring,var(--pl-paper))]',
             sizes[size],
             overlap[size],
           )}
