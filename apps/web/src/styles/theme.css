@@ -49,6 +49,9 @@
   --color-hero: var(--pl-hero);
   --color-on-hero: var(--pl-on-hero);
   --color-hero-mute: var(--pl-hero-mute);
+  --color-hero-tomato: var(--pl-hero-tomato);
+  --color-hero-saffron: var(--pl-hero-saffron);
+  --color-hero-olive: var(--pl-hero-olive);
 
   --color-focus: var(--pl-focus);
   --color-scrim: var(--pl-scrim);

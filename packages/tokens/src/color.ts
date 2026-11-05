@@ -62,6 +62,10 @@ export interface ThemeColors {
   hero: string
   onHero: string
   heroMute: string
+  /** Sign colors that stay legible on the hero surface. */
+  heroTomato: string
+  heroSaffron: string
+  heroOlive: string
 
   /** Focus ring color. */
   focus: string
@@ -103,6 +107,9 @@ export const lightColors: ThemeColors = {
   hero: '#1d1a16',
   onHero: '#fbf5ea',
   heroMute: '#b9ad9c',
+  heroTomato: '#ff7a5c',
+  heroSaffron: '#f5b53d',
+  heroOlive: '#a6c47c',
 
   focus: '#1d1a16',
   scrim: 'rgba(29, 26, 22, 0.42)',
@@ -142,6 +149,9 @@ export const darkColors: ThemeColors = {
   hero: '#f3e9d8',
   onHero: '#1d1a16',
   heroMute: '#6c6152',
+  heroTomato: '#b23a22',
+  heroSaffron: '#8a5800',
+  heroOlive: '#4f6a2c',
 
   focus: '#f6efe3',
   scrim: 'rgba(5, 4, 3, 0.62)',
