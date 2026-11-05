@@ -184,6 +184,14 @@ export function moveBoundary(
   return { ...percent, [left]: leftValue, [right]: pair - leftValue }
 }
 
+/** Quick tip choices, as a percent of the item subtotal. */
+export const TIP_PERCENTS = [15, 18, 20] as const
+
+/** A tip of `percent` on `subtotalCents`, rounded to the nearest minor unit. */
+export function tipFor(subtotalCents: number, percent: number): number {
+  return Math.round((subtotalCents * percent) / 100)
+}
+
 export function itemsTotal(draft: Pick<SplitDraft, 'items' | 'taxCents' | 'tipCents'>): number {
   return (
     draft.items.reduce((a, item) => a + (item.amountCents ?? 0), 0) +
