@@ -10,7 +10,7 @@ export const events = {
     titleLabel: "What's the plan?",
     titlePlaceholder: 'Dinner at ours, beach day, game night...',
     emojiLabel: 'Emoji',
-    emojiCustom: 'Or type your own',
+    emojiCustom: 'Your own',
     descriptionLabel: 'Details',
     descriptionPlaceholder: 'Bring a dish, wear boots, anything people should know.',
     locationLabel: 'Where',

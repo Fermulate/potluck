@@ -266,7 +266,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
               placeholder={t('events.create.emojiCustom')}
               value={EMOJIS.includes(emoji) ? '' : emoji}
               onChange={(e) => setEmoji([...e.target.value].slice(-2).join('') || EMOJIS[0]!)}
-              className="h-11 w-40"
+              className="h-11 w-28"
             />
           </div>
         </fieldset>

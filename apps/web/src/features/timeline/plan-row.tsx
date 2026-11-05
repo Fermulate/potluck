@@ -23,10 +23,12 @@ export function PlanRow({ plan, timeZone, todayKey, dayKeyOf, showGroup = true }
 
   const subtitle = scheduled ? (
     <span className="inline-flex min-w-0 items-center gap-1">
-      <span className="tabular">{formatTime(plan.startsAt!, { timeZone })}</span>
+      <span className="tabular">
+        {formatTime(plan.startsAt!, { timeZone })}
+        {plan.location ? ',' : ''}
+      </span>
       {plan.location && (
         <>
-          <span aria-hidden>,</span>
           <MapPin aria-hidden className="ml-0.5 size-3.5 shrink-0" />
           <span className="truncate">{plan.location}</span>
         </>
