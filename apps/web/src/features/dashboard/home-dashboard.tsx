@@ -36,8 +36,14 @@ export function HomeDashboard() {
   const needsTimes = items.filter((i) => i.status === 'polling' && !i.availability_submitted)
   // Asked explicitly first.
   needsTimes.sort((a, b) => Number(b.availability_requested) - Number(a.availability_requested))
+  // Past the RSVP deadline there is nothing left to answer.
   const needsRsvp = items.filter(
-    (i) => i.status === 'scheduled' && !i.my_rsvp && i.starts_at && Date.parse(i.starts_at) > now,
+    (i) =>
+      i.status === 'scheduled' &&
+      !i.my_rsvp &&
+      i.starts_at &&
+      Date.parse(i.starts_at) > now &&
+      !(i.rsvp_deadline && Date.parse(i.rsvp_deadline) < now),
   )
   const upcoming = items.filter(
     (i) =>
