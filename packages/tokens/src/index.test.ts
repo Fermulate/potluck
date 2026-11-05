@@ -68,10 +68,15 @@ describe.each(Object.values(themes))('$name theme contrast', (theme) => {
     ['tomatoInk on tomatoSoft', c.tomatoInk, c.tomatoSoft],
     ['oliveInk on oliveSoft', c.oliveInk, c.oliveSoft],
     ['saffronInk on saffronSoft', c.saffronInk, c.saffronSoft],
+    ['initials on the ink avatar', '#fbf5ea', c.avatarInk],
   ]
 
   it.each(textPairs)('%s passes AA', (_label, fg, bg) => {
     expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(AA)
+  })
+
+  it('keeps the ink avatar visible against the page', () => {
+    expect(contrastRatio(c.avatarInk, c.paper)).toBeGreaterThanOrEqual(1.5)
   })
 
   it('has a visible focus ring against the background', () => {
