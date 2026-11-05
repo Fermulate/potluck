@@ -10,12 +10,13 @@ import {
   cn,
   usePrefersReducedMotion,
 } from '@potluck/ui'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { dayLabel, dayOf, groupByDay } from '@/features/expenses/format'
 import { avatarUrl, useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
@@ -30,18 +31,10 @@ const toneClass: Record<ActivityView['tone'], string> = {
 }
 
 function useActivityRealtime() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const channel = supabase
-      .channel('activity-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity' }, () => {
-        void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
-      })
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [queryClient])
+  const invalidate = useBatchedInvalidate()
+  useRealtime('activity-feed', [{ table: 'activity', event: 'INSERT' }], () =>
+    invalidate(moneyKeys.activity()),
+  )
 }
 
 /** Everything that happened across the viewer's groups, newest first, grouped by day. */

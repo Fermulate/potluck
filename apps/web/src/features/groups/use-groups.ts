@@ -1,7 +1,7 @@
 import { groupDetailQueryOptions, groupKeys, myGroupsQueryOptions } from '@potluck/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUserId } from '@/lib/auth'
-import { useRealtime } from '@/lib/realtime'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
 export function useMyGroups() {
@@ -29,7 +29,7 @@ export function useGroup(groupId: string) {
  * groups refetch them. RLS limits the stream to groups the viewer is in.
  */
 export function useGroupsRealtime(groupId?: string) {
-  const queryClient = useQueryClient()
+  const invalidate = useBatchedInvalidate()
   const filter = groupId ? `group_id=eq.${groupId}` : undefined
   useRealtime(
     `groups-live${groupId ? `-${groupId}` : ''}`,
@@ -38,8 +38,6 @@ export function useGroupsRealtime(groupId?: string) {
       { table: 'expenses', filter },
       { table: 'settlements', filter },
     ],
-    () => {
-      void queryClient.invalidateQueries({ queryKey: groupKeys.all })
-    },
+    () => invalidate(groupKeys.all),
   )
 }
