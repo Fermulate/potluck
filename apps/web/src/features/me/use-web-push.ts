@@ -1,8 +1,14 @@
-import { deletePushToken, savePushToken, type Json } from '@potluck/api'
+import { fetchPushTokens, savePushToken, type Json } from '@potluck/api'
 import { useCallback, useEffect, useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { useAppConfig } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
+import {
+  currentPushSubscription,
+  forgetPushSubscription,
+  pushRegistration,
+  pushSupported,
+} from '@/lib/web-push'
 
 export type PushState = 'loading' | 'unsupported' | 'not-configured' | 'blocked' | 'off' | 'on'
 
@@ -16,29 +22,10 @@ function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
-function supported(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window
-  )
-}
-
-/** The active service worker registration, or null if none shows up quickly (dev, old browsers). */
-async function registration(): Promise<ServiceWorkerRegistration | null> {
-  if (!supported()) return null
-  const existing = await navigator.serviceWorker.getRegistration()
-  if (existing) return existing
-  return Promise.race([
-    navigator.serviceWorker.ready,
-    new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3000)),
-  ])
-}
-
 /**
  * Web push for this device. The subscription lives in the browser; its endpoint is stored in
- * `push_tokens` so the `notify` edge function can reach it.
+ * `push_tokens` so the `notify` edge function can reach it. It counts as on only when the
+ * signed-in account owns that row, so a device handed to another account starts off.
  */
 export function useWebPush() {
   const userId = useUserId()
@@ -53,19 +40,23 @@ export function useWebPush() {
     const settle = (next: PushState) => {
       if (!cancelled) setState(next)
     }
-    if (!supported()) settle('unsupported')
+    if (!pushSupported()) settle('unsupported')
     else if (!vapidKey || flagOff) settle('not-configured')
     else if (Notification.permission === 'denied') settle('blocked')
     else if (!configPending) {
-      void registration()
-        .then((reg) => (reg ? reg.pushManager.getSubscription() : null))
-        .then((sub) => settle(sub ? 'on' : 'off'))
+      void currentPushSubscription()
+        .then(async (sub) => {
+          if (!sub) return false
+          const tokens = await fetchPushTokens(supabase, userId)
+          return tokens.some((row) => row.token === sub.endpoint)
+        })
+        .then((on) => settle(on ? 'on' : 'off'))
         .catch(() => settle('off'))
     }
     return () => {
       cancelled = true
     }
-  }, [vapidKey, flagOff, configPending])
+  }, [userId, vapidKey, flagOff, configPending])
 
   const enable = useCallback(async () => {
     if (!vapidKey) return false
@@ -76,7 +67,7 @@ export function useWebPush() {
         setState(permission === 'denied' ? 'blocked' : 'off')
         return false
       }
-      const reg = await registration()
+      const reg = await pushRegistration()
       if (!reg) throw new Error('no_service_worker')
       const sub =
         (await reg.pushManager.getSubscription()) ??
@@ -99,12 +90,7 @@ export function useWebPush() {
   const disable = useCallback(async () => {
     setBusy(true)
     try {
-      const reg = await registration()
-      const sub = reg ? await reg.pushManager.getSubscription() : null
-      if (sub) {
-        await deletePushToken(supabase, userId, sub.endpoint)
-        await sub.unsubscribe()
-      }
+      await forgetPushSubscription(userId)
       setState('off')
     } finally {
       setBusy(false)
