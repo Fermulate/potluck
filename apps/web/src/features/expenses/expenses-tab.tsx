@@ -157,7 +157,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
         <div
           role="group"
           aria-label={t('expenses.filterCategory')}
-          className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1"
+          className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0"
         >
           <Chip selected={category === null} onClick={() => setCategory(null)}>
             {t('expenses.allCategories')}
