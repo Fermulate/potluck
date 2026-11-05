@@ -352,7 +352,7 @@ export function SettledMoment({
   }, [reduced, start, remaining, settled])
 
   return (
-    <div className="flex flex-col items-center gap-6 px-6 py-10 text-center md:py-14">
+    <div className="flex min-h-full flex-col items-center justify-center gap-6 px-6 py-10 text-center md:py-14">
       <Confetti fire={fire} />
       <motion.div
         initial={reduced ? false : { scale: 0.6, rotate: -12, opacity: 0 }}
