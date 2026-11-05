@@ -1,5 +1,6 @@
 import { act, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { loadSupabase } from '@/lib/auth'
 import { renderWithProviders } from '@/test/render'
 import { emitAuth, resetDb } from '@/test/supabase'
 import { useAuthRedirects } from './use-auth-redirects'
@@ -18,6 +19,11 @@ async function renderAt(path: string) {
 }
 
 describe('useAuthRedirects', () => {
+  // Auth events flow once the client has loaded, which any signed in screen does.
+  beforeAll(async () => {
+    await loadSupabase()
+  })
+
   beforeEach(() => {
     resetDb()
   })
