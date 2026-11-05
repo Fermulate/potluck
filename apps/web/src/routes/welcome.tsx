@@ -1,10 +1,10 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { z } from 'zod'
 import { OnboardingPage } from '@/features/onboarding/onboarding-page'
 import { getSession, safeRedirect } from '@/lib/auth'
+import { redirectSearch } from '@/lib/search'
 
 export const Route = createFileRoute('/welcome')({
-  validateSearch: z.object({ redirect: z.string().optional() }),
+  validateSearch: redirectSearch,
   beforeLoad: async ({ location }) => {
     const session = await getSession()
     if (!session) throw redirect({ to: '/sign-in', search: { redirect: location.href } })
