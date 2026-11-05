@@ -120,6 +120,20 @@
 
   --animate-shimmer: pl-shimmer 1.6s var(--pl-ease-in-out) infinite;
   --animate-fade-in: pl-fade-in var(--pl-duration-base) var(--pl-ease-out) both;
+  --animate-dot: pl-dot 960ms var(--pl-ease-in-out) infinite;
+
+  @keyframes pl-dot {
+    0%,
+    80%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.35;
+    }
+    40% {
+      transform: translateY(-40%);
+      opacity: 1;
+    }
+  }
 
   @keyframes pl-shimmer {
     from {
