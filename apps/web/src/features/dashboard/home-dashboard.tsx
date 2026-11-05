@@ -237,21 +237,24 @@ function RsvpCard({
           {formatTime(item.starts_at!, { timeZone })}
         </span>
       </Link>
-      <div className="mt-auto flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold">{t('home.needsRsvp')}</span>
-        <div className="flex gap-1.5">
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={rsvp.isPending}
-            onClick={() => rsvp.mutate('declined')}
-          >
-            {t('rsvp.short.declined')}
-          </Button>
-          <Button size="sm" disabled={rsvp.isPending} onClick={() => rsvp.mutate('going')}>
-            {t('rsvp.short.going')}
-          </Button>
-        </div>
+      <div className="mt-auto flex gap-1.5" role="group" aria-label={t('home.needsRsvp')}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="flex-1"
+          disabled={rsvp.isPending}
+          onClick={() => rsvp.mutate('declined')}
+        >
+          {t('rsvp.short.declined')}
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
+          disabled={rsvp.isPending}
+          onClick={() => rsvp.mutate('going')}
+        >
+          {t('rsvp.short.going')}
+        </Button>
       </div>
     </Card>
   )
@@ -259,7 +262,7 @@ function RsvpCard({
 
 function GroupsRow({ groups }: { groups: PlanGroup[] }) {
   return (
-    <ul className="-mx-4 scrollbar-none flex snap-x gap-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:px-0">
+    <ul className="-mx-4 scrollbar-none flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 lg:mx-0 lg:grid lg:grid-cols-3 lg:px-0">
       {groups.map((g) => (
         <li key={g.id} className="w-36 shrink-0 snap-start lg:w-auto">
           <Link
