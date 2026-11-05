@@ -36,16 +36,18 @@ describe('can', () => {
   })
 
   it('lets members invite only when the group allows it', () => {
-    expect(everyone((r) => can(r, 'invite.create', { membersCanInvite: false }))).toEqual([
-      true,
-      true,
-      false,
-    ])
-    expect(everyone((r) => can(r, 'invite.create', { membersCanInvite: true }))).toEqual([
-      true,
-      true,
-      true,
-    ])
+    const invite = (membersCanInvite: boolean) =>
+      everyone((r) => can(r, 'invite.create', { membersCanInvite, inviteRole: 'member' }))
+    expect(invite(false)).toEqual([true, true, false])
+    expect(invite(true)).toEqual([true, true, true])
+  })
+
+  it('only lets owners and admins create invites that grant admin', () => {
+    for (const membersCanInvite of [true, false]) {
+      expect(
+        everyone((r) => can(r, 'invite.create', { membersCanInvite, inviteRole: 'admin' })),
+      ).toEqual([true, true, false])
+    }
   })
 
   it('lets owners and admins edit group settings', () => {
