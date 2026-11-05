@@ -280,7 +280,6 @@ export const home = {
     otherCurrencies: 'Plus balances in {currencies}',
     acrossGroups_one: 'across {count} group',
     acrossGroups_other: 'across {count} groups',
-    seeGroup: 'Open {group}',
   },
   upNext: 'Up next',
   needsYou: 'Needs you',
