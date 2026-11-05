@@ -14,6 +14,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('./viewer', () => ({
   useViewer: () => ({ userId: 'me', timeZone: 'UTC', profile: undefined }),
 }))
+vi.mock('./plan-expenses', () => ({ PlanExpenses: () => null }))
 vi.mock('./use-event', async (importOriginal) => ({
   ...(await importOriginal<typeof UseEvent>()),
   useEventRealtime: () => {},
@@ -151,5 +152,26 @@ describe('EventPage', () => {
     await waitFor(() => expect(setAvailability).toHaveBeenCalled(), { timeout: 3000 })
     expect(screen.getByRole('heading', { name: 'When are you free?' })).toBe(painter)
     expect(painterFirst()).toBe(true)
+  })
+
+  it('says where a scheduled plan is once', async () => {
+    loadEvent.mockResolvedValue({
+      ...poll,
+      status: 'scheduled',
+      location: "Maya's place",
+      starts_at: '2026-06-12T18:00:00+00:00',
+      ends_at: '2026-06-12T19:00:00+00:00',
+    } as PlanEventWithGroup)
+    loadMembers.mockResolvedValue(people)
+    loadAvailability.mockResolvedValue([])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <EventPage eventId="e1" />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText("Maya's place")).toBeVisible()
+    expect(screen.getAllByText("Maya's place")).toHaveLength(1)
+    expect(screen.getAllByText('Organized by Ben').length).toBeGreaterThan(0)
   })
 })
