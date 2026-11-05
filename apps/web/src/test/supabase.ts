@@ -39,7 +39,8 @@ let fake = fakeSupabase()
 let tables: Record<string, Row[]> = {}
 let listeners: Listener[] = []
 let authCalls: { method: string; args: unknown[] }[] = []
-let authResults = new Map<string, FakeResult>()
+type AuthResponder = FakeResult | (() => Promise<unknown>)
+let authResults = new Map<string, AuthResponder>()
 const authListeners = new Set<(event: string, session: unknown) => void>()
 
 /** Starts every test from an empty database; returns the fake for seeding and assertions. */
@@ -133,8 +134,11 @@ function from(table: string) {
   return wrapped
 }
 
-/** Canned answer for one `supabase.auth.<method>()`; anything else resolves without data. */
-export function respondAuth(method: string, result: FakeResult) {
+/**
+ * Canned answer for one `supabase.auth.<method>()`, or a function for full control (e.g. a
+ * promise that never settles). Anything else resolves without data.
+ */
+export function respondAuth(method: string, result: AuthResponder) {
   authResults.set(method, result)
 }
 
@@ -188,7 +192,9 @@ const auth = new Proxy(
       }
       return async (...args: unknown[]) => {
         authCalls.push({ method, args })
-        return { data: {}, error: null, ...authResults.get(method) }
+        const result = authResults.get(method)
+        if (typeof result === 'function') return result()
+        return { data: {}, error: null, ...result }
       }
     },
   },
