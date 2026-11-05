@@ -78,12 +78,6 @@ export interface ActivityItem {
   group: { id: string; name: string; emoji: string | null; is_direct: boolean } | null
 }
 
-export interface Viewer extends MoneyPerson {
-  timezone: string
-  default_currency: string
-  locale: string
-}
-
 export interface FxQuote {
   /** Units of `to` per unit of `from`. */
   rate: number
@@ -127,7 +121,6 @@ export interface SettleUpInput {
 
 export const moneyKeys = {
   all: ['potluck', 'money'] as const,
-  viewer: () => [...moneyKeys.all, 'viewer'] as const,
   people: () => [...moneyKeys.all, 'people'] as const,
   myGroups: () => [...moneyKeys.all, 'my-groups'] as const,
   group: (groupId: string) => [...moneyKeys.all, 'group', groupId] as const,
@@ -165,21 +158,6 @@ function unwrap<T>(result: { data: T | null; error: unknown }): T {
 const PERSON = 'id, display_name, avatar_path, deleted_at'
 
 // Reads ---------------------------------------------------------------------------------------
-
-export async function fetchViewer(client: PotluckClient): Promise<Viewer | null> {
-  // The id is only used to pick the row; RLS still decides what the caller may read, so the
-  // stored session is enough and saves a round trip to the auth server.
-  const { data: auth } = await client.auth.getSession()
-  const uid = auth.session?.user.id
-  if (!uid) return null
-  return unwrap(
-    await client
-      .from('profiles')
-      .select(`${PERSON}, timezone, default_currency, locale`)
-      .eq('id', uid)
-      .single(),
-  )
-}
 
 /** Everyone the viewer can see (group mates and friends). */
 export async function fetchPeople(client: PotluckClient): Promise<MoneyPerson[]> {
@@ -522,8 +500,6 @@ export async function uploadReceipt(
 // Query options -------------------------------------------------------------------------------
 
 export const moneyQueries = {
-  viewer: (client: PotluckClient) =>
-    queryOptions({ queryKey: moneyKeys.viewer(), queryFn: () => fetchViewer(client) }),
   people: (client: PotluckClient) =>
     queryOptions({ queryKey: moneyKeys.people(), queryFn: () => fetchPeople(client) }),
   myGroups: (client: PotluckClient) =>

@@ -1,4 +1,4 @@
-import { moneyKeys, moneyQueries, restoreExpense } from '@potluck/api'
+import { moneyQueries, restoreExpense } from '@potluck/api'
 import { can, convert } from '@potluck/core'
 import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
 import {
@@ -25,6 +25,7 @@ import { categoryLabel } from './format'
 import { Money } from './money'
 import {
   avatarUrl,
+  invalidateMoney,
   moneyErrorMessage,
   useGroupMoneyRealtime,
   useMoneyGroup,
@@ -94,8 +95,7 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
     try {
       await restoreExpense(supabase, e.id)
       toast.success(t('expenses.restored'))
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(e.id) })
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(e.group_id) })
+      invalidateMoney(queryClient, e.group_id, e.id)
     } catch (error) {
       toast.error(moneyErrorMessage(error))
     }

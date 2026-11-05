@@ -4,7 +4,7 @@ import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CalendarHeart, ChevronRight, Plus } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { firstName } from '@/features/plans/format'
@@ -20,6 +20,7 @@ import { BalanceHero } from './balance-hero'
 import { summarizeBalances } from './summary'
 
 const UPCOMING_DAYS = 14
+const HOLD_MS = 1500
 
 export function HomeDashboard() {
   const viewer = useViewer()
@@ -58,8 +59,14 @@ export function HomeDashboard() {
   const todayKey = dayKey(now, viewer.timeZone)
   // On phones everything stacks, so "Needs you" (known once the timeline is in) and the real
   // balance card (taller than its skeleton) would push down whatever was already on screen.
-  // What sits below them waits, invisible but laid out, until both are known.
-  const settled = !timeline.isPending && !!summary
+  // What sits below them waits, invisible but laid out, until both have answered (with data or
+  // an error) or a moment has passed, whichever comes first.
+  const [heldLongEnough, setHeldLongEnough] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setHeldLongEnough(true), HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const settled = heldLongEnough || (!timeline.isPending && !balances.isPending)
   const holdBelow = settled ? undefined : 'max-lg:invisible'
 
   return (

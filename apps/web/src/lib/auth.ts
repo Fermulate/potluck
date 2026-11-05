@@ -1,6 +1,7 @@
 import type { PotluckClient } from '@potluck/api'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { useSyncExternalStore } from 'react'
+import { AUTH_RESULT_IN_URL, STORED_SESSION_KEY } from './boot-rule'
 
 let current: Session | null = null
 let lastUserId: string | null = null
@@ -54,12 +55,10 @@ function sessionMayExist(): boolean {
   if (typeof window === 'undefined') return true
   const { pathname, search, hash } = window.location
   if (pathname !== '/') return true
-  if (/(access_token|refresh_token|code|token_hash|error_description)=/.test(search + hash)) {
-    return true
-  }
+  if (AUTH_RESULT_IN_URL.test(search + hash)) return true
   try {
     for (let i = 0; i < localStorage.length; i++) {
-      if (/^sb-.+-auth-token$/.test(localStorage.key(i) ?? '')) return true
+      if (STORED_SESSION_KEY.test(localStorage.key(i) ?? '')) return true
     }
     return false
   } catch {
