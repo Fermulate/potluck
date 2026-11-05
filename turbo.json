@@ -24,7 +24,7 @@
     "e2e": {
       "dependsOn": ["^build"],
       "cache": false,
-      "passThroughEnv": ["CI", "E2E_*", "SUPABASE_SERVICE_ROLE_KEY", "PLAYWRIGHT_*"]
+      "passThroughEnv": ["CI", "E2E_*", "PLAYWRIGHT_*"]
     }
   }
 }
