@@ -1,6 +1,6 @@
 # Dogfooding findings
 
-We used Potluck the way real people would, with fresh accounts on a local stack, at 390x844 and 1440x900, in light and dark. This file lists what got in the way and what we did about it. "Before" screenshots live in [`before/`](before/). The fixed screens are in [`../screenshots/app/`](../screenshots/app/).
+We used Potluck the way real people would, with fresh accounts on a local stack, at 390x844 and 1440x900, in light and dark. This file lists what got in the way and what we did about it. "Before" screenshots live in [`before/`](before/). The fixed screens are in the user guide repo, [Fermulate/potluck-docs](https://github.com/Fermulate/potluck-docs).
 
 ## The people
 
