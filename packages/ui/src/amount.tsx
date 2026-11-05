@@ -31,8 +31,9 @@ export function formatMoney(
   currency: string,
   { locale, sign = 'auto' }: { locale?: string; sign?: AmountSign } = {},
 ): string {
+  // `|| 0` folds -0 into 0, so a negated zero balance never reads as "−$0.00".
   return formatter(currency, locale, sign)
-    .format(cents / minorUnitScale(currency, locale))
+    .format((cents || 0) / minorUnitScale(currency, locale))
     .replace('-', '−')
 }
 
@@ -110,7 +111,7 @@ export function Amount({
   srLabel,
   className,
 }: AmountProps) {
-  const value = useCountUp(cents, countUp)
+  const value = useCountUp(cents || 0, countUp)
   const f = formatter(currency, locale, sign)
   const scale = minorUnitScale(currency, locale)
   const parts = f.formatToParts(value / scale)

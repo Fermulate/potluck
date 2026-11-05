@@ -14,6 +14,7 @@ import {
   Card,
   Checkbox,
   Chip,
+  cn,
   EmptyState,
   Field,
   Input,
@@ -131,7 +132,7 @@ export function CreatePlanPage({ groupId: initialGroup }: CreatePlanPageProps) {
 
 function Page({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pt-4 pb-28 lg:px-8 lg:pb-12">
+    <div className="mx-auto w-full max-w-2xl px-4 pt-4 pb-28 lg:max-w-5xl lg:px-8 lg:pb-12">
       <PageHeader
         size="compact"
         leading={<BackToPlans label={t('events.back')} />}
@@ -242,8 +243,13 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
   }
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-6">
-      <Section title={t('events.create.sectionWhat')}>
+    // Desktop: what and who on the left; when on the right with the submit under it.
+    <form
+      onSubmit={submit}
+      noValidate
+      className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start"
+    >
+      <Section title={t('events.create.sectionWhat')} className="lg:col-start-1 lg:row-start-1">
         {groups.length > 1 && (
           <Field label={t('events.create.groupLabel')} error={errors.group_id}>
             <Select
@@ -311,6 +317,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
 
       <Section
         title={t('events.create.sectionWhen')}
+        className="lg:col-start-2 lg:row-start-1 lg:self-stretch"
         aside={
           <span className="text-xs text-mute">
             {t('events.create.timezoneNote', { zone: timeZone })}
@@ -384,6 +391,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
             <SegmentedControl<'15' | '30' | '60'>
               label={t('events.create.slotLabel')}
               block
+              size="sm"
               value={slot}
               onValueChange={setSlot}
               options={SLOT_SIZES.map((s) => ({
@@ -444,6 +452,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
 
       <Section
         title={t('events.create.sectionWho')}
+        className="lg:col-start-1 lg:row-start-2"
         aside={
           others.length > 0 && (
             <span className="tabular text-xs font-semibold text-mute">
@@ -466,18 +475,20 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
         )}
       </Section>
 
-      {errors.form && (
-        <p
-          role="alert"
-          className="rounded-[0.875rem] bg-tomato-soft px-4 py-3 text-sm text-tomato-ink"
-        >
-          {errors.form}
-        </p>
-      )}
+      <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-2">
+        {errors.form && (
+          <p
+            role="alert"
+            className="rounded-[0.875rem] bg-tomato-soft px-4 py-3 text-sm text-tomato-ink"
+          >
+            {errors.form}
+          </p>
+        )}
 
-      <Button type="submit" size="lg" block loading={submitting} disabled={!members.isSuccess}>
-        {t('events.create.submit')}
-      </Button>
+        <Button type="submit" size="lg" block loading={submitting} disabled={!members.isSuccess}>
+          {t('events.create.submit')}
+        </Button>
+      </div>
     </form>
   )
 }
@@ -542,14 +553,16 @@ function WhoList({
 function Section({
   title,
   aside,
+  className,
   children,
 }: {
   title: string
   aside?: ReactNode
+  className?: string
   children: ReactNode
 }) {
   return (
-    <Card padding="roomy" className="flex flex-col gap-5">
+    <Card padding="roomy" className={cn('flex flex-col gap-5', className)}>
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-xl font-bold tracking-tight">{title}</h2>
         {aside}

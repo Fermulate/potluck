@@ -48,23 +48,39 @@ export function ViewerBalance({
   cents,
   currency,
   stacked = false,
+  sentence = false,
   className,
 }: {
   cents: number
   currency: string
   /** Label over a bigger amount, for cards. */
   stacked?: boolean
+  /** Reads as a standalone sentence (the group header), not a fragment under a name. */
+  sentence?: boolean
   className?: string
 }) {
   if (cents === 0) {
     return (
-      <span className={cn('text-sm font-medium text-mute', stacked && 'pt-1', className)}>
-        {t('groups.settledUp')}
+      <span
+        className={cn(
+          'text-sm font-medium',
+          sentence ? 'text-olive-ink' : 'text-mute',
+          stacked && 'pt-1',
+          className,
+        )}
+      >
+        {sentence ? t('groups.header.settled') : t('groups.settledUp')}
       </span>
     )
   }
   const amount = formatMoney(Math.abs(cents), currency)
-  const text = cents > 0 ? t('groups.youAreOwed', { amount }) : t('groups.youOwe', { amount })
+  const text = sentence
+    ? cents > 0
+      ? t('groups.header.youAreOwed', { amount })
+      : t('groups.header.youOwe', { amount })
+    : cents > 0
+      ? t('groups.youAreOwed', { amount })
+      : t('groups.youOwe', { amount })
   const [before, after] = text.split(amount) as [string, string | undefined]
   const figure = (
     <Amount

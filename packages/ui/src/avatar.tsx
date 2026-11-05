@@ -1,4 +1,4 @@
-import { avatarColor } from '@potluck/tokens'
+import { AVATAR_INK, avatarColor } from '@potluck/tokens'
 import * as AvatarPrimitive from '@radix-ui/react-avatar'
 import { motion } from 'motion/react'
 import { forwardRef } from 'react'
@@ -54,7 +54,11 @@ export const Avatar = forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
       <AvatarPrimitive.Fallback
         delayMs={src ? 400 : undefined}
         className="grid size-full place-items-center rounded-full leading-none font-bold tracking-tight shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--pl-ink)_14%,transparent)]"
-        style={{ backgroundColor: color.bg, color: color.fg }}
+        style={{
+          backgroundColor:
+            color.bg === AVATAR_INK ? `var(--pl-avatar-ink, ${AVATAR_INK})` : color.bg,
+          color: color.fg,
+        }}
       >
         <span role="img" aria-label={name}>
           <span aria-hidden>{size === 'xs' ? Array.from(initials(name))[0] : initials(name)}</span>

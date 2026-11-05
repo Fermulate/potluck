@@ -8,7 +8,9 @@ import {
   previewSplit,
   setPercent,
   splitsPayload,
+  tipFor,
   toggleParticipant,
+  withTip,
 } from './split-state'
 
 const A = 'aaaaaaaa-0000-4000-8000-000000000001'
@@ -16,6 +18,27 @@ const B = 'bbbbbbbb-0000-4000-8000-000000000002'
 const C = 'cccccccc-0000-4000-8000-000000000003'
 const ids = [A, B, C]
 const sum = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0)
+
+describe('tip shortcuts', () => {
+  it('works out a tip from the subtotal, to the cent', () => {
+    expect(tipFor(14800, 18)).toBe(2664)
+    expect(tipFor(4999, 15)).toBe(750)
+    expect(tipFor(0, 20)).toBe(0)
+  })
+
+  it('keeps a picked percent true to the subtotal and leaves a typed tip alone', () => {
+    const base = {
+      ...initialDraft(ids),
+      mode: 'itemized' as const,
+      items: [
+        { id: '1', name: 'Dinner', amountCents: 8000, userIds: [A] },
+        { id: '2', name: 'Dessert', amountCents: 2000, userIds: [A, B] },
+      ],
+    }
+    expect(withTip({ ...base, tipPercent: 18, tipCents: 1440 }).tipCents).toBe(1800)
+    expect(withTip({ ...base, tipPercent: null, tipCents: 1440 }).tipCents).toBe(1440)
+  })
+})
 
 describe('percent rebalancing', () => {
   it('starts even and always totals 100%', () => {

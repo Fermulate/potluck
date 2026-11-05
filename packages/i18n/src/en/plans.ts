@@ -84,6 +84,10 @@ export const events = {
   expensesForEvent: 'Expenses for this plan',
   addExpense: 'Add an expense for this plan',
   addExpenseHint: 'Split the groceries, the tickets, the cab.',
+  spent: {
+    title: 'On the tab',
+    total: '{amount} so far',
+  },
   when: 'When',
   where: 'Where',
   who: "Who's coming",

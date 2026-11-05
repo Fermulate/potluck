@@ -59,8 +59,9 @@ export const expenses = {
     nextOn: 'Next on {date}',
     stop: 'Stop repeating',
   },
-  saved: 'Expense saved.',
-  updated: 'Expense updated.',
+  saved: 'Added "{description}". Your share: {share}.',
+  savedNotIn: 'Added "{description}" for {amount}.',
+  updated: 'Saved changes to "{description}".',
   deleted: 'Expense deleted.',
   restored: 'Expense restored. Like it never left.',
   deleteConfirm: 'Delete "{description}"? You can undo this for a little while.',
@@ -134,6 +135,8 @@ export const expenses = {
     remove: 'Remove {item}',
     assign: 'Who had {item}?',
     untitled: 'Item {number}',
+    tipPercent: '{percent}%',
+    tipPercentLabel: 'Tip {percent}% of the subtotal',
   },
   receiptUpload: {
     uploading: 'Uploading receipt...',
@@ -148,6 +151,10 @@ export const expenses = {
   recurring: {
     title: 'Repeating',
     hint: 'A copy is added automatically on the day it is due.',
+    activeCount_one: '{count} running',
+    activeCount_other: '{count} running',
+    pausedCount_one: '{count} paused',
+    pausedCount_other: '{count} paused',
     nextOn: 'Next on {date}',
     paused: 'Paused',
     pause: 'Pause',
@@ -228,11 +235,19 @@ export const categories = {
 
 export const splitTypes = {
   label: 'Split',
-  equal: { label: 'Equally', hint: 'Everyone pays the same.' },
-  exact: { label: 'Exact amounts', hint: 'Type in what each person owes.' },
-  percent: { label: 'Percentages', hint: 'Slide until it feels fair. Must add up to 100%.' },
-  shares: { label: 'Shares', hint: 'Couples count as 2, the kid counts as half.' },
-  itemized: { label: 'By item', hint: 'Assign each item. Tax and tip follow along.' },
+  equal: { label: 'Equally', short: 'Equal', hint: 'Everyone pays the same.' },
+  exact: { label: 'Exact amounts', short: 'Exact', hint: 'Type in what each person owes.' },
+  percent: {
+    label: 'Percentages',
+    short: 'Percent',
+    hint: 'Slide until it feels fair. Must add up to 100%.',
+  },
+  shares: { label: 'Shares', short: 'Shares', hint: 'Couples count as 2, the kid counts as half.' },
+  itemized: {
+    label: 'By item',
+    short: 'By item',
+    hint: 'Assign each item. Tax and tip follow along.',
+  },
 } as const
 
 export const balances = {

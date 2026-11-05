@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import { t } from '@potluck/i18n'
-import { Toaster } from '@potluck/ui'
+import { Toaster, useMediaQuery } from '@potluck/ui'
 import { useAuthRedirects } from '@/features/shell/use-auth-redirects'
 import { useTheme } from '@/styles/use-theme'
 
@@ -15,11 +15,18 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function RootLayout() {
   const { resolved } = useTheme()
+  // The side rail starts at lg; below that the tab bar owns the bottom edge.
+  const desktop = useMediaQuery('(min-width: 64rem)')
   useAuthRedirects()
   return (
     <>
       <Outlet />
-      <Toaster label={t('toast.region')} theme={resolved} />
+      {/* Bottom right on desktop, clear of page titles and section tabs. */}
+      <Toaster
+        label={t('toast.region')}
+        theme={resolved}
+        position={desktop ? 'bottom-right' : 'top-center'}
+      />
     </>
   )
 }

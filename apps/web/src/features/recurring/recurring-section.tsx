@@ -25,6 +25,13 @@ export function RecurringSection({ groupId }: { groupId: string }) {
   const [open, setOpen] = useState(false)
   if (!data || data.length === 0) return null
   const active = data.filter((r) => r.active).length
+  const paused = data.length - active
+  const summary = [
+    active > 0 ? t('expenses.recurring.activeCount', { count: active }) : null,
+    paused > 0 ? t('expenses.recurring.pausedCount', { count: paused }) : null,
+  ]
+    .filter(Boolean)
+    .join(', ')
 
   return (
     <Card padding="none" tone="sunken" className="overflow-hidden">
@@ -44,9 +51,7 @@ export function RecurringSection({ groupId }: { groupId: string }) {
         <span className="flex-1 text-[0.9375rem] font-semibold">
           {t('expenses.recurring.title')}
         </span>
-        <span className="tabular text-sm text-mute">
-          {active}/{data.length}
-        </span>
+        <span className="tabular text-sm text-mute">{summary}</span>
         <ChevronDown
           aria-hidden
           className={cn('size-4 text-mute transition-transform', open && 'rotate-180')}
