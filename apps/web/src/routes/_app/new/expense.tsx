@@ -47,7 +47,12 @@ function NewExpense() {
       groupId={groupId}
       eventId={eventId}
       onClose={close}
-      onDone={() => void navigate({ to: '/groups/$groupId', params: { groupId }, replace: true })}
+      onDone={() =>
+        // Back to the plan the expense was filed under, so it shows up where it was added.
+        eventId
+          ? void navigate({ to: '/plans/$eventId', params: { eventId }, replace: true })
+          : void navigate({ to: '/groups/$groupId', params: { groupId }, replace: true })
+      }
     />
   )
 }

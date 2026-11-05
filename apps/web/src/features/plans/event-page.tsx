@@ -36,6 +36,7 @@ import { BestTimes } from './best-times'
 import { CommentsThread } from './comments-thread'
 import { formatDuration, minuteOfDayIn, planErrorMessage } from './format'
 import { NudgePanel } from './nudge-panel'
+import { PlanExpenses } from './plan-expenses'
 import { RsvpPanel } from './rsvp-panel'
 import { ScheduledHero } from './scheduled-hero'
 import { mySlots, useEventRealtime, useMyAvailability, type SaveState } from './use-event'
@@ -247,6 +248,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 timeZone={timeZone}
               />
             )}
+            <PlanExpenses groupId={event.group_id} eventId={event.id} />
             {event.status !== 'cancelled' && (
               <a
                 href={expenseHref}
