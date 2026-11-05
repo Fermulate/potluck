@@ -17,15 +17,17 @@ window.scrollTo = () => {}
  * Renders `ui` at `path` inside a throwaway router and query client, so components that use
  * `Link`, `useNavigate` or `useQuery` work. Navigations land on a catch-all route whose
  * pathname is exposed through `router.state.location`. Pass `url` to open a route pattern like
- * `/groups/$groupId` at a concrete address.
+ * `/groups/$groupId` at a concrete address, and `client` to start from a seeded query cache.
  */
 export function renderWithProviders(
   ui: ReactNode,
-  { path = '/', url = path }: { path?: string; url?: string } = {},
+  { path = '/', url = path, client }: { path?: string; url?: string; client?: QueryClient } = {},
 ) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
-  })
+  const queryClient =
+    client ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } },
+    })
   const rootRoute = createRootRoute({ component: () => <Outlet /> })
   const start = createRoute({ getParentRoute: () => rootRoute, path, component: () => <>{ui}</> })
   const elsewhere = createRoute({
