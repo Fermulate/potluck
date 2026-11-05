@@ -24,7 +24,7 @@
 create or replace function private.compute_splits(amount bigint, kind public.split_type, splits jsonb)
 returns table (user_id uuid, share_cents bigint, weight numeric)
 language plpgsql
-immutable
+stable
 set search_path = ''
 as $$
 #variable_conflict use_column
