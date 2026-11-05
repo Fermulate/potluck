@@ -3,23 +3,37 @@ import { fileURLToPath, URL } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { routePreloads } from './route-preloads.ts'
 
-export default defineConfig({
-  // .env files live at the repo root
-  envDir: fileURLToPath(new URL('../..', import.meta.url)),
+// .env files live at the repo root
+const envDir = fileURLToPath(new URL('../..', import.meta.url))
+
+export default defineConfig(({ mode }) => ({
+  envDir,
   plugins: [
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     tailwindcss(),
+    routePreloads(loadEnv(mode, envDir, 'VITE_').VITE_SUPABASE_URL),
     VitePWA({
       registerType: 'autoUpdate',
+      // Deferred so the registration script never blocks the first paint.
+      injectRegister: 'script-defer',
       includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png'],
       workbox: {
         // Push and notification click handlers live in a plain script next to the app.
         importScripts: ['push-sw.js'],
         navigateFallback: '/index.html',
+        // App code plus the latin faces every screen uses, so an installed app renders offline
+        // in its own type. The design kit route is not linked from the app.
+        globPatterns: [
+          '**/*.{js,css,html}',
+          'assets/*-latin-opsz-*.woff2',
+          'assets/*-latin-400-*.woff2',
+        ],
+        globIgnores: ['**/dev.kit-*.js'],
       },
       manifest: {
         id: '/',
@@ -63,4 +77,4 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
   },
-})
+}))
