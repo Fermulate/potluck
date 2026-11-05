@@ -49,10 +49,19 @@ function renderPanel(
   )
 }
 
-const linkRow = (code: string) => screen.getByText(new RegExp(`/join/${code}$`)).closest('li')!
+const latest = () => screen.getByRole('region', { name: t('invites.latest') })
+const openLinks = () => screen.getByRole('region', { name: t('invites.active') })
+const olderLink = (code: string) =>
+  within(openLinks())
+    .getAllByRole('listitem')
+    .find((item) => item.textContent?.includes(`/join/${code}`))!
 
 describe('InvitePanel links', () => {
   const writeText = vi.fn(async () => undefined)
+  const twoLinks = [
+    invite('i-1', { role: 'admin', max_uses: 5, uses: 2 }),
+    invite('i-2', { expires_at: '2099-01-15T00:00:00Z' }),
+  ]
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -62,33 +71,41 @@ describe('InvitePanel links', () => {
     delete (navigator as { share?: unknown }).share
   })
 
-  it('describes each open link', async () => {
-    renderPanel(group(), [
-      invite('i-1', { role: 'admin', max_uses: 5, uses: 2 }),
-      invite('i-2', { expires_at: '2099-01-15T00:00:00Z' }),
-    ])
-    await screen.findByText(/code-i-1-xyz/)
-    expect(linkRow('code-i-1-xyz')).toHaveTextContent(
+  it('puts the newest link up front and lists the other open ones', async () => {
+    renderPanel(group(), twoLinks)
+    expect(await screen.findByRole('region', { name: t('invites.latest') })).toHaveTextContent(
       [
         t('invites.adminLink'),
         t('invites.usesLeft', { count: 3 }),
         t('invites.used', { count: 2 }),
       ].join(', '),
     )
-    expect(linkRow('code-i-2-xyz')).toHaveTextContent(t('invites.unlimited'))
-    expect(linkRow('code-i-2-xyz')).toHaveTextContent(/Expires/)
+    expect(latest()).toHaveTextContent('/join/code-i-1-xyz')
+    expect(within(openLinks()).getAllByRole('listitem')).toHaveLength(1)
+    expect(olderLink('code-i-2-xyz')).toHaveTextContent(t('invites.unlimited'))
+    expect(olderLink('code-i-2-xyz')).toHaveTextContent(/Expires/)
+    expect(screen.getByRole('button', { name: t('invites.newLink') })).toBeInTheDocument()
   })
 
-  it('copies a link', async () => {
+  it('copies the newest link', async () => {
     renderPanel()
-    await screen.findByText(/code-i-1-xyz/)
-    fireEvent.click(
-      within(linkRow('code-i-1-xyz')).getByRole('button', { name: t('invites.copyLink') }),
-    )
+    await screen.findByRole('region', { name: t('invites.latest') })
+    fireEvent.click(within(latest()).getByRole('button', { name: t('invites.copyLink') }))
     expect(await screen.findByText(t('invites.linkCopied'))).toBeInTheDocument()
     expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/join\/code-i-1-xyz$/))
+    expect(within(latest()).getByRole('button', { name: t('common.copied') })).toBeInTheDocument()
+  })
+
+  it('copies an older link from the list', async () => {
+    renderPanel(group(), twoLinks)
+    await screen.findByRole('region', { name: t('invites.active') })
+    fireEvent.click(
+      within(olderLink('code-i-2-xyz')).getByRole('button', { name: t('invites.copyLink') }),
+    )
+    expect(await screen.findByText(t('invites.linkCopied'))).toBeInTheDocument()
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/join\/code-i-2-xyz$/))
     expect(
-      within(linkRow('code-i-1-xyz')).getByRole('button', { name: t('common.copied') }),
+      within(olderLink('code-i-2-xyz')).getByRole('button', { name: t('common.copied') }),
     ).toBeInTheDocument()
   })
 
@@ -96,10 +113,8 @@ describe('InvitePanel links', () => {
     const share = vi.fn(async (_data: ShareData) => undefined)
     Object.defineProperty(navigator, 'share', { configurable: true, value: share })
     renderPanel()
-    await screen.findByText(/code-i-1-xyz/)
-    fireEvent.click(
-      within(linkRow('code-i-1-xyz')).getByRole('button', { name: t('common.share') }),
-    )
+    await screen.findByRole('region', { name: t('invites.latest') })
+    fireEvent.click(within(latest()).getByRole('button', { name: t('common.share') }))
     await waitFor(() => expect(share).toHaveBeenCalled())
     expect(share.mock.calls[0]![0]).toMatchObject({
       title: t('invites.shareTitle', { group: 'Hike crew' }),
@@ -108,33 +123,39 @@ describe('InvitePanel links', () => {
     expect(writeText).not.toHaveBeenCalled()
   })
 
-  it('falls back to copying when sharing fails', async () => {
+  it('falls back to copying when sharing an older link fails', async () => {
     Object.defineProperty(navigator, 'share', {
       configurable: true,
       value: vi.fn(async () => {
         throw new Error('nope')
       }),
     })
-    renderPanel()
-    await screen.findByText(/code-i-1-xyz/)
+    renderPanel(group(), twoLinks)
+    await screen.findByRole('region', { name: t('invites.active') })
     fireEvent.click(
-      within(linkRow('code-i-1-xyz')).getByRole('button', { name: t('common.share') }),
+      within(olderLink('code-i-2-xyz')).getByRole('button', { name: t('common.share') }),
     )
-    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/\/join\/code-i-2-xyz$/)),
+    )
   })
 
-  it('revokes a link, and undo brings it back', async () => {
+  it('revokes the only link, and undo brings it back', async () => {
     renderPanel()
-    await screen.findByText(/code-i-1-xyz/)
+    await screen.findByRole('region', { name: t('invites.latest') })
     fireEvent.click(
       screen.getByRole('button', { name: t('invites.revokeLink', { code: 'code-i-1-xyz' }) }),
     )
     expect(await screen.findByText(t('invites.revoked'))).toBeInTheDocument()
     expect(rowsOf('group_invites')[0]!.revoked_at).toEqual(expect.any(String))
-    expect(await screen.findByText(t('invites.none'))).toBeInTheDocument()
+    expect(await screen.findByText(t('invites.intro', { group: 'Hike crew' }))).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: t('invites.latest') })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('invites.create') })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: t('common.undo') }))
-    expect(await screen.findByText(/code-i-1-xyz/)).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: t('invites.latest') })).toHaveTextContent(
+      '/join/code-i-1-xyz',
+    )
     expect(rowsOf('group_invites')[0]!.revoked_at).toBeNull()
   })
 
