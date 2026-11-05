@@ -18,8 +18,9 @@ import { useDeferredValue, useMemo, useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { ActivityIconLink } from '@/features/activity/activity-link'
 import { RecurringSection } from '@/features/recurring/recurring-section'
+import { SettlementActions } from '@/features/settle/settlement-actions'
 import { expensesToCsv } from './expense-math'
-import { ExpenseRow, SettlementRow } from './expense-row'
+import { ExpenseRow, SettlementRow, settlementText } from './expense-row'
 import { categoryEmoji, categoryLabel, dayLabel, dayOf, groupByDay } from './format'
 import {
   useGroupExpenses,
@@ -85,6 +86,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
     return groupByDay(items, (item) => item.day)
   }, [expenses.data, settlements.data, search, category, nameOf, timeZone])
 
+  const myRole = group.data?.members.find((m) => m.id === me)?.role
   const loading = expenses.isPending || group.isPending
   const empty =
     !loading && (expenses.data?.length ?? 0) === 0 && (settlements.data?.length ?? 0) === 0
@@ -231,6 +233,14 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
                             settlement={item.settlement}
                             viewerId={me}
                             nameOf={(id) => nameOf(id)}
+                            actions={
+                              <SettlementActions
+                                settlement={item.settlement}
+                                viewerId={me}
+                                viewerRole={myRole}
+                                label={settlementText(item.settlement, me, nameOf)}
+                              />
+                            }
                           />
                         )}
                       </motion.li>

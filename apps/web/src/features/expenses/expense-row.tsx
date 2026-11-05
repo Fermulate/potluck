@@ -138,30 +138,42 @@ export function ExpenseRow({
   )
 }
 
+/** "You paid Kai $20.00", "Kai paid you $20.00" or "Kai paid Lena $20.00". */
+export function settlementText(
+  settlement: Settlement,
+  viewerId: string,
+  nameOf: (id: string) => string,
+  locale?: string,
+): string {
+  const amount = formatMoney(settlement.amount_cents, settlement.currency, { locale })
+  return settlement.from_user === viewerId
+    ? t('settle.youPaid', { name: nameOf(settlement.to_user), amount })
+    : settlement.to_user === viewerId
+      ? t('settle.paidYou', { name: nameOf(settlement.from_user), amount })
+      : t('settle.paid', {
+          from: nameOf(settlement.from_user),
+          to: nameOf(settlement.to_user),
+          amount,
+        })
+}
+
 export function SettlementRow({
   settlement,
   viewerId,
   nameOf,
   locale,
+  actions,
 }: {
   settlement: Settlement
   viewerId: string
   nameOf: (id: string) => string
   locale?: string
+  /** A menu button at the end of the row. */
+  actions?: ReactNode
 }) {
-  const amount = formatMoney(settlement.amount_cents, settlement.currency, { locale })
-  const text =
-    settlement.from_user === viewerId
-      ? t('settle.youPaid', { name: nameOf(settlement.to_user), amount })
-      : settlement.to_user === viewerId
-        ? t('settle.paidYou', { name: nameOf(settlement.from_user), amount })
-        : t('settle.paid', {
-            from: nameOf(settlement.from_user),
-            to: nameOf(settlement.to_user),
-            amount,
-          })
+  const text = settlementText(settlement, viewerId, nameOf, locale)
   return (
-    <div className={rowClass}>
+    <div className={cn(rowClass, actions && 'pr-2')}>
       <RowShell
         leading={
           <span
@@ -183,6 +195,7 @@ export function SettlementRow({
           />
         }
       />
+      {actions}
     </div>
   )
 }

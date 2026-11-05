@@ -306,6 +306,8 @@ export const settle = {
   amountRequired: 'Enter an amount.',
   history: 'Payments',
   nothingToSettle: 'Nothing to settle. Go treat yourself.',
+  actions: 'Options for {payment}',
+  delete: 'Delete payment',
   deleteConfirm: 'Delete this payment? Balances will go back to how they were.',
   deleted: 'Payment deleted.',
 } as const
