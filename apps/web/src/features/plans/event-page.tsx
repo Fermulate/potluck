@@ -489,7 +489,8 @@ function PollingBody({
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
       <div className="flex min-w-0 flex-col gap-6">
-        {!desktop && best}
+        {/* On a phone, someone who still owes their times gets the painter first. */}
+        {!desktop && (iResponded || !rows) && best}
         <Card className="flex flex-col gap-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-bold tracking-tight">
@@ -542,6 +543,7 @@ function PollingBody({
             </p>
           )}
         </Card>
+        {!desktop && rows && !iResponded && best}
         <div className="lg:hidden">
           <NudgeBlock
             event={event}
