@@ -211,7 +211,7 @@ export function HelpTip({
             href={href}
             target="_blank"
             rel="noopener"
-            className="mt-3 inline-flex text-sm font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+            className="mt-2 inline-flex min-h-6 items-center text-sm font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
           >
             {readMoreLabel} {newTabHint && <span className="sr-only">({newTabHint})</span>}
           </a>
