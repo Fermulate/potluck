@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { MePage } from '@/features/me/me-page'
 
 export const Route = createFileRoute('/_app/me/')({
-  component: () => <RoutePlaceholder title={t('nav.me')} />,
+  component: MePage,
 })
