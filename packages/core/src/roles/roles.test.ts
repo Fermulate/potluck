@@ -25,11 +25,7 @@ describe('can', () => {
 
   it("only lets owners and admins touch other people's expenses", () => {
     expect(everyone((r) => can(r, 'expense.edit', { isOwn: false }))).toEqual([true, true, false])
-    expect(everyone((r) => can(r, 'expense.delete', { isOwn: false }))).toEqual([
-      true,
-      true,
-      false,
-    ])
+    expect(everyone((r) => can(r, 'expense.delete', { isOwn: false }))).toEqual([true, true, false])
   })
 
   it('lets members lock or cancel only events they created', () => {
@@ -65,9 +61,9 @@ describe('can', () => {
     const settled = { targetNetCents: 0 }
 
     it('lets owners remove admins and members, and admins remove members only', () => {
-      expect(everyone((r) => can(r, 'member.remove', { ...settled, targetRole: 'member' }))).toEqual(
-        [true, true, false],
-      )
+      expect(
+        everyone((r) => can(r, 'member.remove', { ...settled, targetRole: 'member' })),
+      ).toEqual([true, true, false])
       expect(everyone((r) => can(r, 'member.remove', { ...settled, targetRole: 'admin' }))).toEqual(
         [true, false, false],
       )

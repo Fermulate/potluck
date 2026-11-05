@@ -99,7 +99,12 @@ describe('buildSlots', () => {
     const base = { dayStartMinute: 480, dayEndMinute: 600, slotMinutes: 30, timeZone: 'UTC' }
     expect(buildSlots({ ...base, windowStart: '2026-03-02', windowEnd: '2026-03-01' })).toEqual([])
     expect(
-      buildSlots({ ...base, windowStart: '2026-03-01', windowEnd: '2026-03-01', dayEndMinute: 480 }),
+      buildSlots({
+        ...base,
+        windowStart: '2026-03-01',
+        windowEnd: '2026-03-01',
+        dayEndMinute: 480,
+      }),
     ).toEqual([])
   })
 
