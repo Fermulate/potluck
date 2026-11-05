@@ -3,6 +3,9 @@
 begin;
 select plan(22);
 
+-- Ignore any seeded rates; each test adds the ones it needs.
+delete from public.fx_rates;
+
 select tests.create_user('owner');
 select tests.create_user('m1');
 select tests.create_user('m2');
