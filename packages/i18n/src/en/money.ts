@@ -25,6 +25,8 @@ export const expenses = {
   youPaid: 'You paid {amount}',
   youBorrowed: 'you borrowed {amount}',
   youLent: 'you lent {amount}',
+  youLentLabel: 'you lent',
+  youBorrowedLabel: 'you borrowed',
   notInvolved: 'not involved',
   yourShare: 'Your share: {amount}',
   everyone: 'Everyone',
