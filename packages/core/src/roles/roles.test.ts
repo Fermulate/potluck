@@ -28,6 +28,19 @@ describe('can', () => {
     expect(everyone((r) => can(r, 'expense.delete', { isOwn: false }))).toEqual([true, true, false])
   })
 
+  it('lets members delete only payments they were part of, like delete_settlement', () => {
+    expect(everyone((r) => can(r, 'settlement.delete', { isParty: true }))).toEqual([
+      true,
+      true,
+      true,
+    ])
+    expect(everyone((r) => can(r, 'settlement.delete', { isParty: false }))).toEqual([
+      true,
+      true,
+      false,
+    ])
+  })
+
   it('lets members lock or cancel only events they created', () => {
     for (const action of ['event.lock', 'event.cancel'] as const) {
       expect(everyone((r) => can(r, action, { isCreator: false }))).toEqual([true, true, false])

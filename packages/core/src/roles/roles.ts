@@ -7,6 +7,8 @@ export interface ActionContext {
   /** `isOwn`: the viewer created (or paid) the expense. */
   'expense.edit': { isOwn: boolean }
   'expense.delete': { isOwn: boolean }
+  /** `isParty`: the viewer paid, was paid, or recorded the payment. */
+  'settlement.delete': { isParty: boolean }
   'availability.set': undefined
   'availability.request': undefined
   'rsvp.set': undefined
@@ -37,6 +39,7 @@ const RULES: { [A in Action]: Rule<A> } = {
   'expense.create': anyone,
   'expense.edit': (role, { isOwn }) => isOwn || isManager(role),
   'expense.delete': (role, { isOwn }) => isOwn || isManager(role),
+  'settlement.delete': (role, { isParty }) => isParty || isManager(role),
   'availability.set': anyone,
   'availability.request': anyone,
   'rsvp.set': anyone,
