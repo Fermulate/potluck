@@ -12,6 +12,10 @@ export type SplitError =
   | { code: 'invalid_weight'; userId: string }
   | { code: 'percent_sum'; actual: number }
   | { code: 'zero_shares' }
+  | { code: 'no_items' }
+  | { code: 'item_no_users'; index: number }
+  | { code: 'invalid_item_amount'; index: number }
+  | { code: 'invalid_extra' }
 
 const fail = (error: SplitError): SplitResult => ({ ok: false, error })
 
@@ -115,4 +119,56 @@ export function splitShares(
   if (!scaled.ok) return scaled
   if (sumOf(scaled.weights) === 0n) return fail({ code: 'zero_shares' })
   return { ok: true, shares: allocate(totalCents, scaled.weights) }
+}
+
+export interface SplitItem {
+  amountCents: number
+  /** People sharing this item equally. */
+  userIds: readonly string[]
+}
+
+export interface SplitExtras {
+  taxCents?: number
+  tipCents?: number
+}
+
+const gcd = (a: bigint, b: bigint): bigint => (b === 0n ? a : gcd(b, a % b))
+
+/**
+ * Itemized bill: each item is shared equally by its people, then tax and tip are spread in
+ * proportion to each person's subtotal. Rounding happens once over the whole bill (largest
+ * remainder, ties by user id), so the result sums exactly to items + tax + tip.
+ */
+export function splitItemized(items: readonly SplitItem[], extras: SplitExtras = {}): SplitResult {
+  if (items.length === 0) return fail({ code: 'no_items' })
+  const taxCents = extras.taxCents ?? 0
+  const tipCents = extras.tipCents ?? 0
+  if (!isCents(taxCents) || !isCents(tipCents)) return fail({ code: 'invalid_extra' })
+
+  let itemsTotal = 0
+  let lcm = 1n
+  for (const [index, item] of items.entries()) {
+    if (!isCents(item.amountCents)) return fail({ code: 'invalid_item_amount', index })
+    if (item.userIds.length === 0) return fail({ code: 'item_no_users', index })
+    const duplicate = findDuplicate(item.userIds)
+    if (duplicate !== undefined) return fail({ code: 'duplicate_user', userId: duplicate })
+    itemsTotal += item.amountCents
+    const n = BigInt(item.userIds.length)
+    lcm = (lcm * n) / gcd(lcm, n)
+  }
+
+  // Each person's exact subtotal, scaled by `lcm` so it stays an integer.
+  const weights = new Map<string, bigint>()
+  for (const item of items) {
+    const perPerson = (BigInt(item.amountCents) * lcm) / BigInt(item.userIds.length)
+    for (const id of item.userIds) weights.set(id, (weights.get(id) ?? 0n) + perPerson)
+  }
+
+  const total = itemsTotal + taxCents + tipCents
+  if (!isCents(total)) return fail({ code: 'invalid_total' })
+  if (itemsTotal === 0) {
+    if (total > 0) return fail({ code: 'zero_shares' })
+    return { ok: true, shares: Object.fromEntries([...weights.keys()].map((id) => [id, 0])) }
+  }
+  return { ok: true, shares: allocate(total, weights) }
 }
