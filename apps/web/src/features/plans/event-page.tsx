@@ -57,17 +57,25 @@ export function EventPage({ eventId }: { eventId: string }) {
   const membersQ = useQuery({ ...planQueries.members(supabase, groupId ?? ''), enabled: !!groupId })
   useEventRealtime(eventId, groupId)
 
-  if (eventQ.isError) {
+  if (eventQ.isError || membersQ.isError) {
     const missing = eventQ.error instanceof PlanError && eventQ.error.code === 'event_not_found'
+    const failed = eventQ.isError ? eventQ : membersQ
     return (
       <Shell>
         <EmptyState
           title={missing ? t('events.notFound.title') : t('errors.generic')}
           description={missing ? t('events.notFound.body') : undefined}
           action={
-            <Button asChild variant="ink">
-              <Link to="/plans">{t('events.notFound.action')}</Link>
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              {!missing && (
+                <Button variant="ink" onClick={() => void failed.refetch()}>
+                  {t('common.retry')}
+                </Button>
+              )}
+              <Button asChild variant={missing ? 'ink' : 'secondary'}>
+                <Link to="/plans">{t('events.notFound.action')}</Link>
+              </Button>
+            </div>
           }
         />
       </Shell>
