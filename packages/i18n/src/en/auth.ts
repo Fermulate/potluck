@@ -7,7 +7,6 @@ export const auth = {
     noAccount: 'New here?',
     createAccount: 'Create an account',
     usePassword: 'Use a password instead',
-    sending: 'Sending...',
   },
   signUp: {
     title: 'Join the table',
@@ -67,11 +66,6 @@ export const auth = {
 } as const
 
 export const onboarding = {
-  welcome: {
-    title: 'Welcome to Potluck',
-    body: 'Everyone brings something. We keep track of who.',
-    start: "Let's go",
-  },
   step: 'Step {step} of {total}',
   profile: {
     title: 'First, the basics',
@@ -96,11 +90,4 @@ export const onboarding = {
     join: 'I have an invite link',
     skip: 'Maybe later',
   },
-  notifications: {
-    title: 'Want a heads up?',
-    body: 'We will ping you when someone adds an expense or a plan needs your vote.',
-    allow: 'Turn on notifications',
-    skip: 'Not now',
-  },
-  done: "You're all set. Dig in.",
 } as const

@@ -99,7 +99,10 @@ export function NotificationsPage() {
   const actorIds = useMemo(
     () =>
       (rows ?? [])
-        .map((r) => (r.data as Record<string, unknown> | null)?.actor_id)
+        .flatMap((r) => {
+          const d = r.data as Record<string, unknown> | null
+          return [d?.actor_id, d?.from_user, d?.to_user]
+        })
         .filter((id): id is string => typeof id === 'string'),
     [rows],
   )

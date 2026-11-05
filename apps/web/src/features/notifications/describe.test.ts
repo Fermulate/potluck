@@ -37,18 +37,53 @@ describe('describeNotification', () => {
     expect(view.target).toEqual({ to: '/expenses/$expenseId', params: { expenseId: 'e-9' } })
   })
 
-  it('sends payments to the group balances', () => {
-    const view = describeNotification(
+  describe("settlements, from the reader's side of the payment", () => {
+    const people = new Map([
+      ['u-ben', 'Ben Ortiz'],
+      ['u-cleo', 'Cleo Park'],
+      ['u-ava', 'Ava Chen'],
+    ])
+    const payment = (actor_id: string) =>
       row('settlement.created', {
-        actor_id: 'u-ben',
+        actor_id,
         group_id: 'g-1',
+        from_user: 'u-ben',
+        to_user: 'u-cleo',
         amount_cents: 1000,
         currency: 'USD',
-      }),
-      ctx,
-    )
-    expect(view.body).toBe('Ben paid you $10.00')
-    expect(view.target).toEqual({ to: '/groups/$groupId/balances', params: { groupId: 'g-1' } })
+      })
+
+    it('tells the payee who paid them and links to the balances', () => {
+      const view = describeNotification(
+        { ...payment('u-ben'), user_id: 'u-cleo' },
+        { ...ctx, people },
+      )
+      expect(view.title).toBe('You got paid')
+      expect(view.body).toBe('Ben paid you $10.00')
+      expect(view.target).toEqual({ to: '/groups/$groupId/balances', params: { groupId: 'g-1' } })
+    })
+
+    it('tells the payer their payment was marked received when the payee recorded it', () => {
+      const view = describeNotification(
+        { ...payment('u-cleo'), user_id: 'u-ben' },
+        { ...ctx, people },
+      )
+      expect(view.title).toBe('Payment recorded')
+      expect(view.body).toBe('Cleo marked your $10.00 payment as received')
+    })
+
+    it('names who recorded it when a third member logged the payment', () => {
+      const asPayer = describeNotification(
+        { ...payment('u-ava'), user_id: 'u-ben' },
+        { ...ctx, people },
+      )
+      expect(asPayer.body).toBe('Ava recorded your $10.00 payment to Cleo')
+      const asPayee = describeNotification(
+        { ...payment('u-ava'), user_id: 'u-cleo' },
+        { ...ctx, people },
+      )
+      expect(asPayee.body).toBe('Ben paid you $10.00')
+    })
   })
 
   it('opens the plan for availability requests', () => {

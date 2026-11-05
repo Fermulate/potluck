@@ -5,7 +5,6 @@ export const groups = {
   yours: 'Your groups',
   showArchived: 'Show archived ({count})',
   hideArchived: 'Hide archived',
-  openGroup: 'Open {group}',
   loadError: 'Your groups did not load.',
   colors: {
     tomato: 'Tomato',
@@ -149,7 +148,7 @@ export const invites = {
   revoked: 'Invite revoked. That link is closed.',
   create: 'Create link',
   created: 'Link ready. Copy it or share it.',
-  newLink: 'New link',
+  linkPlaceholder: 'https://.../join/...',
   active: 'Open links',
   none: 'No open links yet.',
   used_one: '{count} joined',
@@ -170,8 +169,6 @@ export const invites = {
   join: {
     title: 'You are invited',
     body: '{name} wants you at the table.',
-    memberCount_one: '{count} member',
-    memberCount_other: '{count} members',
     accept: 'Join {group}',
     signInToJoin: 'Sign in to join',
     alreadyMember: 'You are already in {group}.',
@@ -180,7 +177,6 @@ export const invites = {
     signUpToJoin: 'Create an account to join',
     whoIsIn: '{names} are already in.',
     whoIsInOne: '{names} is already in.',
-    joining: 'Pulling up a chair...',
   },
   invalid: {
     title: 'This invite has gone cold',
@@ -200,7 +196,6 @@ export const friends = {
   settled: 'settled up',
   noTab: 'no tab yet',
   open: 'Open tab with {name}',
-  opening: 'Opening...',
   add: 'Add a friend',
   addTitle: 'Add a friend',
   addBody:
