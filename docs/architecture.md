@@ -113,8 +113,8 @@ flowchart BT
   native -.-> tokens
   native -.-> api
 
-  classDef shared fill:#eef6ee,stroke:#4a7a4a
-  classDef webonly fill:#f6eee6,stroke:#8a5a2a
+  classDef shared fill:#eef6ee,stroke:#4a7a4a,color:#1d1a16
+  classDef webonly fill:#f6eee6,stroke:#8a5a2a,color:#1d1a16
   class core,i18n,tokens,api shared
   class ui,web webonly
 ```
