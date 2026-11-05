@@ -176,7 +176,7 @@ export function AvailabilityHeatmap({
           )
         }}
       />
-      <HeatLegend />
+      <HeatLegend showBusy={!!busy && busy.size > 0} />
     </div>
   )
 }
@@ -237,7 +237,8 @@ function Inspector({
   )
 }
 
-export function HeatLegend() {
+/** The heat scale, plus the hatched busy swatch when there is busy time on the grid to explain. */
+export function HeatLegend({ showBusy = false }: { showBusy?: boolean }) {
   return (
     <div className="flex items-center gap-2 text-xs text-mute">
       <span>{t('availability.heatLegendNobody')}</span>
@@ -247,11 +248,13 @@ export function HeatLegend() {
         ))}
       </span>
       <span>{t('availability.heatLegendAll')}</span>
-      <span className="ml-auto flex items-center gap-1.5">
-        <HeatCell level={0} busy className="size-3.5 min-h-0 rounded-[3px]" aria-hidden />
-        {t('availability.busy')}
-      </span>
-      <Help topic="heatmap" />
+      {showBusy && (
+        <span className="ml-auto flex items-center gap-1.5">
+          <HeatCell level={0} busy className="size-3.5 min-h-0 rounded-[3px]" aria-hidden />
+          {t('availability.busy')}
+        </span>
+      )}
+      <Help topic="heatmap" className={showBusy ? undefined : 'ml-auto'} />
     </div>
   )
 }
