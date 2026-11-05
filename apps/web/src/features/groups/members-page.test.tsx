@@ -71,6 +71,24 @@ describe('MembersPage', () => {
     )
   })
 
+  it('offers a closed account no role, only removal once settled', async () => {
+    api.group = group({
+      members: [
+        member(VIEWER, 'Ava Chen', 'owner', -500),
+        { ...member('u-eli', 'Eli Novak', 'member', 500), deleted_at: '2026-10-01T00:00:00Z' },
+      ],
+    })
+    renderWithProviders(<MembersPage groupId="g-hike" />)
+    await screen.findByText('Former member')
+    fireEvent.click(
+      within(rowFor('Former member')).getByRole('button', { name: 'Actions for Former member' }),
+    )
+    const remove = await screen.findByRole('button', { name: /Remove from group/ })
+    expect(remove).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Make admin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Make owner/ })).not.toBeInTheDocument()
+  })
+
   it('will not remove someone who still has a balance', async () => {
     renderWithProviders(<MembersPage groupId="g-hike" />)
     await screen.findByText('Cleo Park')
