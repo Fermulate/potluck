@@ -27,6 +27,7 @@ import { Route as AppNewPlanRouteImport } from './routes/_app/new/plan'
 import { Route as AppNewSettleRouteImport } from './routes/_app/new/settle'
 import { Route as AppPlansIndexRouteImport } from './routes/_app/plans/index'
 import { Route as AppPlansEventIdRouteImport } from './routes/_app/plans/$eventId'
+import { Route as AppExpensesExpenseIdEditRouteImport } from './routes/_app/expenses/$expenseId_.edit'
 import { Route as AppGroupsGroupIdIndexRouteImport } from './routes/_app/groups/$groupId/index'
 import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/groups/$groupId/balances'
 import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
@@ -122,6 +123,12 @@ const AppPlansEventIdRoute = AppPlansEventIdRouteImport.update({
   path: '/plans/$eventId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppExpensesExpenseIdEditRoute =
+  AppExpensesExpenseIdEditRouteImport.update({
+    id: '/expenses/$expenseId_/edit',
+    path: '/expenses/$expenseId/edit',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppGroupsGroupIdIndexRoute = AppGroupsGroupIdIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -168,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/groups/': typeof AppGroupsIndexRoute
   '/me/': typeof AppMeIndexRoute
   '/plans/': typeof AppPlansIndexRoute
+  '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
@@ -191,6 +199,7 @@ export interface FileRoutesByTo {
   '/groups': typeof AppGroupsIndexRoute
   '/me': typeof AppMeIndexRoute
   '/plans': typeof AppPlansIndexRoute
+  '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
@@ -217,6 +226,7 @@ export interface FileRoutesById {
   '/_app/groups/': typeof AppGroupsIndexRoute
   '/_app/me/': typeof AppMeIndexRoute
   '/_app/plans/': typeof AppPlansIndexRoute
+  '/_app/expenses/$expenseId_/edit': typeof AppExpensesExpenseIdEditRoute
   '/_app/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
@@ -243,6 +253,7 @@ export interface FileRouteTypes {
     | '/groups/'
     | '/me/'
     | '/plans/'
+    | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
@@ -266,6 +277,7 @@ export interface FileRouteTypes {
     | '/groups'
     | '/me'
     | '/plans'
+    | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
@@ -291,6 +303,7 @@ export interface FileRouteTypes {
     | '/_app/groups/'
     | '/_app/me/'
     | '/_app/plans/'
+    | '/_app/expenses/$expenseId_/edit'
     | '/_app/groups/$groupId/balances'
     | '/_app/groups/$groupId/members'
     | '/_app/groups/$groupId/plans'
@@ -434,6 +447,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlansEventIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/expenses/$expenseId_/edit': {
+      id: '/_app/expenses/$expenseId_/edit'
+      path: '/expenses/$expenseId/edit'
+      fullPath: '/expenses/$expenseId/edit'
+      preLoaderRoute: typeof AppExpensesExpenseIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/groups/$groupId/': {
       id: '/_app/groups/$groupId/'
       path: '/'
@@ -505,6 +525,7 @@ interface AppRouteChildren {
   AppGroupsIndexRoute: typeof AppGroupsIndexRoute
   AppMeIndexRoute: typeof AppMeIndexRoute
   AppPlansIndexRoute: typeof AppPlansIndexRoute
+  AppExpensesExpenseIdEditRoute: typeof AppExpensesExpenseIdEditRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -521,6 +542,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGroupsIndexRoute: AppGroupsIndexRoute,
   AppMeIndexRoute: AppMeIndexRoute,
   AppPlansIndexRoute: AppPlansIndexRoute,
+  AppExpensesExpenseIdEditRoute: AppExpensesExpenseIdEditRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

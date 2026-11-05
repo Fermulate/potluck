@@ -1,0 +1,366 @@
+import { moneyKeys, moneyQueries, restoreExpense } from '@potluck/api'
+import { can, convert } from '@potluck/core'
+import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
+import {
+  Avatar,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
+  Skeleton,
+  buttonClassName,
+  cn,
+  toast,
+} from '@potluck/ui'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowRightLeft, ChevronLeft, FileText, PencilLine, Repeat, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { useUserId } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
+import { ExpenseComments } from './comments'
+import { CategoryTile } from './expense-row'
+import { categoryLabel } from './format'
+import { Money } from './money'
+import {
+  avatarUrl,
+  moneyErrorMessage,
+  useGroupMoneyRealtime,
+  useMoneyGroup,
+  useNameOf,
+  usePeople,
+  useTimeZone,
+} from './money-data'
+import { useDeleteExpense } from './use-delete-expense'
+
+export function ExpenseDetail({ expenseId }: { expenseId: string }) {
+  const me = useUserId()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const timeZone = useTimeZone()
+  const nameOf = useNameOf()
+  const people = usePeople()
+  const deleteExpense = useDeleteExpense()
+  const [confirming, setConfirming] = useState(false)
+  const expense = useQuery(moneyQueries.expense(supabase, expenseId))
+  const groupId = expense.data?.group_id
+  const group = useMoneyGroup(groupId ?? '')
+  useGroupMoneyRealtime(groupId)
+  const receipt = useQuery({
+    ...moneyQueries.receiptUrl(supabase, expense.data?.receipt_path ?? ''),
+    enabled: !!expense.data?.receipt_path,
+  })
+
+  if (expense.isError) {
+    return (
+      <Page>
+        <EmptyState
+          illustration="🧾"
+          title={t('errors.notFound')}
+          description={t('expenses.detail.notFound')}
+          action={
+            <Button asChild variant="secondary">
+              <Link to="/groups">{t('nav.groups')}</Link>
+            </Button>
+          }
+        />
+      </Page>
+    )
+  }
+
+  if (!expense.data) return <DetailSkeleton />
+
+  const e = expense.data
+  const role = group.data?.members.find((m) => m.id === me)?.role
+  const isOwn = e.created_by === me || e.paid_by === me
+  const mayEdit = can(role, 'expense.edit', { isOwn })
+  const mayDelete = can(role, 'expense.delete', { isOwn })
+  const deleted = !!e.deleted_at
+  const groupCurrency = group.data?.currency ?? e.currency
+  const foreign = e.currency !== groupCurrency
+  const isPdf = e.receipt_path?.toLowerCase().endsWith('.pdf')
+  const payer = people.get(e.paid_by)
+  const splits = [...e.expense_splits].sort((a, b) =>
+    a.user_id === me ? -1 : b.user_id === me ? 1 : b.share_cents - a.share_cents,
+  )
+
+  const onDelete = async () => {
+    const ok = await deleteExpense(e)
+    if (ok) void navigate({ to: '/groups/$groupId', params: { groupId: e.group_id } })
+  }
+
+  const onRestore = async () => {
+    try {
+      await restoreExpense(supabase, e.id)
+      toast.success(t('expenses.restored'))
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(e.id) })
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(e.group_id) })
+    } catch (error) {
+      toast.error(moneyErrorMessage(error))
+    }
+  }
+
+  return (
+    <Page>
+      <div className="-mx-2 flex items-center justify-between">
+        <Link
+          to="/groups/$groupId"
+          params={{ groupId: e.group_id }}
+          className={buttonClassName({ variant: 'ghost', size: 'sm', className: 'pl-2' })}
+        >
+          <ChevronLeft aria-hidden className="size-5" />
+          <span className="max-w-[12rem] truncate">{group.data?.name ?? t('common.back')}</span>
+        </Link>
+        {!deleted && (mayEdit || mayDelete) && (
+          <div className="flex gap-1" role="group" aria-label={t('expenses.detail.actions')}>
+            {mayEdit && (
+              <Link
+                to="/expenses/$expenseId/edit"
+                params={{ expenseId: e.id }}
+                className={buttonClassName({ variant: 'secondary', size: 'sm' })}
+              >
+                <PencilLine aria-hidden className="size-4" />
+                {t('common.edit')}
+              </Link>
+            )}
+            {mayDelete && (
+              <IconButton
+                size="sm"
+                variant="ghost"
+                label={t('common.delete')}
+                icon={<Trash2 />}
+                onClick={() => setConfirming(true)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {deleted && (
+        <div
+          role="status"
+          className="mt-4 flex items-center justify-between gap-3 rounded-card bg-tomato-soft px-4 py-3 text-tomato-ink"
+        >
+          <span className="text-sm font-semibold">{t('expenses.detail.deletedBanner')}</span>
+          {mayEdit && (
+            <Button size="sm" variant="secondary" onClick={onRestore}>
+              {t('expenses.restore')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:gap-12">
+        <div className="flex flex-col gap-6">
+          <header className={cn('flex flex-col gap-4', deleted && 'opacity-60')}>
+            <div className="flex items-start gap-4">
+              <CategoryTile category={e.category} size="xl" className="rotate-[-4deg]" />
+              <div className="min-w-0 pt-1">
+                <p className="text-sm font-semibold text-mute">
+                  {categoryLabel(e.category)}
+                  {e.recurring_id && (
+                    <Repeat aria-hidden className="ml-1.5 inline size-3.5" strokeWidth={2.5} />
+                  )}
+                </p>
+                <h1 className="font-display text-[2.5rem] leading-[1] text-balance break-words">
+                  {e.description}
+                </h1>
+              </div>
+            </div>
+            <p className="text-[3.5rem] leading-none font-extrabold tracking-tight sm:text-[4.5rem]">
+              <Money cents={e.amount_cents} currency={e.currency} tone="neutral" split />
+            </p>
+            {foreign && (
+              <p className="inline-flex items-center gap-1.5 text-sm text-mute">
+                <ArrowRightLeft aria-hidden className="size-4" />
+                {t('expenses.detail.converted', {
+                  amount: formatMoney(
+                    convert(e.amount_cents, e.fx_rate, { from: e.currency, to: groupCurrency }),
+                    groupCurrency,
+                  ),
+                  currency: groupCurrency,
+                  rate: String(Number(e.fx_rate)),
+                })}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.9375rem]">
+              <span className="inline-flex items-center gap-2 font-semibold">
+                <Avatar
+                  name={payer?.display_name ?? nameOf(e.paid_by)}
+                  seed={e.paid_by}
+                  src={avatarUrl(payer?.avatar_path)}
+                  size="sm"
+                />
+                {e.paid_by === me
+                  ? t('expenses.detail.youPaid')
+                  : t('expenses.detail.paidBy', { name: nameOf(e.paid_by) })}
+              </span>
+              <time dateTime={e.spent_at} className="text-mute">
+                {formatDate(e.spent_at, { timeZone, style: 'full' })}
+              </time>
+            </div>
+          </header>
+
+          <Card padding="none" className="overflow-hidden">
+            <h2 className="border-b border-line px-4 py-3 text-sm font-bold text-mute">
+              {t('expenses.detail.split', {
+                type: t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase(),
+              })}
+            </h2>
+            <ul className="divide-y divide-line">
+              {splits.map((s) => {
+                const person = people.get(s.user_id)
+                const isMe = s.user_id === me
+                const paid = s.user_id === e.paid_by
+                return (
+                  <li
+                    key={s.user_id}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-3',
+                      isMe && 'bg-saffron-soft/50',
+                    )}
+                  >
+                    <Avatar
+                      name={person?.display_name ?? nameOf(s.user_id)}
+                      seed={s.user_id}
+                      src={avatarUrl(person?.avatar_path)}
+                      size="md"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-semibold">{nameOf(s.user_id)}</span>
+                      <span className="text-sm text-mute">
+                        {paid
+                          ? t('expenses.detail.paidAndOwes', {
+                              amount: formatMoney(s.share_cents, e.currency),
+                            })
+                          : t('expenses.detail.owes', {
+                              amount: formatMoney(s.share_cents, e.currency),
+                            })}
+                        {e.split_type === 'percent' && s.weight != null && ` (${s.weight}%)`}
+                        {e.split_type === 'shares' &&
+                          s.weight != null &&
+                          ` (${t('expenses.shareCount', { count: Number(s.weight) })})`}
+                      </span>
+                    </span>
+                    <span className="text-lg font-bold">
+                      <Money
+                        cents={s.share_cents}
+                        currency={e.currency}
+                        tone={paid ? 'owed' : isMe ? 'owe' : 'neutral'}
+                      />
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+          {e.created_by && (
+            <p className="text-sm text-mute">
+              {t('expenses.createdBy', {
+                name: nameOf(e.created_by),
+                when: formatRelative(e.created_at, { timeZone }),
+              })}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-8">
+          {e.receipt_path && (
+            <section aria-labelledby="receipt-title" className="flex flex-col gap-3">
+              <h2 id="receipt-title" className="font-display text-2xl">
+                {t('expenses.detail.receipt')}
+              </h2>
+              {receipt.data ? (
+                isPdf ? (
+                  <a
+                    href={receipt.data}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-3 rounded-card border border-line bg-card p-4 font-semibold hover:border-line-strong"
+                  >
+                    <FileText aria-hidden className="size-6 text-mute" />
+                    {t('expenses.receiptUpload.pdf')}
+                  </a>
+                ) : (
+                  <a
+                    href={receipt.data}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={t('expenses.receiptUpload.open')}
+                    className="block overflow-hidden rounded-card border border-line bg-sunken"
+                  >
+                    <img
+                      src={receipt.data}
+                      alt={t('expenses.receiptUpload.alt', { description: e.description })}
+                      className="max-h-[28rem] w-full object-contain"
+                    />
+                  </a>
+                )
+              ) : (
+                <Skeleton className="h-56" />
+              )}
+            </section>
+          )}
+          {e.notes && (
+            <section aria-labelledby="notes-title" className="flex flex-col gap-2">
+              <h2 id="notes-title" className="font-display text-2xl">
+                {t('expenses.detail.notes')}
+              </h2>
+              <p className="rounded-card bg-sunken px-4 py-3 text-[0.9375rem] whitespace-pre-wrap">
+                {e.notes}
+              </p>
+            </section>
+          )}
+          <ExpenseComments
+            expenseId={e.id}
+            groupId={e.group_id}
+            canModerate={role === 'owner' || role === 'admin'}
+          />
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t('common.delete')}
+        description={t('expenses.deleteConfirm', { description: e.description })}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
+        closeLabel={t('common.close')}
+        tone="danger"
+        onConfirm={onDelete}
+      />
+    </Page>
+  )
+}
+
+function Page({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mx-auto w-full max-w-5xl px-4 pt-3 pb-32 lg:px-8 lg:pt-8 lg:pb-12">
+      {children}
+    </div>
+  )
+}
+
+function DetailSkeleton() {
+  return (
+    <Page>
+      <div
+        aria-busy="true"
+        aria-label={t('expenses.detail.loading')}
+        className="flex flex-col gap-6 pt-14"
+      >
+        <div className="flex items-center gap-4">
+          <Skeleton className="size-20 rounded-[1.5rem]" />
+          <div className="flex flex-1 flex-col gap-2">
+            <Skeleton shape="line" className="w-20" />
+            <Skeleton className="h-9 w-3/5" />
+          </div>
+        </div>
+        <Skeleton className="h-16 w-48" />
+        <Skeleton className="h-56 lg:w-1/2" />
+      </div>
+    </Page>
+  )
+}
