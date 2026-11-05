@@ -8,11 +8,14 @@ type OutputChunk = Rolldown.OutputChunk
  * writes a tiny inline script into index.html that, before the entry even starts, adds
  * `modulepreload` links for what the current URL is about to need:
  *
- *   - signed out on `/`: the landing page chunk;
+ *   - signed out on `/`: the landing demo (the page itself is prerendered);
  *   - signed in (a supabase-js session is stored): the Supabase client, the app shell and, on
  *     `/` or `/home`, the home screen, plus a preconnect to the API.
  *
- * Only files the entry does not already preload are listed.
+ * Only files the entry does not already preload are listed. The script also marks the document
+ * `data-boot="app"` whenever the app has to start instead of the prerendered landing page
+ * (prerender-landing.ts): any other URL, a stored session, or an auth result in the URL. The
+ * same rule decides in main.tsx whether the app renders.
  */
 export function routePreloads(apiUrl: string | undefined): Plugin {
   return {
@@ -47,7 +50,7 @@ export function routePreloads(apiUrl: string | undefined): Plugin {
         }
         const app = files('src/lib/supabase.ts', 'src/routes/_app.tsx?tsr-split=component')
         const map = {
-          landing: files('src/routes/index.tsx?tsr-split=component'),
+          landing: files('src/features/shell/hero-island.tsx'),
           app,
           home: files('src/routes/_app/home.tsx?tsr-split=component').filter(
             (f) => !app.includes(f),
@@ -58,6 +61,7 @@ export function routePreloads(apiUrl: string | undefined): Plugin {
 try{for(i=0;i<localStorage.length;i++)if(/^sb-.+-auth-token$/.test(localStorage.key(i)||''))s=true}catch(x){}
 l=s?m.app.concat(p==='/'||p==='/home'?m.home:[]):p==='/'?m.landing:[];
 function add(r,h){e=document.createElement('link');e.rel=r;e.href=h;e.crossOrigin='';document.head.appendChild(e)}
+if(p!=='/'||s||/(access_token|refresh_token|code|token_hash|error_description)=/.test(location.search+location.hash))document.documentElement.setAttribute('data-boot','app');
 if(s&&m.api)add('preconnect',m.api);
 for(i=0;i<l.length;i++)add('modulepreload',l[i])})()`
         return [{ tag: 'script', children: script, injectTo: 'head' }]
