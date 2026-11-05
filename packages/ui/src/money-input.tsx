@@ -136,7 +136,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
     'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill bg-saffron px-3 text-on-saffron'
 
   return (
-    <div className={cn('flex items-center justify-center gap-3', className)}>
+    <div className={cn('@container flex items-center justify-center gap-3', className)}>
       {onCurrencyPress ? (
         <button
           type="button"
@@ -165,11 +165,16 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
           placeholder="0"
           value={text}
           onChange={onChange}
-          style={{ width: `${Math.max(1, text.length) + 0.2}ch` }}
+          style={{
+            width: `${Math.max(1, text.length) + 0.2}ch`,
+            // Shrink to fit the container as the number gets longer.
+            fontSize: `min(${size === 'lg' ? 5 : 2.25}rem, calc((100cqi - 6.5rem) / ${(
+              Math.max(3, text.length) * 0.56
+            ).toFixed(2)}))`,
+          }}
           className={cn(
             'min-w-[1.2ch] bg-transparent p-0 text-center leading-none font-extrabold tracking-tight text-ink tabular caret-tomato outline-none placeholder:text-line-strong',
             'focus-visible:outline-none',
-            size === 'lg' ? 'text-6xl sm:text-7xl' : 'text-4xl',
           )}
         />
       </span>
