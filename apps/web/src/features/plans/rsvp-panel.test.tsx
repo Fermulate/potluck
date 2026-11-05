@@ -1,3 +1,4 @@
+import type * as Api from '@potluck/api'
 import { plansKeys, type PlanMember, type PlanRsvp } from '@potluck/api'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -6,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 let resolveSave: () => void = () => {}
 const setRsvp = vi.fn(() => new Promise<void>((resolve) => (resolveSave = resolve)))
 vi.mock('@potluck/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@potluck/api')>()),
+  ...(await importOriginal<typeof Api>()),
   setRsvp: (...args: unknown[]) => setRsvp(...(args as [])),
 }))
 
