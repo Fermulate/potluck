@@ -9,13 +9,14 @@ import {
   type RenderNavLink,
 } from '@potluck/ui'
 import { Link, Outlet, useParams, useRouterState } from '@tanstack/react-router'
-import { Bell, CalendarHeart, House, Plus, User, Users } from 'lucide-react'
+import { Bell, BookOpen, CalendarHeart, House, Plus, User, Users } from 'lucide-react'
 import { useState } from 'react'
 import {
   useNotificationsRealtime,
   useUnreadCount,
 } from '@/features/notifications/use-notifications'
 import { useUserId } from '@/lib/auth'
+import { docsUrl } from '@/lib/docs'
 import { profileAvatar, useMyProfile } from '@/lib/queries'
 import { Wordmark } from './brand'
 import { QuickAddSheet } from './quick-add-sheet'
@@ -44,13 +45,24 @@ function RailFooter() {
   const { data: profile } = useMyProfile()
   const name = profile?.display_name ?? ''
   return (
-    <Link
-      to="/me"
-      className="flex items-center gap-3 rounded-pill p-1.5 pr-3 transition-colors hover:bg-ink/[0.04]"
-    >
-      <Avatar name={name || '?'} seed={userId} src={profileAvatar(profile)} size="md" />
-      <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold">{name}</span>
-    </Link>
+    <div className="flex flex-col gap-2">
+      <a
+        href={docsUrl('/')}
+        target="_blank"
+        rel="noopener"
+        className="flex items-center gap-2 self-start rounded-pill px-3.5 py-1.5 text-sm font-semibold text-mute transition-colors hover:bg-ink/[0.04] hover:text-ink"
+      >
+        <BookOpen aria-hidden className="size-4" />
+        {t('help.guide')} <span className="sr-only">({t('help.newTab')})</span>
+      </a>
+      <Link
+        to="/me"
+        className="flex items-center gap-3 rounded-pill p-1.5 pr-3 transition-colors hover:bg-ink/[0.04]"
+      >
+        <Avatar name={name || '?'} seed={userId} src={profileAvatar(profile)} size="md" />
+        <span className="min-w-0 flex-1 truncate text-[0.9375rem] font-semibold">{name}</span>
+      </Link>
+    </div>
   )
 }
 
