@@ -21,7 +21,7 @@ export interface ConfirmDialogProps {
   closeLabel: string
   /** May return a promise; the confirm button shows loading until it settles. */
   onConfirm: () => void | Promise<unknown>
-  /** `danger` for destructive actions (delete, remove, leave). */
+  /** `danger` (delete, remove, leave) gets the tomato button; `primary` a quieter ink one. */
   tone?: 'primary' | 'danger'
   children?: ReactNode
 }
@@ -66,7 +66,7 @@ export function ConfirmDialog({
               </Button>
             </DialogClose>
             <Button
-              variant={tone === 'danger' ? 'danger' : 'primary'}
+              variant={tone === 'danger' ? 'primary' : 'ink'}
               loading={busy}
               onClick={confirm}
             >
