@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Button } from './button'
 import { ConfirmDialog } from './dialog'
-import { Sheet, SheetContent, SheetTrigger } from './sheet'
+import { Sheet, SheetClose, SheetContent, SheetTrigger } from './sheet'
+import { preferReducedMotion } from './test/motion'
 
 function Harness() {
   return (
@@ -77,6 +78,80 @@ describe('Sheet', () => {
     expect(screen.getByRole('dialog', { name: 'Settle up' })).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.getByText('closed')).toBeInTheDocument()
+  })
+})
+
+describe('SheetContent', () => {
+  it('is described by its description and shows a footer', () => {
+    render(
+      <Sheet defaultOpen>
+        <SheetContent
+          title="Settle up"
+          description="Record a payment to Bo"
+          closeLabel="Close"
+          variant="sheet"
+          footer={
+            <SheetClose asChild>
+              <Button>Done</Button>
+            </SheetClose>
+          }
+        >
+          Body
+        </SheetContent>
+      </Sheet>,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Settle up' })
+    expect(dialog).toHaveAccessibleDescription('Record a payment to Bo')
+    expect(dialog).toHaveTextContent('Body')
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument()
+  })
+
+  it('closes from a SheetClose in the footer', async () => {
+    const onOpenChange = vi.fn()
+    render(
+      <Sheet defaultOpen onOpenChange={onOpenChange}>
+        <SheetContent
+          title="Filters"
+          closeLabel="Close"
+          variant="dialog"
+          size="lg"
+          footer={
+            <SheetClose asChild>
+              <Button>Apply</Button>
+            </SheetClose>
+          }
+        />
+      </Sheet>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('keeps a hidden title as the accessible name', () => {
+    render(
+      <Sheet defaultOpen>
+        <SheetContent title="Quick add" hideTitle closeLabel="Close" />
+      </Sheet>,
+    )
+    expect(screen.getByRole('dialog', { name: 'Quick add' })).toBeInTheDocument()
+  })
+
+  it('opens and closes with reduced motion', async () => {
+    preferReducedMotion()
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add expense' }))
+    expect(await screen.findByRole('dialog', { name: 'New expense' })).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('must be used inside a Sheet', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => render(<SheetContent title="Lost" closeLabel="Close" />)).toThrow(
+      'SheetContent must be used inside <Sheet> or <Dialog>',
+    )
+    vi.mocked(console.error).mockRestore()
   })
 })
 
