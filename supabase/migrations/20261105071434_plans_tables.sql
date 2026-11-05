@@ -4,6 +4,24 @@
 -- from day_start_minute to day_end_minute, in the event's timezone, cut into
 -- slot_minutes cells. availability.slot_start is the UTC start of one cell.
 
+-- True when Postgres knows the zone, so `at time zone` on it cannot fail.
+create or replace function private.is_time_zone(tz text)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+begin
+  perform timestamptz '2000-01-01 00:00:00+00' at time zone tz;
+  return true;
+exception
+  when invalid_parameter_value then
+    return false;
+end;
+$$;
+
+grant execute on function private.is_time_zone(text) to authenticated, service_role;
+
 create table public.events (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups (id) on delete cascade,
@@ -12,7 +30,7 @@ create table public.events (
   location text check (char_length(location) <= 300),
   emoji text check (char_length(emoji) <= 16),
   status public.event_status not null default 'polling',
-  timezone text not null default 'UTC',
+  timezone text not null default 'UTC' check (private.is_time_zone(timezone)),
   window_start date not null default current_date,
   window_end date not null default (current_date + 6),
   day_start_minute int not null default 480,

@@ -1,7 +1,7 @@
 -- Activity, comments, notifications, push tokens, app_config, calendar
 -- connections, busy blocks, recurring templates.
 begin;
-select plan(49);
+select plan(50);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -164,6 +164,10 @@ update public.comments set body = 'Friday for sure' where id = tests.id('c');
 reset role;
 select is((select body from public.comments where id = tests.id('c')), 'Friday for sure', 'only the author edits');
 select tests.login('admin');
+select throws_ok(
+  $$ update public.comments set body = 'rewritten by admin' where id = tests.id('c') $$,
+  '42501', 'not_allowed', 'admins cannot rewrite what a member said'
+);
 update public.comments set deleted_at = now() where id = tests.id('c');
 reset role;
 select ok((select deleted_at is not null from public.comments where id = tests.id('c')), 'admins can soft delete any comment');

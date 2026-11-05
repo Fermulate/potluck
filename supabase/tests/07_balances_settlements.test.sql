@@ -109,10 +109,15 @@ select results_eq(
             (greatest(tests.uid('b'), tests.uid('c')), tests.uid('a'), 100::bigint) $$,
   'equal debtors are ordered by user id'
 );
+select tests.remember('t3', tests.group_with('a', array['b', 'c', 'd'], '{}', 'Ties of three'));
+select create_expense(jsonb_build_object('group_id', tests.id('t3'), 'description', 'Split', 'amount_cents', 300,
+  'splits', tests.people('b', 'c', 'd')));
 select results_eq(
-  $$ select from_user, to_user, amount_cents from simplified_debts(tests.id('t')) $$,
-  $$ select from_user, to_user, amount_cents from simplified_debts(tests.id('t')) $$,
-  'simplified_debts is deterministic'
+  $$ select from_user, to_user, amount_cents from simplified_debts(tests.id('t3')) $$,
+  $$ select u, tests.uid('a'), 100::bigint
+     from unnest(array[tests.uid('d'), tests.uid('b'), tests.uid('c')]) u
+     order by u $$,
+  'three equal debtors pay in ascending user id order'
 );
 
 -- settle_up validation and permissions

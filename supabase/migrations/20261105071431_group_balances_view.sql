@@ -9,13 +9,16 @@
 --     zero in group currency;
 --   * settlements: from_user goes up, to_user goes down, by the converted amount;
 --   * soft-deleted rows are ignored.
+-- Every CTE is inlined and every window is partitioned by group_id, so a
+-- group_id filter on the view reaches the base tables even when RLS does not
+-- apply (security definer callers).
 -- Members with no activity appear with 0. Former members with history still
 -- appear so their debts are never hidden.
 
 create view public.group_balances
 with (security_invoker = true)
 as
-with expense_totals as (
+with expense_totals as not materialized (
   select
     e.id,
     e.group_id,
@@ -35,15 +38,15 @@ split_parts as (
     mod(t.total::numeric * s.share_cents, sum(s.share_cents) over w) as rem
   from expense_totals t
   join public.expense_splits s on s.expense_id = t.id
-  window w as (partition by t.id)
+  window w as (partition by t.group_id, t.id)
 ),
 split_shares as (
   select
     p.group_id,
     p.user_id,
     p.base + case
-      when row_number() over (partition by p.id order by p.rem desc, p.user_id)
-           <= p.total - sum(p.base) over (partition by p.id)
+      when row_number() over (partition by p.group_id, p.id order by p.rem desc, p.user_id)
+           <= p.total - sum(p.base) over (partition by p.group_id, p.id)
       then 1 else 0
     end as share
   from split_parts p
