@@ -28,7 +28,7 @@ Participants used throughout:
 
 ## Sign up and profile creation
 
-Nobody writes to `profiles` on sign up. The `on_auth_user_created` trigger does it in the same transaction as the auth user, so a profile always exists for a signed-in user.
+Nobody writes to `profiles` on sign up. The `on_auth_user_created` trigger does it in the same transaction as the auth user, so a profile always exists for a signed-in user. The web app then sends every new account through `/welcome` (name, avatar, time zone, currency) until the auth user carries `onboarded: true` in its metadata; the `_app` layout and the auth callback both check that flag, so it holds for magic links and OAuth too.
 
 ```mermaid
 sequenceDiagram
@@ -47,11 +47,15 @@ sequenceDiagram
   alt production (enable_confirmations = true)
     A-->>U: confirmation email
     U->>A: open link
-    A-->>W: redirect to the auth callback route with a session
+    A-->>W: redirect to /auth/callback with a session
   else local stack (confirmations off)
     A-->>W: session right away
   end
-  W->>DB: select own profile (RLS: id = auth.uid())
+  W->>W: user_metadata.onboarded missing, go to /welcome
+  U->>W: name, avatar, time zone, currency
+  W->>DB: update own profile (RLS: id = auth.uid())
+  W->>A: auth.updateUser(data: onboarded = true)
+  W->>W: continue to the redirect target, default /home
 ```
 
 ## Create a group and invite people
@@ -170,7 +174,7 @@ sequenceDiagram
   PS-->>F: push message: title, body, url
 ```
 
-Delivery to the screen depends on the service worker handling the `push` event. The PWA is built with `vite-plugin-pwa` in `generateSW` mode and has no `push` handler yet, so the last hop is not wired up.
+The service worker shows the message. The PWA is built with `vite-plugin-pwa` in `generateSW` mode, and `apps/web/public/push-sw.js` (pulled in through `workbox.importScripts` in `apps/web/vite.config.ts`) handles `push` by showing a notification and `notificationclick` by focusing or opening the app at the payload's `url`, same origin only. The browser subscribes from the Me page, which stores the endpoint in `push_tokens`; sign out drops that row and the subscription first so the next account on the device does not inherit it.
 
 ## Settle up
 
