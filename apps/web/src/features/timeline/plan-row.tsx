@@ -22,7 +22,7 @@ export function PlanRow({ plan, timeZone, todayKey, dayKeyOf, showGroup = true }
   const tone = past || !scheduled ? 'ink' : isToday ? 'tomato' : 'saffron'
 
   const subtitle = scheduled ? (
-    <span className="inline-flex min-w-0 items-center gap-1">
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1">
       <span className="tabular">
         {formatTime(plan.startsAt!, { timeZone })}
         {plan.location ? ',' : ''}
@@ -83,9 +83,14 @@ export function PlanRow({ plan, timeZone, todayKey, dayKeyOf, showGroup = true }
       meta={meta}
       metaSub={
         showGroup && plan.groupName ? (
-          <span className="inline-flex items-center gap-1">
-            {plan.groupEmoji && <span aria-hidden>{plan.groupEmoji}</span>}
-            {plan.groupName}
+          // Capped so a long group name never squeezes the plan's own title.
+          <span className="flex max-w-[7rem] items-center gap-1 sm:max-w-[12rem]">
+            {plan.groupEmoji && (
+              <span aria-hidden className="shrink-0">
+                {plan.groupEmoji}
+              </span>
+            )}
+            <span className="truncate">{plan.groupName}</span>
           </span>
         ) : undefined
       }
