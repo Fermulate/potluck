@@ -26,8 +26,15 @@ export function HeatGrid({ view }: { view: 'everyone' | 'me' }) {
     <div
       role="grid"
       aria-label="Group availability, 6 to 10:30 pm"
-      className="grid grid-cols-[2.75rem_repeat(5,minmax(0,1fr))] gap-1"
+      className="relative grid grid-cols-[2.75rem_repeat(5,minmax(0,1fr))] gap-1"
     >
+      {view === 'everyone' && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -inset-[3px] z-10 rounded-[0.5rem] border-2 border-ink"
+          style={{ gridColumn: best.col + 2, gridRow: `${best.from + 2} / ${best.to + 3}` }}
+        />
+      )}
       <div role="row" className="contents">
         <span role="columnheader" />
         {heatDays.map((d) => (
@@ -64,18 +71,8 @@ export function HeatGrid({ view }: { view: 'everyone' | 'me' }) {
                 level={level}
                 busy={isIn(heatBusy, row, col)}
                 mine={view === 'everyone' && mine ? 'yes' : undefined}
-                selected={inBest}
-                aria-label={`${new Intl.DateTimeFormat(en, { weekday: 'long' }).format(d)} ${t} pm, ${count} of ${TOTAL} free`}
-                className={
-                  inBest
-                    ? row === best.from
-                      ? 'rounded-b-none'
-                      : row === best.to
-                        ? 'rounded-t-none'
-                        : 'rounded-none'
-                    : undefined
-                }
-                style={{ height: 26 }}
+                aria-label={`${new Intl.DateTimeFormat(en, { weekday: 'long' }).format(d)} ${t} pm, ${count} of ${TOTAL} free${inBest ? ', best time' : ''}`}
+                style={{ height: 24 }}
               />
             )
           })}

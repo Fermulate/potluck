@@ -57,7 +57,7 @@ export function Phone({
           className="flex h-11 items-center justify-between px-8 pt-1 tabular text-[0.8125rem] font-semibold text-ink"
         >
           <span>9:41</span>
-          <span className="h-[1.375rem] w-24 rounded-pill bg-ink" />
+          <span className="h-[1.375rem] w-24 rounded-pill bg-black" />
           <span className="flex items-center gap-1">
             <span className="h-2.5 w-4 rounded-[3px] border border-ink/70" />
           </span>
