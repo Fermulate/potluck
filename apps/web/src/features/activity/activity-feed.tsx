@@ -1,4 +1,4 @@
-import { ACTIVITY_PAGE_SIZE, fetchActivity, moneyKeys } from '@potluck/api'
+import { activityInfiniteQueryOptions, moneyKeys } from '@potluck/api'
 import { formatTime, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -10,12 +10,13 @@ import {
   cn,
   usePrefersReducedMotion,
 } from '@potluck/ui'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { dayLabel, dayOf, groupByDay } from '@/features/expenses/format'
 import { avatarUrl, useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
@@ -30,18 +31,10 @@ const toneClass: Record<ActivityView['tone'], string> = {
 }
 
 function useActivityRealtime() {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const channel = supabase
-      .channel('activity-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity' }, () => {
-        void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
-      })
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [queryClient])
+  const invalidate = useBatchedInvalidate()
+  useRealtime('activity-feed', [{ table: 'activity', event: 'INSERT' }], () =>
+    invalidate(moneyKeys.activity()),
+  )
 }
 
 /** Everything that happened across the viewer's groups, newest first, grouped by day. */
@@ -52,13 +45,7 @@ export function ActivityFeed() {
   const nameOf = useNameOf()
   const timeZone = useTimeZone()
   const reduced = usePrefersReducedMotion()
-  const feed = useInfiniteQuery({
-    queryKey: moneyKeys.activity(),
-    queryFn: ({ pageParam }) => fetchActivity(supabase, { before: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) =>
-      last.length < ACTIVITY_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at,
-  })
+  const feed = useInfiniteQuery(activityInfiniteQueryOptions(supabase))
 
   const sections = useMemo(() => {
     // The hidden 1:1 groups are an implementation detail; their creation is not news.

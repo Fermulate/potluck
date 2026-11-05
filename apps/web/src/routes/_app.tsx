@@ -1,6 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { AppLayout } from '@/features/shell/app-layout'
 import { getSession, needsOnboarding } from '@/lib/auth'
+import { prefetch } from '@/lib/prefetch'
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: async ({ location }) => {
@@ -11,5 +12,6 @@ export const Route = createFileRoute('/_app')({
     }
     return { session }
   },
+  loader: ({ context }) => prefetch.shell(context.queryClient, context.session.user.id),
   component: AppLayout,
 })

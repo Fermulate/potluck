@@ -1,12 +1,22 @@
-import { moneyErrorCode, moneyKeys, moneyQueries, type MoneyPerson } from '@potluck/api'
+import {
+  groupKeys,
+  moneyErrorCode,
+  moneyKeys,
+  plansKeys,
+  moneyQueries,
+  myProfileQueryOptions,
+  type MoneyPerson,
+} from '@potluck/api'
 import { hasMessage, t } from '@potluck/i18n'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
+import { useBatchedInvalidate } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
+/** The viewer's profile. Shares the Me cache entry, so screens never fetch it twice. */
 export function useViewer() {
-  return useQuery(moneyQueries.viewer(supabase))
+  return useQuery(myProfileQueryOptions(supabase, useUserId()))
 }
 
 /** Everyone the viewer can see, by id. */
@@ -40,24 +50,18 @@ export function useTimeZone(): string {
  * covers comments) refetches them.
  */
 export function useGroupMoneyRealtime(groupId: string | undefined) {
-  const queryClient = useQueryClient()
+  const bump = useBatchedInvalidate()
   useEffect(() => {
     if (!groupId) return
-    const invalidate = () => {
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(groupId) })
-    }
     const filter = `group_id=eq.${groupId}`
     const channel = supabase
       .channel(`money:${groupId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter }, (p) => {
-        invalidate()
         const id = (p.new as { id?: string } | null)?.id
-        if (id) void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(id) })
+        bump(moneyKeys.group(groupId), ...(id ? [moneyKeys.expense(id)] : []))
       })
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'settlements', filter },
-        invalidate,
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter }, () =>
+        bump(moneyKeys.group(groupId)),
       )
       .on(
         'postgres_changes',
@@ -65,18 +69,29 @@ export function useGroupMoneyRealtime(groupId: string | undefined) {
         (p) => {
           const row = p.new as { verb?: string; data?: { expense_id?: string } }
           if (row.verb === 'comment.created' && row.data?.expense_id) {
-            void queryClient.invalidateQueries({
-              queryKey: moneyKeys.comments(row.data.expense_id),
-            })
+            bump(moneyKeys.comments(row.data.expense_id))
           }
-          void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+          bump(moneyKeys.activity())
         },
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [groupId, queryClient])
+  }, [groupId, bump])
+}
+
+/**
+ * Everything a new or changed expense or payment moves: the group's money screens, the feed,
+ * and the balances shown on the group list and the home screen (which otherwise stay cached for
+ * up to the default stale time after you come back to them).
+ */
+export function invalidateMoney(queryClient: QueryClient, groupId: string, expenseId?: string) {
+  void queryClient.invalidateQueries({ queryKey: moneyKeys.group(groupId) })
+  if (expenseId) void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expenseId) })
+  void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+  void queryClient.invalidateQueries({ queryKey: groupKeys.all })
+  void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })
 }
 
 /** Public URL for a profile photo in the `avatars` bucket. */

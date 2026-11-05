@@ -29,7 +29,7 @@ import { shareInvite } from '@/features/invites/share'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
-import { useRealtime } from '@/lib/realtime'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
 function FriendBalance({ friend }: { friend: Friend }) {
@@ -150,12 +150,11 @@ export function FriendsPage() {
   const { data: friends, isPending } = useQuery(friendsQueryOptions(supabase, userId))
   const [opening, setOpening] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const invalidate = useBatchedInvalidate()
   useRealtime(
     'friends-live',
     [{ table: 'expenses' }, { table: 'settlements' }, { table: 'group_members' }],
-    () => {
-      void queryClient.invalidateQueries({ queryKey: groupKeys.friends(userId) })
-    },
+    () => invalidate(groupKeys.friends(userId)),
   )
 
   async function open(friend: Friend) {
