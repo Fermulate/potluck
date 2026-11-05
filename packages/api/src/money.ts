@@ -139,8 +139,10 @@ export const moneyKeys = {
   recurring: (groupId: string) => [...moneyKeys.group(groupId), 'recurring'] as const,
   expense: (expenseId: string) => [...moneyKeys.all, 'expense', expenseId] as const,
   comments: (expenseId: string) => [...moneyKeys.expense(expenseId), 'comments'] as const,
-  fxRate: (from: string, to: string) => [...moneyKeys.all, 'fx', from, to] as const,
-  fxCurrencies: (to: string) => [...moneyKeys.all, 'fx-currencies', to] as const,
+  fxRate: (from: string, to: string, onDay: string) =>
+    [...moneyKeys.all, 'fx', from, to, onDay] as const,
+  fxCurrencies: (to: string, onDay: string) =>
+    [...moneyKeys.all, 'fx-currencies', to, onDay] as const,
   activity: () => [...moneyKeys.all, 'activity'] as const,
   receiptUrl: (path: string) => [...moneyKeys.all, 'receipt', path] as const,
 }
@@ -215,35 +217,52 @@ export async function fetchMyGroups(client: PotluckClient): Promise<MoneyGroup[]
 
 const EXPENSE_SELECT = '*, expense_splits (user_id, share_cents, weight)'
 
-/** Live (not deleted) expenses, newest first. */
+/** PostgREST caps each response at `max_rows` (supabase/config.toml), so read in pages. */
+const PAGE_SIZE = 1000
+
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const batch = unwrap(await page(from, from + PAGE_SIZE - 1))
+    rows.push(...batch)
+    if (batch.length < PAGE_SIZE) return rows
+  }
+}
+
+/** Every live (not deleted) expense, newest first. */
 export async function fetchGroupExpenses(
   client: PotluckClient,
   groupId: string,
 ): Promise<ExpenseWithSplits[]> {
-  return unwrap(
-    await client
+  return fetchAllPages((from, to) =>
+    client
       .from('expenses')
       .select(EXPENSE_SELECT)
       .eq('group_id', groupId)
       .is('deleted_at', null)
       .order('spent_at', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(2000),
+      .order('id')
+      .range(from, to),
   )
 }
 
+/** Every live (not deleted) settlement, newest first. */
 export async function fetchGroupSettlements(
   client: PotluckClient,
   groupId: string,
 ): Promise<Settlement[]> {
-  return unwrap(
-    await client
+  return fetchAllPages((from, to) =>
+    client
       .from('settlements')
       .select('*')
       .eq('group_id', groupId)
       .is('deleted_at', null)
       .order('settled_at', { ascending: false })
-      .limit(2000),
+      .order('id')
+      .range(from, to),
   )
 }
 
@@ -303,13 +322,15 @@ export async function fetchRecurringExpenses(
 }
 
 /**
- * Latest known rate from `from` into `to`, trying the inverse pair as a fallback (same lookup
- * as the server). The server snapshots its own rate on save; this is only a preview.
+ * Latest known rate from `from` into `to` on or before `onDay`, trying the inverse pair as a
+ * fallback (same lookup as the server's `private.fx_rate`). The server snapshots its own rate
+ * on save; this is only a preview.
  */
-export async function fetchLatestFxRate(
+export async function fetchFxRate(
   client: PotluckClient,
   from: string,
   to: string,
+  onDay: string,
 ): Promise<FxQuote | null> {
   if (from === to) return { rate: 1, day: '' }
   const direct = unwrap(
@@ -318,6 +339,7 @@ export async function fetchLatestFxRate(
       .select('rate, day')
       .eq('base', from)
       .eq('quote', to)
+      .lte('day', onDay)
       .order('day', { ascending: false })
       .limit(1),
   )
@@ -328,6 +350,7 @@ export async function fetchLatestFxRate(
       .select('rate, day')
       .eq('base', to)
       .eq('quote', from)
+      .lte('day', onDay)
       .order('day', { ascending: false })
       .limit(1),
   )
@@ -337,14 +360,24 @@ export async function fetchLatestFxRate(
   return null
 }
 
-/** Currencies that have a rate into `to`, so expenses in them can be saved. */
-export async function fetchFxCurrencies(client: PotluckClient, to: string): Promise<string[]> {
+/**
+ * Currencies that have a rate into `to` on or before `onDay`, so expenses in them dated
+ * `onDay` can be saved. Newest days first: fx-sync writes every pair each day, so the capped
+ * response still covers every currency.
+ */
+export async function fetchFxCurrencies(
+  client: PotluckClient,
+  to: string,
+  onDay: string,
+): Promise<string[]> {
   const rows = unwrap(
     await client
       .from('fx_rates')
       .select('base, quote')
       .or(`base.eq.${to},quote.eq.${to}`)
-      .limit(5000),
+      .lte('day', onDay)
+      .order('day', { ascending: false })
+      .limit(PAGE_SIZE),
   )
   const set = new Set<string>()
   for (const r of rows) set.add(r.base === to ? r.quote : r.base)
@@ -523,16 +556,16 @@ export const moneyQueries = {
       queryKey: moneyKeys.comments(expenseId),
       queryFn: () => fetchExpenseComments(client, expenseId),
     }),
-  fxRate: (client: PotluckClient, from: string, to: string) =>
+  fxRate: (client: PotluckClient, from: string, to: string, onDay: string) =>
     queryOptions({
-      queryKey: moneyKeys.fxRate(from, to),
-      queryFn: () => fetchLatestFxRate(client, from, to),
+      queryKey: moneyKeys.fxRate(from, to, onDay),
+      queryFn: () => fetchFxRate(client, from, to, onDay),
       staleTime: 60 * 60 * 1000,
     }),
-  fxCurrencies: (client: PotluckClient, to: string) =>
+  fxCurrencies: (client: PotluckClient, to: string, onDay: string) =>
     queryOptions({
-      queryKey: moneyKeys.fxCurrencies(to),
-      queryFn: () => fetchFxCurrencies(client, to),
+      queryKey: moneyKeys.fxCurrencies(to, onDay),
+      queryFn: () => fetchFxCurrencies(client, to, onDay),
       staleTime: 60 * 60 * 1000,
     }),
   receiptUrl: (client: PotluckClient, path: string) =>

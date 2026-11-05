@@ -114,6 +114,7 @@ export const expenses = {
     about: 'About {amount} in {currency}',
     rate: '1 {from} = {rate} {to}, latest rate {date}',
     locked: 'The exact rate is locked in when you save.',
+    savedRate: '1 {from} = {rate} {to}, the rate saved with this expense.',
     unavailable: 'No exchange rate from {from} to {to} yet. Pick another currency.',
   },
   splitEditor: {
