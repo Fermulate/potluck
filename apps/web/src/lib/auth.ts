@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 import { supabase } from './supabase'
 
 let current: Session | null = null
+let lastUserId: string | null = null
 let ready: Promise<Session | null> | null = null
 const listeners = new Set<() => void>()
 
@@ -14,11 +15,13 @@ function start(): Promise<Session | null> {
   if (ready) return ready
   ready = supabase.auth.getSession().then(({ data }) => {
     current = data.session
+    if (current) lastUserId = current.user.id
     emit()
     return current
   })
   supabase.auth.onAuthStateChange((_event, session) => {
     current = session
+    if (session) lastUserId = session.user.id
     emit()
   })
   return ready
@@ -40,11 +43,15 @@ export function useSession(): Session | null {
   return useSyncExternalStore(subscribe, () => current)
 }
 
-/** The signed-in user's id. Only call under the authenticated `_app` layout. */
+/**
+ * The signed-in user's id. Only call under the authenticated `_app` layout. Right after sign
+ * out it keeps returning the last id for the one render before the redirect lands.
+ */
 export function useUserId(): string {
   const session = useSession()
-  if (!session) throw new Error('useUserId called without a session')
-  return session.user.id
+  const id = session?.user.id ?? lastUserId
+  if (!id) throw new Error('useUserId called without a session')
+  return id
 }
 
 export async function signOut() {

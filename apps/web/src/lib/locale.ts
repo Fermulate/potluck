@@ -5,7 +5,7 @@ let cachedCurrencies: string[] | null = null
 
 export function currencyCodes(): string[] {
   if (cachedCurrencies) return cachedCurrencies
-  let all: string[] = []
+  let all: string[]
   try {
     all = Intl.supportedValuesOf('currency')
   } catch {

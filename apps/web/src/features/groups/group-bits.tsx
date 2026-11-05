@@ -1,8 +1,6 @@
-import type { GroupDetail, GroupMember, PersonSummary } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
-import { Amount, cn, type AvatarStackPerson } from '@potluck/ui'
+import { Amount, cn } from '@potluck/ui'
 import type { CSSProperties } from 'react'
-import { avatarSrc } from '@/lib/queries'
 import { DEFAULT_GROUP_EMOJI, groupTone } from '@/lib/group-colors'
 
 const tileSizes = {
@@ -45,23 +43,6 @@ export function GroupTile({
   )
 }
 
-export function displayName(person: Pick<PersonSummary, 'display_name' | 'deleted_at'>): string {
-  return person.deleted_at ? t('members.formerMember') : person.display_name
-}
-
-export function firstName(person: Pick<PersonSummary, 'display_name' | 'deleted_at'>): string {
-  return displayName(person).split(/\s+/)[0] ?? ''
-}
-
-export function stackPeople(members: PersonSummary[]): AvatarStackPerson[] {
-  return members.map((m) => ({ id: m.id, name: displayName(m), src: avatarSrc(m.avatar_path) }))
-}
-
-/** The other person in a 1:1 group. */
-export function directFriend(group: GroupDetail, viewerId: string): GroupMember | undefined {
-  return group.members.find((m) => m.id !== viewerId)
-}
-
 /** "you are owed $12.00" / "you owe $4.50" / "settled up", colored by sign. */
 export function ViewerBalance({
   cents,
@@ -93,9 +74,4 @@ export function ViewerBalance({
       </span>
     </span>
   )
-}
-
-/** View transition name shared by a group card's tile and the group header's tile. */
-export function groupTransitionName(groupId: string): string {
-  return `group-tile-${groupId}`
 }

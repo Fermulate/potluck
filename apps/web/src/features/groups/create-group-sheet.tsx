@@ -10,7 +10,8 @@ import type { GroupColor } from '@/lib/group-colors'
 import { useMyProfile } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { GroupTile } from './group-bits'
-import { ColorPicker, EmojiPicker, GROUP_EMOJIS } from './group-form-fields'
+import { GROUP_EMOJIS } from './group-emojis'
+import { ColorPicker, EmojiPicker } from './group-form-fields'
 
 interface CreateGroupSheetProps {
   open: boolean
