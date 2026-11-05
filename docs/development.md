@@ -30,12 +30,12 @@ pnpm dev                      # http://localhost:5173
 
 The web app reads `.env.local` from the repo root (`envDir` in `apps/web/vite.config.ts`). Only `VITE_*` variables reach the browser, and everything in them is public.
 
-| Variable                        | Local value                                        | What it is                                                |
-| ------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                          |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do        |
-| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects)    |
-| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally |
+| Variable                        | Local value                                        | What it is                                                                                             |
+| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                                                                       |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do                                                     |
+| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects) and for the social preview tags in `index.html` |
+| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally                                              |
 
 `.env` and `.env.*` are git-ignored except `.env.example`. Server-side secrets never go in these files; see [deployment.md](deployment.md#edge-function-secrets).
 
