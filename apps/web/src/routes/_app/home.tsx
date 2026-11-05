@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { HomeDashboard } from '@/features/dashboard/home-dashboard'
 
 export const Route = createFileRoute('/_app/home')({
-  component: () => <RoutePlaceholder title={t('nav.home')} />,
+  component: HomeDashboard,
 })
