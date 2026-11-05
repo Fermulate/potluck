@@ -217,3 +217,116 @@ sequenceDiagram
 ```
 
 For n people with a non-zero balance the result has at most n - 1 payments.
+
+## Plan an event
+
+Creating a poll is a plain insert, checked by RLS (`events: members create` requires membership, `created_by = auth.uid()` and `status = 'polling'`). Everything that changes `status` goes through an RPC.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor O as Organizer
+  participant W as Web
+  participant C as core
+  participant DB as DB
+  participant E as Edge notify
+
+  O->>W: title, date window, day hours, slot size,<br/>duration, min attendees, time zone
+  W->>C: eventCreateSchema.parse(input)
+  Note over C: window at most 62 days, slot 15, 30 or 60 minutes
+  W->>DB: insert into events (PostgREST, RLS checked)
+  DB->>DB: check constraints and private.is_time_zone(timezone)
+  DB->>DB: trigger: activity event.created
+  DB->>DB: trigger: notifications event.created to members
+  DB->>E: notify (push)
+  DB-->>W: events row
+```
+
+## Request availability
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor O as Organizer
+  participant W as Web
+  participant DB as DB
+  participant E as Edge notify
+
+  O->>W: nudge people who have not answered
+  W->>DB: rpc request_availability(event_id, user_ids or null)
+  DB->>DB: require_user, member_event, status must be polling
+  alt user_ids null or empty
+    DB->>DB: targets = members without availability rows,<br/>not the caller, not closed accounts
+  else explicit list
+    DB->>DB: every id must be a member (else member_not_found)
+  end
+  DB->>DB: upsert availability_requests (responded_at = null)
+  DB->>DB: insert notifications availability.requested
+  DB->>E: notify, once per target (push)
+  DB->>DB: activity availability.requested
+  DB-->>W: number of people asked
+```
+
+## Paint availability and the live heatmap
+
+Each person sends their whole set of cells for the event in one call. The server replaces that person's rows, so the client never has to diff.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava
+  participant WA as Ava's web
+  participant C as core
+  participant DB as DB
+  participant RT as Realtime
+  participant WB as Ben's web
+
+  WB->>RT: subscribe channel plan:eventId<br/>availability, events, event_rsvps, activity
+  WA->>C: buildSlots(window, day hours, slot size, event time zone)
+  C-->>WA: grid of UTC slot starts (DST aware)
+  A->>WA: drag to paint yes, maybe or erase
+  WA->>DB: rpc set_availability(event_id, [{slot_start, level}])
+  DB->>DB: status polling, at most 5000 slots
+  DB->>DB: each slot_start, read at time zone events.timezone,<br/>must be a grid cell (else invalid_slot)
+  DB->>DB: delete caller's rows, insert new rows
+  DB->>DB: availability_requests.responded_at = now()
+  DB-->>WA: slots saved
+  DB-->>RT: WAL changes on availability
+  RT->>RT: apply Ben's RLS select policy
+  RT-->>WB: postgres_changes
+  WB->>WB: batch for 300 ms, then invalidate<br/>availability, best slots, requests
+  WB->>DB: select availability for event
+  WB->>C: heatLevels(counts per cell, member count)
+  C-->>WB: levels 0 to 4 for the heat cells
+```
+
+## Best slots and scheduling
+
+`best_slots` ranks start times with the same rules as `rankSlots()` in core: a duration covers `ceil(duration / slot)` cells, a person counts as yes only if they marked yes on every cell, as maybe if every cell is yes or maybe, and `score = yes + 0.5 * maybe`.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor O as Organizer
+  participant W as Web
+  participant DB as DB
+  participant E as Edge notify
+  actor M as Members
+
+  W->>DB: rpc best_slots(event_id, limit 5)
+  DB->>DB: candidates = distinct slot_start of current members
+  DB->>DB: per candidate and member: cells covered, all yes?
+  DB->>DB: keep yes + maybe >= min_attendees,<br/>order by score desc, then earliest, cap 100
+  DB-->>W: starts_at, ends_at, yes_count, maybe_count, score, missing
+  O->>W: lock in the top slot
+  W->>DB: rpc schedule_event(event_id, starts_at)
+  DB->>DB: manageable_event: owner, admin or creator
+  DB->>DB: status polling or scheduled (reschedule)
+  DB->>DB: update events: scheduled, starts_at,<br/>ends_at = starts_at + duration, reminder_sent_at = null
+  DB->>DB: trigger: activity event.scheduled
+  DB->>DB: trigger: notifications event.scheduled to members
+  DB->>E: notify (push)
+  DB-->>W: events row
+  M->>DB: insert or update event_rsvps (going, maybe, declined)
+  Note over DB: hourly job sends event.reminder<br/>and rsvp.reminder within 24 hours of the start
+```
