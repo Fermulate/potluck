@@ -235,13 +235,7 @@ export function isFlagOn(config: AppConfig | undefined, key: string): boolean {
  */
 export async function deleteMyAccount(client: PotluckClient) {
   const { error } = await client.functions.invoke('delete-account', { method: 'POST' })
-  if (!error) return
-  // Where the function is not deployed (local stacks without `functions serve`), still close
-  // the account in the database. The auth user is left for an admin to remove.
-  const status = (error as { context?: { status?: number } }).context?.status
-  if (status !== 404) throw error
-  const rpc = await client.rpc('delete_my_account')
-  if (rpc.error) throw rpc.error
+  if (error) throw error
 }
 
 // Calendar feed ----------------------------------------------------------------

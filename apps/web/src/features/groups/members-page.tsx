@@ -117,6 +117,30 @@ function ActionRow({
   )
 }
 
+/**
+ * What the viewer may do to `member`, straight from `can()`. `remove` is the role check alone so
+ * the action can show disabled with a hint; `removable` also needs a settled balance.
+ */
+function memberActions(group: GroupDetail, member: GroupMember) {
+  const role = group.my_role
+  return {
+    promote: can(role, 'member.changeRole', { targetRole: member.role, newRole: 'admin' }),
+    demote: can(role, 'member.changeRole', { targetRole: member.role, newRole: 'member' }),
+    transfer: can(role, 'group.transferOwnership') && !member.deleted_at,
+    remove: can(role, 'member.remove', { targetRole: member.role, targetNetCents: 0 }),
+    removable: can(role, 'member.remove', {
+      targetRole: member.role,
+      targetNetCents: member.net_cents,
+    }),
+  }
+}
+
+function hasMemberActions(group: GroupDetail, member: GroupMember, viewerId: string) {
+  if (member.id === viewerId) return false
+  const { promote, demote, transfer, remove } = memberActions(group, member)
+  return promote || demote || transfer || remove
+}
+
 function MemberActions({
   group,
   member,
@@ -126,17 +150,8 @@ function MemberActions({
   member: GroupMember
   onPick: (action: PendingAction) => void
 }) {
-  const role = group.my_role
   const name = displayName(member)
-  const promote = can(role, 'member.changeRole', { targetRole: member.role, newRole: 'admin' })
-  const demote = can(role, 'member.changeRole', { targetRole: member.role, newRole: 'member' })
-  const transfer = can(role, 'group.transferOwnership') && !member.deleted_at
-  const managerCanRemove =
-    member.role !== 'owner' && (role === 'owner' || (role === 'admin' && member.role === 'member'))
-  const removable = can(role, 'member.remove', {
-    targetRole: member.role,
-    targetNetCents: member.net_cents,
-  })
+  const { promote, demote, transfer, remove, removable } = memberActions(group, member)
 
   return (
     <div className="grid gap-1">
@@ -164,7 +179,7 @@ function MemberActions({
           onClick={() => onPick({ kind: 'transfer', member })}
         />
       )}
-      {managerCanRemove && (
+      {remove && (
         <ActionRow
           danger
           icon={<UserMinus />}
@@ -175,16 +190,6 @@ function MemberActions({
         />
       )}
     </div>
-  )
-}
-
-function hasMemberActions(group: GroupDetail, member: GroupMember, viewerId: string) {
-  if (member.id === viewerId) return false
-  const role = group.my_role
-  return (
-    can(role, 'group.transferOwnership') ||
-    (member.role !== 'owner' &&
-      (role === 'owner' || (role === 'admin' && member.role === 'member')))
   )
 }
 

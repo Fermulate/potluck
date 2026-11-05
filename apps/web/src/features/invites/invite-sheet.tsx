@@ -2,6 +2,7 @@ import {
   createInvite,
   groupInvitesQueryOptions,
   groupKeys,
+  restoreInvite,
   revokeInvite,
   type GroupDetail,
   type GroupInviteRow,
@@ -161,11 +162,11 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
         action: {
           label: t('common.undo'),
           onClick: async () => {
-            const { error } = await supabase
-              .from('group_invites')
-              .update({ revoked_at: null })
-              .eq('id', invite.id)
-            if (error) toast.error(errorMessage(error))
+            try {
+              await restoreInvite(supabase, invite.id)
+            } catch (error) {
+              toast.error(errorMessage(error))
+            }
             void queryClient.invalidateQueries({ queryKey: key })
           },
         },
