@@ -18,7 +18,6 @@ export interface RsvpPanelProps {
   viewerId: string
   deadline: string | null
   timeZone: string
-  disabled?: boolean
   avatarUrl?: (path: string | null) => string | null
 }
 
@@ -29,7 +28,6 @@ export function RsvpPanel({
   viewerId,
   deadline,
   timeZone,
-  disabled,
   avatarUrl,
 }: RsvpPanelProps) {
   const rsvp = useRsvp(eventId, viewerId)
@@ -80,10 +78,9 @@ export function RsvpPanel({
               type="button"
               role="radio"
               aria-checked={selected}
-              disabled={disabled}
               onClick={() => !selected && rsvp.mutate(value)}
               className={cn(
-                'flex h-14 flex-col items-center justify-center gap-0.5 rounded-[0.875rem] border text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:scale-[0.97] disabled:opacity-50',
+                'flex h-14 flex-col items-center justify-center gap-0.5 rounded-[0.875rem] border text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:scale-[0.97]',
                 selected ? tone : 'border-line-strong bg-card text-ink hover:border-ink/40',
               )}
             >

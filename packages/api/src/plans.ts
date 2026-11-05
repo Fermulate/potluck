@@ -138,7 +138,7 @@ export async function fetchMyTimeline(
   return data ?? []
 }
 
-/** Scheduled or finished events that already started, newest first. */
+/** Scheduled or finished events that already ended, newest first. */
 export async function fetchPastEvents(
   client: PotluckClient,
   options: { before: string; limit?: number },
@@ -147,7 +147,7 @@ export async function fetchPastEvents(
     .from('events')
     .select('*, group:groups(name, emoji, color)')
     .in('status', ['scheduled', 'done'])
-    .lt('starts_at', options.before)
+    .lt('ends_at', options.before)
     .order('starts_at', { ascending: false })
     .limit(options.limit ?? 20)
   if (error) fail(error)

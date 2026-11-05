@@ -97,10 +97,14 @@ export function mySlots(rows: readonly PlanAvailabilityRow[], userId: string) {
   return map
 }
 
+const RETRIES = 3
+const RETRY_DELAY = 1_000
+
 /**
  * Local, optimistic copy of the viewer's availability. Every change shows immediately (the
- * heatmap reads the same cache) and is saved after a short pause. A pending save is flushed
- * when the component unmounts or the tab is hidden.
+ * heatmap reads the same cache) and is saved after a short pause. Saves run one at a time so
+ * the server always ends on the latest map; a failed save is retried with backoff. A pending
+ * save is flushed when the component unmounts or the tab is hidden.
  */
 export function useMyAvailability(
   eventId: string,
@@ -111,36 +115,58 @@ export function useMyAvailability(
   const [value, setValue] = useState(initial)
   const [state, setState] = useState<SaveState>('idle')
   const pending = useRef<Map<string, PaintLevel> | null>(null)
+  const inFlight = useRef<Promise<boolean> | null>(null)
+  const attempts = useRef(0)
   const timer = useRef<number | undefined>(undefined)
 
   const saveRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const save = useCallback(async () => {
     window.clearTimeout(timer.current)
     timer.current = undefined
+    if (inFlight.current) return
     const next = pending.current
     if (!next) return
     pending.current = null
     setState('saving')
-    try {
-      await setAvailability(
-        supabase,
-        eventId,
-        [...next].map(([slot_start, level]) => ({ slot_start, level })),
-      )
-      setState((s) => (s === 'saving' ? 'saved' : s))
-      void queryClient.invalidateQueries({ queryKey: plansKeys.bestSlots(eventId) })
-      void queryClient.invalidateQueries({ queryKey: plansKeys.requests(eventId) })
-      void queryClient.invalidateQueries({ queryKey: plansKeys.timelineAll() })
-    } catch (error) {
-      // Keep the failed copy unless something newer is already waiting.
-      if (!pending.current) pending.current = next
-      setState('error')
-      toast.error(planErrorMessage(error), {
-        id: `availability-${eventId}`,
-        action: { label: t('common.retry'), onClick: () => void saveRef.current() },
-      })
-    }
-  }, [eventId, queryClient])
+    inFlight.current = (async () => {
+      try {
+        await setAvailability(
+          supabase,
+          eventId,
+          [...next].map(([slot_start, level]) => ({ slot_start, level })),
+        )
+        attempts.current = 0
+        if (!pending.current) {
+          writeCache(queryClient, eventId, userId, next)
+          setState('saved')
+        }
+        void queryClient.invalidateQueries({ queryKey: plansKeys.bestSlots(eventId) })
+        void queryClient.invalidateQueries({ queryKey: plansKeys.requests(eventId) })
+        void queryClient.invalidateQueries({ queryKey: plansKeys.timelineAll() })
+        return true
+      } catch (error) {
+        // Keep the failed copy unless something newer is already waiting.
+        if (!pending.current) pending.current = next
+        setState('error')
+        toast.error(planErrorMessage(error), {
+          id: `availability-${eventId}`,
+          action: { label: t('common.retry'), onClick: () => void saveRef.current() },
+        })
+        if (attempts.current < RETRIES && !timer.current) {
+          attempts.current += 1
+          timer.current = window.setTimeout(
+            () => void saveRef.current(),
+            RETRY_DELAY * 2 ** (attempts.current - 1),
+          )
+        }
+        return false
+      } finally {
+        inFlight.current = null
+      }
+    })()
+    const saved = await inFlight.current
+    if (saved && pending.current && !timer.current) await saveRef.current()
+  }, [eventId, userId, queryClient])
 
   useEffect(() => {
     saveRef.current = save
@@ -151,6 +177,7 @@ export function useMyAvailability(
       setValue(next)
       writeCache(queryClient, eventId, userId, next)
       pending.current = next
+      attempts.current = 0
       setState('saving')
       window.clearTimeout(timer.current)
       timer.current = window.setTimeout(() => void save(), 700)

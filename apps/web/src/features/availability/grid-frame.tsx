@@ -7,8 +7,6 @@ export interface GridFrameProps extends HTMLAttributes<HTMLDivElement> {
   model: GridModel
   label: string
   renderCell: (slot: string, row: number, col: number) => ReactNode
-  /** Height of one row in rem. */
-  rowHeight?: number
 }
 
 /**
@@ -16,7 +14,7 @@ export interface GridFrameProps extends HTMLAttributes<HTMLDivElement> {
  * labels, and a cell renderer. ARIA grid semantics; the caller owns interaction.
  */
 export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function GridFrame(
-  { model, label, renderCell, rowHeight = 1.5, className, ...props },
+  { model, label, renderCell, className, ...props },
   ref,
 ) {
   const columns = `2.75rem repeat(${model.days.length}, minmax(2.25rem, 1fr))`
@@ -73,7 +71,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
               <span
                 role="rowheader"
                 className="sticky left-0 z-10 -mt-[0.45rem] bg-card pr-1.5 text-right tabular text-[0.6875rem] leading-none font-medium whitespace-nowrap text-mute"
-                style={{ height: `${rowHeight}rem` }}
+                style={{ height: '1.5rem' }}
               >
                 <span className="sr-only">{time}</span>
                 {onHour && <span aria-hidden>{hour}</span>}
@@ -90,7 +88,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
                     role="gridcell"
                     aria-disabled
                     className="rounded-[0.3125rem] bg-sunken/40"
-                    style={{ height: `${rowHeight}rem` }}
+                    style={{ height: '1.5rem' }}
                   />
                 )
               })}
