@@ -6,6 +6,15 @@ export const notifications = {
   unread_other: '{count} unread',
   enablePush: 'Turn on push notifications',
   pushBlocked: 'Notifications are blocked in your browser settings.',
+  someone: 'Someone',
+  aGroup: 'your group',
+  anEvent: 'a plan',
+  anExpense: 'an expense',
+  generic: { title: 'Something happened', body: 'Tap to take a look.' },
+  markRead: 'Mark as read',
+  unreadLabel: 'Unread',
+  earlier: 'Earlier',
+  new: 'New',
   types: {
     expense: {
       created: { title: 'New expense in {group}', body: '{actor} added {description}: {amount}' },
@@ -40,8 +49,10 @@ export const notifications = {
 
 export const settings = {
   title: 'Me',
+  subtitle: 'Your profile, your preferences, your exit.',
   profile: {
     title: 'Profile',
+    nameRequired: 'Your name cannot be empty.',
     name: 'Display name',
     photo: 'Photo',
     changePhoto: 'Change photo',
@@ -61,10 +72,19 @@ export const settings = {
     themeSystem: 'Match my device',
     themeLight: 'Light',
     themeDark: 'Dark',
+    saved: 'Preferences saved.',
   },
   notifications: {
     title: 'Notifications',
+    inbox: 'Open inbox',
     push: 'Push notifications',
+    pushHint: 'A ping on this device when something needs you.',
+    pushOn: 'Push is on for this device.',
+    pushOff: 'Push is off for this device.',
+    pushUnsupported: 'This browser cannot do push notifications. On iPhone, add Potluck to your home screen first.',
+    pushNotConfigured: 'Push is not set up on this server yet.',
+    pushFailed: 'Push could not be turned on. Try again?',
+    inApp: 'You will always see updates in your inbox.',
     email: 'Email notifications',
     expenses: 'New expenses',
     payments: 'Payments',
@@ -83,6 +103,8 @@ export const settings = {
     connected: 'Connected',
     disconnect: 'Disconnect',
     comingSoon: 'Coming soon',
+    google: 'Google Calendar',
+    microsoft: 'Outlook',
   },
   privacy: {
     title: 'Privacy',
