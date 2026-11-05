@@ -477,10 +477,9 @@ function PollingBody({
       timeZone={timeZone}
       canLock={canLock}
       onLock={onLock}
-      onPreview={(slot) => {
-        setPreview(slot)
-        if (slot && view !== 'group') setTab('group')
-      }}
+      // Outline the slot on the heatmap only. Hovering or scrolling past a card must not
+      // swap the painter out from under someone who is still adding their times.
+      onPreview={setPreview}
       avatarUrl={avatarUrl}
     />
   )
