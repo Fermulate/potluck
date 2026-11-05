@@ -101,6 +101,8 @@ To exercise the hooks end to end, create the two Vault secrets in your local dat
 
 Password for all of them: `potluck-demo`. Open http://localhost:5173/join/hikecrew-demo to try the invite flow. The seed also has about 30 expenses across every split type (one in EUR), settlements, a polling hike with availability from five people and an open request, and a scheduled taco night with RSVPs.
 
+For performance work, `supabase/snippets/perf_volume.sql` adds 40 more accounts (`perf01`..`perf40@perf.potluck.test`, same password) with 15 groups, 3,000 expenses, settlements and 40 events, and `supabase/snippets/perf_hot_paths.sql` prints `EXPLAIN (ANALYZE, BUFFERS)` for the hot read paths as one of them. Both are for the local database only; see [dogfood/performance.md](dogfood/performance.md).
+
 ## Scripts
 
 Run from the repo root. Turbo runs the per-package scripts in dependency order and caches what it can.
@@ -223,6 +225,8 @@ Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router 
 - Files and folders starting with `-` are ignored by the router (`routes/-dev-kit/`), so colocated helpers go there.
 - Keep route files thin. Put screens and hooks in `apps/web/src/features/<feature>/` and import them.
 - Code splitting is automatic (`autoCodeSplitting: true`).
+- Route files are part of the first download, so keep their non-component parts light: no schema libraries (search params use `src/lib/search.ts`) and no feature modules. A `loader` that calls `prefetch.<screen>()` from `src/lib/prefetch.ts` starts the screen's queries while its code loads; it must not await them.
+- `/` is prerendered at build time (`prerender-landing.ts`) and, for signed-out visitors, stays static apart from the demo. A change to the landing page shows up there automatically; anything on it must render without a browser (no `window` during render). `pnpm dev` does not prerender.
 
 ```tsx
 // apps/web/src/routes/_app/groups/$groupId/recurring.tsx
