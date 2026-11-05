@@ -1,6 +1,38 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { convert, minorUnits } from '../index'
+import { convert, minorUnits, parseAmount } from '../index'
+
+describe('parseAmount', () => {
+  it('parses typed amounts into minor units', () => {
+    expect(parseAmount('12.34', 'USD')).toBe(1234)
+    expect(parseAmount('12', 'USD')).toBe(1200)
+    expect(parseAmount('12.5', 'USD')).toBe(1250)
+    expect(parseAmount(' 7.5 ', 'USD')).toBe(750)
+    expect(parseAmount('.99', 'USD')).toBe(99)
+    expect(parseAmount('1,234.56', 'USD')).toBe(123456)
+    expect(parseAmount('1500', 'JPY')).toBe(1500)
+    expect(parseAmount('1.250', 'BHD')).toBe(1250)
+  })
+
+  it('returns null for anything that is not a valid amount', () => {
+    expect(parseAmount('', 'USD')).toBeNull()
+    expect(parseAmount('abc', 'USD')).toBeNull()
+    expect(parseAmount('12.345', 'USD')).toBeNull()
+    expect(parseAmount('10.5', 'JPY')).toBeNull()
+    expect(parseAmount('-5', 'USD')).toBeNull()
+    expect(parseAmount('1.2.3', 'USD')).toBeNull()
+    expect(parseAmount('99999999999999999', 'USD')).toBeNull()
+  })
+
+  it('round trips any cent amount', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 1e13 }), (cents) => {
+        const text = `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
+        expect(parseAmount(text, 'USD')).toBe(cents)
+      }),
+    )
+  })
+})
 
 describe('minorUnits', () => {
   it('knows zero and three decimal currencies', () => {

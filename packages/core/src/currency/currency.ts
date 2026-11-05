@@ -36,6 +36,26 @@ export function minorUnits(currency: string): number {
   return MINOR_UNIT_EXCEPTIONS[currency.toUpperCase()] ?? 2
 }
 
+const AMOUNT_PATTERN = /^(\d{1,3}(?:,\d{3})+|\d*)(?:\.(\d*))?$/
+
+/**
+ * Parse a typed amount ("12.34", "1,234.5", ".99") into minor units of `currency`.
+ * Returns null for empty, negative, malformed, too precise, or unsafe amounts.
+ * Only "." is accepted as the decimal separator and "," as a thousands separator.
+ */
+export function parseAmount(input: string, currency: string): number | null {
+  const match = AMOUNT_PATTERN.exec(input.trim())
+  if (!match) return null
+  const whole = (match[1] ?? '').replaceAll(',', '')
+  const fraction = match[2] ?? ''
+  if (whole === '' && fraction === '') return null
+
+  const digits = minorUnits(currency)
+  if (fraction.length > digits) return null
+  const value = Number(whole || '0') * 10 ** digits + Number(fraction.padEnd(digits, '0') || '0')
+  return Number.isSafeInteger(value) ? value : null
+}
+
 /** FX rates are stored as numeric(18,8). */
 const RATE_DECIMALS = 8
 const RATE_SCALE = 10n ** BigInt(RATE_DECIMALS)
