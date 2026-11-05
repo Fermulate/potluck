@@ -28,7 +28,7 @@ function activity(id: string, created_at: string, patch: object = {}) {
   }
 }
 
-function renderFeed(rows: object[]) {
+function renderFeed(rows: Record<string, unknown>[]) {
   resetDb({ tables: { activity: rows } })
   return renderWithProviders(<ActivityFeed />, { path: '/activity', client: seededClient() })
 }
