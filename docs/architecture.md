@@ -131,6 +131,276 @@ flowchart BT
 
 ## Schema (public)
 
+The ER diagrams below are drawn from the migrations and split in three so they stay readable. Columns are trimmed to keys and the ones that matter for behavior; the lists after the diagrams have the rest. `profiles` and `groups` appear in more than one diagram.
+
+### Identity, social and groups
+
+```mermaid
+erDiagram
+  AUTH_USERS ||--|| profiles : "trigger creates"
+  profiles ||--o{ friendships : "has (both directions)"
+  profiles ||--o{ blocks : blocks
+  profiles ||--o{ reports : files
+  groups |o--o{ reports : "about"
+  profiles ||--o{ group_members : joins
+  groups ||--|{ group_members : has
+  groups ||--o{ group_invites : has
+  profiles |o--o{ group_invites : creates
+
+  AUTH_USERS {
+    uuid id PK
+    text email
+  }
+  profiles {
+    uuid id PK, FK "auth.users, cascade"
+    text display_name "1..80 chars"
+    text avatar_path
+    text timezone "IANA, default UTC"
+    char3 default_currency
+    text locale
+    timestamptz deleted_at "tombstone"
+  }
+  friendships {
+    uuid user_id PK, FK
+    uuid friend_id PK, FK
+  }
+  blocks {
+    uuid blocker_id PK, FK
+    uuid blocked_id PK, FK
+  }
+  reports {
+    uuid id PK
+    uuid reporter_id FK
+    uuid subject_user_id FK
+    uuid group_id FK
+    text reason
+  }
+  groups {
+    uuid id PK
+    text name
+    char3 currency "locked once money exists"
+    bool simplify_debts
+    bool members_can_invite
+    bool is_direct "hidden 1:1 group"
+    uuid created_by FK
+    timestamptz archived_at
+  }
+  group_members {
+    uuid group_id PK, FK
+    uuid user_id PK, FK
+    group_role role "exactly one owner"
+    timestamptz joined_at
+  }
+  group_invites {
+    uuid id PK
+    uuid group_id FK
+    text code UK "url-safe, 10..64"
+    text email "optional binding"
+    group_role role "never owner"
+    int max_uses
+    int uses
+    timestamptz expires_at
+    timestamptz revoked_at
+  }
+```
+
+### Money
+
+```mermaid
+erDiagram
+  groups ||--o{ expenses : has
+  groups ||--o{ settlements : has
+  groups ||--o{ recurring_expenses : has
+  expenses ||--|{ expense_splits : "split into"
+  profiles ||--o{ expense_splits : owes
+  profiles ||--o{ expenses : "paid_by"
+  profiles ||--o{ settlements : "from_user, to_user"
+  recurring_expenses |o--o{ expenses : materializes
+  events |o--o{ expenses : "event_id"
+  fx_rates }o..o{ expenses : "rate snapshot"
+
+  groups {
+    uuid id PK
+    char3 currency
+  }
+  profiles {
+    uuid id PK
+  }
+  events {
+    uuid id PK
+  }
+  expenses {
+    uuid id PK
+    uuid group_id FK
+    uuid event_id FK
+    text description
+    bigint amount_cents "minor units, > 0"
+    char3 currency
+    numeric fx_rate "18,8, into group currency"
+    uuid paid_by FK "restrict"
+    split_type split_type
+    date spent_at
+    text receipt_path "group_id/..."
+    uuid recurring_id FK
+    uuid created_by FK
+    timestamptz deleted_at "soft delete"
+  }
+  expense_splits {
+    uuid expense_id PK, FK
+    uuid user_id PK, FK "restrict"
+    bigint share_cents "sum = amount_cents"
+    numeric weight "percent or shares, display"
+  }
+  recurring_expenses {
+    uuid id PK
+    uuid group_id FK
+    bigint amount_cents
+    char3 currency
+    uuid paid_by FK
+    split_type split_type
+    jsonb splits "create_expense format"
+    recurrence recurrence
+    date next_run_on
+    bool active
+  }
+  settlements {
+    uuid id PK
+    uuid group_id FK
+    uuid from_user FK "payer, restrict"
+    uuid to_user FK "restrict"
+    bigint amount_cents
+    char3 currency
+    numeric fx_rate
+    timestamptz settled_at
+    timestamptz deleted_at
+  }
+  fx_rates {
+    char3 base PK
+    char3 quote PK
+    date day PK
+    numeric rate "1 base = rate quote"
+  }
+```
+
+The `group_balances` view (`security_invoker`) sums `expenses`, `expense_splits` and `settlements` into `(group_id, user_id, net_cents)`.
+
+### Plans, feed and platform
+
+```mermaid
+erDiagram
+  groups ||--o{ events : has
+  events ||--o{ availability : collects
+  events ||--o{ availability_requests : sends
+  events ||--o{ event_rsvps : collects
+  events |o--o{ comments : "event_id"
+  expenses |o--o{ comments : "expense_id"
+  groups ||--o{ comments : "group_id (derived)"
+  groups ||--o{ activity : feed
+  profiles ||--o{ availability : paints
+  profiles ||--o{ event_rsvps : answers
+  profiles ||--o{ busy_blocks : imports
+  profiles ||--o{ calendar_connections : links
+  profiles ||--o| calendar_feed_tokens : owns
+  profiles ||--o{ notifications : receives
+  profiles ||--o{ push_tokens : registers
+
+  groups {
+    uuid id PK
+  }
+  profiles {
+    uuid id PK
+  }
+  expenses {
+    uuid id PK
+  }
+  events {
+    uuid id PK
+    uuid group_id FK
+    text title
+    event_status status "polling, scheduled, cancelled, done"
+    text timezone "IANA zone of the grid"
+    date window_start "max 62 days"
+    date window_end
+    int day_start_minute
+    int day_end_minute
+    int slot_minutes "15, 30 or 60"
+    int duration_minutes
+    int min_attendees
+    timestamptz starts_at
+    timestamptz ends_at
+    timestamptz reminder_sent_at
+  }
+  availability {
+    uuid event_id PK, FK
+    uuid user_id PK, FK
+    timestamptz slot_start PK "UTC cell start"
+    availability_level level "yes or maybe"
+  }
+  availability_requests {
+    uuid event_id PK, FK
+    uuid user_id PK, FK
+    uuid requested_by FK
+    timestamptz responded_at
+  }
+  event_rsvps {
+    uuid event_id PK, FK
+    uuid user_id PK, FK
+    rsvp_status status
+  }
+  busy_blocks {
+    bigint id PK
+    uuid user_id FK
+    timestamptz starts_at
+    timestamptz ends_at
+    text source
+  }
+  calendar_connections {
+    uuid id PK
+    uuid user_id FK
+    text provider "google or microsoft"
+    uuid access_token_secret_id "Vault id"
+    uuid refresh_token_secret_id "Vault id"
+  }
+  calendar_feed_tokens {
+    uuid user_id PK, FK
+    text token UK "32+ chars"
+  }
+  comments {
+    uuid id PK
+    uuid group_id FK
+    uuid expense_id FK
+    uuid event_id FK
+    uuid author_id FK
+    text body
+    timestamptz deleted_at
+  }
+  activity {
+    uuid id PK
+    uuid group_id FK
+    uuid actor_id FK
+    text verb
+    uuid subject_id
+    jsonb data
+  }
+  notifications {
+    uuid id PK
+    uuid user_id FK
+    text type
+    jsonb data
+    timestamptz read_at
+  }
+  push_tokens {
+    uuid user_id PK, FK
+    text token PK
+    push_platform platform
+    jsonb subscription "web push"
+  }
+  app_config {
+    text key PK
+    jsonb value
+  }
+```
+
 ### Enums
 
 - `group_role`: `owner`, `admin`, `member`
