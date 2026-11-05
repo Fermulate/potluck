@@ -23,16 +23,1491 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          data: NonNullable<Json>
+          group_id: string
+          id: string
+          subject_id: string | null
+          verb: string
+        }
+        ComputedFields: never
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          data?: NonNullable<Json>
+          group_id: string
+          id?: string
+          subject_id?: string | null
+          verb: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          data?: NonNullable<Json>
+          group_id?: string
+          id?: string
+          subject_id?: string | null
+          verb?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'activity_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'activity_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      app_config: {
+        Row: {
+          key: string
+          updated_at: string
+          value: NonNullable<Json>
+        }
+        ComputedFields: never
+        Insert: {
+          key: string
+          updated_at?: string
+          value: NonNullable<Json>
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value?: NonNullable<Json>
+        }
+        Relationships: []
+      }
+      availability: {
+        Row: {
+          event_id: string
+          level: Database['public']['Enums']['availability_level']
+          slot_start: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          event_id: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start: string
+          user_id: string
+        }
+        Update: {
+          event_id?: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'availability_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'availability_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      availability_requests: {
+        Row: {
+          event_id: string
+          requested_at: string
+          requested_by: string | null
+          responded_at: string | null
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          event_id: string
+          requested_at?: string
+          requested_by?: string | null
+          responded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          event_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          responded_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'availability_requests_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'availability_requests_requested_by_fkey'
+            columns: ['requested_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'availability_requests_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'blocks_blocked_id_fkey'
+            columns: ['blocked_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'blocks_blocker_id_fkey'
+            columns: ['blocker_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      busy_blocks: {
+        Row: {
+          created_at: string
+          ends_at: string
+          id: number
+          source: string
+          starts_at: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          ends_at: string
+          id?: never
+          source?: string
+          starts_at: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          id?: never
+          source?: string
+          starts_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'busy_blocks_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      calendar_connections: {
+        Row: {
+          access_token_secret_id: string | null
+          account_email: string | null
+          created_at: string
+          id: string
+          last_synced_at: string | null
+          provider: string
+          refresh_token_secret_id: string | null
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          access_token_secret_id?: string | null
+          account_email?: string | null
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          provider: string
+          refresh_token_secret_id?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token_secret_id?: string | null
+          account_email?: string | null
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          provider?: string
+          refresh_token_secret_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'calendar_connections_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          deleted_at: string | null
+          event_id: string | null
+          expense_id: string | null
+          group_id: string
+          id: string
+        }
+        ComputedFields: never
+        Insert: {
+          author_id?: string
+          body: string
+          created_at?: string
+          deleted_at?: string | null
+          event_id?: string | null
+          expense_id?: string | null
+          group_id: string
+          id?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          event_id?: string | null
+          expense_id?: string | null
+          group_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'comments_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_expense_id_fkey'
+            columns: ['expense_id']
+            isOneToOne: false
+            referencedRelation: 'expenses'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      event_rsvps: {
+        Row: {
+          event_id: string
+          status: Database['public']['Enums']['rsvp_status']
+          updated_at: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          event_id: string
+          status: Database['public']['Enums']['rsvp_status']
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          event_id?: string
+          status?: Database['public']['Enums']['rsvp_status']
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'event_rsvps_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_rsvps_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          day_end_minute: number
+          day_start_minute: number
+          description: string | null
+          duration_minutes: number
+          emoji: string | null
+          ends_at: string | null
+          group_id: string
+          id: string
+          location: string | null
+          min_attendees: number
+          reminder_sent_at: string | null
+          rsvp_deadline: string | null
+          slot_minutes: number
+          starts_at: string | null
+          status: Database['public']['Enums']['event_status']
+          timezone: string
+          title: string
+          updated_at: string
+          window_end: string
+          window_start: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          day_end_minute?: number
+          day_start_minute?: number
+          description?: string | null
+          duration_minutes?: number
+          emoji?: string | null
+          ends_at?: string | null
+          group_id: string
+          id?: string
+          location?: string | null
+          min_attendees?: number
+          reminder_sent_at?: string | null
+          rsvp_deadline?: string | null
+          slot_minutes?: number
+          starts_at?: string | null
+          status?: Database['public']['Enums']['event_status']
+          timezone?: string
+          title: string
+          updated_at?: string
+          window_end?: string
+          window_start?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          day_end_minute?: number
+          day_start_minute?: number
+          description?: string | null
+          duration_minutes?: number
+          emoji?: string | null
+          ends_at?: string | null
+          group_id?: string
+          id?: string
+          location?: string | null
+          min_attendees?: number
+          reminder_sent_at?: string | null
+          rsvp_deadline?: string | null
+          slot_minutes?: number
+          starts_at?: string | null
+          status?: Database['public']['Enums']['event_status']
+          timezone?: string
+          title?: string
+          updated_at?: string
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'events_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'events_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      expense_splits: {
+        Row: {
+          expense_id: string
+          share_cents: number
+          user_id: string
+          weight: number | null
+        }
+        ComputedFields: never
+        Insert: {
+          expense_id: string
+          share_cents: number
+          user_id: string
+          weight?: number | null
+        }
+        Update: {
+          expense_id?: string
+          share_cents?: number
+          user_id?: string
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expense_splits_expense_id_fkey'
+            columns: ['expense_id']
+            isOneToOne: false
+            referencedRelation: 'expenses'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expense_splits_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          amount_cents: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          deleted_at?: string | null
+          description: string
+          event_id?: string | null
+          fx_rate?: number
+          group_id: string
+          id?: string
+          notes?: string | null
+          paid_by: string
+          receipt_path?: string | null
+          recurring_id?: string | null
+          spent_at?: string
+          split_type?: Database['public']['Enums']['split_type']
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deleted_at?: string | null
+          description?: string
+          event_id?: string | null
+          fx_rate?: number
+          group_id?: string
+          id?: string
+          notes?: string | null
+          paid_by?: string
+          receipt_path?: string | null
+          recurring_id?: string | null
+          spent_at?: string
+          split_type?: Database['public']['Enums']['split_type']
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expenses_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_paid_by_fkey'
+            columns: ['paid_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expenses_recurring_id_fkey'
+            columns: ['recurring_id']
+            isOneToOne: false
+            referencedRelation: 'recurring_expenses'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      friendships: {
+        Row: {
+          created_at: string
+          friend_id: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          friend_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          friend_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'friendships_friend_id_fkey'
+            columns: ['friend_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'friendships_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      fx_rates: {
+        Row: {
+          base: string
+          day: string
+          quote: string
+          rate: number
+        }
+        ComputedFields: never
+        Insert: {
+          base: string
+          day: string
+          quote: string
+          rate: number
+        }
+        Update: {
+          base?: string
+          day?: string
+          quote?: string
+          rate?: number
+        }
+        Relationships: []
+      }
+      group_invites: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          email: string | null
+          expires_at: string | null
+          group_id: string
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          role: Database['public']['Enums']['group_role']
+          uses: number
+        }
+        ComputedFields: never
+        Insert: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string | null
+          group_id: string
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          role?: Database['public']['Enums']['group_role']
+          uses?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          expires_at?: string | null
+          group_id?: string
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          role?: Database['public']['Enums']['group_role']
+          uses?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'group_invites_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'group_invites_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          group_id: string
+          joined_at: string
+          role: Database['public']['Enums']['group_role']
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          group_id: string
+          joined_at?: string
+          role?: Database['public']['Enums']['group_role']
+          user_id: string
+        }
+        Update: {
+          group_id?: string
+          joined_at?: string
+          role?: Database['public']['Enums']['group_role']
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'group_members_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'group_members_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          archived_at: string | null
+          color: string | null
+          cover_path: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          emoji: string | null
+          id: string
+          is_direct: boolean
+          members_can_invite: boolean
+          name: string
+          simplify_debts: boolean
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          archived_at?: string | null
+          color?: string | null
+          cover_path?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          emoji?: string | null
+          id?: string
+          is_direct?: boolean
+          members_can_invite?: boolean
+          name: string
+          simplify_debts?: boolean
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          color?: string | null
+          cover_path?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          emoji?: string | null
+          id?: string
+          is_direct?: boolean
+          members_can_invite?: boolean
+          name?: string
+          simplify_debts?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'groups_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          data: NonNullable<Json>
+          id: string
+          read_at: string | null
+          type: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          data?: NonNullable<Json>
+          id?: string
+          read_at?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: NonNullable<Json>
+          id?: string
+          read_at?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_path: string | null
+          created_at: string
+          default_currency: string
+          deleted_at: string | null
+          display_name: string
+          id: string
+          locale: string
+          timezone: string
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          avatar_path?: string | null
+          created_at?: string
+          default_currency?: string
+          deleted_at?: string | null
+          display_name: string
+          id: string
+          locale?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_path?: string | null
+          created_at?: string
+          default_currency?: string
+          deleted_at?: string | null
+          display_name?: string
+          id?: string
+          locale?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      push_tokens: {
+        Row: {
+          created_at: string
+          last_seen_at: string
+          platform: Database['public']['Enums']['push_platform']
+          subscription: Json | null
+          token: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          last_seen_at?: string
+          platform: Database['public']['Enums']['push_platform']
+          subscription?: Json | null
+          token: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          last_seen_at?: string
+          platform?: Database['public']['Enums']['push_platform']
+          subscription?: Json | null
+          token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'push_tokens_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      recurring_expenses: {
+        Row: {
+          active: boolean
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          group_id: string
+          id: string
+          next_run_on: string
+          paid_by: string
+          recurrence: Database['public']['Enums']['recurrence']
+          split_type: Database['public']['Enums']['split_type']
+          splits: NonNullable<Json>
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          active?: boolean
+          amount_cents: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          description: string
+          group_id: string
+          id?: string
+          next_run_on: string
+          paid_by: string
+          recurrence: Database['public']['Enums']['recurrence']
+          split_type?: Database['public']['Enums']['split_type']
+          splits?: NonNullable<Json>
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          amount_cents?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string
+          group_id?: string
+          id?: string
+          next_run_on?: string
+          paid_by?: string
+          recurrence?: Database['public']['Enums']['recurrence']
+          split_type?: Database['public']['Enums']['split_type']
+          splits?: NonNullable<Json>
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recurring_expenses_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recurring_expenses_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recurring_expenses_paid_by_fkey'
+            columns: ['paid_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          created_at: string
+          group_id: string | null
+          id: string
+          reason: string
+          reporter_id: string
+          subject_user_id: string | null
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          reason: string
+          reporter_id?: string
+          subject_user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          reason?: string
+          reporter_id?: string
+          subject_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'reports_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'reports_reporter_id_fkey'
+            columns: ['reporter_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'reports_subject_user_id_fkey'
+            columns: ['subject_user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      settlements: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        ComputedFields: never
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          deleted_at?: string | null
+          from_user: string
+          fx_rate?: number
+          group_id: string
+          id?: string
+          note?: string | null
+          settled_at?: string
+          to_user: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deleted_at?: string | null
+          from_user?: string
+          fx_rate?: number
+          group_id?: string
+          id?: string
+          note?: string | null
+          settled_at?: string
+          to_user?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'settlements_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'settlements_from_user_fkey'
+            columns: ['from_user']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'settlements_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'settlements_to_user_fkey'
+            columns: ['to_user']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      group_balances: {
+        Row: {
+          group_id: string | null
+          net_cents: number | null
+          user_id: string | null
+        }
+        ComputedFields: never
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      accept_invite: { Args: { code: string }; Returns: string }
+      best_slots: {
+        Args: { event_id: string; limit?: number }
+        Returns: {
+          ends_at: string
+          maybe_count: number
+          missing: string[]
+          score: number
+          starts_at: string
+          yes_count: number
+        }[]
+      }
+      cancel_event: {
+        Args: { event_id: string }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          day_end_minute: number
+          day_start_minute: number
+          description: string | null
+          duration_minutes: number
+          emoji: string | null
+          ends_at: string | null
+          group_id: string
+          id: string
+          location: string | null
+          min_attendees: number
+          reminder_sent_at: string | null
+          rsvp_deadline: string | null
+          slot_minutes: number
+          starts_at: string | null
+          status: Database['public']['Enums']['event_status']
+          timezone: string
+          title: string
+          updated_at: string
+          window_end: string
+          window_start: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'events'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_expense: {
+        Args: { payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_group: {
+        Args: { color?: string; currency?: string; emoji?: string; name: string }
+        Returns: {
+          archived_at: string | null
+          color: string | null
+          cover_path: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          emoji: string | null
+          id: string
+          is_direct: boolean
+          members_can_invite: boolean
+          name: string
+          simplify_debts: boolean
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'groups'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_invite: {
+        Args: {
+          email?: string
+          expires_at?: string
+          group_id: string
+          max_uses?: number
+          role?: Database['public']['Enums']['group_role']
+        }
+        Returns: {
+          code: string
+          created_at: string
+          created_by: string | null
+          email: string | null
+          expires_at: string | null
+          group_id: string
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          role: Database['public']['Enums']['group_role']
+          uses: number
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'group_invites'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      delete_expense: {
+        Args: { id: string }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      delete_my_account: { Args: Record<PropertyKey, never>; Returns: undefined }
+      delete_settlement: {
+        Args: { id: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
+      invite_preview: {
+        Args: { code: string }
+        Returns: {
+          color: string
+          cover_path: string
+          emoji: string
+          first_names: string[]
+          group_id: string
+          is_member: boolean
+          member_count: number
+          name: string
+          status: string
+        }[]
+      }
+      leave_group: { Args: { group_id: string }; Returns: undefined }
+      my_timeline: {
+        Args: { from?: string; to?: string }
+        Returns: {
+          availability_requested: boolean
+          availability_submitted: boolean
+          emoji: string
+          ends_at: string
+          event_id: string
+          going_count: number
+          group_color: string
+          group_emoji: string
+          group_id: string
+          group_name: string
+          location: string
+          my_rsvp: Database['public']['Enums']['rsvp_status']
+          rsvp_deadline: string
+          starts_at: string
+          status: Database['public']['Enums']['event_status']
+          timezone: string
+          title: string
+          window_end: string
+          window_start: string
+        }[]
+      }
+      remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
+      request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
+      restore_expense: {
+        Args: { id: string }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      schedule_event: {
+        Args: { event_id: string; starts_at: string }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          day_end_minute: number
+          day_start_minute: number
+          description: string | null
+          duration_minutes: number
+          emoji: string | null
+          ends_at: string | null
+          group_id: string
+          id: string
+          location: string | null
+          min_attendees: number
+          reminder_sent_at: string | null
+          rsvp_deadline: string | null
+          slot_minutes: number
+          starts_at: string | null
+          status: Database['public']['Enums']['event_status']
+          timezone: string
+          title: string
+          updated_at: string
+          window_end: string
+          window_start: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'events'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
+      set_member_role: {
+        Args: { group_id: string; role: Database['public']['Enums']['group_role']; user_id: string }
+        Returns: undefined
+      }
+      settle_up: {
+        Args: {
+          amount_cents: number
+          currency?: string
+          group_id: string
+          note?: string
+          to_user: string
+        }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      simplified_debts: {
+        Args: { group_id: string }
+        Returns: {
+          amount_cents: number
+          from_user: string
+          to_user: string
+        }[]
+      }
+      transfer_ownership: { Args: { group_id: string; user_id: string }; Returns: undefined }
+      update_expense: {
+        Args: { id: string; payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
-      [_ in never]: never
+      availability_level: 'yes' | 'maybe'
+      event_status: 'polling' | 'scheduled' | 'cancelled' | 'done'
+      group_role: 'owner' | 'admin' | 'member'
+      push_platform: 'web' | 'ios' | 'android'
+      recurrence: 'weekly' | 'monthly' | 'yearly'
+      rsvp_status: 'going' | 'maybe' | 'declined'
+      split_type: 'equal' | 'exact' | 'percent' | 'shares' | 'itemized'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -146,6 +1621,14 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {},
+    Enums: {
+      availability_level: ['yes', 'maybe'],
+      event_status: ['polling', 'scheduled', 'cancelled', 'done'],
+      group_role: ['owner', 'admin', 'member'],
+      push_platform: ['web', 'ios', 'android'],
+      recurrence: ['weekly', 'monthly', 'yearly'],
+      rsvp_status: ['going', 'maybe', 'declined'],
+      split_type: ['equal', 'exact', 'percent', 'shares', 'itemized'],
+    },
   },
 } as const
