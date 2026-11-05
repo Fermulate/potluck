@@ -47,7 +47,7 @@ import { signOut, useSession, useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { avatarSrc, useFlag, useMyProfile } from '@/lib/queries'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseUrl } from '@/lib/supabase'
 import { useTheme } from '@/styles/use-theme'
 import { AvatarPicker } from './avatar-picker'
 import { CurrencyField, TimezoneField } from './profile-fields'
@@ -258,8 +258,7 @@ function CalendarSection() {
   const importOn = useFlag('calendar_import')
   const token = useQuery(calendarFeedTokenQueryOptions(supabase, userId))
   const [confirmReset, setConfirmReset] = useState(false)
-  const base = import.meta.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321'
-  const url = token.data ? calendarFeedUrl(base, token.data) : null
+  const url = token.data ? calendarFeedUrl(supabaseUrl, token.data) : null
   const webcal = url?.replace(/^https?:\/\//, 'webcal://')
 
   return (

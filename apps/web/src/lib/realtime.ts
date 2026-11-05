@@ -12,8 +12,11 @@ export interface RealtimeSubscription {
 
 /**
  * Subscribes to Postgres changes while mounted and calls `onChange` for each one. Pass a stable
- * `channel` name; changing it resubscribes. Disabled when `channel` is null.
+ * `channel` label; changing it resubscribes. Disabled when `channel` is null. Each mount gets its
+ * own topic, so a remount never picks up a channel the previous mount is still leaving.
  */
+let mounts = 0
+
 export function useRealtime(
   channel: string | null,
   subscriptions: RealtimeSubscription[],
@@ -28,7 +31,7 @@ export function useRealtime(
   useEffect(() => {
     if (!channel) return
     const subs = JSON.parse(key) as RealtimeSubscription[]
-    let ch = supabase.channel(channel)
+    let ch = supabase.channel(`${channel}:${++mounts}`)
     for (const sub of subs) {
       ch = ch.on(
         'postgres_changes' as never,
