@@ -1,14 +1,20 @@
-import { Toaster as SonnerToaster, toast, type ToasterProps } from 'sonner'
+import { Toaster as SonnerToaster, toast, type ToasterProps as SonnerToasterProps } from 'sonner'
 
 export { toast }
+
+export interface ToasterProps extends Omit<SonnerToasterProps, 'containerAriaLabel'> {
+  /** Accessible name of the notifications region, e.g. "Notifications". */
+  label: string
+}
 
 /**
  * Sonner, dressed in Potluck tokens. Mount once near the root. Pass the
  * resolved theme so the toasts match the app.
  */
-export function Toaster({ theme = 'light', ...props }: ToasterProps) {
+export function Toaster({ label, theme = 'light', ...props }: ToasterProps) {
   return (
     <SonnerToaster
+      containerAriaLabel={label}
       theme={theme}
       position="top-center"
       gap={8}
@@ -22,10 +28,10 @@ export function Toaster({ theme = 'light', ...props }: ToasterProps) {
           title: 'font-semibold leading-tight',
           description: 'text-sm text-paper/70',
           icon: 'shrink-0 [&_svg]:size-5',
-          success: '[&_[data-icon]]:text-olive',
-          error: '[&_[data-icon]]:text-tomato',
-          warning: '[&_[data-icon]]:text-saffron',
-          info: '[&_[data-icon]]:text-saffron',
+          success: '[&_[data-icon]]:text-hero-olive',
+          error: '[&_[data-icon]]:text-hero-tomato',
+          warning: '[&_[data-icon]]:text-hero-saffron',
+          info: '[&_[data-icon]]:text-hero-saffron',
           actionButton:
             'ml-auto shrink-0 rounded-pill bg-paper px-3 py-1.5 text-sm font-semibold text-ink',
           cancelButton: 'ml-auto shrink-0 rounded-pill px-3 py-1.5 text-sm text-paper/80',

@@ -24,6 +24,23 @@ describe('palette', () => {
   })
 })
 
+describe('contrastRatio', () => {
+  // Worked values from the WCAG 2 relative luminance definition, as reported by
+  // the WebAIM contrast checker.
+  it('matches published reference ratios', () => {
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5)
+    expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 5)
+    expect(contrastRatio('#767676', '#ffffff')).toBeCloseTo(4.54, 2)
+    expect(contrastRatio('#00ff00', '#000000')).toBeCloseTo(15.3, 1)
+    expect(contrastRatio('#0000ff', '#000000')).toBeCloseTo(2.44, 2)
+  })
+
+  it('puts the AA line between #767676 and #777777 on white', () => {
+    expect(contrastRatio('#767676', '#ffffff')).toBeGreaterThanOrEqual(AA)
+    expect(contrastRatio('#777777', '#ffffff')).toBeLessThan(AA)
+  })
+})
+
 describe.each(Object.values(themes))('$name theme contrast', (theme) => {
   const c: ThemeColors = theme.colors
   const textPairs: Array<[string, string, string]> = [
@@ -83,6 +100,13 @@ describe('heatLevel', () => {
 
   it('never shows someone as nobody', () => {
     expect(heatLevel(1, 100)).toBe(1)
+  })
+
+  it('keeps the top step for the whole group', () => {
+    expect(heatLevel(7, 7)).toBe(4)
+    expect(heatLevel(6, 7)).toBe(3)
+    expect(heatLevel(5, 6)).toBe(3)
+    expect(heatLevel(99, 100)).toBe(3)
   })
 
   it('handles an empty event', () => {

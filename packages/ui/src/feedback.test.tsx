@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AvatarStack, initials } from './avatar'
 import { Spinner } from './spinner'
+import { Toaster } from './toast'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -43,5 +44,12 @@ describe('AvatarStack', () => {
     expect(screen.getByRole('img', { name: 'Maya Okafor' })).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Sam Ortiz' })).not.toBeInTheDocument()
     expect(screen.getByText('+2')).toBeInTheDocument()
+  })
+})
+
+describe('Toaster', () => {
+  it('names the notifications region with the given label', () => {
+    render(<Toaster label="Benachrichtigungen" />)
+    expect(screen.getByRole('region', { name: /^Benachrichtigungen / })).toBeInTheDocument()
   })
 })

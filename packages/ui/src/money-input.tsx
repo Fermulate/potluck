@@ -4,10 +4,23 @@ import { minorUnitScale } from './amount'
 import { cn } from './cn'
 import { useField } from './field'
 
-function decimalSeparator(locale?: string): string {
-  return (
-    new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? '.'
-  )
+function separators(locale?: string): { decimal: string; group: string | undefined } {
+  const parts = new Intl.NumberFormat(locale).formatToParts(1234.5)
+  return {
+    decimal: parts.find((p) => p.type === 'decimal')?.value ?? '.',
+    group: parts.find((p) => p.type === 'group')?.value,
+  }
+}
+
+/**
+ * Rewrites typed text so "." is the only decimal mark. When the locale
+ * separator is present, grouping is dropped and the separator becomes ".";
+ * otherwise a typed "." already means the decimal point.
+ */
+function toPlainDecimal(text: string, locale?: string): string {
+  const { decimal, group } = separators(locale)
+  if (!text.includes(decimal)) return text
+  return (group ? text.split(group).join('') : text).replace(decimal, '.')
 }
 
 function currencySymbol(currency: string, locale?: string): string {
@@ -24,8 +37,7 @@ function currencySymbol(currency: string, locale?: string): string {
  * precision. Returns null for empty input.
  */
 export function parseMoneyInput(text: string, currency: string, locale?: string): number | null {
-  const sep = decimalSeparator(locale)
-  const normalized = text.replace(sep, '.').replace(/[^\d.]/g, '')
+  const normalized = toPlainDecimal(text, locale).replace(/[^\d.]/g, '')
   if (normalized === '' || normalized === '.') return null
   const [whole = '0', fraction = ''] = normalized.split('.')
   const scale = minorUnitScale(currency, locale)
@@ -41,22 +53,23 @@ function centsToText(cents: number | null, currency: string, locale?: string): s
   const whole = Math.floor(cents / scale)
   const frac = cents % scale
   if (digits === 0 || frac === 0) return String(whole)
-  return `${whole}${decimalSeparator(locale)}${String(frac).padStart(digits, '0')}`
+  return `${whole}${separators(locale).decimal}${String(frac).padStart(digits, '0')}`
 }
 
 /** Keeps only digits and a single separator, with at most `digits` decimals. */
-function sanitize(raw: string, sep: string, digits: number): string {
+function sanitize(raw: string, locale: string | undefined, digits: number): string {
+  const sep = separators(locale).decimal
   let out = ''
   let seenSep = false
   let fraction = 0
-  for (const ch of raw.replace('.', sep)) {
+  for (const ch of toPlainDecimal(raw, locale)) {
     if (ch >= '0' && ch <= '9') {
       if (seenSep) {
         if (fraction >= digits) continue
         fraction++
       }
       out += ch
-    } else if (ch === sep && !seenSep && digits > 0) {
+    } else if (ch === '.' && !seenSep && digits > 0) {
       seenSep = true
       out += out === '' ? `0${sep}` : sep
     }
@@ -102,13 +115,19 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
   ref,
 ) {
   const field = useField()
-  const sep = decimalSeparator(locale)
   const digits = Math.round(Math.log10(minorUnitScale(currency, locale)))
   const [text, setText] = useState(() => centsToText(value, currency, locale))
   const [lastValue, setLastValue] = useState(value)
+  const format = `${currency}|${locale ?? ''}`
+  const [lastFormat, setLastFormat] = useState(format)
 
-  // Sync when the parent changes the value (reset, quick amounts).
-  if (value !== lastValue) {
+  // Reformat when the currency or locale changes; the minor units stay put.
+  if (format !== lastFormat) {
+    setLastFormat(format)
+    setLastValue(value)
+    setText(centsToText(value, currency, locale))
+  } else if (value !== lastValue) {
+    // Sync when the parent changes the value (reset, quick amounts).
     setLastValue(value)
     if (value !== parseMoneyInput(text, currency, locale)) {
       setText(centsToText(value, currency, locale))
@@ -116,7 +135,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
   }
 
   const onChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const next = sanitize(e.target.value, sep, digits)
+    const next = sanitize(e.target.value, locale, digits)
     const cents = parseMoneyInput(next, currency, locale)
     if (cents !== null && cents > max) return
     setText(next)

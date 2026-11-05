@@ -35,20 +35,6 @@ export type {
   RenderNavLink,
   SideRailProps,
 } from './nav'
-export {
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuSeparator,
-  MenuTrigger,
-  Popover,
-  PopoverClose,
-  PopoverContent,
-  PopoverTrigger,
-  Tooltip,
-  TooltipProvider,
-} from './overlay'
-export type { MenuItemProps, TooltipProps } from './overlay'
 export { PageHeader } from './page-header'
 export type { PageHeaderProps } from './page-header'
 export { ProgressRing } from './progress-ring'
@@ -70,3 +56,4 @@ export type { CheckboxProps, SwitchProps } from './switch'
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
 export type { TabsProps, TabsTriggerProps } from './tabs'
 export { toast, Toaster } from './toast'
+export type { ToasterProps } from './toast'

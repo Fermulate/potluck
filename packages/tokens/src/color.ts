@@ -168,11 +168,14 @@ export const heat = {
 
 export const HEAT_STEPS = 5
 
-/** Maps a count to a heat step (0 to 4). Zero always maps to 0, the max to 4. */
+/**
+ * Maps a count to a heat step (0 to 4). Zero always maps to 0 and only the
+ * full group (count >= max) reaches 4; partial counts spread over 1 to 3.
+ */
 export function heatLevel(count: number, max: number): 0 | 1 | 2 | 3 | 4 {
   if (max <= 0 || count <= 0) return 0
-  const ratio = Math.min(count / max, 1)
-  return Math.max(1, Math.ceil(ratio * (HEAT_STEPS - 1))) as 1 | 2 | 3 | 4
+  if (count >= max) return 4
+  return (1 + Math.floor((count / max) * (HEAT_STEPS - 2))) as 1 | 2 | 3
 }
 
 /**

@@ -7,7 +7,6 @@ import {
   HeatCell,
   IconButton,
   SegmentedControl,
-  type HeatLevel,
 } from '@potluck/ui'
 import { ChevronLeft, Ellipsis, Sparkles } from 'lucide-react'
 import { useState } from 'react'
@@ -21,7 +20,6 @@ function isIn(list: Array<[number, number]>, row: number, col: number) {
 }
 
 export function HeatGrid({ view }: { view: 'everyone' | 'me' }) {
-  const max = Math.max(...heatCounts.flat())
   return (
     <div
       role="grid"
@@ -61,7 +59,7 @@ export function HeatGrid({ view }: { view: 'everyone' | 'me' }) {
           {heatDays.map((d, col) => {
             const count = heatCounts[row]![col]!
             const mine = isIn(mySlots, row, col)
-            const level = view === 'me' ? (mine ? 4 : 0) : (heatLevel(count, max) as HeatLevel)
+            const level = view === 'me' ? (mine ? 4 : 0) : heatLevel(count, TOTAL)
             const inBest =
               view === 'everyone' && col === best.col && row >= best.from && row <= best.to
             return (

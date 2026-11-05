@@ -1,4 +1,4 @@
-import { SegmentedControl, Switch, TooltipProvider } from '@potluck/ui'
+import { SegmentedControl, Switch } from '@potluck/ui'
 import { Monitor, Moon, Sun } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useTheme } from '@/styles/use-theme'
@@ -60,77 +60,75 @@ export function KitPage() {
   const other = resolved === 'dark' ? 'light' : 'dark'
 
   return (
-    <TooltipProvider>
-      <div className="min-h-dvh">
-        <header className="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-4 px-4 py-3 sm:px-8">
-            <p className="flex items-baseline gap-2">
-              <span className="font-display text-2xl leading-none">Potluck</span>
-              <span className="text-sm text-mute max-sm:hidden">design kit</span>
-            </p>
-            <SegmentedControl
-              label="Theme"
-              size="sm"
-              value={preference}
-              onValueChange={setPreference}
-              options={[
-                { value: 'light', label: 'Light', icon: <Sun /> },
-                { value: 'dark', label: 'Dark', icon: <Moon /> },
-                { value: 'system', label: 'Auto', icon: <Monitor /> },
-              ]}
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-40 border-b border-line bg-paper/85 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-4 px-4 py-3 sm:px-8">
+          <p className="flex items-baseline gap-2">
+            <span className="font-display text-2xl leading-none">Potluck</span>
+            <span className="text-sm text-mute max-sm:hidden">design kit</span>
+          </p>
+          <SegmentedControl
+            label="Theme"
+            size="sm"
+            value={preference}
+            onValueChange={setPreference}
+            options={[
+              { value: 'light', label: 'Light', icon: <Sun /> },
+              { value: 'dark', label: 'Dark', icon: <Moon /> },
+              { value: 'system', label: 'Auto', icon: <Monitor /> },
+            ]}
+          />
+        </div>
+      </header>
+
+      <main className="mx-auto flex max-w-[90rem] flex-col gap-20 px-4 pt-12 pb-24 sm:px-8">
+        <div className="max-w-3xl">
+          <h1 className="flourish text-6xl leading-[0.9] sm:text-7xl">Supper club.</h1>
+          <p className="mt-4 max-w-[52ch] text-lg text-mute">
+            Paper and ink, a splash of tomato and saffron. Every piece Potluck is built from, on one
+            page, in both themes.
+          </p>
+        </div>
+
+        <Section
+          id="screens"
+          title="Screens"
+          lede="Static compositions of Home, an availability poll and a group timeline, built only from kit parts."
+          aside={
+            <Switch
+              label={`Compare with ${other}`}
+              checked={compare}
+              onCheckedChange={setCompare}
             />
-          </div>
-        </header>
+          }
+        >
+          <Screens />
+          {compare && (
+            <div
+              data-theme={other}
+              className="-mx-4 rounded-sheet bg-paper px-4 py-8 text-ink sm:mx-0"
+            >
+              <Screens />
+            </div>
+          )}
+        </Section>
 
-        <main className="mx-auto flex max-w-[90rem] flex-col gap-20 px-4 pt-12 pb-24 sm:px-8">
-          <div className="max-w-3xl">
-            <h1 className="flourish text-6xl leading-[0.9] sm:text-7xl">Supper club.</h1>
-            <p className="mt-4 max-w-[52ch] text-lg text-mute">
-              Paper and ink, a splash of tomato and saffron. Every piece Potluck is built from, on
-              one page, in both themes.
-            </p>
-          </div>
+        <Section
+          id="components"
+          title="Components"
+          lede="Everything in @potluck/ui. Try the keyboard: arrows move segmented controls and tabs, Escape closes sheets."
+        >
+          <Gallery />
+        </Section>
 
-          <Section
-            id="screens"
-            title="Screens"
-            lede="Static compositions of Home, an availability poll and a group timeline, built only from kit parts."
-            aside={
-              <Switch
-                label={`Compare with ${other}`}
-                checked={compare}
-                onCheckedChange={setCompare}
-              />
-            }
-          >
-            <Screens />
-            {compare && (
-              <div
-                data-theme={other}
-                className="-mx-4 rounded-sheet bg-paper px-4 py-8 text-ink sm:mx-0"
-              >
-                <Screens />
-              </div>
-            )}
-          </Section>
-
-          <Section
-            id="components"
-            title="Components"
-            lede="Everything in @potluck/ui. Try the keyboard: arrows move segmented controls and tabs, Escape closes sheets."
-          >
-            <Gallery />
-          </Section>
-
-          <Section
-            id="tokens"
-            title="Tokens"
-            lede="From @potluck/tokens. Plain values, shared with the future native app."
-          >
-            <TokensPanel />
-          </Section>
-        </main>
-      </div>
-    </TooltipProvider>
+        <Section
+          id="tokens"
+          title="Tokens"
+          lede="From @potluck/tokens. Plain values, shared with the future native app."
+        >
+          <TokensPanel />
+        </Section>
+      </main>
+    </div>
   )
 }

@@ -3,6 +3,7 @@
  */
 export const en = {
   'app.name': 'Potluck',
+  'toast.region': 'Notifications',
 } as const
 
 export type MessageKey = keyof typeof en
