@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { RecentActivityRow } from '@/features/activity/activity-link'
+import { InboxBell } from '@/features/notifications/inbox-bell'
 import { firstName } from '@/features/plans/format'
 import { useNow } from '@/features/plans/use-now'
 import { useTimelineRange } from '@/features/plans/use-range'
@@ -91,6 +92,7 @@ export function HomeDashboard() {
                 : t('home.summary.none')}
           </p>
         </div>
+        <InboxBell className="self-start lg:hidden" />
       </header>
 
       <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start">
