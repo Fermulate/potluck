@@ -69,7 +69,12 @@ export function RsvpPanel({
           </span>
         )}
       </div>
-      <div role="radiogroup" aria-label={t('rsvp.title')} className="grid grid-cols-3 gap-2">
+      <div
+        role="radiogroup"
+        aria-label={t('rsvp.title')}
+        aria-disabled={deadlinePassed || undefined}
+        className="grid grid-cols-3 gap-2"
+      >
         {OPTIONS.map(({ value, icon: Icon, tone }) => {
           const selected = mine === value
           return (
@@ -78,10 +83,13 @@ export function RsvpPanel({
               type="button"
               role="radio"
               aria-checked={selected}
+              // Answers close at the deadline; the chosen one stays lit so you can see it.
+              disabled={deadlinePassed}
               onClick={() => !selected && rsvp.mutate(value)}
               className={cn(
-                'flex h-14 flex-col items-center justify-center gap-0.5 rounded-[0.875rem] border text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:scale-[0.97]',
+                'flex h-14 flex-col items-center justify-center gap-0.5 rounded-[0.875rem] border text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:scale-[0.97] disabled:pointer-events-none',
                 selected ? tone : 'border-line-strong bg-card text-ink hover:border-ink/40',
+                deadlinePassed && !selected && 'opacity-45',
               )}
             >
               <Icon aria-hidden className="size-4" />

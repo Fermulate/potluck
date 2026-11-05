@@ -165,7 +165,11 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
     onError: (error) => toast.error(planErrorMessage(error)),
   })
 
-  const details = <Details event={event} organizer={organizer} timeZone={timeZone} />
+  const showsHero = !!event.starts_at && !!event.ends_at && event.status !== 'cancelled'
+  // The scheduled hero already says where; the details card would repeat it.
+  const details = (
+    <Details event={event} organizer={organizer} timeZone={timeZone} hideLocation={showsHero} />
+  )
   const comments = (
     <CommentsThread
       eventId={event.id}
@@ -223,7 +227,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 {t('events.doneBanner')}
               </Card>
             )}
-            {event.starts_at && event.ends_at && event.status !== 'cancelled' && (
+            {showsHero && event.starts_at && event.ends_at && (
               <ScheduledHero
                 calendar={{
                   id: event.id,
@@ -354,10 +358,12 @@ function Details({
   event,
   organizer,
   timeZone,
+  hideLocation = false,
 }: {
   event: PlanEventWithGroup
   organizer: PlanMember | undefined
   timeZone: string
+  hideLocation?: boolean
 }) {
   return (
     <Card className="flex flex-col gap-3 text-sm">
@@ -365,7 +371,7 @@ function Details({
         <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap">{event.description}</p>
       )}
       <dl className="flex flex-col gap-2 text-mute">
-        {event.location && (
+        {event.location && !hideLocation && (
           <div className="flex items-start gap-2">
             <dt className="sr-only">{t('events.where')}</dt>
             <MapPin aria-hidden className="mt-0.5 size-4 shrink-0" />

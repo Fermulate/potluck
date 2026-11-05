@@ -5,7 +5,7 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { viewerLine } from './expense-math'
+import { settlementText, viewerLine } from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -143,25 +143,18 @@ export function SettlementRow({
   viewerId,
   nameOf,
   locale,
+  actions,
 }: {
   settlement: Settlement
   viewerId: string
   nameOf: (id: string) => string
   locale?: string
+  /** A menu button at the end of the row. */
+  actions?: ReactNode
 }) {
-  const amount = formatMoney(settlement.amount_cents, settlement.currency, { locale })
-  const text =
-    settlement.from_user === viewerId
-      ? t('settle.youPaid', { name: nameOf(settlement.to_user), amount })
-      : settlement.to_user === viewerId
-        ? t('settle.paidYou', { name: nameOf(settlement.from_user), amount })
-        : t('settle.paid', {
-            from: nameOf(settlement.from_user),
-            to: nameOf(settlement.to_user),
-            amount,
-          })
+  const text = settlementText(settlement, viewerId, nameOf, locale)
   return (
-    <div className={rowClass}>
+    <div className={cn(rowClass, actions && 'pr-2')}>
       <RowShell
         leading={
           <span
@@ -183,6 +176,7 @@ export function SettlementRow({
           />
         }
       />
+      {actions}
     </div>
   )
 }

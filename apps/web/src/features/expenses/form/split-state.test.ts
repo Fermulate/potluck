@@ -6,6 +6,7 @@ import {
   initialDraft,
   moveBoundary,
   previewSplit,
+  roundingExtras,
   setPercent,
   splitsPayload,
   tipFor,
@@ -137,5 +138,17 @@ describe('split previews and payloads', () => {
     expect(draft.mode).toBe('percent')
     expect(draft.participants).toEqual([A, B])
     expect(draft.percent).toEqual({ [A]: 7000, [B]: 3000 })
+  })
+})
+
+describe('roundingExtras', () => {
+  it('names whoever carries a leftover cent, and nobody for exact amounts', () => {
+    const draft = initialDraft(ids)
+    expect(roundingExtras(draft, previewSplit(draft, 1000))).toEqual([A])
+    expect(roundingExtras(draft, previewSplit(draft, 900))).toEqual([])
+    const shares = { ...draft, mode: 'shares' as const, shares: { [A]: 1, [B]: 1, [C]: 1 } }
+    expect(roundingExtras(shares, previewSplit(shares, 1001))).toEqual([A, B])
+    const exact = { ...draft, mode: 'exact' as const, exact: { [A]: 334, [B]: 333, [C]: 333 } }
+    expect(roundingExtras(exact, previewSplit(exact, 1000))).toEqual([])
   })
 })

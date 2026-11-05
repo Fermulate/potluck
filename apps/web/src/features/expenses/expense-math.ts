@@ -1,6 +1,6 @@
-import type { ExpenseWithSplits, MoneyMember } from '@potluck/api'
+import type { ExpenseWithSplits, MoneyMember, Settlement } from '@potluck/api'
 import { convert, minorUnits } from '@potluck/core'
-import { t } from '@potluck/i18n'
+import { formatMoney, t } from '@potluck/i18n'
 import { categoryLabel } from './format'
 
 export type ViewerLine =
@@ -83,4 +83,23 @@ export function expensesToCsv(
     })
 
   return [header, ...rows].map((row) => row.map(cell).join(',')).join('\r\n') + '\r\n'
+}
+
+/** "You paid Kai $20.00", "Kai paid you $20.00" or "Kai paid Lena $20.00". */
+export function settlementText(
+  settlement: Settlement,
+  viewerId: string,
+  nameOf: (id: string) => string,
+  locale?: string,
+): string {
+  const amount = formatMoney(settlement.amount_cents, settlement.currency, { locale })
+  return settlement.from_user === viewerId
+    ? t('settle.youPaid', { name: nameOf(settlement.to_user), amount })
+    : settlement.to_user === viewerId
+      ? t('settle.paidYou', { name: nameOf(settlement.from_user), amount })
+      : t('settle.paid', {
+          from: nameOf(settlement.from_user),
+          to: nameOf(settlement.to_user),
+          amount,
+        })
 }

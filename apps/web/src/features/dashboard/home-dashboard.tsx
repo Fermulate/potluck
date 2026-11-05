@@ -7,6 +7,8 @@ import { CalendarHeart, ChevronRight, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { RecentActivityRow } from '@/features/activity/activity-link'
+import { InboxBell } from '@/features/notifications/inbox-bell'
 import { firstName } from '@/features/plans/format'
 import { useNow } from '@/features/plans/use-now'
 import { useTimelineRange } from '@/features/plans/use-range'
@@ -34,8 +36,14 @@ export function HomeDashboard() {
   const needsTimes = items.filter((i) => i.status === 'polling' && !i.availability_submitted)
   // Asked explicitly first.
   needsTimes.sort((a, b) => Number(b.availability_requested) - Number(a.availability_requested))
+  // Past the RSVP deadline there is nothing left to answer.
   const needsRsvp = items.filter(
-    (i) => i.status === 'scheduled' && !i.my_rsvp && i.starts_at && Date.parse(i.starts_at) > now,
+    (i) =>
+      i.status === 'scheduled' &&
+      !i.my_rsvp &&
+      i.starts_at &&
+      Date.parse(i.starts_at) > now &&
+      !(i.rsvp_deadline && Date.parse(i.rsvp_deadline) < now),
   )
   const upcoming = items.filter(
     (i) =>
@@ -90,6 +98,7 @@ export function HomeDashboard() {
                 : t('home.summary.none')}
           </p>
         </div>
+        <InboxBell className="self-start lg:hidden" />
       </header>
 
       <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start">
@@ -186,6 +195,10 @@ export function HomeDashboard() {
             ) : (
               <GroupsRow groups={groups.data ?? []} />
             )}
+          </Appear>
+
+          <Appear index={4}>
+            <RecentActivityRow />
           </Appear>
         </div>
       </div>

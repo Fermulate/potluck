@@ -1,0 +1,55 @@
+import type { SplitTypeValue } from '@potluck/api'
+import { docsUrl } from '@/lib/docs'
+
+/**
+ * Where each help affordance points in the user guide. Paths are guide page slugs plus the
+ * heading anchor the guide generates (the heading text, lowercased and hyphenated).
+ */
+export const HELP_TOPICS = {
+  splitEqual: '/expenses/splits/#equal',
+  splitExact: '/expenses/splits/#exact',
+  splitPercent: '/expenses/splits/#percent',
+  splitShares: '/expenses/splits/#shares',
+  splitItemized: '/expenses/splits/#by-item',
+  rounding: '/expenses/splits/#how-rounding-works',
+  currencies: '/expenses/currencies/#add-an-expense-in-another-currency',
+  exchangeRates: '/expenses/currencies/#where-the-rates-come-from',
+  recurring: '/expenses/recurring/#make-an-expense-repeat',
+  recurringEdit: '/expenses/recurring/#see-and-manage-repeating-expenses',
+  receipts: '/expenses/receipts/#who-can-see-a-receipt',
+  simplifiedDebts: '/balances/#simplified-debts',
+  settleUp: '/balances/settle-up/#settle-up',
+  roles: '/groups/roles/#who-can-do-what',
+  invites: '/groups/invites/#change-what-a-link-allows',
+  houseRules: '/groups/settings/#house-rules',
+  painter: '/plans/availability/#mouse-touch-and-keyboard',
+  heatmap: '/plans/availability/#the-live-heatmap',
+  bestTimes: '/plans/best-time/#the-rules',
+  lockIn: '/plans/lock-in/#lock-it-in',
+  calendarFeed: '/account/#calendar-feed',
+  push: '/notifications/#turn-on-push-notifications',
+  deleteAccount: '/account/#what-happens-to-shared-tabs',
+} as const satisfies Record<string, `/${string}`>
+
+export type HelpTopic = keyof typeof HELP_TOPICS
+
+/** Full URL of a topic in the guide. */
+export function helpHref(topic: HelpTopic): string {
+  return docsUrl(HELP_TOPICS[topic])
+}
+
+export const SPLIT_HELP: Record<SplitTypeValue, HelpTopic> = {
+  equal: 'splitEqual',
+  exact: 'splitExact',
+  percent: 'splitPercent',
+  shares: 'splitShares',
+  itemized: 'splitItemized',
+}
+
+/** Pages linked from the Help section on Me. */
+export const HELP_PAGES = {
+  gettingStarted: '/getting-started/',
+  faq: '/faq/',
+  troubleshooting: '/troubleshooting/',
+  guide: '/',
+} as const satisfies Record<string, `/${string}`>

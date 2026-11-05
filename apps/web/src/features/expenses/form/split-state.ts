@@ -1,5 +1,6 @@
 import type { ExpenseSplitInput, ExpenseWithSplits, SplitTypeValue } from '@potluck/api'
 import {
+  roundedUp,
   splitEqual,
   splitExact,
   splitItemized,
@@ -209,6 +210,11 @@ export function itemsTotal(draft: Pick<SplitDraft, 'items' | 'taxCents' | 'tipCe
   return itemsSubtotal(draft.items) + (draft.taxCents ?? 0) + (draft.tipCents ?? 0)
 }
 
+/** Items that count toward the bill: anything with a price or a name. */
+function billedItems(items: readonly ItemDraft[]): ItemDraft[] {
+  return items.filter((i) => (i.amountCents ?? 0) > 0 || i.name.trim() !== '')
+}
+
 /** Everyone's share in minor units for the current draft, via the core split functions. */
 export function previewSplit(draft: SplitDraft, amountCents: number): SplitResult {
   switch (draft.mode) {
@@ -230,12 +236,45 @@ export function previewSplit(draft: SplitDraft, amountCents: number): SplitResul
         Object.fromEntries(draft.participants.map((id) => [id, draft.shares[id] ?? 0])),
       )
     case 'itemized': {
-      const items = draft.items.filter((i) => (i.amountCents ?? 0) > 0 || i.name.trim() !== '')
       return splitItemized(
-        items.map((i) => ({ amountCents: i.amountCents ?? 0, userIds: i.userIds })),
+        billedItems(draft.items).map((i) => ({
+          amountCents: i.amountCents ?? 0,
+          userIds: i.userIds,
+        })),
         { taxCents: draft.taxCents ?? 0, tipCents: draft.tipCents ?? 0 },
       )
     }
+  }
+}
+
+/**
+ * Who pays a cent more than their exact share so the split adds up, for the current draft and
+ * its preview. Exact amounts are typed, so they never round.
+ */
+export function roundingExtras(draft: SplitDraft, result: SplitResult): string[] {
+  if (!result.ok) return []
+  const weightsOf = (from: Record<string, number>, scale = 1) =>
+    Object.fromEntries(draft.participants.map((id) => [id, (from[id] ?? 0) / scale]))
+  switch (draft.mode) {
+    case 'exact':
+      return []
+    case 'equal':
+      return roundedUp({ mode: 'equal', userIds: draft.participants }, result.shares)
+    case 'percent':
+      return roundedUp({ mode: 'percent', percents: weightsOf(draft.percent, 100) }, result.shares)
+    case 'shares':
+      return roundedUp({ mode: 'shares', shareCounts: weightsOf(draft.shares) }, result.shares)
+    case 'itemized':
+      return roundedUp(
+        {
+          mode: 'itemized',
+          items: billedItems(draft.items).map((i) => ({
+            amountCents: i.amountCents ?? 0,
+            userIds: i.userIds,
+          })),
+        },
+        result.shares,
+      )
   }
 }
 

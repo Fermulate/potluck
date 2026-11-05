@@ -1,0 +1,57 @@
+/** In-app help: links into the user guide and the short "Good to know" notes. */
+export const help = {
+  newTab: 'opens in a new tab',
+  goodToKnow: 'Good to know',
+  readMore: 'Read more',
+  guide: 'Guide',
+  topics: {
+    splitEqual: 'How equal splits work',
+    splitExact: 'How exact amounts work',
+    splitPercent: 'How percent splits work',
+    splitShares: 'How shares work',
+    splitItemized: 'How by item works',
+    rounding: 'How rounding works',
+    currencies: 'About other currencies',
+    exchangeRates: 'Where the rate comes from',
+    recurring: 'How repeating works',
+    receipts: 'Who can see a receipt',
+    simplifiedDebts: 'About who pays whom',
+    settleUp: 'About recording a payment',
+    roles: 'Who can do what',
+    invites: 'How invite links work',
+    houseRules: 'About house rules',
+    painter: 'Mouse, touch and keyboard',
+    heatmap: 'Reading the heatmap',
+    bestTimes: 'How best times are picked',
+    lockIn: 'What locking in does',
+    calendarFeed: 'How the calendar feed works',
+    push: 'Setting up push',
+    deleteAccount: 'What happens to your groups',
+    recurringEdit: 'Changing a repeating expense',
+  },
+  tips: {
+    simplifiedDebts:
+      'Potluck nets out who owes whom so the group needs fewer payments. You might pay someone you never split with directly, but your total stays the same.',
+    everyDebt:
+      'Simplifying is off here, so each pair settles on its own. Debts between two people are only netted against each other.',
+    settleUp:
+      'Potluck does not move money. Pay them your usual way (cash, a transfer, an app), then record it here so the balance goes down.',
+    bestTimes:
+      'Only times where people are free for the whole plan count. Free counts 1 and Maybe counts a half; the highest score wins and the earlier time breaks a tie.',
+  },
+  rounding: {
+    one: '{amount} extra for {names} so it adds up.',
+    each: '{amount} extra each for {names} so it adds up.',
+    you: 'you',
+  },
+  recurringEdit: 'To change the amount or split, stop it and add it again with the new numbers.',
+  section: {
+    title: 'Help',
+    intro: 'The guide walks through every screen. It opens in a new tab.',
+    gettingStarted: 'Getting started',
+    faq: 'Questions and answers',
+    troubleshooting: 'Troubleshooting',
+    guide: 'The full guide',
+    report: 'Report a problem',
+  },
+} as const

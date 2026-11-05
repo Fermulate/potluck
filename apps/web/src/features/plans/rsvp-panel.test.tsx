@@ -18,7 +18,7 @@ const members: PlanMember[] = [
   { userId: 'ben', displayName: 'Ben Ortiz', role: 'member', avatarPath: null, deleted: false },
 ]
 
-function Harness() {
+function Harness({ deadline = null }: { deadline?: string | null }) {
   const { data } = useQuery<PlanRsvp[]>({
     queryKey: plansKeys.rsvps('e1'),
     queryFn: async () => [
@@ -33,7 +33,7 @@ function Harness() {
       rsvps={data}
       members={members}
       viewerId="me"
-      deadline={null}
+      deadline={deadline}
       timeZone="UTC"
     />
   )
@@ -54,5 +54,21 @@ describe('RsvpPanel', () => {
     await waitFor(() => expect(going).toHaveAttribute('aria-checked', 'true'))
     expect(setRsvp).toHaveBeenCalledWith(expect.anything(), 'e1', 'me', 'going')
     resolveSave()
+  })
+
+  it('closes answers once the RSVP deadline has passed', async () => {
+    setRsvp.mockClear()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <Harness deadline="2020-01-01T12:00:00Z" />
+      </QueryClientProvider>,
+    )
+    const going = await screen.findByRole('radio', { name: 'Going' })
+    expect(screen.getByText(/RSVPs closed/)).toBeInTheDocument()
+    for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled()
+    fireEvent.click(going)
+    expect(going).toHaveAttribute('aria-checked', 'false')
+    expect(setRsvp).not.toHaveBeenCalled()
   })
 })

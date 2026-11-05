@@ -134,6 +134,22 @@ export interface SplitExtras {
 
 const gcd = (a: bigint, b: bigint): bigint => (b === 0n ? a : gcd(b, a % b))
 
+/** Each person's exact item subtotal, scaled by the item head counts' lcm so it stays whole. */
+function itemizedWeights(items: readonly SplitItem[]): Map<string, bigint> {
+  let lcm = 1n
+  for (const item of items) {
+    const n = BigInt(item.userIds.length)
+    if (n > 0n) lcm = (lcm * n) / gcd(lcm, n)
+  }
+  const weights = new Map<string, bigint>()
+  for (const item of items) {
+    if (item.userIds.length === 0) continue
+    const perPerson = (BigInt(item.amountCents) * lcm) / BigInt(item.userIds.length)
+    for (const id of item.userIds) weights.set(id, (weights.get(id) ?? 0n) + perPerson)
+  }
+  return weights
+}
+
 /**
  * Itemized bill: each item is shared equally by its people, then tax and tip are spread in
  * proportion to each person's subtotal. Rounding happens once over the whole bill (largest
@@ -146,23 +162,14 @@ export function splitItemized(items: readonly SplitItem[], extras: SplitExtras =
   if (!isCents(taxCents) || !isCents(tipCents)) return fail({ code: 'invalid_extra' })
 
   let itemsTotal = 0
-  let lcm = 1n
   for (const [index, item] of items.entries()) {
     if (!isCents(item.amountCents)) return fail({ code: 'invalid_item_amount', index })
     if (item.userIds.length === 0) return fail({ code: 'item_no_users', index })
     const duplicate = findDuplicate(item.userIds)
     if (duplicate !== undefined) return fail({ code: 'duplicate_user', userId: duplicate })
     itemsTotal += item.amountCents
-    const n = BigInt(item.userIds.length)
-    lcm = (lcm * n) / gcd(lcm, n)
   }
-
-  // Each person's exact subtotal, scaled by `lcm` so it stays an integer.
-  const weights = new Map<string, bigint>()
-  for (const item of items) {
-    const perPerson = (BigInt(item.amountCents) * lcm) / BigInt(item.userIds.length)
-    for (const id of item.userIds) weights.set(id, (weights.get(id) ?? 0n) + perPerson)
-  }
+  const weights = itemizedWeights(items)
 
   const total = itemsTotal + taxCents + tipCents
   if (!isCents(total)) return fail({ code: 'invalid_total' })
@@ -171,4 +178,42 @@ export function splitItemized(items: readonly SplitItem[], extras: SplitExtras =
     return { ok: true, shares: Object.fromEntries([...weights.keys()].map((id) => [id, 0])) }
   }
   return { ok: true, shares: allocate(total, weights) }
+}
+
+/** What an allocated split was worked out from, for `roundedUp`. Exact splits never round. */
+export type SplitBasis =
+  | { mode: 'equal'; userIds: readonly string[] }
+  | { mode: 'percent'; percents: Readonly<Record<string, number>> }
+  | { mode: 'shares'; shareCounts: Readonly<Record<string, number>> }
+  | { mode: 'itemized'; items: readonly SplitItem[] }
+
+/**
+ * Who got one of the leftover cents: the people whose share in `shares` is above their exact,
+ * fractional share. Shares only come out uneven like this to make them add up to the total, so
+ * the list is empty whenever the total divided evenly. Sorted by user id.
+ */
+export function roundedUp(basis: SplitBasis, shares: Readonly<Shares>): string[] {
+  let weights: Map<string, bigint>
+  switch (basis.mode) {
+    case 'equal':
+      weights = new Map(basis.userIds.map((id) => [id, 1n]))
+      break
+    case 'percent':
+    case 'shares': {
+      const scaled = scaleWeights(basis.mode === 'percent' ? basis.percents : basis.shareCounts)
+      if (!scaled.ok) return []
+      weights = scaled.weights
+      break
+    }
+    case 'itemized':
+      weights = itemizedWeights(basis.items)
+      break
+  }
+  const sum = sumOf(weights)
+  if (sum === 0n) return []
+  let total = 0n
+  for (const id of weights.keys()) total += BigInt(shares[id] ?? 0)
+  return [...weights.keys()]
+    .filter((id) => BigInt(shares[id] ?? 0) * sum > total * weights.get(id)!)
+    .sort(compareIds)
 }

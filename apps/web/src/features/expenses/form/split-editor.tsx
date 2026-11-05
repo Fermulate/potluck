@@ -5,6 +5,9 @@ import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
 import { Money } from '../money'
 import { Check, Equal, Layers, Minus, PencilLine, Percent, Plus, ReceiptText } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Help } from '@/features/help/help'
+import { SPLIT_HELP } from '@/features/help/topics'
+import { joinNames } from '@/features/plans/format'
 import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput, PercentInput } from './compact-inputs'
 import { ItemizedEditor } from './itemized-editor'
@@ -13,6 +16,7 @@ import {
   FULL,
   evenPercent,
   previewSplit,
+  roundingExtras,
   setPercent,
   toggleParticipant,
   type SplitDraft,
@@ -56,6 +60,26 @@ export function SplitEditor({
     .filter((m): m is MoneyMember => !!m)
 
   const money = (cents: number) => formatMoney(cents, currency)
+  const extras = amountCents > 0 ? roundingExtras(draft, result) : []
+  const roundingNote =
+    extras.length > 0 ? (
+      <p className="flex items-start justify-between gap-3 text-xs text-mute">
+        <span>
+          {t(extras.length === 1 ? 'help.rounding.one' : 'help.rounding.each', {
+            amount: money(1),
+            names: joinNames(
+              extras.map((id) => {
+                const member = byId.get(id)
+                if (id === viewerId) return t('help.rounding.you')
+                return member ? firstName(member.display_name) : t('activity.someone')
+              }),
+              3,
+            ),
+          })}
+        </span>
+        <Help topic="rounding" />
+      </p>
+    ) : null
 
   const shareCell = (id: string) => (
     <span className="w-20 shrink-0 text-right tabular text-[0.9375rem] font-bold">
@@ -227,7 +251,10 @@ export function SplitEditor({
           size="sm"
         />
       </div>
-      <p className="-mt-2 text-sm text-mute">{t(`splitTypes.${draft.mode}.hint`)}</p>
+      <div className="-mt-2 flex items-start justify-between gap-3">
+        <p className="text-sm text-mute">{t(`splitTypes.${draft.mode}.hint`)}</p>
+        <Help topic={SPLIT_HELP[draft.mode]} className="mt-px" />
+      </div>
 
       {draft.mode === 'itemized' ? (
         <ItemizedEditor
@@ -307,6 +334,7 @@ export function SplitEditor({
           {status}
         </>
       )}
+      {roundingNote}
     </div>
   )
 }

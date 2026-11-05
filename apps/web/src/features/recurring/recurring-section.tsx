@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { categoryEmoji } from '@/features/expenses/format'
+import { Help } from '@/features/help/help'
 import { moneyErrorMessage, useMoneyGroup, useNameOf } from '@/features/expenses/money-data'
 
 /**
@@ -59,7 +60,12 @@ export function RecurringSection({ groupId }: { groupId: string }) {
       </button>
       {open && (
         <div id={`recurring-${groupId}`} className="border-t border-line bg-card">
-          <p className="px-4 pt-3 text-sm text-mute">{t('expenses.recurring.hint')}</p>
+          <div className="flex items-start justify-between gap-3 px-4 pt-3">
+            <p className="text-sm text-mute">
+              {t('expenses.recurring.hint')} {t('help.recurringEdit')}
+            </p>
+            <Help topic="recurringEdit" className="mt-px" />
+          </div>
           <ul className="divide-y divide-line">
             {data.map((r) => (
               <RecurringRow key={r.id} item={r} groupId={groupId} />

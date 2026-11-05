@@ -4,6 +4,7 @@ import { groups, members, roles, invites, friends } from './en/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './en/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './en/plans'
 import { notifications, settings, account } from './en/me'
+import { help } from './en/help'
 
 /**
  * English strings. Nested by screen or domain; look them up with dotted keys via `t()`.
@@ -43,6 +44,7 @@ export const en = {
   notifications,
   settings,
   account,
+  help,
   empty,
   errors,
 } as const

@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Archive, ArchiveRestore, LogOut, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { Help } from '@/features/help/help'
 import { CurrencyField } from '@/features/me/profile-fields'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
@@ -20,10 +21,21 @@ import { GroupTile } from './group-bits'
 import { ColorPicker, EmojiPicker } from './group-form-fields'
 import { useGroup } from './use-groups'
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  help,
+  children,
+}: {
+  title: string
+  help?: ReactNode
+  children: ReactNode
+}) {
   return (
     <section className="grid gap-3">
-      <h3 className="text-sm font-bold text-mute">{title}</h3>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-bold text-mute">{title}</h3>
+        {help}
+      </div>
       {children}
     </section>
   )
@@ -180,7 +192,7 @@ function SettingsBody({ group }: { group: GroupDetail }) {
         </Section>
       )}
 
-      <Section title={t('groups.settings.rules')}>
+      <Section title={t('groups.settings.rules')} help={<Help topic="houseRules" />}>
         <Card padding="roomy" className="grid gap-5">
           <Switch
             label={t('groups.settings.simplifyDebts')}

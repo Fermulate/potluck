@@ -2,6 +2,7 @@ import { t } from '@potluck/i18n'
 import { cn, HeatCell, SegmentedControl } from '@potluck/ui'
 import { Eraser, Paintbrush, CircleHelp } from 'lucide-react'
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { Help } from '@/features/help/help'
 import { GridFrame } from './grid-frame'
 import { cellName } from './grid-labels'
 import { slotsInRect, step, type GridModel, type PaintLevel } from './grid'
@@ -205,10 +206,13 @@ export function AvailabilityPainter({
           {t('availability.mySlots', { count })}
         </span>
       </div>
-      <p className="text-sm text-mute">
-        {t('availability.instructions')}{' '}
-        <span className="hidden sm:inline">{t('availability.keyboardHint')}</span>
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-mute">
+          {t('availability.instructions')}{' '}
+          <span className="hidden sm:inline">{t('availability.keyboardHint')}</span>
+        </p>
+        <Help topic="painter" className="mt-px" />
+      </div>
       <GridFrame
         ref={gridRef}
         model={model}

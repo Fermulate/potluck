@@ -28,22 +28,31 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+  ArrowUpRight,
   Bell,
+  BookOpen,
+  Bug,
   CalendarPlus,
   ChevronRight,
+  Compass,
   Copy,
   LocateFixed,
   LogOut,
+  MessageCircleQuestion,
   Monitor,
   Moon,
   RefreshCw,
   Sun,
   Trash2,
+  Wrench,
 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { Help } from '@/features/help/help'
+import { HELP_PAGES } from '@/features/help/topics'
 import { useUnreadCount } from '@/features/notifications/use-notifications'
 import { copyText } from '@/features/invites/share'
 import { signOut, useSession, useUserId } from '@/lib/auth'
+import { docsUrl, REPORT_PROBLEM_URL } from '@/lib/docs'
 import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { avatarSrc, useFlag, useMyProfile } from '@/lib/queries'
@@ -53,12 +62,26 @@ import { AvatarPicker } from './avatar-picker'
 import { CurrencyField, TimezoneField } from './profile-fields'
 import { useWebPush } from './use-web-push'
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  help,
+  children,
+}: {
+  id: string
+  title: string
+  /** A help affordance on the title row. */
+  help?: ReactNode
+  children: ReactNode
+}) {
   return (
     <section aria-labelledby={id} className="grid gap-3">
-      <h2 id={id} className="text-sm font-bold text-mute">
-        {title}
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id={id} className="text-sm font-bold text-mute">
+          {title}
+        </h2>
+        {help}
+      </div>
       <Card padding="roomy" className="grid grid-cols-[minmax(0,1fr)] gap-5">
         {children}
       </Card>
@@ -214,7 +237,11 @@ function NotificationsSection() {
   const usable = push.state === 'on' || push.state === 'off'
 
   return (
-    <Section id="me-notifications" title={t('settings.notifications.title')}>
+    <Section
+      id="me-notifications"
+      title={t('settings.notifications.title')}
+      help={<Help topic="push" />}
+    >
       <Link
         to="/notifications"
         className="-m-2 flex items-center gap-3 rounded-card p-2 transition-colors hover:bg-sunken"
@@ -262,7 +289,11 @@ function CalendarSection() {
   const webcal = url?.replace(/^https?:\/\//, 'webcal://')
 
   return (
-    <Section id="me-calendar" title={t('settings.calendar.title')}>
+    <Section
+      id="me-calendar"
+      title={t('settings.calendar.title')}
+      help={<Help topic="calendarFeed" />}
+    >
       <div className="grid gap-3">
         <div>
           <p className="font-semibold">{t('settings.calendar.feed')}</p>
@@ -391,9 +422,49 @@ function DeleteAccount() {
               autoCapitalize="characters"
             />
           </Field>
+          <Help topic="deleteAccount" showLabel className="mt-4" />
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+const HELP_ROWS = [
+  { id: 'gettingStarted', icon: Compass, href: () => docsUrl(HELP_PAGES.gettingStarted) },
+  { id: 'faq', icon: MessageCircleQuestion, href: () => docsUrl(HELP_PAGES.faq) },
+  { id: 'troubleshooting', icon: Wrench, href: () => docsUrl(HELP_PAGES.troubleshooting) },
+  { id: 'guide', icon: BookOpen, href: () => docsUrl(HELP_PAGES.guide) },
+  { id: 'report', icon: Bug, href: () => REPORT_PROBLEM_URL },
+] as const
+
+export function HelpSection() {
+  return (
+    <Section id="me-help" title={t('help.section.title')}>
+      <p className="text-sm text-mute">{t('help.section.intro')}</p>
+      <ul className="-mx-2 -mb-2 grid gap-0.5">
+        {HELP_ROWS.map(({ id, icon: Icon, href }) => (
+          <li key={id}>
+            <a
+              href={href()}
+              target="_blank"
+              rel="noopener"
+              className="flex items-center gap-3 rounded-card p-2 transition-colors hover:bg-sunken"
+            >
+              <span
+                aria-hidden
+                className="grid size-9 place-items-center rounded-full bg-sunken text-ink"
+              >
+                <Icon className="size-[1.125rem]" />
+              </span>
+              <span className="flex-1 font-semibold">
+                {t(`help.section.${id}`)} <span className="sr-only">({t('help.newTab')})</span>
+              </span>
+              <ArrowUpRight aria-hidden className="size-4 text-mute" />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Section>
   )
 }
 
@@ -450,6 +521,7 @@ export function MePage() {
           <PreferencesSection profile={profile} />
           <NotificationsSection />
           <CalendarSection />
+          <HelpSection />
           <AccountSection />
         </div>
       )}
