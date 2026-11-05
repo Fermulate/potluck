@@ -14,6 +14,9 @@ Participants used throughout:
 - [Sign up and profile creation](#sign-up-and-profile-creation)
 - [Create a group and invite people](#create-a-group-and-invite-people)
 - [Join through an invite link](#join-through-an-invite-link)
+- [Add an expense](#add-an-expense)
+- [Settle up](#settle-up)
+- [Simplified debts](#simplified-debts)
 
 ## Sign up and profile creation
 
@@ -108,3 +111,109 @@ sequenceDiagram
   end
   W->>W: navigate to /groups/:groupId
 ```
+
+## Add an expense
+
+The client previews the split with `@potluck/core` so people see exact cents while typing. The server does not trust that preview. For `equal`, `percent` and `shares` it recomputes the splits from the people and weights. Only `exact` and `itemized` use the client's `share_cents`, and those must add up to the amount.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor P as Payer
+  participant W as Web
+  participant C as core
+  participant S as Storage
+  participant DB as DB
+  participant E as Edge notify
+  participant PS as Push service
+  actor F as Friend
+
+  P->>W: amount, currency, split type, people
+  W->>C: splitEqual, splitPercent, splitShares or splitItemized
+  C-->>W: shares in minor units (largest remainder)
+  W->>C: expenseCreateSchema.parse(payload)
+  opt receipt photo
+    W->>S: upload receipts/:groupId/:file (policy: member of group)
+  end
+  W->>DB: rpc create_expense(payload)
+  DB->>DB: require_member, payer and split people in group,<br/>receipt_path starts with group_id
+  DB->>DB: fx_rate = 1, or private.fx_rate(currency, group currency, spent_at)
+  alt no rate yet
+    DB-->>W: error fx_rate_unavailable
+  end
+  DB->>DB: private.compute_splits(amount, split_type, splits)
+  opt payload.recurrence
+    DB->>DB: insert recurring_expenses (next_run_on = spent_at + 1 period)
+  end
+  DB->>DB: insert expenses, insert expense_splits
+  DB->>DB: trigger: activity expense.created
+  Note over DB: at commit (deferred constraint triggers)
+  DB->>DB: check_expense_splits(): sum = amount_cents
+  DB->>DB: expenses_notify(): notifications expense.created<br/>to split people and payer, never the actor
+  DB->>E: notifications_push trigger, pg_net POST /functions/v1/notify<br/>x-potluck-secret from Vault
+  DB-->>W: expenses row
+  DB-->>W: Realtime: expenses, expense_splits, activity changes
+  W->>W: invalidate money queries, refetch group_balances
+  E->>E: hasEdgeSecret(), read web push_tokens with service role
+  E->>PS: web-push sendNotification (VAPID, TTL 24h)
+  alt subscription gone (404 or 410)
+    E->>DB: delete that push_tokens row
+  end
+  PS-->>F: push message: title, body, url
+```
+
+Delivery to the screen depends on the service worker handling the `push` event. The PWA is built with `vite-plugin-pwa` in `generateSW` mode and has no `push` handler yet, so the last hop is not wired up.
+
+## Settle up
+
+The payer is always the caller, and `settled_at` is now. When the payment is in another currency the server snapshots today's FX rate.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor P as Payer
+  participant W as Web
+  participant DB as DB
+  participant E as Edge notify
+
+  W->>DB: rpc simplified_debts(group_id)
+  DB-->>W: suggested payments
+  P->>W: pay Ben 42.50
+  W->>DB: rpc settle_up(group_id, to_user, amount_cents, currency, note)
+  DB->>DB: require_member, both people in group, amount > 0
+  DB->>DB: fx = private.fx_rate(currency, group currency, current_date)
+  DB->>DB: insert settlements (from_user = caller)
+  DB->>DB: trigger: activity settlement.created
+  DB->>DB: trigger: notifications settlement.created<br/>to from_user and to_user, minus the actor
+  DB->>E: notify (push)
+  DB-->>W: settlements row
+  DB-->>W: Realtime: settlements change
+  W->>DB: refetch group_balances
+```
+
+To undo a mistaken payment, call `delete_settlement(id)`. It is a soft delete open to the payer, the recipient, whoever recorded it, or an admin.
+
+## Simplified debts
+
+`simplified_debts` always simplifies. The client reads `groups.simplify_debts` to decide whether to show the simplified list or plain pairwise balances. `simplifyDebts()` in core runs the same greedy algorithm, so the client can preview without a round trip and tests can compare both.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant W as Web
+  participant DB as DB
+  participant V as group_balances view
+
+  W->>DB: rpc simplified_debts(group_id)
+  DB->>DB: require_member(group_id)
+  DB->>V: select user_id, net_cents for the group
+  Note over V: each expense converted once to group currency,<br/>payer credited, total spread over splits<br/>by largest remainder, settlements applied
+  V-->>DB: creditors (net > 0) and debtors (net < 0), by user id
+  loop until no creditor or no debtor is left
+    DB->>DB: pick largest creditor and largest debtor<br/>(ties: smallest user id)
+    DB->>DB: pay = least(credit, debt), subtract from both
+    DB-->>W: row (from_user, to_user, amount_cents)
+  end
+```
+
+For n people with a non-zero balance the result has at most n - 1 payments.
