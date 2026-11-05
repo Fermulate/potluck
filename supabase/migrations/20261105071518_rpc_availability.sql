@@ -170,19 +170,25 @@ begin
   )
   from unnest(targets) as t (id);
 
+  if cardinality(targets) > 0 then
+    perform private.log_activity(ev.group_id, uid, 'availability.requested', ev.id,
+      jsonb_build_object('title', ev.title, 'user_ids', to_jsonb(targets)));
+  end if;
+
   return cardinality(targets);
 end;
 $$;
 
--- Ranks candidate start times for an event.
+-- Ranks candidate start times for an event (same rules as rankSlots in
+-- packages/core).
 --
--- Candidates: every grid cell start on every day of the window where the whole
--- duration fits before day_end_minute (and that is not in the past). A
--- duration that spans several cells needs all of them.
--- A member counts as "yes" if they marked yes for every needed cell, "maybe"
--- if they covered every cell with at least one maybe, and is `missing`
--- otherwise. score = yes + 0.5 * maybe. Only candidates where yes + maybe >=
--- min_attendees are returned, ordered by score desc then earliest.
+-- Candidates: every distinct slot_start in current members' availability.
+-- A duration that is not a whole number of cells rounds up; a member counts as
+-- "yes" if they marked yes for every needed cell, "maybe" if they covered
+-- every cell with yes or maybe (at least one maybe), and is `missing`
+-- otherwise (sorted by id). score = yes + 0.5 * maybe. Only candidates where
+-- yes + maybe >= min_attendees are returned, ordered by score desc then
+-- earliest. Rows from people no longer in the group are ignored.
 create or replace function public.best_slots(event_id uuid, "limit" int default 5)
 returns table (
   starts_at timestamptz,
@@ -209,14 +215,10 @@ begin
     select m.user_id from public.group_members m where m.group_id = ev.group_id
   ),
   candidates as (
-    select ((d.day + make_interval(mins => mm.minute)) at time zone ev.timezone) as slot
-    from generate_series(ev.window_start, ev.window_end, interval '1 day') as d0 (ts)
-    cross join lateral (select d0.ts::date as day) d
-    cross join generate_series(
-      ev.day_start_minute,
-      ev.day_end_minute - cells * ev.slot_minutes,
-      ev.slot_minutes
-    ) as mm (minute)
+    select distinct a.slot_start as slot
+    from public.availability a
+    join members mb on mb.user_id = a.user_id
+    where a.event_id = ev.id
   ),
   per_person as (
     select
@@ -231,7 +233,6 @@ begin
      and a.user_id = mb.user_id
      and a.slot_start >= c.slot
      and a.slot_start < c.slot + span
-    where c.slot >= now()
     group by c.slot, mb.user_id
   ),
   scored as (
