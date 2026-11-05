@@ -1,3 +1,4 @@
+export { heatLevel, heatLevels, type HeatLevel } from './heat'
 export {
   rankSlots,
   type AvailabilityLevel,
