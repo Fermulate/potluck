@@ -5,4 +5,5 @@ export {
   type BalanceSettlement,
   type BalanceSplit,
 } from './balances'
+export { pairwiseDebts } from './pairwise'
 export { simplifyDebts, type Transfer } from './simplify'

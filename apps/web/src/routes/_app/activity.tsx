@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
-import { RoutePlaceholder } from '@/components/route-placeholder'
+import { ActivityFeed } from '@/features/activity/activity-feed'
 
 export const Route = createFileRoute('/_app/activity')({
-  component: () => <RoutePlaceholder title={t('activity.title')} />,
+  component: ActivityFeed,
 })
