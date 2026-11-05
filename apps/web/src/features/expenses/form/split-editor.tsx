@@ -206,15 +206,23 @@ export function SplitEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1">
+      <div className="pb-1">
+        {/* Short labels so all five fit on a phone; icons join in once there is room. */}
         <SegmentedControl
+          block
           label={t('splitTypes.label')}
           value={draft.mode}
           onValueChange={(mode) => onChange({ ...draft, mode })}
           options={SPLIT_TYPES.map((mode) => ({
             value: mode,
-            label: t(`splitTypes.${mode}.label`),
-            icon: MODE_ICONS[mode],
+            label: (
+              <>
+                <span aria-hidden className="hidden sm:inline-flex">
+                  {MODE_ICONS[mode]}
+                </span>
+                {t(`splitTypes.${mode}.short`)}
+              </>
+            ),
           }))}
           size="sm"
         />
