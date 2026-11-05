@@ -20,15 +20,15 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 
 ### Variables
 
-| Name                            | Example                                        | Used for                                                                                 |
-| ------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co`     | baked into the web build                                                                 |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                           | baked into the web build. Public by design, RLS guards data                              |
-| `VITE_APP_URL`                  | `https://potluck.potluck-web.workers.dev`      | baked into the build, and the smoke test URL                                             |
-| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                           | web push subscription in the browser                                                     |
-| `VITE_DOCS_URL`                 | `https://potluck-docs.potluck-web.workers.dev` | user guide that in-app help links open. Optional: the workflow falls back to the example |
-| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                                   | `wrangler deploy` and `versions upload`                                                  |
-| `SUPABASE_PROJECT_REF`          | `mzotlkpghnrwbezcazld`                         | `supabase link`. The workflow falls back to this ref if unset                            |
+| Name                            | Example                                        | Used for                                                                            |
+| ------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co`     | baked into the web build                                                            |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                           | baked into the web build. Public by design, RLS guards data                         |
+| `VITE_APP_URL`                  | `https://potluck.potluck-web.workers.dev`      | baked into the build, and the smoke test URL                                        |
+| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                           | web push subscription in the browser                                                |
+| `VITE_DOCS_URL`                 | `https://potluck-docs.potluck-web.workers.dev` | user guide that in-app help links open. Optional: the app falls back to the example |
+| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                                   | `wrangler deploy` and `versions upload`                                             |
+| `SUPABASE_PROJECT_REF`          | `mzotlkpghnrwbezcazld`                         | `supabase link`. The workflow falls back to this ref if unset                       |
 
 ### Secrets
 

@@ -84,10 +84,6 @@ export function HelpLink({
   )
 }
 
-function supportsPopover(): boolean {
-  return typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype
-}
-
 export interface HelpTipProps {
   /** Accessible name of the "?" button, e.g. "About simplified debts". */
   label: string
@@ -107,7 +103,7 @@ export interface HelpTipProps {
 /**
  * A "?" that opens a small "Good to know" card with a line or two of explanation and a link to
  * the guide. Uses the browser popover (top layer, light dismiss, Escape), so it is never clipped
- * by a scrolling card; where that is missing it falls back to a plain toggle.
+ * by a scrolling card.
  */
 export function HelpTip({
   label,
@@ -125,15 +121,14 @@ export function HelpTip({
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
-  const [native] = useState(supportsPopover)
 
   useEffect(() => {
     const el = panel.current
-    if (!el || !native) return
+    if (!el) return
     const onToggle = (event: Event) => setOpen((event as ToggleEvent).newState === 'open')
     el.addEventListener('toggle', onToggle)
     return () => el.removeEventListener('toggle', onToggle)
-  }, [native])
+  }, [])
 
   const place = useCallback(() => {
     const button = trigger.current
@@ -154,7 +149,7 @@ export function HelpTip({
   }, [align])
 
   useLayoutEffect(() => {
-    if (!open || !native) return
+    if (!open) return
     place()
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
@@ -162,17 +157,16 @@ export function HelpTip({
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
     }
-  }, [open, native, place])
+  }, [open, place])
 
   return (
     <span
-      className={cn('relative inline-flex', className)}
+      className={cn('inline-flex', className)}
       // Handled here so a surrounding page or sheet that also listens for Escape stays open.
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || !open) return
         event.preventDefault()
-        if (native) panel.current?.hidePopover()
-        else setOpen(false)
+        panel.current?.hidePopover()
         trigger.current?.focus()
       }}
     >
@@ -182,8 +176,7 @@ export function HelpTip({
         aria-label={label}
         aria-expanded={open}
         aria-controls={panelId}
-        popoverTarget={native ? panelId : undefined}
-        onClick={native ? undefined : () => setOpen((v) => !v)}
+        popoverTarget={panelId}
         className={triggerClass}
       >
         <Glyph />
@@ -191,16 +184,10 @@ export function HelpTip({
       <div
         ref={panel}
         id={panelId}
-        popover={native ? 'auto' : undefined}
-        hidden={native ? undefined : !open}
+        popover="auto"
         aria-labelledby={titleId}
         role="note"
-        className={cn(
-          'w-72 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-card p-4 text-left text-ink shadow-pop',
-          native
-            ? 'fixed inset-auto m-0'
-            : cn('absolute top-full z-30 mt-2', align === 'end' ? 'right-0' : 'left-0'),
-        )}
+        className="fixed inset-auto m-0 w-72 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-card p-4 text-left text-ink shadow-pop"
       >
         <p id={titleId} className="text-sm font-bold">
           {title}
