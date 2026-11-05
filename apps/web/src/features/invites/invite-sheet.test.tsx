@@ -47,7 +47,7 @@ describe('InvitePanel', () => {
 
   it('creates a link with the chosen uses and expiry', async () => {
     renderWithProviders(<InvitePanel group={group()} />)
-    fireEvent.click(await screen.findByRole('radio', { name: '5 people' }))
+    fireEvent.click(await screen.findByRole('radio', { name: '5' }))
     fireEvent.click(screen.getByRole('radio', { name: '30 days' }))
     fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
     await waitFor(() => expect(api.createInvite).toHaveBeenCalled())

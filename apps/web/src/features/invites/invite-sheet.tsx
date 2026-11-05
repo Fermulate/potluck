@@ -10,6 +10,7 @@ import { can } from '@potluck/core'
 import { formatDate, t } from '@potluck/i18n'
 import {
   Button,
+  cn,
   IconButton,
   SegmentedControl,
   Sheet,
@@ -33,10 +34,12 @@ const DAY = 24 * 60 * 60 * 1000
 
 function InviteRow({
   invite,
+  fresh,
   groupName,
   onRevoke,
 }: {
   invite: GroupInviteRow
+  fresh: boolean
   groupName: string
   onRevoke: () => void
 }) {
@@ -57,7 +60,12 @@ function InviteRow({
   ].filter(Boolean)
 
   return (
-    <li className="flex items-center gap-3 rounded-card border border-line bg-card p-3">
+    <li
+      className={cn(
+        'flex items-center gap-2 rounded-card border bg-card p-3 transition-colors duration-500',
+        fresh ? 'border-saffron bg-saffron-soft/50' : 'border-line',
+      )}
+    >
       <span
         aria-hidden
         className="grid size-10 shrink-0 place-items-center rounded-full bg-saffron-soft text-saffron-ink"
@@ -106,6 +114,7 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
   const [role, setRole] = useState<'member' | 'admin'>('member')
   const [uses, setUses] = useState<UsesChoice>('unlimited')
   const [expiry, setExpiry] = useState<ExpiryChoice>('7')
+  const [fresh, setFresh] = useState<string | null>(null)
   const canAdminInvite = can(group.my_role, 'invite.create', {
     membersCanInvite: group.members_can_invite,
     inviteRole: 'admin',
@@ -125,10 +134,10 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
         expiresAt:
           expiry === 'never' ? null : new Date(Date.now() + Number(expiry) * DAY).toISOString(),
       }),
-    onSuccess: async (invite) => {
+    onSuccess: (invite) => {
       queryClient.setQueryData<GroupInviteRow[]>(key, (rows) => [invite, ...(rows ?? [])])
+      setFresh(invite.id)
       toast.success(t('invites.created'))
-      await shareInvite(group.name, invite.code)
     },
     onError: (error) => toast.error(errorMessage(error)),
   })
@@ -172,8 +181,8 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
   }
 
   return (
-    <div className="grid gap-6">
-      <div className="grid gap-4 rounded-card border border-line bg-card p-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 rounded-card border border-line bg-card p-4">
         {canAdminInvite && (
           <div className="grid gap-1.5">
             <span className="text-sm font-semibold">{t('invites.roleLabel')}</span>
@@ -232,7 +241,7 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
         </Button>
       </div>
 
-      <section aria-labelledby={`invites-${group.id}`} className="grid gap-3">
+      <section aria-labelledby={`invites-${group.id}`} className="flex min-w-0 flex-col gap-3">
         <h3 id={`invites-${group.id}`} className="text-sm font-bold text-mute">
           {t('invites.active')}
         </h3>
@@ -241,11 +250,12 @@ export function InvitePanel({ group }: { group: GroupDetail }) {
         ) : (invites.data ?? []).length === 0 ? (
           <p className="text-sm text-mute">{t('invites.none')}</p>
         ) : (
-          <ul className="grid gap-2">
+          <ul className="flex flex-col gap-2">
             {invites.data!.map((invite) => (
               <InviteRow
                 key={invite.id}
                 invite={invite}
+                fresh={invite.id === fresh}
                 groupName={group.name}
                 onRevoke={() => revoke.mutate(invite)}
               />

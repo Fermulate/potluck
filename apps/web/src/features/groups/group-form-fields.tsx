@@ -100,7 +100,7 @@ export function ColorPicker({
             {current === color && (
               <Check
                 aria-hidden
-                className="size-5 text-white mix-blend-difference"
+                className={cn('size-5', color === 'saffron' ? 'text-on-saffron' : 'text-white')}
                 strokeWidth={3}
               />
             )}
