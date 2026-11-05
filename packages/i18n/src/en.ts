@@ -424,6 +424,82 @@ export const en = {
     deleted: 'Payment deleted.',
   },
 
+  /** Keyed by `activity.verb`. Params: actor, plus whatever the row's `data` carries. */
+  activity: {
+    title: 'Activity',
+    group: {
+      created: '{actor} started {group}',
+      updated: '{actor} updated the group settings',
+    },
+    member: {
+      joined: '{actor} joined the group',
+      left: '{actor} left the group',
+      removed: '{actor} removed {name}',
+      role_changed: '{actor} made {name} {role}',
+    },
+    expense: {
+      created: '{actor} added "{description}" ({amount})',
+      updated: '{actor} updated "{description}"',
+      deleted: '{actor} deleted "{description}"',
+      restored: '{actor} brought back "{description}"',
+    },
+    settlement: {
+      created: '{actor} paid {name} {amount}',
+      deleted: '{actor} deleted a payment to {name}',
+    },
+    event: {
+      created: '{actor} is planning {event}',
+      scheduled: '{event} is on for {date}',
+      cancelled: '{actor} called off {event}',
+    },
+    availability: {
+      requested: '{actor} wants to know when you are free for {event}',
+    },
+    comment: {
+      created: '{actor} commented on {subject}',
+    },
+  },
+
+  notifications: {
+    title: 'Notifications',
+    markAllRead: 'Mark all as read',
+    allCaughtUp: 'All caught up.',
+    unread_one: '{count} unread',
+    unread_other: '{count} unread',
+    enablePush: 'Turn on push notifications',
+    pushBlocked: 'Notifications are blocked in your browser settings.',
+    types: {
+      expense: {
+        created: { title: 'New expense in {group}', body: '{actor} added {description}: {amount}' },
+        updated: { title: 'Expense updated', body: '{actor} changed {description} in {group}' },
+      },
+      settlement: {
+        created: { title: 'You got paid', body: '{actor} paid you {amount}' },
+      },
+      member: {
+        joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
+      },
+      event: {
+        created: { title: 'Something is cooking', body: '{actor} is planning {event}' },
+        scheduled: { title: "It's a date", body: '{event} is on for {date}' },
+        cancelled: { title: 'Plans changed', body: '{event} was called off' },
+        reminder: { title: 'Coming up', body: '{event} starts {when}' },
+      },
+      availability: {
+        requested: {
+          title: 'When are you free?',
+          body: '{actor} needs your availability for {event}',
+        },
+      },
+      rsvp: {
+        reminder: { title: 'Are you in?', body: 'Let {group} know if you are coming to {event}' },
+      },
+      comment: {
+        created: { title: 'New comment', body: '{actor}: {preview}' },
+      },
+    },
+  },
+
   errors: {
     generic: 'Something burned in the kitchen. Try again?',
     network: 'You seem to be offline. We will retry when you are back.',

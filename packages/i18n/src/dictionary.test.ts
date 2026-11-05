@@ -96,6 +96,53 @@ describe('coverage of core domain values', () => {
     expect(missingKeys(codes.map((code) => `errors.validation.${code}`))).toEqual([])
   })
 
+  it('describes every activity verb', () => {
+    const verbs = [
+      'group.created',
+      'group.updated',
+      'member.joined',
+      'member.left',
+      'member.removed',
+      'member.role_changed',
+      'expense.created',
+      'expense.updated',
+      'expense.deleted',
+      'expense.restored',
+      'settlement.created',
+      'settlement.deleted',
+      'event.created',
+      'event.scheduled',
+      'event.cancelled',
+      'availability.requested',
+      'comment.created',
+    ]
+    expect(missingKeys(verbs.map((verb) => `activity.${verb}`))).toEqual([])
+  })
+
+  it('has a title and body for every notification type', () => {
+    const types = [
+      'expense.created',
+      'expense.updated',
+      'settlement.created',
+      'member.joined',
+      'event.created',
+      'event.scheduled',
+      'event.cancelled',
+      'event.reminder',
+      'availability.requested',
+      'rsvp.reminder',
+      'comment.created',
+    ]
+    expect(
+      missingKeys(
+        types.flatMap((type) => [
+          `notifications.types.${type}.title`,
+          `notifications.types.${type}.body`,
+        ]),
+      ),
+    ).toEqual([])
+  })
+
   it('names and describes every group role', () => {
     expect(
       missingKeys(
