@@ -54,6 +54,21 @@ describe('ExpenseForm', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
   })
 
+  it('says who gets the extra cent when a split does not divide evenly', () => {
+    setup()
+    expect(screen.queryByText(/so it adds up/)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '100' } })
+    expect(screen.getByText('$0.01 extra for you so it adds up.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /How rounding works/ })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/expenses/splits/#how-rounding-works'),
+    )
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Exact' }))
+    expect(screen.queryByText(/so it adds up/)).not.toBeInTheDocument()
+  })
+
   it('snaps a dragged handle to whole percents and keeps the total at 100%', async () => {
     setup()
     fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))

@@ -42,6 +42,7 @@ export const help = {
   rounding: {
     one: '{amount} extra for {names} so it adds up.',
     each: '{amount} extra each for {names} so it adds up.',
+    you: 'you',
   },
   recurringEdit: 'To change the amount or split, stop it and add it again with the new numbers.',
   section: {
