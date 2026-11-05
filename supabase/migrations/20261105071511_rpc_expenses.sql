@@ -6,7 +6,6 @@
 --   "description": text,
 --   "amount_cents": int > 0,
 --   "currency": "EUR",              -- default: group currency
---   "fx_rate": 1.08,                -- optional; default: latest fx_rates row, 1 for group currency
 --   "paid_by": uuid,                -- default: caller
 --   "split_type": "equal" | "exact" | "percent" | "shares" | "itemized",
 --   "splits": [{ "user_id": uuid, "share_cents": int?, "weight": number? }],
@@ -15,11 +14,14 @@
 --   "recurrence": "weekly" | "monthly" | "yearly"   -- create only, makes a recurring template
 -- }
 --
--- Split rules: if every split has share_cents they are used as is (and must add
--- up to amount_cents). Otherwise shares are derived: equal splits evenly,
--- percent and shares split by weight. Leftover cents go to the largest
--- fractional remainders, ties broken by user id. exact and itemized always
--- need share_cents.
+-- fx_rate is snapshotted from fx_rates (1 for the group currency); clients
+-- cannot supply one.
+--
+-- Split rules: exact and itemized need share_cents for every person, used as
+-- is (and must add up to amount_cents). equal, percent and shares are always
+-- derived here and ignore share_cents: equal splits evenly, percent and shares
+-- split by weight. Leftover cents go to the largest fractional remainders,
+-- ties broken by user id.
 
 create or replace function private.compute_splits(amount bigint, kind public.split_type, splits jsonb)
 returns table (user_id uuid, share_cents bigint, weight numeric)
@@ -65,7 +67,10 @@ begin
 
   select count(s), coalesce(sum(s), 0) into explicit_n, total_shares from unnest(shares) as s;
 
-  if explicit_n = n then
+  if kind in ('exact', 'itemized') then
+    if explicit_n <> n then
+      raise exception using message = 'split_amount_required', detail = 'Enter an amount for each person', errcode = '22023';
+    end if;
     if exists (select 1 from unnest(shares) as s where s < 0) then
       raise exception using message = 'invalid_splits', detail = 'Shares cannot be negative', errcode = '22023';
     end if;
@@ -78,10 +83,6 @@ begin
     return query
       select t.u, t.s, t.w from unnest(uids, shares, weights) with ordinality as t (u, s, w, ord) order by t.ord;
     return;
-  end if;
-
-  if kind in ('exact', 'itemized') then
-    raise exception using message = 'split_amount_required', detail = 'Enter an amount for each person', errcode = '22023';
   end if;
 
   if kind = 'equal' then
@@ -228,7 +229,6 @@ begin
     v_split_type := coalesce((p ->> 'split_type')::public.split_type, prev.split_type, 'equal');
     v_event := case when p ? 'event_id' then (p ->> 'event_id')::uuid else prev.event_id end;
     v_recurrence := (p ->> 'recurrence')::public.recurrence;
-    v_fx := (p ->> 'fx_rate')::numeric;
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
       raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
@@ -236,10 +236,6 @@ begin
 
   if v_currency = g.currency then
     v_fx := 1;
-  elsif v_fx is not null then
-    if v_fx <= 0 then
-      raise exception using message = 'invalid_fx_rate', detail = 'Exchange rate must be positive', errcode = '22023';
-    end if;
   elsif prev.id is not null and prev.currency = v_currency then
     v_fx := prev.fx_rate;
   else

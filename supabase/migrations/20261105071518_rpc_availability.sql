@@ -21,8 +21,8 @@ end;
 $$;
 
 -- Replaces the caller's availability for an event.
--- slots: array of {"slot_start": timestamptz, "level": "yes" | "maybe"}; a bare
--- timestamp string means "yes". Every slot must be a cell of the event grid.
+-- slots: array of {"slot_start": timestamptz, "level": "yes" | "maybe"}; level
+-- defaults to "yes". Every slot must be a cell of the event grid.
 -- Returns the number of slots saved.
 create or replace function public.set_availability(event_id uuid, slots jsonb)
 returns int
@@ -52,14 +52,8 @@ begin
     into parsed
     from (
       select
-        case jsonb_typeof(e.elem)
-          when 'string' then (e.elem #>> '{}')::timestamptz
-          else (e.elem ->> 'slot_start')::timestamptz
-        end as slot_start,
-        case jsonb_typeof(e.elem)
-          when 'string' then 'yes'::public.availability_level
-          else coalesce((e.elem ->> 'level')::public.availability_level, 'yes')
-        end as level
+        (e.elem ->> 'slot_start')::timestamptz as slot_start,
+        coalesce((e.elem ->> 'level')::public.availability_level, 'yes') as level
       from jsonb_array_elements(slots) as e (elem)
     ) x;
   exception

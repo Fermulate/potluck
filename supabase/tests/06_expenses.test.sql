@@ -1,7 +1,7 @@
 -- create_expense / update_expense / delete_expense / restore_expense, split
 -- math, the split sum constraint and expense RLS.
 begin;
-select plan(53);
+select plan(54);
 
 -- Ignore any seeded rates; each test adds the ones it needs.
 delete from public.fx_rates;
@@ -33,6 +33,14 @@ select results_eq(
      order by 2 desc, 1 $$,
   'equal split: leftover cent goes to the lowest user id'
 );
+-- packages/core splitEvenly(10000, 3) gives 3334, 3333, 3333.
+select tests.remember('e_equal_forged', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Forged', 'amount_cents', 10000,
+  'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('m1'), 'share_cents', 9000),
+    jsonb_build_object('user_id', tests.uid('m2'), 'share_cents', 500),
+    jsonb_build_object('user_id', tests.uid('admin'), 'share_cents', 500))))));
+select is(pg_temp.shares(tests.id('e_equal_forged')), array[3334, 3333, 3333]::bigint[], 'equal split ignores client share_cents');
 reset role;
 select is(
   (select (paid_by, created_by, split_type, currency, fx_rate, spent_at)::text from public.expenses where id = tests.id('e_equal')),
@@ -195,9 +203,9 @@ select is(
   'inverse pair is used when the direct one is missing'
 );
 select is(
-  (select fx_rate from create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Yen', 'amount_cents', 500, 'currency', 'JPY', 'fx_rate', 0.0067, 'splits', tests.people('m1')))),
-  0.0067::numeric(18,8),
-  'an explicit rate wins'
+  (select fx_rate from create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Pastries', 'amount_cents', 500, 'currency', 'EUR', 'fx_rate', 5, 'splits', tests.people('m1')))),
+  1.10::numeric(18,8),
+  'a client fx_rate is ignored, the stored rate is snapshotted'
 );
 
 -- recurring

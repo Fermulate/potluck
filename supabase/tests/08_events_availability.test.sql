@@ -1,7 +1,7 @@
 -- Events RLS, set_availability, request_availability, best_slots,
 -- schedule_event, cancel_event, RSVPs, my_timeline.
 begin;
-select plan(59);
+select plan(60);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -17,6 +17,11 @@ create function pg_temp.at(days int, hhmm text) returns timestamptz language sql
   select ((current_date + days) + hhmm::time) at time zone 'UTC'
 $$;
 grant execute on function pg_temp.at(int, text) to authenticated, anon;
+-- The same cell as a set_availability slot object.
+create function pg_temp.slot(days int, hhmm text) returns jsonb language sql immutable as $$
+  select jsonb_build_object('slot_start', pg_temp.at(days, hhmm))
+$$;
+grant execute on function pg_temp.slot(int, text) to authenticated, anon;
 
 -- Event RLS
 select tests.login('outsider');
@@ -98,12 +103,16 @@ update public.profiles set deleted_at = null where id = tests.uid('m3');
 select tests.login('m1');
 
 -- set_availability
+select throws_ok(
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:00'))) $$,
+  '22023', 'invalid_slot', 'bare timestamps are rejected'
+);
 select is(
   set_availability(tests.id('ev'), jsonb_build_array(
-    pg_temp.at(1, '10:00'), pg_temp.at(1, '10:30'), pg_temp.at(1, '11:00'), pg_temp.at(1, '11:30'),
-    pg_temp.at(2, '10:00'), pg_temp.at(2, '10:30'))),
+    pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:30'), pg_temp.slot(1, '11:00'), pg_temp.slot(1, '11:30'),
+    pg_temp.slot(2, '10:00'), pg_temp.slot(2, '10:30'))),
   6,
-  'bare timestamps are saved as yes'
+  'slots without a level are saved as yes'
 );
 
 select tests.login('m2');
@@ -125,32 +134,32 @@ select ok(
 
 select tests.login('m3');
 select throws_ok(
-  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '09:30'))) $$,
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '09:30'))) $$,
   '22023', 'invalid_slot', 'before day start'
 );
 select throws_ok(
-  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '12:00'))) $$,
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '12:00'))) $$,
   '22023', 'invalid_slot', 'at day end'
 );
 select throws_ok(
-  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:15'))) $$,
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '10:15'))) $$,
   '22023', 'invalid_slot', 'off the slot grid'
 );
 select throws_ok(
-  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(5, '10:00'))) $$,
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(5, '10:00'))) $$,
   '22023', 'invalid_slot', 'outside the date window'
 );
 select throws_ok(
-  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:00'), pg_temp.at(1, '10:00'))) $$,
+  $$ select set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:00'))) $$,
   '22023', 'duplicate_slot', 'duplicates rejected'
 );
 select throws_ok(
   $$ select set_availability(tests.id('ev'), '[{"slot_start": "not a date"}]') $$,
   '22023', 'invalid_slots', 'garbage rejected'
 );
-select is(set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '11:00'))), 1, 'first answer');
+select is(set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '11:00'))), 1, 'first answer');
 select is(
-  set_availability(tests.id('ev'), jsonb_build_array(pg_temp.at(1, '10:30'), pg_temp.at(1, '11:00'), pg_temp.at(2, '10:00'), pg_temp.at(2, '10:30'))),
+  set_availability(tests.id('ev'), jsonb_build_array(pg_temp.slot(1, '10:30'), pg_temp.slot(1, '11:00'), pg_temp.slot(2, '10:00'), pg_temp.slot(2, '10:30'))),
   4,
   'answering again replaces the previous answer'
 );

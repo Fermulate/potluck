@@ -25,10 +25,16 @@ select tests.remember('r', (select recurring_id from create_expense(jsonb_build_
 select tests.remember('w', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Cleaner', 'amount_cents', 3000, 'recurrence', 'weekly',
   'spent_at', '2025-01-01', 'splits', tests.people('m1', 'm2')))));
--- EUR template with no stored rate.
+-- EUR template whose rate is gone by its next run.
+reset role;
+insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-03-01', 1.1);
+select tests.login('m1');
 select tests.remember('eur', (select recurring_id from create_expense(jsonb_build_object(
-  'group_id', tests.id('g'), 'description', 'Parking', 'amount_cents', 500, 'currency', 'EUR', 'fx_rate', 1.1,
+  'group_id', tests.id('g'), 'description', 'Parking', 'amount_cents', 500, 'currency', 'EUR',
   'recurrence', 'monthly', 'spent_at', '2026-03-01', 'splits', tests.people('m1')))));
+reset role;
+delete from public.fx_rates;
+select tests.login('m1');
 -- Template that will lose a member.
 select tests.remember('gone', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Gym', 'amount_cents', 4000, 'recurrence', 'monthly',

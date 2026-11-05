@@ -4,6 +4,10 @@ select plan(30);
 
 -- Ignore any seeded rates; each test adds the ones it needs.
 delete from public.fx_rates;
+insert into public.fx_rates (base, quote, day, rate) values
+  ('EUR', 'USD', current_date - 10, 1.1),
+  ('EUR', 'USD', current_date, 1.5),
+  ('JPY', 'USD', current_date, 0.0067);
 
 select tests.create_user('a');
 select tests.create_user('b');
@@ -30,7 +34,7 @@ select create_expense(jsonb_build_object('group_id', tests.id('g'), 'description
 -- b pays EUR 10.00 at 1.1 for c and d (5.50 USD each)
 select tests.login('b');
 select create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Museum', 'amount_cents', 1000,
-  'currency', 'EUR', 'fx_rate', 1.1, 'splits', tests.people('c', 'd')));
+  'currency', 'EUR', 'spent_at', current_date - 10, 'splits', tests.people('c', 'd')));
 -- d pays a big thing that is then deleted
 select tests.login('d');
 select tests.remember('deleted', (select id from create_expense(jsonb_build_object('group_id', tests.id('g'),
@@ -69,7 +73,7 @@ select results_eq(
 
 -- Rounding of converted splits never breaks the zero sum.
 select create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Gum', 'amount_cents', 3,
-  'currency', 'EUR', 'fx_rate', 1.5, 'splits', tests.people('b', 'c', 'd')));
+  'currency', 'EUR', 'splits', tests.people('b', 'c', 'd')));
 select is(
   (select sum(net_cents)::bigint from public.group_balances where group_id = tests.id('g')),
   0::bigint,
@@ -94,7 +98,7 @@ select set_eq(
 
 -- Minor units: 1000 JPY (no decimals) at 0.0067 USD per yen is 6.70 USD.
 select tests.remember('jpy', (select id from create_expense(jsonb_build_object('group_id', tests.id('g'), 'description', 'Ramen',
-  'amount_cents', 1000, 'currency', 'JPY', 'fx_rate', 0.0067, 'splits', tests.people('b')))));
+  'amount_cents', 1000, 'currency', 'JPY', 'splits', tests.people('b')))));
 select is(pg_temp.net('a'), 675::bigint, 'zero-decimal currencies convert by minor units');
 select delete_expense(tests.id('jpy'));
 select is(pg_temp.net('a'), 5::bigint, 'deleted expenses drop out of balances');
@@ -127,11 +131,11 @@ select throws_ok($$ select settle_up(tests.id('g'), tests.uid('a'), 0) $$, '2202
 select throws_ok($$ select settle_up(tests.id('g'), tests.uid('b'), 100) $$, '22023', 'invalid_recipient', 'cannot pay yourself');
 select throws_ok(
   $$ select settle_up(tests.id('g'), tests.uid('a'), 100, null, null, tests.uid('c')) $$,
-  '42501', 'not_allowed', 'members cannot record payments between others'
+  '42883', null, 'settle_up takes no payer, so members cannot record payments between others'
 );
-select lives_ok(
-  $$ select settle_up(tests.id('g'), tests.uid('b'), 100, null, null, tests.uid('c')) $$,
-  'the recipient can record a payment they received'
+select ok(
+  (select from_user = tests.uid('b') and settled_at = now() from settle_up(tests.id('g'), tests.uid('a'), 100)),
+  'the payer is always the caller and the payment is dated now'
 );
 select throws_ok(
   $$ select settle_up(tests.id('g'), tests.uid('a'), 100, 'CHF') $$,
@@ -149,9 +153,9 @@ select is(
 reset role;
 update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('d');
 select tests.login('d');
-select lives_ok(
-  $$ select settle_up(tests.id('g'), tests.uid('a'), 100, null, null, tests.uid('c')) $$,
-  'admins can record any payment'
+select throws_ok(
+  $$ select settle_up(tests.id('g'), tests.uid('a'), 100, null, null, tests.uid('c'), now() - interval '90 days') $$,
+  '42883', null, 'admins cannot record or backdate payments for others either'
 );
 
 select tests.login('outsider');
