@@ -3,20 +3,54 @@ name: Deploy
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+  group: deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
   deployments: write
+  pull-requests: write
+
+env:
+  HAS_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+  HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != '' }}
 
 jobs:
-  deploy:
-    name: Deploy web to Cloudflare Pages
+  migrate:
+    name: Apply database migrations
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Push migrations and auth config
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_YES: '1'
+        run: |
+          supabase link --project-ref ${{ vars.SUPABASE_PROJECT_REF || 'mzotlkpghnrwbezcazld' }}
+          supabase db push --remote --yes
+          supabase config push --yes
+          supabase functions deploy
+      - name: Skip (no Supabase credentials)
+        if: env.HAS_SUPABASE != 'true'
+        run: echo "::notice::SUPABASE_ACCESS_TOKEN or SUPABASE_DB_PASSWORD not set, skipping migrations."
+
+  web:
+    name: Deploy web to Cloudflare
+    needs: [migrate]
+    if: always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -28,13 +62,36 @@ jobs:
       - name: Build web
         run: pnpm turbo run build --filter=@potluck/web
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-          VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
-      - name: Deploy
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_APP_URL: ${{ vars.VITE_APP_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
+      - name: Deploy production
+        if: env.HAS_CLOUDFLARE == 'true' && github.event_name != 'pull_request'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/web/dist --project-name=potluck --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: deploy
+      - name: Upload preview
+        id: preview
+        if: env.HAS_CLOUDFLARE == 'true' && github.event_name == 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: versions upload --preview-alias pr-${{ github.event.pull_request.number }}
+      - name: Skip (no Cloudflare token)
+        if: env.HAS_CLOUDFLARE != 'true'
+        run: echo "::notice::CLOUDFLARE_API_TOKEN not set, built but not deployed."
+      - name: Smoke test production
+        if: env.HAS_CLOUDFLARE == 'true' && github.event_name != 'pull_request'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${{ vars.VITE_APP_URL }}/groups")
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::Production did not answer 200 (last: $code)"; exit 1
