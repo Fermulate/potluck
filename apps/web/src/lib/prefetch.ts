@@ -7,10 +7,16 @@ import {
   notificationsQueryOptions,
   planQueries,
   unreadCountQueryOptions,
+  type PotluckClient,
 } from '@potluck/api'
 import type { QueryClient } from '@tanstack/react-query'
 import { timelineRange } from '@/features/plans/use-range'
-import { supabase } from './supabase'
+import { loadSupabase } from './auth'
+
+/** Runs once the client is there (it is already loading for anyone who is signed in). */
+function withClient(fn: (client: PotluckClient) => void) {
+  void loadSupabase().then(fn)
+}
 
 /**
  * Route loaders start a screen's queries while its code is still downloading, and on hover or
@@ -20,70 +26,90 @@ import { supabase } from './supabase'
  */
 export const prefetch = {
   shell(queryClient: QueryClient, userId: string) {
-    void queryClient.prefetchQuery(myProfileQueryOptions(supabase, userId))
-    void queryClient.prefetchQuery(unreadCountQueryOptions(supabase, userId))
+    withClient((client) => {
+      void queryClient.prefetchQuery(myProfileQueryOptions(client, userId))
+      void queryClient.prefetchQuery(unreadCountQueryOptions(client, userId))
+    })
   },
 
   home(queryClient: QueryClient, userId: string) {
-    void queryClient.prefetchQuery(planQueries.homeBalances(supabase, userId))
-    void queryClient.prefetchQuery(planQueries.timeline(supabase, timelineRange()))
-    void queryClient.prefetchQuery(planQueries.groups(supabase))
+    withClient((client) => {
+      void queryClient.prefetchQuery(planQueries.homeBalances(client, userId))
+      void queryClient.prefetchQuery(planQueries.timeline(client, timelineRange()))
+      void queryClient.prefetchQuery(planQueries.groups(client))
+    })
   },
 
   plans(queryClient: QueryClient) {
-    const range = timelineRange()
-    void queryClient.prefetchQuery(planQueries.timeline(supabase, range))
-    void queryClient.prefetchQuery(planQueries.past(supabase, range.from))
-    void queryClient.prefetchQuery(planQueries.groups(supabase))
+    withClient((client) => {
+      const range = timelineRange()
+      void queryClient.prefetchQuery(planQueries.timeline(client, range))
+      void queryClient.prefetchQuery(planQueries.past(client, range.from))
+      void queryClient.prefetchQuery(planQueries.groups(client))
+    })
   },
 
   groups(queryClient: QueryClient, userId: string) {
-    void queryClient.prefetchQuery(myGroupsQueryOptions(supabase, userId))
+    withClient((client) => {
+      void queryClient.prefetchQuery(myGroupsQueryOptions(client, userId))
+    })
   },
 
   group(queryClient: QueryClient, groupId: string, userId: string) {
-    void queryClient.prefetchQuery(groupDetailQueryOptions(supabase, groupId, userId))
-    void queryClient.prefetchQuery(moneyQueries.group(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.people(supabase))
+    withClient((client) => {
+      void queryClient.prefetchQuery(groupDetailQueryOptions(client, groupId, userId))
+      void queryClient.prefetchQuery(moneyQueries.group(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.people(client))
+    })
   },
 
   expenses(queryClient: QueryClient, groupId: string) {
-    void queryClient.prefetchQuery(moneyQueries.expenses(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.settlements(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.recurring(supabase, groupId))
+    withClient((client) => {
+      void queryClient.prefetchQuery(moneyQueries.expenses(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.settlements(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.recurring(client, groupId))
+    })
   },
 
   balances(queryClient: QueryClient, groupId: string) {
-    void queryClient.prefetchQuery(moneyQueries.balances(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.simplified(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.expenses(supabase, groupId))
-    void queryClient.prefetchQuery(moneyQueries.settlements(supabase, groupId))
+    withClient((client) => {
+      void queryClient.prefetchQuery(moneyQueries.balances(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.simplified(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.expenses(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.settlements(client, groupId))
+    })
   },
 
   event(queryClient: QueryClient, eventId: string) {
-    // Members need the group id and the panels depend on the status, so they follow the event.
-    void queryClient
-      .ensureQueryData(planQueries.event(supabase, eventId))
-      .then((event) => {
-        void queryClient.prefetchQuery(planQueries.members(supabase, event.group_id))
-        if (event.status === 'polling') {
-          void queryClient.prefetchQuery(planQueries.availability(supabase, eventId))
-          void queryClient.prefetchQuery(planQueries.bestSlots(supabase, eventId))
-          void queryClient.prefetchQuery(planQueries.requests(supabase, eventId))
-        } else {
-          void queryClient.prefetchQuery(planQueries.rsvps(supabase, eventId))
-        }
-      })
-      .catch(() => undefined)
-    void queryClient.prefetchQuery(planQueries.comments(supabase, eventId))
+    withClient((client) => {
+      // Members need the group id and the panels depend on the status, so they follow the event.
+      void queryClient
+        .ensureQueryData(planQueries.event(client, eventId))
+        .then((event) => {
+          void queryClient.prefetchQuery(planQueries.members(client, event.group_id))
+          if (event.status === 'polling') {
+            void queryClient.prefetchQuery(planQueries.availability(client, eventId))
+            void queryClient.prefetchQuery(planQueries.bestSlots(client, eventId))
+            void queryClient.prefetchQuery(planQueries.requests(client, eventId))
+          } else {
+            void queryClient.prefetchQuery(planQueries.rsvps(client, eventId))
+          }
+        })
+        .catch(() => undefined)
+      void queryClient.prefetchQuery(planQueries.comments(client, eventId))
+    })
   },
 
   activity(queryClient: QueryClient) {
-    void queryClient.prefetchInfiniteQuery(activityInfiniteQueryOptions(supabase))
-    void queryClient.prefetchQuery(moneyQueries.people(supabase))
+    withClient((client) => {
+      void queryClient.prefetchInfiniteQuery(activityInfiniteQueryOptions(client))
+      void queryClient.prefetchQuery(moneyQueries.people(client))
+    })
   },
 
   notifications(queryClient: QueryClient, userId: string) {
-    void queryClient.prefetchQuery(notificationsQueryOptions(supabase, userId))
+    withClient((client) => {
+      void queryClient.prefetchQuery(notificationsQueryOptions(client, userId))
+    })
   },
 }
