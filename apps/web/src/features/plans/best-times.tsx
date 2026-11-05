@@ -1,6 +1,6 @@
 import type { PlanBestSlot, PlanMember } from '@potluck/api'
 import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
-import { AvatarStack, Button, Card, ConfirmDialog, Skeleton, cn } from '@potluck/ui'
+import { AvatarStack, Button, Card, ConfirmDialog, Skeleton } from '@potluck/ui'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { firstName, joinNames } from './format'
@@ -128,23 +128,23 @@ export function BestTimes({
                 onPointerLeave={() => preview(null)}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate tabular text-[0.9375rem] font-semibold">
-                    {lockLabel(slot)}
+                  <p className="truncate text-[0.9375rem] font-semibold">
+                    {formatDate(slot.starts_at, { timeZone, style: 'weekday' })}
+                    <span className="tabular font-medium text-mute">
+                      {', '}
+                      {formatTime(slot.starts_at, { timeZone })}
+                    </span>
                   </p>
                   <p className="truncate text-xs text-mute">
+                    <span className="tabular font-semibold">
+                      {t('bestTime.score', { yes: slot.yes_count, maybe: slot.maybe_count })}
+                    </span>
+                    {'. '}
                     {slot.missing.length === 0
                       ? t('bestTime.everyoneCanMake')
                       : t('bestTime.missing', { names: joinNames(missingNames(slot), 2) })}
                   </p>
                 </div>
-                <span
-                  className={cn(
-                    'shrink-0 tabular text-xs font-semibold text-mute',
-                    canLock && 'hidden sm:inline',
-                  )}
-                >
-                  {t('bestTime.score', { yes: slot.yes_count, maybe: slot.maybe_count })}
-                </span>
                 {canLock && (
                   <Button
                     size="sm"
