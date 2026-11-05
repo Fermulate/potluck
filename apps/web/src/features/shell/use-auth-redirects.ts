@@ -1,0 +1,33 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
+import { useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+
+/**
+ * Reacts to auth changes that happen outside a form: signing out (here or in another tab)
+ * clears cached data and leaves the app; a password recovery link opens the reset form.
+ */
+export function useAuthRedirects() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        queryClient.clear()
+        void router.invalidate()
+        const path = router.state.location.pathname
+        const isPublic =
+          path === '/' ||
+          path.startsWith('/sign-') ||
+          path.startsWith('/join/') ||
+          path.startsWith('/auth/') ||
+          path.endsWith('-password')
+        if (!isPublic) void router.navigate({ to: '/sign-in', replace: true })
+      }
+      if (event === 'PASSWORD_RECOVERY' && router.state.location.pathname !== '/reset-password') {
+        void router.navigate({ to: '/reset-password', replace: true })
+      }
+    })
+    return () => data.subscription.unsubscribe()
+  }, [router, queryClient])
+}

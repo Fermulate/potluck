@@ -11,10 +11,15 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
 import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as AppExpensesExpenseIdRouteImport } from './routes/_app/expenses/$expenseId'
@@ -43,9 +48,29 @@ const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppActivityRoute = AppActivityRouteImport.update({
@@ -62,6 +87,11 @@ const AppNotificationsRoute = AppNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
   getParentRoute: () => AppRoute,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DevKitRoute = DevKitRouteImport.update({
   id: '/dev/kit',
@@ -159,10 +189,15 @@ const AppGroupsGroupIdSettingsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/welcome': typeof WelcomeRoute
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
   '/notifications': typeof AppNotificationsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
@@ -184,10 +219,15 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/welcome': typeof WelcomeRoute
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
   '/notifications': typeof AppNotificationsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
@@ -210,10 +250,15 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/welcome': typeof WelcomeRoute
   '/_app/activity': typeof AppActivityRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/notifications': typeof AppNotificationsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
   '/_app/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
@@ -237,10 +282,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/forgot-password'
+    | '/reset-password'
     | '/sign-in'
+    | '/sign-up'
+    | '/welcome'
     | '/activity'
     | '/home'
     | '/notifications'
+    | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
     | '/expenses/$expenseId'
@@ -262,10 +312,15 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/forgot-password'
+    | '/reset-password'
     | '/sign-in'
+    | '/sign-up'
+    | '/welcome'
     | '/activity'
     | '/home'
     | '/notifications'
+    | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
     | '/expenses/$expenseId'
@@ -287,10 +342,15 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/forgot-password'
+    | '/reset-password'
     | '/sign-in'
+    | '/sign-up'
+    | '/welcome'
     | '/_app/activity'
     | '/_app/home'
     | '/_app/notifications'
+    | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
     | '/_app/expenses/$expenseId'
@@ -314,7 +374,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
+  WelcomeRoute: typeof WelcomeRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   DevKitRoute: typeof DevKitRoute
   JoinCodeRoute: typeof JoinCodeRoute
 }
@@ -335,11 +400,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sign-in': {
       id: '/sign-in'
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/activity': {
@@ -362,6 +455,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/notifications'
       preLoaderRoute: typeof AppNotificationsRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/dev/kit': {
       id: '/dev/kit'
@@ -550,7 +650,12 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
+  WelcomeRoute: WelcomeRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   DevKitRoute: DevKitRoute,
   JoinCodeRoute: JoinCodeRoute,
 }

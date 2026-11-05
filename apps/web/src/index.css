@@ -1,3 +1,23 @@
 @import 'tailwindcss';
 @import './styles/theme.css';
 @import './styles/base.css';
+
+/* Route changes cross-fade where the View Transitions API exists; motion-sensitive people get a cut. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Edge adds its own password reveal button; ours already sits in the field. */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}

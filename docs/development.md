@@ -218,7 +218,7 @@ A new namespace needs one line in `en.ts` to add it to the dictionary.
 
 Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router Vite plugin, which regenerates `routeTree.gen.ts` while `pnpm dev` or `pnpm build` runs. Do not edit that file.
 
-- Signed-in screens go under `routes/_app/`. The `_app.tsx` layout redirects to `/sign-in` without a session and renders the navigation.
+- Signed-in screens go under `routes/_app/`. The `_app.tsx` layout redirects to `/sign-in` without a session, to `/welcome` until the account is onboarded, and renders the shell from `features/shell/app-layout.tsx` (side rail, bottom tabs, quick-add sheet).
 - `$param` segments become params: `routes/_app/groups/$groupId/balances.tsx` is `/groups/:groupId/balances`.
 - Files and folders starting with `-` are ignored by the router (`routes/-dev-kit/`), so colocated helpers go there.
 - Keep route files thin. Put screens and hooks in `apps/web/src/features/<feature>/` and import them.
