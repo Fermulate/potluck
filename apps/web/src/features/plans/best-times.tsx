@@ -3,6 +3,7 @@ import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
 import { AvatarStack, Button, Card, ConfirmDialog, Skeleton } from '@potluck/ui'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
+import { GoodToKnow, Help } from '@/features/help/help'
 import { firstName, joinNames } from './format'
 
 export interface BestTimesProps {
@@ -81,6 +82,12 @@ export function BestTimes({
           <span className="inline-flex items-center gap-1.5 text-sm font-bold">
             <Sparkles aria-hidden className="size-4" />
             {t('bestTime.top')}
+            <GoodToKnow
+              topic="bestTimes"
+              tip="bestTimes"
+              align="start"
+              className="ml-1 [&>button]:text-current"
+            />
           </span>
           <span className="tabular text-sm font-semibold">
             {t('bestTime.score', { yes: top!.yes_count, maybe: top!.maybe_count })}
@@ -176,7 +183,9 @@ export function BestTimes({
         onConfirm={async () => {
           if (confirming) await onLock(confirming.starts_at)
         }}
-      />
+      >
+        <Help topic="lockIn" showLabel />
+      </ConfirmDialog>
     </section>
   )
 }

@@ -4,6 +4,7 @@ import { t } from '@potluck/i18n'
 import { AvatarStack, cn, HeatCell, usePrefersReducedMotion } from '@potluck/ui'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { firstName, joinNames } from '@/features/plans/format'
+import { Help } from '@/features/help/help'
 import { GridFrame } from './grid-frame'
 import { cellName } from './grid-labels'
 import { step, type GridModel, type PaintLevel } from './grid'
@@ -250,6 +251,7 @@ export function HeatLegend() {
         <HeatCell level={0} busy className="size-3.5 min-h-0 rounded-[3px]" aria-hidden />
         {t('availability.busy')}
       </span>
+      <Help topic="heatmap" />
     </div>
   )
 }
