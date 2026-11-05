@@ -96,7 +96,7 @@ export function BalanceHero() {
 
 function NeedsYouCard({ item }: { item: (typeof needsYou)[number] }) {
   return (
-    <Card className="flex w-64 shrink-0 snap-start flex-col gap-3 [--avatar-ring:var(--color-card)]">
+    <Card className="flex w-64 shrink-0 snap-start flex-col gap-3 [--avatar-ring:var(--pl-card)]">
       <div className="flex items-center gap-2 text-xs font-semibold text-mute">
         <span aria-hidden className="text-base leading-none">
           {item.emoji}
@@ -181,7 +181,7 @@ export function HomeScreen() {
         </h2>
         <Card
           padding="none"
-          className="divide-y divide-line overflow-hidden [--avatar-ring:var(--color-card)]"
+          className="divide-y divide-line overflow-hidden [--avatar-ring:var(--pl-card)]"
         >
           {upcoming.map((e) => (
             <ListRow

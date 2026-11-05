@@ -703,6 +703,7 @@ export function Gallery() {
         <Money />
         <Moments />
         <Heat />
+        <Navigation />
       </div>
       <div className="flex min-w-0 flex-col gap-5">
         <People />
@@ -711,7 +712,6 @@ export function Gallery() {
         <Feedback />
         <Lists />
         <Empty />
-        <Navigation />
       </div>
     </div>
   )
