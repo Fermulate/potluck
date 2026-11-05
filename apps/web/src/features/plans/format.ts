@@ -19,13 +19,16 @@ export function formatMinuteOfDay(minute: number): string {
   return formatTime(date, { timeZone: 'UTC' })
 }
 
+/** The server's own error code when it is one the plans RPCs raise on purpose. */
+export function planErrorCode(error: unknown): string | null {
+  if (!(error instanceof PlanError)) return null
+  return hasMessage(`events.errors.${error.code}`) ? error.code : null
+}
+
 /** Human message for an error thrown by the plans API. */
 export function planErrorMessage(error: unknown): string {
-  const code = error instanceof PlanError ? error.code : null
-  if (code) {
-    const key = `events.errors.${code}`
-    if (hasMessage(key)) return (t as (k: string) => string)(key)
-  }
+  const code = planErrorCode(error)
+  if (code) return (t as (k: string) => string)(`events.errors.${code}`)
   return t('errors.generic')
 }
 

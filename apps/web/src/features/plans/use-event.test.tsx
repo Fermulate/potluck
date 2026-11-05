@@ -1,5 +1,5 @@
 import type * as Api from '@potluck/api'
-import { plansKeys, type PlanAvailabilityRow } from '@potluck/api'
+import { PlanError, plansKeys, type PlanAvailabilityRow } from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -153,6 +153,40 @@ describe('useMyAvailability', () => {
     }
     expect(calls).toHaveLength(4)
     expect(result.current.state).toBe('failed')
+  })
+
+  it('drops the map and refetches when the server rejects the save outright', async () => {
+    client.setQueryData(plansKeys.event(EVENT), { id: EVENT, status: 'polling' })
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    expect(cached()).toEqual([slotA])
+
+    calls[0]!.deferred.reject(new PlanError('event_not_polling'))
+    await flush()
+    expect(result.current.state).toBe('rejected')
+    expect(result.current.rejection).toBe('This plan is no longer collecting times.')
+    expect([...result.current.value.keys()]).toEqual([])
+    expect(client.getQueryState(plansKeys.event(EVENT))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(plansKeys.availability(EVENT))?.isInvalidated).toBe(true)
+
+    act(() => vi.advanceTimersByTime(60_000))
+    await flush()
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still retries a plan error the server did not raise on purpose', async () => {
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    calls[0]!.deferred.reject(new PlanError('TypeError: Failed to fetch'))
+    await flush()
+    expect(result.current.state).toBe('error')
+    act(() => vi.advanceTimersByTime(1_000))
+    await flush()
+    expect(calls).toHaveLength(2)
   })
 
   it('mirrors the server rows until the first paint, then keeps the edits', async () => {
