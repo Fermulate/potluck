@@ -62,5 +62,23 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    exclude: ['e2e/**', 'node_modules/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/**/fake-supabase.ts',
+        'src/**/*test-utils.ts',
+        // file routes are thin wrappers, covered by the Playwright journeys
+        'src/routes/**',
+        'src/routeTree.gen.ts',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+      reporter: ['text-summary', 'lcov', 'json-summary'],
+      thresholds: { statements: 70, branches: 60, functions: 60, lines: 70 },
+    },
   },
 })
