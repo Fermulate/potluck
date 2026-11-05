@@ -166,6 +166,41 @@ describe('coverage of core domain values', () => {
     ).toEqual([])
   })
 
+  it('gives every empty state a headline, a line of body copy, and an action', () => {
+    const screens = [
+      'groups',
+      'expenses',
+      'balances',
+      'activity',
+      'plans',
+      'notifications',
+      'search',
+    ]
+    expect(
+      missingKeys(
+        screens.flatMap((s) => [`empty.${s}.title`, `empty.${s}.body`, `empty.${s}.action`]),
+      ),
+    ).toEqual([])
+  })
+
+  it('covers settings and account deletion', () => {
+    expect(
+      missingKeys([
+        'settings.title',
+        'settings.profile.title',
+        'settings.preferences.timezone',
+        'settings.preferences.currency',
+        'settings.notifications.title',
+        'account.delete.title',
+        'account.delete.warning',
+        'account.delete.confirmPhrase',
+        'account.delete.blocked',
+        'account.delete.submit',
+        'account.delete.done',
+      ]),
+    ).toEqual([])
+  })
+
   it('names and describes every group role', () => {
     expect(
       missingKeys(
