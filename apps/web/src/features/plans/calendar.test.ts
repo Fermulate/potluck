@@ -24,6 +24,15 @@ describe('buildIcs', () => {
     expect(ics.startsWith('BEGIN:VCALENDAR\r\n')).toBe(true)
     expect(ics.split('\r\n').every((line) => line.length <= 75)).toBe(true)
   })
+
+  it('folds long lines on code points so an emoji survives the 75 octet limit', () => {
+    const description = `${'a'.repeat(61)}🌮 tacos and ${'é'.repeat(40)}`
+    const ics = buildIcs({ ...event, description, url: undefined }, new Date(0))
+    const bytes = new TextEncoder()
+    expect(ics.split('\r\n').every((line) => bytes.encode(line).length <= 75)).toBe(true)
+    expect(ics.replace(/\r\n /g, '')).toContain(`DESCRIPTION:${description}`)
+    expect(ics).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+  })
 })
 
 describe('googleCalendarUrl', () => {

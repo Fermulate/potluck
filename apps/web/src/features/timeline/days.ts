@@ -1,4 +1,4 @@
-import { formatDate, t } from '@potluck/i18n'
+import { DEFAULT_LOCALE, formatDate, t } from '@potluck/i18n'
 
 const keyFormats = new Map<string, Intl.DateTimeFormat>()
 
@@ -27,7 +27,7 @@ export function dayLabel(key: string, todayKey: string): string {
   if (diff === 0) return t('timeline.today')
   if (diff === 1) return t('timeline.tomorrow')
   if (diff > 1 && diff < 7) {
-    return new Intl.DateTimeFormat(undefined, { weekday: 'long', timeZone: 'UTC' }).format(
+    return new Intl.DateTimeFormat(DEFAULT_LOCALE, { weekday: 'long', timeZone: 'UTC' }).format(
       new Date(`${key}T12:00:00Z`),
     )
   }

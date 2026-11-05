@@ -29,6 +29,18 @@ describe('buildGridModel', () => {
     expect(model.cells[3]![1]).toBe('2026-06-13T23:30:00.000Z')
     expect(model.slots).toHaveLength(8)
   })
+
+  it('keeps the evening in clock order when the viewer zone changes DST mid poll', () => {
+    // London leaves DST on Oct 25 2026, New York on Nov 1: 18:00 New York is 23:00 London
+    // on Oct 20 but 22:00 London on Oct 26.
+    const model = buildGridModel(
+      { ...event, window_start: '2026-10-20', window_end: '2026-10-30' },
+      'Europe/London',
+    )
+    expect(model.rows.map((r) => r.minute)).toEqual([1320, 1350, 1380, 1410, 0, 30])
+    expect(model.index.get('2026-10-20T22:00:00.000Z')).toEqual({ row: 2, col: 0 })
+    expect(model.index.get('2026-10-26T22:00:00.000Z')).toEqual({ row: 0, col: 6 })
+  })
 })
 
 describe('grid helpers', () => {

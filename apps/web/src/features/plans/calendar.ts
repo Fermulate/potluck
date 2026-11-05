@@ -24,12 +24,28 @@ function icsText(value: string): string {
     .replace(/[,;]/g, (c) => `\\${c}`)
 }
 
-/** Fold lines longer than 75 octets (approximated by characters). */
+const utf8Length = (ch: string) => {
+  const cp = ch.codePointAt(0)!
+  return cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+}
+
+/** Fold lines longer than 75 octets, breaking between code points (RFC 5545 section 3.1). */
 function fold(line: string): string {
-  if (line.length <= 75) return line
   const parts: string[] = []
-  for (let i = 0; i < line.length; i += 74) parts.push((i ? ' ' : '') + line.slice(i, i + 74))
-  return parts.join('\r\n')
+  let current = ''
+  let octets = 0
+  for (const ch of line) {
+    const size = utf8Length(ch)
+    if (octets + size > (parts.length ? 74 : 75)) {
+      parts.push(current)
+      current = ''
+      octets = 0
+    }
+    current += ch
+    octets += size
+  }
+  parts.push(current)
+  return parts.map((part, i) => (i ? ` ${part}` : part)).join('\r\n')
 }
 
 /** A single VEVENT calendar file. */
