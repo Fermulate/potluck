@@ -220,7 +220,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         id={formId}
         onSubmit={onSubmit}
         noValidate
-        className="grid gap-x-10 gap-y-8 px-4 py-6 md:px-8 md:py-8 lg:grid-cols-2 lg:grid-rows-[auto_1fr]"
+        className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 px-4 py-6 md:px-8 md:py-8 lg:grid-cols-2 lg:grid-rows-[auto_1fr]"
       >
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
           <div className="flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5">

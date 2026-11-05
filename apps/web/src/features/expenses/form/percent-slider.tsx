@@ -8,6 +8,8 @@ import { FULL, moveBoundary } from './split-state'
 export interface SliderPerson {
   id: string
   name: string
+  /** For the avatar initials; `name` may be "You". */
+  fullName?: string
   avatarSrc?: string | null
 }
 
@@ -100,11 +102,11 @@ export function PercentSlider({
               left: `${((s.start + s.value / 2) / FULL) * 100}%`,
               // A bigger slice gets a slightly bigger face.
               scale: s.value === 0 ? 0.7 : 0.9 + 0.35 * (s.value / FULL),
-              opacity: s.value === 0 ? 0.45 : 1,
+              opacity: s.value === 0 ? 0 : 1,
             }}
             transition={transition}
           >
-            <Avatar name={s.name} seed={s.id} src={s.avatarSrc} size="sm" ring />
+            <Avatar name={s.fullName ?? s.name} seed={s.id} src={s.avatarSrc} size="sm" ring />
           </motion.div>
         ))}
       </div>
@@ -122,9 +124,9 @@ export function PercentSlider({
             animate={{ width: `${(s.value / FULL) * 100}%` }}
             transition={dragging !== null || reduced ? { duration: 0 } : springs.snappy}
           >
-            {s.value >= 900 && (
+            {s.value >= 1200 && (
               <span aria-hidden className="truncate px-1 tabular text-sm font-bold">
-                {pct(s.value)}%
+                {Math.round(s.value / 100)}%
               </span>
             )}
           </motion.div>

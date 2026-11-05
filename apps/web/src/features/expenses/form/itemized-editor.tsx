@@ -37,7 +37,6 @@ export function ItemizedEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-mute">{t('expenses.itemizedEditor.hint')}</p>
       <ol className="flex flex-col gap-3">
         {draft.items.map((item, index) => {
           const label =
@@ -127,7 +126,7 @@ export function ItemizedEditor({
         {t('expenses.itemized.addItem')}
       </Button>
 
-      <dl className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 rounded-card bg-sunken p-4">
+      <dl className="grid grid-cols-[1fr_auto] items-center gap-y-2 rounded-card bg-sunken p-4">
         <dt className="text-sm text-mute">{t('expenses.itemized.subtotal')}</dt>
         <dd className="text-right tabular font-semibold">
           <Money cents={subtotal} currency={currency} tone="neutral" />
