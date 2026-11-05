@@ -35,6 +35,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET }}
+          SUPABASE_AUTH_EXTERNAL_APPLE_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_APPLE_SECRET }}
           SUPABASE_YES: '1'
         run: |
           supabase link --project-ref ${{ vars.SUPABASE_PROJECT_REF || 'mzotlkpghnrwbezcazld' }}

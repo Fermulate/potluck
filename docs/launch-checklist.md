@@ -4,16 +4,17 @@ What is live, what still needs a person with the right account, and how to finis
 
 ## Live now
 
-| Piece          | Where                                                                                                             |
-| -------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Web app (PWA)  | https://potluck.potluck-web.workers.dev (Cloudflare Workers static assets, `apps/web/wrangler.jsonc`)             |
-| User guide     | https://potluck-docs.potluck-web.workers.dev (repo `Fermulate/potluck-docs`)                                      |
-| Database       | Supabase project `mzotlkpghnrwbezcazld`, every migration in `supabase/migrations` applied                         |
-| Auth settings  | Site URL and redirect URLs pushed with `supabase config push` (`[remotes.production]` in `supabase/config.toml`)  |
-| Edge functions | `notify`, `fx-sync`, `ics-feed`, `delete-account`, with their secrets set                                         |
-| Vault entries  | `project_url` and `edge_secret`, so push notifications and the daily FX job fire                                  |
-| FX rates       | Backfilled from 2026-08-01, refreshed daily by pg_cron at 16:30 UTC                                               |
-| GitHub         | Branch protection on `main`, CODEOWNERS review, secret scanning with push protection, Dependabot security updates |
+| Piece          | Where                                                                                                                            |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Web app (PWA)  | https://potluck.potluck-web.workers.dev (Cloudflare Workers static assets, `apps/web/wrangler.jsonc`)                            |
+| User guide     | https://potluck-docs.potluck-web.workers.dev (repo `Fermulate/potluck-docs`)                                                     |
+| Database       | Supabase project `mzotlkpghnrwbezcazld`, every migration in `supabase/migrations` applied                                        |
+| Auth settings  | Site URL and redirect URLs pushed with `supabase config push` (`[remotes.production]` in `supabase/config.toml`)                 |
+| Edge functions | `notify`, `fx-sync`, `ics-feed`, `delete-account`, with their secrets set                                                        |
+| Vault entries  | `project_url` and `edge_secret`, so push notifications and the daily FX job fire                                                 |
+| FX rates       | Backfilled from 2026-08-01, refreshed daily by pg_cron at 16:30 UTC                                                              |
+| GitHub         | Branch protection on `main`, CODEOWNERS review, secret scanning with push protection, Dependabot security updates                |
+| Keepalive      | `keepalive.yml` pings the REST API daily (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` secrets) so the free project does not pause |
 
 ## Needs a person
 
@@ -44,11 +45,20 @@ Auth email uses Supabase's built-in sender, which is rate limited and meant for 
 
 ### 4. Sign in with Google or Apple
 
-Both buttons are hidden behind `app_config` flags (`google_auth`, `apple_auth`). To turn one on:
+Both buttons are hidden behind `app_config` flags (`google_auth`, `apple_auth`). Provider settings live in `supabase/config.toml`: every deploy runs `supabase config push`, which overwrites whatever was entered in the dashboard, so configure them in the file. To turn one on:
 
 1. Create the OAuth client in Google Cloud or Apple Developer with the redirect `https://mzotlkpghnrwbezcazld.supabase.co/auth/v1/callback`.
-2. Add the client id and secret under Authentication, Providers.
-3. `update public.app_config set value = 'true' where key = 'google_auth';`
+2. Add the client secret to the GitHub `production` environment as `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` (or `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`). The `migrate` job passes both to `supabase config push`.
+3. Under the `[remotes.production]` overrides in `supabase/config.toml`, add the provider (same shape with `apple` for Apple), then merge to `main`:
+
+   ```toml
+   [remotes.production.auth.external.google]
+   enabled = true
+   client_id = "<client id>"
+   secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+   ```
+
+4. `update public.app_config set value = 'true' where key = 'google_auth';` (or `apple_auth`).
 
 ### 5. Calendar import
 
