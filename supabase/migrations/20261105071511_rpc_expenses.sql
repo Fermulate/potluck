@@ -18,7 +18,7 @@
 -- Split rules: if every split has share_cents they are used as is (and must add
 -- up to amount_cents). Otherwise shares are derived: equal splits evenly,
 -- percent and shares split by weight. Leftover cents go to the largest
--- fractional remainders, ties broken by array order. exact and itemized always
+-- fractional remainders, ties broken by user id. exact and itemized always
 -- need share_cents.
 
 create or replace function private.compute_splits(amount bigint, kind public.split_type, splits jsonb)
@@ -34,6 +34,7 @@ declare
   weights numeric[];
   n int;
   explicit_n int;
+  scaled numeric[];
   total_weight numeric;
   total_shares bigint;
 begin
@@ -92,27 +93,31 @@ begin
     end if;
   end if;
 
-  select sum(w) into total_weight from unnest(weights) as w;
+  -- Weights are fixed point with 6 decimals, like packages/core.
+  scaled := array(select round(w * 1000000) from unnest(weights) as w);
+  select sum(w) into total_weight from unnest(scaled) as w;
 
-  if kind = 'percent' and total_weight <> 100 then
+  if kind = 'percent' and total_weight <> 100000000 then
     raise exception using message = 'percent_sum', detail = 'Percentages must add up to 100', errcode = '22023';
   end if;
   if total_weight <= 0 then
     raise exception using message = 'zero_shares', detail = 'At least one person needs a share', errcode = '22023';
   end if;
 
+  -- Largest remainder: floor(amount * w / sum) each, leftover cents to the
+  -- largest remainders, ties by user id.
   return query
   with raw as (
-    select t.u, t.w, t.ord, amount * t.w / total_weight as exact
-    from unnest(uids, weights) with ordinality as t (u, w, ord)
-  ),
-  floored as (
-    select r.*, floor(r.exact)::bigint as base, r.exact - floor(r.exact) as frac from raw r
+    select
+      t.u, t.w, t.sw, t.ord,
+      div(amount::numeric * t.sw, total_weight)::bigint as base,
+      mod(amount::numeric * t.sw, total_weight) as rem
+    from unnest(uids, weights, scaled) with ordinality as t (u, w, sw, ord)
   ),
   ranked as (
-    select f.*, row_number() over (order by f.frac desc, f.ord) as rn,
-           amount - sum(f.base) over () as leftover
-    from floored f
+    select r.*, row_number() over (order by r.rem desc, r.u) as rn,
+           amount - sum(r.base) over () as leftover
+    from raw r
   )
   select
     k.u,
