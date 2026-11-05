@@ -143,6 +143,29 @@ describe('coverage of core domain values', () => {
     ).toEqual([])
   })
 
+  it('labels every event status, RSVP status, and availability level', () => {
+    expect(
+      missingKeys([
+        ...['polling', 'scheduled', 'cancelled', 'done'].map((s) => `events.status.${s}`),
+        ...['going', 'maybe', 'declined'].map((s) => `rsvp.status.${s}`),
+        ...['yes', 'maybe'].map((level) => `availability.levels.${level}`),
+      ]),
+    ).toEqual([])
+  })
+
+  it('has plan screens: best time and timeline', () => {
+    expect(
+      missingKeys([
+        'bestTime.title',
+        'bestTime.score',
+        'bestTime.missing',
+        'bestTime.lockIn',
+        'timeline.title',
+        'timeline.empty.title',
+      ]),
+    ).toEqual([])
+  })
+
   it('names and describes every group role', () => {
     expect(
       missingKeys(
