@@ -9,7 +9,8 @@ select tables_are('public', array[
   'expenses', 'expense_splits', 'recurring_expenses', 'settlements', 'fx_rates',
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
-  'activity', 'comments', 'notifications', 'push_tokens', 'app_config'
+  'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
+  'calendar_feed_tokens'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances'], 'public has the balances view');

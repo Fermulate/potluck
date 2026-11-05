@@ -284,6 +284,33 @@ export type Database = {
           },
         ]
       }
+      calendar_feed_tokens: {
+        Row: {
+          created_at: string
+          token: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          token: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          token?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'calendar_feed_tokens_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: true
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       comments: {
         Row: {
           author_id: string
@@ -1156,6 +1183,7 @@ export type Database = {
           yes_count: number
         }[]
       }
+      calendar_feed_token: { Args: { rotate?: boolean }; Returns: string }
       cancel_event: {
         Args: { event_id: string }
         Returns: {
