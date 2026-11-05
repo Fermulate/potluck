@@ -32,7 +32,13 @@ import { supabase } from '@/lib/supabase'
 import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
-import { avatarUrl, moneyErrorMessage, useMoneyGroup, useTimeZone } from '../money-data'
+import {
+  avatarUrl,
+  invalidateMoney,
+  moneyErrorMessage,
+  useMoneyGroup,
+  useTimeZone,
+} from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
 import { receiptExtension } from './receipt'
@@ -160,9 +166,8 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       })
     },
     onSuccess: (expense) => {
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
+      invalidateMoney(queryClient, group.id)
       void queryClient.invalidateQueries({ queryKey: moneyKeys.expense(expense.id) })
-      void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
       toast.success(editing ? t('expenses.updated') : t('expenses.saved'))
       props.onDone(expense.id)
     },
