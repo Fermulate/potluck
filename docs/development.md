@@ -4,12 +4,12 @@ Everything you need to run Potluck on your machine and change it. For how change
 
 ## Prerequisites
 
-| Tool    | Version                       | Notes                                                                    |
-| ------- | ----------------------------- | ------------------------------------------------------------------------ |
-| Node.js | 22.12 or newer (`.nvmrc`: 22) | `engine-strict=true` in `.npmrc`, so an older Node fails the install     |
-| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                               |
-| Docker  | recent Docker Desktop or Engine | runs the local Supabase stack                                            |
-| Git     | any recent                    | on Windows, see [Windows notes](#windows-notes)                          |
+| Tool    | Version                          | Notes                                                                |
+| ------- | -------------------------------- | -------------------------------------------------------------------- |
+| Node.js | 22.12 or newer (`.nvmrc`: 22)    | `engine-strict=true` in `.npmrc`, so an older Node fails the install |
+| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                           |
+| Docker  | recent Docker Desktop or Engine  | runs the local Supabase stack                                        |
+| Git     | any recent                       | on Windows, see [Windows notes](#windows-notes)                      |
 
 The Supabase CLI comes in as a dev dependency, so `pnpm db:start` works without a global install. `npx supabase <command>` runs the same binary for commands without a script.
 
@@ -30,12 +30,12 @@ pnpm dev                      # http://localhost:5173
 
 The web app reads `.env.local` from the repo root (`envDir` in `apps/web/vite.config.ts`). Only `VITE_*` variables reach the browser, and everything in them is public.
 
-| Variable                        | Local value                                      | What it is                                                     |
-| ------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                         | Supabase API URL                                               |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do            |
-| `VITE_APP_URL`                  | `http://localhost:5173`                          | base URL for links the app builds (invites, redirects)         |
-| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                           | web push public key. Leave empty to turn push off locally      |
+| Variable                        | Local value                                        | What it is                                                |
+| ------------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                          |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do        |
+| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects)    |
+| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally |
 
 `.env` and `.env.*` are git-ignored except `.env.example`. Server-side secrets never go in these files; see [deployment.md](deployment.md#edge-function-secrets).
 
@@ -43,12 +43,12 @@ The web app reads `.env.local` from the repo root (`envDir` in `apps/web/vite.co
 
 `supabase/config.toml` drives the local stack. Ports:
 
-| Service                          | URL                                                       |
-| -------------------------------- | --------------------------------------------------------- |
-| API (PostgREST, Auth, Storage)   | http://127.0.0.1:54321                                    |
-| Postgres                         | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
-| Studio                           | http://127.0.0.1:54323                                    |
-| Email catcher (sign-up and magic link mail) | http://127.0.0.1:54324                         |
+| Service                                     | URL                                                       |
+| ------------------------------------------- | --------------------------------------------------------- |
+| API (PostgREST, Auth, Storage)              | http://127.0.0.1:54321                                    |
+| Postgres                                    | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
+| Studio                                      | http://127.0.0.1:54323                                    |
+| Email catcher (sign-up and magic link mail) | http://127.0.0.1:54324                                    |
 
 Local auth differs from production on purpose: email confirmation is off, the minimum password length is 6, and MFA is off. The production values are under `[remotes.production]` in the same file.
 
@@ -90,14 +90,14 @@ To exercise the hooks end to end, create the two Vault secrets in your local dat
 
 `supabase/seed.sql` writes through the real RPCs, so balances, activity and notifications look like production. All dates are relative to now.
 
-| Email               | Name       | Role                                  |
-| ------------------- | ---------- | ------------------------------------- |
-| `ava@potluck.test`  | Ava Chen   | owns Hike crew                        |
-| `ben@potluck.test`  | Ben Ortiz  | owns Roommates, admin of Hike crew    |
-| `cleo@potluck.test` | Cleo Park  | admin of Roommates                    |
-| `dev@potluck.test`  | Dev Patel  | admin of Dim sum club                 |
-| `eli@potluck.test`  | Eli Novak  | member                                |
-| `fay@potluck.test`  | Fay Okafor | owns Dim sum club, 1:1 with Ava       |
+| Email               | Name       | Role                               |
+| ------------------- | ---------- | ---------------------------------- |
+| `ava@potluck.test`  | Ava Chen   | owns Hike crew                     |
+| `ben@potluck.test`  | Ben Ortiz  | owns Roommates, admin of Hike crew |
+| `cleo@potluck.test` | Cleo Park  | admin of Roommates                 |
+| `dev@potluck.test`  | Dev Patel  | admin of Dim sum club              |
+| `eli@potluck.test`  | Eli Novak  | member                             |
+| `fay@potluck.test`  | Fay Okafor | owns Dim sum club, 1:1 with Ava    |
 
 Password for all of them: `potluck-demo`. Open http://localhost:5173/join/hikecrew-demo to try the invite flow. The seed also has about 30 expenses across every split type (one in EUR), settlements, a polling hike with availability from five people and an open request, and a scheduled taco night with RSVPs.
 
@@ -105,18 +105,18 @@ Password for all of them: `potluck-demo`. Open http://localhost:5173/join/hikecr
 
 Run from the repo root. Turbo runs the per-package scripts in dependency order and caches what it can.
 
-| Command          | What it does                                                    |
-| ---------------- | --------------------------------------------------------------- |
-| `pnpm dev`       | Vite dev server for `apps/web`                                  |
-| `pnpm build`     | production build of every package that has one                 |
-| `pnpm typecheck` | `tsc --noEmit` in every workspace                               |
-| `pnpm lint`      | ESLint over the repo, zero warnings allowed                     |
-| `pnpm test`      | Vitest in every workspace                                       |
-| `pnpm format`    | Prettier over the repo                                          |
-| `pnpm db:start`  | start local Supabase                                            |
-| `pnpm db:reset`  | rebuild the local database from migrations and seed            |
-| `pnpm db:types`  | regenerate `packages/api/src/database.types.ts`                 |
-| `pnpm db:test`   | run the pgTAP tests in `supabase/tests`                         |
+| Command          | What it does                                        |
+| ---------------- | --------------------------------------------------- |
+| `pnpm dev`       | Vite dev server for `apps/web`                      |
+| `pnpm build`     | production build of every package that has one      |
+| `pnpm typecheck` | `tsc --noEmit` in every workspace                   |
+| `pnpm lint`      | ESLint over the repo, zero warnings allowed         |
+| `pnpm test`      | Vitest in every workspace                           |
+| `pnpm format`    | Prettier over the repo                              |
+| `pnpm db:start`  | start local Supabase                                |
+| `pnpm db:reset`  | rebuild the local database from migrations and seed |
+| `pnpm db:types`  | regenerate `packages/api/src/database.types.ts`     |
+| `pnpm db:test`   | run the pgTAP tests in `supabase/tests`             |
 
 Filter to one package with `pnpm --filter @potluck/core test`, or run Vitest in watch mode inside a package with `pnpm vitest`.
 
@@ -166,15 +166,15 @@ Never change the schema in the Supabase dashboard. Production is only changed by
 
 Tests live in `supabase/tests/*.test.sql` and run in file name order. `000_setup.test.sql` installs helpers in a `tests` schema:
 
-| Helper                                               | Does                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------- |
-| `tests.create_user('alice')`                         | auth user `alice@test.local`, returns the id            |
-| `tests.uid('alice')`                                 | that user's id                                          |
-| `tests.login('alice')` / `tests.login_anon()`        | switch to the `authenticated` or `anon` role with JWT claims |
-| `reset role`                                         | back to the superuser                                   |
+| Helper                                                         | Does                                                                          |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `tests.create_user('alice')`                                   | auth user `alice@test.local`, returns the id                                  |
+| `tests.uid('alice')`                                           | that user's id                                                                |
+| `tests.login('alice')` / `tests.login_anon()`                  | switch to the `authenticated` or `anon` role with JWT claims                  |
+| `reset role`                                                   | back to the superuser                                                         |
 | `tests.group_with(owner, members[], admins[], name, currency)` | builds a group directly, returns its id. Everything after `owner` is optional |
-| `tests.remember('g', id)` / `tests.id('g')`          | stash ids between statements                            |
-| `tests.people('alice', 'bob')`                       | split payload `[{user_id}, ...]`                        |
+| `tests.remember('g', id)` / `tests.id('g')`                    | stash ids between statements                                                  |
+| `tests.people('alice', 'bob')`                                 | split payload `[{user_id}, ...]`                                              |
 
 A test file is one transaction that rolls back:
 
