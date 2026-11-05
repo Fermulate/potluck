@@ -71,7 +71,7 @@ export function useEventRealtime(eventId: string, groupId: string | undefined) {
   }, [eventId, groupId, queryClient])
 }
 
-export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+export type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'failed'
 
 function writeCache(
   queryClient: QueryClient,
@@ -101,10 +101,11 @@ const RETRIES = 3
 const RETRY_DELAY = 1_000
 
 /**
- * Local, optimistic copy of the viewer's availability. Every change shows immediately (the
- * heatmap reads the same cache) and is saved after a short pause. Saves run one at a time so
- * the server always ends on the latest map; a failed save is retried with backoff. A pending
- * save is flushed when the component unmounts or the tab is hidden.
+ * Local, optimistic copy of the viewer's availability. Until the first paint it mirrors the
+ * server rows; every change then shows immediately (the heatmap reads the same cache) and is
+ * saved after a short pause. Saves run one at a time so the server always ends on the latest
+ * map; a failed save is retried with backoff, then marked failed. A pending save is flushed
+ * when the owner unmounts or the tab is hidden, so mount this where it outlives the painter.
  */
 export function useMyAvailability(
   eventId: string,
@@ -112,7 +113,8 @@ export function useMyAvailability(
   initial: Map<string, PaintLevel>,
 ) {
   const queryClient = useQueryClient()
-  const [value, setValue] = useState(initial)
+  const [edits, setEdits] = useState<Map<string, PaintLevel> | null>(null)
+  const value = edits ?? initial
   const [state, setState] = useState<SaveState>('idle')
   const pending = useRef<Map<string, PaintLevel> | null>(null)
   const inFlight = useRef<Promise<boolean> | null>(null)
@@ -147,12 +149,13 @@ export function useMyAvailability(
       } catch (error) {
         // Keep the failed copy unless something newer is already waiting.
         if (!pending.current) pending.current = next
-        setState('error')
+        const willRetry = timer.current !== undefined || attempts.current < RETRIES
+        setState(willRetry ? 'error' : 'failed')
         toast.error(planErrorMessage(error), {
           id: `availability-${eventId}`,
           action: { label: t('common.retry'), onClick: () => void saveRef.current() },
         })
-        if (attempts.current < RETRIES && !timer.current) {
+        if (timer.current === undefined && attempts.current < RETRIES) {
           attempts.current += 1
           timer.current = window.setTimeout(
             () => void saveRef.current(),
@@ -174,7 +177,7 @@ export function useMyAvailability(
 
   const change = useCallback(
     (next: Map<string, PaintLevel>) => {
-      setValue(next)
+      setEdits(next)
       writeCache(queryClient, eventId, userId, next)
       pending.current = next
       attempts.current = 0

@@ -139,7 +139,7 @@ describe('useMyAvailability', () => {
     expect(cached()).toEqual([slotA])
   })
 
-  it('stops retrying after a few attempts', async () => {
+  it('gives up after a few attempts and says so', async () => {
     const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
     act(() => result.current.change(map([slotA, 'yes'])))
     act(() => vi.advanceTimersByTime(700))
@@ -147,10 +147,27 @@ describe('useMyAvailability', () => {
     for (let i = 0; i < 4; i++) {
       calls[i]!.deferred.reject(new Error('offline'))
       await flush()
+      expect(result.current.state).toBe(i < 3 ? 'error' : 'failed')
       act(() => vi.advanceTimersByTime(10_000))
       await flush()
     }
     expect(calls).toHaveLength(4)
-    expect(result.current.state).toBe('error')
+    expect(result.current.state).toBe('failed')
+  })
+
+  it('mirrors the server rows until the first paint, then keeps the edits', async () => {
+    const { result, rerender } = renderHook(
+      ({ initial }: { initial: Map<string, PaintLevel> }) =>
+        useMyAvailability(EVENT, 'me', initial),
+      { wrapper, initialProps: { initial: map() } },
+    )
+    expect([...result.current.value.keys()]).toEqual([])
+
+    rerender({ initial: map([slotA, 'yes']) })
+    expect([...result.current.value.keys()]).toEqual([slotA])
+
+    act(() => result.current.change(map([slotB, 'maybe'])))
+    rerender({ initial: map([slotA, 'yes']) })
+    expect([...result.current.value.keys()]).toEqual([slotB])
   })
 })

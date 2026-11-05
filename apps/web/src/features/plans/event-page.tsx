@@ -6,7 +6,6 @@ import {
   scheduleEvent,
   PlanError,
   type PlanAvailabilityRequest,
-  type PlanAvailabilityRow,
   type PlanBestSlot,
   type PlanEventWithGroup,
   type PlanMember,
@@ -187,6 +186,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
 
       {event.status === 'polling' ? (
         <PollingBody
+          key={event.id}
           event={event}
           members={members}
           viewerId={viewerId}
@@ -436,6 +436,8 @@ function PollingBody({
     [model, busyQ.data],
   )
   const rows = availQ.data
+  const initial = useMemo(() => mySlots(rows ?? [], viewerId), [rows, viewerId])
+  const mine = useMyAvailability(event.id, viewerId, initial)
   const heatRows = useMemo<HeatRow[]>(
     () =>
       (rows ?? []).map((r) => ({ userId: r.user_id, slot: slotKey(r.slot_start), level: r.level })),
@@ -503,14 +505,7 @@ function PollingBody({
           {!rows ? (
             <Skeleton className="h-[24rem]" />
           ) : view === 'mine' ? (
-            <MyPainter
-              key={event.id}
-              event={event}
-              model={model}
-              rows={rows}
-              viewerId={viewerId}
-              busy={busy}
-            />
+            <MyPainter event={event} model={model} busy={busy} {...mine} />
           ) : (
             <AvailabilityHeatmap
               model={model}
@@ -593,18 +588,15 @@ function NudgeBlock({
 function MyPainter({
   event,
   model,
-  rows,
-  viewerId,
   busy,
+  value,
+  change,
+  state,
 }: {
   event: PlanEventWithGroup
   model: GridModel
-  rows: PlanAvailabilityRow[]
-  viewerId: string
   busy: ReadonlySet<string>
-}) {
-  const initial = useMemo(() => mySlots(rows, viewerId), [rows, viewerId])
-  const { value, change, state } = useMyAvailability(event.id, viewerId, initial)
+} & ReturnType<typeof useMyAvailability>) {
   return (
     <div className="flex flex-col gap-2">
       <AvailabilityPainter
@@ -627,11 +619,17 @@ function SaveIndicator({ state }: { state: SaveState }) {
         ? t('availability.savedState')
         : state === 'error'
           ? t('events.errors.saveFailed')
-          : ''
+          : state === 'failed'
+            ? t('events.errors.saveGaveUp')
+            : ''
   return (
     <p
       role="status"
-      className={state === 'error' ? 'text-xs font-semibold text-tomato-ink' : 'text-xs text-mute'}
+      className={
+        state === 'error' || state === 'failed'
+          ? 'text-xs font-semibold text-tomato-ink'
+          : 'text-xs text-mute'
+      }
     >
       {label}
     </p>

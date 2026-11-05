@@ -32,9 +32,14 @@ export function PlansPage() {
   const polling = visible(rows.filter((r) => r.status === 'polling'))
   const needsTimes = polling.filter((r) => r.needsTimes)
   const waiting = polling.filter((r) => !r.needsTimes)
-  const upcoming = visible(rows.filter((r) => r.status === 'scheduled' && r.startsAt))
+  const scheduled = rows.filter((r) => r.status === 'scheduled' && r.startsAt)
+  const endedBy = (r: PlanRowData) => Date.parse(r.endsAt ?? r.startsAt!) < now
+  const upcoming = visible(scheduled.filter((r) => !endedBy(r)))
   const days = groupByDay(upcoming, (r) => r.startsAt!, { timeZone, now })
-  const pastRows = visible((past.data ?? []).map(fromEvent))
+  const ended = scheduled
+    .filter(endedBy)
+    .sort((a, b) => Date.parse(b.startsAt!) - Date.parse(a.startsAt!))
+  const pastRows = visible([...ended, ...(past.data ?? []).map(fromEvent)])
   const todayKey = dayKey(now, timeZone)
 
   const loading = timeline.isPending
