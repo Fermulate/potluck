@@ -1,11 +1,11 @@
--- Activity feed, written by triggers so every client (and cron) produces the
--- same entries. Verbs:
+-- Activity feed, written by triggers (and request_availability) so every
+-- client and cron produce the same entries. Verbs:
 --   group.created, group.updated
 --   member.joined, member.left, member.removed, member.role_changed
 --   expense.created, expense.updated, expense.deleted, expense.restored
 --   settlement.created, settlement.deleted
---   event.created, event.scheduled, event.rescheduled, event.cancelled
---   comment.created
+--   event.created, event.scheduled (also on reschedule), event.cancelled
+--   availability.requested, comment.created
 
 create or replace function private.log_activity(
   gid uuid,
@@ -170,10 +170,9 @@ declare
 begin
   if tg_op = 'INSERT' then
     verb := 'event.created';
-  elsif new.status = 'scheduled' and old.status <> 'scheduled' then
+  elsif new.status = 'scheduled'
+        and (old.status <> 'scheduled' or new.starts_at is distinct from old.starts_at) then
     verb := 'event.scheduled';
-  elsif new.status = 'scheduled' and new.starts_at is distinct from old.starts_at then
-    verb := 'event.rescheduled';
   elsif new.status = 'cancelled' and old.status <> 'cancelled' then
     verb := 'event.cancelled';
   else
