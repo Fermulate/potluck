@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@potluck/api": "workspace:*",
     "@potluck/core": "workspace:*",
     "@potluck/i18n": "workspace:*",
