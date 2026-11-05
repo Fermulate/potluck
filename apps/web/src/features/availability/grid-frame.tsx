@@ -67,7 +67,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
           const hour = rowHour(model, r) ?? time
           const onHour = row.minute % 60 === 0
           return (
-            <div role="row" key={row.minute} className="contents">
+            <div role="row" key={r} className="contents">
               <span
                 role="rowheader"
                 className="sticky left-0 z-10 -mt-[0.45rem] bg-card pr-1.5 text-right tabular text-[0.6875rem] leading-none font-medium whitespace-nowrap text-mute"

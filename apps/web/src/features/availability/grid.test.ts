@@ -30,16 +30,38 @@ describe('buildGridModel', () => {
     expect(model.slots).toHaveLength(8)
   })
 
-  it('keeps the evening in clock order when the viewer zone changes DST mid poll', () => {
+  it('keeps each poll hour on one row when the viewer zone changes DST mid poll', () => {
     // London leaves DST on Oct 25 2026, New York on Nov 1: 18:00 New York is 23:00 London
-    // on Oct 20 but 22:00 London on Oct 26.
+    // on Oct 20 but 22:00 London on Oct 26. Both sit on the 18:00 row.
     const model = buildGridModel(
       { ...event, window_start: '2026-10-20', window_end: '2026-10-30' },
       'Europe/London',
     )
-    expect(model.rows.map((r) => r.minute)).toEqual([1320, 1350, 1380, 1410, 0, 30])
-    expect(model.index.get('2026-10-20T22:00:00.000Z')).toEqual({ row: 2, col: 0 })
+    expect(model.rows.map((r) => r.minute)).toEqual([1380, 1410, 0, 30])
+    expect(model.index.get('2026-10-20T22:00:00.000Z')).toEqual({ row: 0, col: 0 })
     expect(model.index.get('2026-10-26T22:00:00.000Z')).toEqual({ row: 0, col: 6 })
+    expect(model.slots).toHaveLength(11 * 4)
+  })
+
+  it('keeps every slot when the viewer clock repeats an hour on fall back night', () => {
+    // London falls back at 01:00Z on Oct 25 2026: 20:00 New York is 01:00 BST and 21:00
+    // New York is 01:00 GMT, both minute 60 on the viewer clock.
+    const model = buildGridModel(
+      {
+        ...event,
+        window_start: '2026-10-24',
+        window_end: '2026-10-24',
+        day_start_minute: 18 * 60,
+        day_end_minute: 22 * 60,
+      },
+      'Europe/London',
+    )
+    expect(model.slots).toHaveLength(8)
+    expect(model.index.get('2026-10-25T00:00:00.000Z')).toEqual({ row: 4, col: 0 })
+    expect(model.index.get('2026-10-25T01:00:00.000Z')).toEqual({ row: 6, col: 0 })
+    expect(model.rows[4]!.minute).toBe(60)
+    expect(model.rows[6]!.minute).toBe(60)
+    expect(model.cells.flat().filter(Boolean)).toHaveLength(8)
   })
 })
 
