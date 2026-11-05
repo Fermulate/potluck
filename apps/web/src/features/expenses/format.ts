@@ -53,3 +53,13 @@ export function groupByDay<T>(items: readonly T[], dayOfItem: (item: T) => strin
   }
   return sections
 }
+
+/** Title for a group, using the other person's name for 1:1 groups. */
+export function groupTitle(
+  group: { name: string; is_direct: boolean; members: { id: string; display_name: string }[] },
+  me: string,
+) {
+  if (!group.is_direct) return group.name
+  const other = group.members.find((m) => m.id !== me)
+  return other ? other.display_name : group.name
+}

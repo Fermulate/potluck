@@ -1,3 +1,4 @@
+import type * as Api from '@potluck/api'
 import { moneyKeys, settleUp } from '@potluck/api'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,7 +8,7 @@ import { SettleFlow } from './settle-flow'
 vi.mock('@/lib/supabase', () => import('../expenses/fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@potluck/api')>()),
+  ...(await importOriginal<typeof Api>()),
   settleUp: vi.fn(async () => ({ id: 's1' })),
 }))
 

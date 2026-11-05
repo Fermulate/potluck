@@ -7,6 +7,13 @@ import {
   splitShares,
   type SplitResult,
 } from '@potluck/core'
+import { t } from '@potluck/i18n'
+
+/** The reason a split preview failed, as a sentence, or null when it is fine. */
+export function splitErrorText(result: SplitResult): string | null {
+  if (result.ok) return null
+  return t(`errors.split.${result.error.code}`)
+}
 
 /** Percentages are edited in basis points (1% = 100) so they always add up to exactly 100%. */
 export const FULL = 10_000

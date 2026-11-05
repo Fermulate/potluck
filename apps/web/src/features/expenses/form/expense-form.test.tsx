@@ -1,3 +1,4 @@
+import type * as Api from '@potluck/api'
 import { createExpense } from '@potluck/api'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,7 +8,7 @@ import { ExpenseForm } from './expense-form'
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@potluck/api')>()),
+  ...(await importOriginal<typeof Api>()),
   createExpense: vi.fn(async () => ({ id: 'new-expense' })),
 }))
 

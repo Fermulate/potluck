@@ -30,18 +30,20 @@ import { useId, useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { categoryLabel, todayIn } from '../format'
-import { groupTitle } from '../group-picker'
+import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
 import { avatarUrl, moneyErrorMessage, useMoneyGroup, useTimeZone } from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
-import { ReceiptField, receiptExtension, type ReceiptValue } from './receipt-field'
-import { SplitEditor, splitErrorText } from './split-editor'
+import { receiptExtension } from './receipt'
+import { ReceiptField, type ReceiptValue } from './receipt-field'
+import { SplitEditor } from './split-editor'
 import {
   draftFromExpense,
   effectiveAmount,
   initialDraft,
   previewSplit,
+  splitErrorText,
   splitsPayload,
   type SplitDraft,
 } from './split-state'

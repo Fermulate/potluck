@@ -1,4 +1,5 @@
 import { moneyQueries, type MoneyGroup } from '@potluck/api'
+import { groupTitle } from './format'
 import { t } from '@potluck/i18n'
 import { AvatarStack, Card, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
@@ -6,13 +7,6 @@ import { ChevronRight } from 'lucide-react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { avatarUrl, firstName } from './money-data'
-
-/** Title for a group, using the other person's name for 1:1 groups. */
-export function groupTitle(group: Pick<MoneyGroup, 'name' | 'is_direct' | 'members'>, me: string) {
-  if (!group.is_direct) return group.name
-  const other = group.members.find((m) => m.id !== me)
-  return other ? other.display_name : group.name
-}
 
 /** Big tappable list of the viewer's groups, for flows started without one. */
 export function GroupPicker({

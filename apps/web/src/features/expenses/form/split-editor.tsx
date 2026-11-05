@@ -1,5 +1,5 @@
 import type { MoneyMember, SplitTypeValue } from '@potluck/api'
-import { SPLIT_TYPES, type SplitResult } from '@potluck/core'
+import { SPLIT_TYPES } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
 import { Money } from '../money'
@@ -37,11 +37,6 @@ export interface SplitEditorProps {
 
 function displayName(member: MoneyMember, viewerId: string) {
   return member.id === viewerId ? t('common.you') : firstName(member.display_name)
-}
-
-export function splitErrorText(result: SplitResult): string | null {
-  if (result.ok) return null
-  return t(`errors.split.${result.error.code}`)
 }
 
 export function SplitEditor({

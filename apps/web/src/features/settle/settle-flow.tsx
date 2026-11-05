@@ -20,7 +20,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { useDebts } from '@/features/balances/use-debts'
-import { groupTitle } from '@/features/expenses/group-picker'
+import { groupTitle } from '@/features/expenses/format'
 import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import {
   avatarUrl,
@@ -328,17 +328,14 @@ export function SettledMoment({
   const reduced = usePrefersReducedMotion()
   const start = Math.max(done.owedBefore, done.paid)
   const remaining = Math.max(0, done.owedBefore - done.paid)
-  const [shown, setShown] = useState(reduced ? remaining : start)
-  const [fire, setFire] = useState(0)
-  const name = firstName(done.to.display_name)
   const settled = remaining === 0
+  // Reduced motion: show the result straight away (the haptic still fires).
+  const [shown, setShown] = useState(reduced ? remaining : start)
+  const [fire, setFire] = useState(reduced && settled ? 1 : 0)
+  const name = firstName(done.to.display_name)
 
   useEffect(() => {
-    if (reduced) {
-      setShown(remaining)
-      if (settled) setFire((n) => n + 1)
-      return
-    }
+    if (reduced) return
     const controls = animate(start, remaining, {
       duration: 1.1,
       delay: 0.25,
