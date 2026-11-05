@@ -15,3 +15,9 @@
     animation: none !important;
   }
 }
+
+/* Edge adds its own password reveal button; ours already sits in the field. */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}

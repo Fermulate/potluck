@@ -170,7 +170,7 @@ export function OnboardingPage({ userId, redirect }: { userId: string; redirect:
     <main id="main" className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-6 pb-10">
       <Wordmark />
       <div className="flex flex-1 flex-col justify-center gap-7 py-10">
-        <Steps step={step} total={goingSomewhere ? 1 : 2} />
+        {!goingSomewhere && <Steps step={step} total={2} />}
         {step === 1 ? (
           <>
             <header>
