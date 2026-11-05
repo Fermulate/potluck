@@ -2,7 +2,8 @@ import { t } from '@potluck/i18n'
 import { cn, HeatCell, SegmentedControl } from '@potluck/ui'
 import { Eraser, Paintbrush, CircleHelp } from 'lucide-react'
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { cellName, GridFrame } from './grid-frame'
+import { GridFrame } from './grid-frame'
+import { cellName } from './grid-labels'
 import { slotsInRect, step, type GridModel, type PaintLevel } from './grid'
 
 export type Brush = PaintLevel | 'erase'
@@ -69,7 +70,12 @@ export function AvailabilityPainter({
     return value.get(slot) === brush ? null : brush
   }
 
-  const applyRect = (base: ReadonlyMap<string, PaintLevel>, a: Pos, b: Pos, paint: PaintLevel | null) => {
+  const applyRect = (
+    base: ReadonlyMap<string, PaintLevel>,
+    a: Pos,
+    b: Pos,
+    paint: PaintLevel | null,
+  ) => {
     const next = new Map(base)
     for (const slot of slotsInRect(model, a, b)) {
       if (paint) next.set(slot, paint)
@@ -198,7 +204,7 @@ export function AvailabilityPainter({
             },
           ]}
         />
-        <span className="text-xs font-semibold text-mute tabular" aria-live="polite">
+        <span className="tabular text-xs font-semibold text-mute" aria-live="polite">
           {t('availability.mySlots', { count })}
         </span>
       </div>

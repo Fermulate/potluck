@@ -137,7 +137,10 @@ export function busySlots(
 ): Set<string> {
   const out = new Set<string>()
   if (blocks.length === 0) return out
-  const ranges = blocks.map((b) => [Date.parse(slotKey(b.starts_at)), Date.parse(slotKey(b.ends_at))])
+  const ranges = blocks.map((b) => [
+    Date.parse(slotKey(b.starts_at)),
+    Date.parse(slotKey(b.ends_at)),
+  ])
   const length = slotMinutes * 60_000
   for (const slot of slots) {
     const start = Date.parse(slot)

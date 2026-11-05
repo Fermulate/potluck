@@ -1,30 +1,7 @@
-import { formatTime } from '@potluck/i18n'
 import { cn } from '@potluck/ui'
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react'
 import type { GridModel } from './grid'
-
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' })
-const dayNum = new Intl.DateTimeFormat(undefined, { day: 'numeric', timeZone: 'UTC' })
-const month = new Intl.DateTimeFormat(undefined, { month: 'short', timeZone: 'UTC' })
-const fullDay = new Intl.DateTimeFormat(undefined, {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-  timeZone: 'UTC',
-})
-
-/** "Friday, June 12, 7:30 PM" for a cell's accessible name. */
-export function cellName(model: GridModel, slot: string): string {
-  const pos = model.index.get(slot)
-  const day = pos ? model.days[pos.col] : undefined
-  const time = formatTime(slot, { timeZone: model.timeZone })
-  return day ? `${fullDay.format(day.date)}, ${time}` : time
-}
-
-export function rowTime(model: GridModel, row: number): string | null {
-  const slot = model.cells[row]?.find((s) => s)
-  return slot ? formatTime(slot, { timeZone: model.timeZone }) : null
-}
+import { dayNum, fullDay, month, rowTime, weekday } from './grid-labels'
 
 export interface GridFrameProps extends HTMLAttributes<HTMLDivElement> {
   model: GridModel
@@ -44,7 +21,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
 ) {
   const columns = `3.25rem repeat(${model.days.length}, minmax(2.5rem, 1fr))`
   return (
-    <div className="scrollbar-none -mx-4 overflow-x-auto px-4 pb-1">
+    <div className="-mx-4 scrollbar-none overflow-x-auto px-4 pb-1">
       <div
         ref={ref}
         role="grid"
@@ -94,7 +71,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
             <div role="row" key={row.minute} className="contents">
               <span
                 role="rowheader"
-                className="sticky left-0 z-10 -mt-[0.45rem] bg-paper pr-1.5 text-right text-[0.6875rem] leading-none font-medium text-mute tabular"
+                className="sticky left-0 z-10 -mt-[0.45rem] bg-paper pr-1.5 text-right tabular text-[0.6875rem] leading-none font-medium text-mute"
                 style={{ height: `${rowHeight}rem` }}
               >
                 <span aria-hidden={!onHour} className={cn(!onHour && 'sr-only')}>
