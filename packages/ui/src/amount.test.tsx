@@ -12,6 +12,10 @@ describe('formatMoney', () => {
     expect(formatMoney(1500, 'JPY', { locale: 'en-US' })).toBe('¥1,500')
   })
 
+  it('never shows a minus on zero', () => {
+    expect(formatMoney(-0, 'USD', { locale: 'en-US' })).toBe('$0.00')
+  })
+
   it('can always show the sign', () => {
     expect(formatMoney(2500, 'EUR', { locale: 'en-US', sign: 'always' })).toBe('+€25.00')
   })
@@ -33,6 +37,12 @@ describe('Amount', () => {
   it('marks positive amounts as owed to you', () => {
     const { container } = render(<Amount cents={800} currency="USD" locale="en-US" />)
     expect(container.firstElementChild).toHaveAttribute('data-tone', 'owed')
+  })
+
+  it('shows a negated zero without a minus', () => {
+    const { container } = render(<Amount cents={-0} currency="USD" locale="en-US" />)
+    expect(container.firstElementChild).toHaveTextContent('$0.00')
+    expect(container.firstElementChild).not.toHaveTextContent('−')
   })
 
   it('treats zero as neutral', () => {
