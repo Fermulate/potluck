@@ -85,6 +85,40 @@ A native app (Expo) is planned. Everything below the screens is shared:
 | `packages/ui`     | web React components                                                        | web          |
 | `apps/web`        | web screens and routing                                                     | web          |
 
+### Package dependencies
+
+Arrows point from a package to what it imports. Shared packages never import `@potluck/ui`, `@potluck/web` or `react-dom`; ESLint (`no-restricted-imports`, `no-restricted-globals` for `window`, `document`, `localStorage`) and a DOM-free `lib` in their tsconfig enforce it.
+
+```mermaid
+flowchart BT
+  core["@potluck/core<br/>zod, date-fns-tz"]
+  i18n["@potluck/i18n<br/>Intl only"]
+  tokens["@potluck/tokens"]
+  api["@potluck/api<br/>supabase-js, TanStack Query"]
+  ui["@potluck/ui<br/>React DOM"]
+  web["@potluck/web<br/>Vite, TanStack Router"]
+  native["apps/native (planned, Expo)"]
+
+  i18n --> core
+  ui --> tokens
+  web --> core
+  web --> i18n
+  web --> tokens
+  web --> api
+  web --> ui
+  native -.-> core
+  native -.-> i18n
+  native -.-> tokens
+  native -.-> api
+
+  classDef shared fill:#eef6ee,stroke:#4a7a4a
+  classDef webonly fill:#f6eee6,stroke:#8a5a2a
+  class core,i18n,tokens,api shared
+  class ui,web webonly
+```
+
+`packages/api` does not depend on `core`: it only knows the database types. Packages export TypeScript source (`"exports": { ".": "./src/index.ts" }`), so there is no build step between them; Vite and Vitest compile them on the fly.
+
 ## Ground rules
 
 - Money is stored as integer minor units (`bigint` cents). Never floats.
