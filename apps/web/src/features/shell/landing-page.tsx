@@ -32,7 +32,7 @@ function Feature({
       >
         {icon}
       </span>
-      <h3 className="font-display text-3xl leading-none">{title}</h3>
+      <h2 className="font-display text-3xl leading-none">{title}</h2>
       <p className="max-w-[34ch] text-mute">{body}</p>
     </div>
   )
