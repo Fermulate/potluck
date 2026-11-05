@@ -5,6 +5,14 @@ import { useId } from 'react'
 import { GROUP_EMOJIS } from './group-emojis'
 import { GROUP_COLORS, normalizeGroupColor, type GroupColor } from '@/lib/group-colors'
 
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/** The first user-perceived character, so compound emoji (families, flags, keycaps) stay whole. */
+function firstGrapheme(text: string): string {
+  for (const { segment } of graphemes.segment(text)) return segment
+  return ''
+}
+
 /** Emoji grid as a radio group, plus a free text box for anything else. */
 export function EmojiPicker({
   value,
@@ -43,11 +51,7 @@ export function EmojiPicker({
       <Field label={t('groups.emojiPicker.custom')} className="mt-1">
         <Input
           value={custom ? value : ''}
-          maxLength={8}
-          onChange={(e) => {
-            const next = Array.from(e.target.value.trim()).slice(0, 2).join('')
-            onChange(next || GROUP_EMOJIS[0])
-          }}
+          onChange={(e) => onChange(firstGrapheme(e.target.value.trim()) || GROUP_EMOJIS[0])}
           className="w-24 text-center text-xl"
         />
       </Field>
