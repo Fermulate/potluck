@@ -181,6 +181,28 @@ describe('ConfirmDialog', () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 
+  it('stays open and usable when the confirm action fails', async () => {
+    // The caller reports the error (a toast); the dialog must not leak an unhandled rejection.
+    const onConfirm = vi.fn(() => Promise.reject(new Error('not allowed')))
+    const onOpenChange = vi.fn()
+    render(
+      <ConfirmDialog
+        open
+        onOpenChange={onOpenChange}
+        title="Lock it in?"
+        confirmLabel="Lock it in"
+        cancelLabel="Back"
+        closeLabel="Close"
+        onConfirm={onConfirm}
+      />,
+    )
+    const confirm = screen.getByRole('button', { name: 'Lock it in' })
+    await userEvent.click(confirm)
+    await waitFor(() => expect(confirm).toBeEnabled())
+    expect(onConfirm).toHaveBeenCalledOnce()
+    expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
   it('cancels without confirming', async () => {
     const onConfirm = vi.fn()
     const onOpenChange = vi.fn()
