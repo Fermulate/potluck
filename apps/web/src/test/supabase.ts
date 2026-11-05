@@ -40,6 +40,7 @@ let tables: Record<string, Row[]> = {}
 let listeners: Listener[] = []
 let authCalls: { method: string; args: unknown[] }[] = []
 let authResults = new Map<string, FakeResult>()
+const authListeners = new Set<(event: string, session: unknown) => void>()
 
 /** Starts every test from an empty database; returns the fake for seeding and assertions. */
 export function resetDb(options: FakeOptions = {}) {
@@ -137,6 +138,11 @@ export function respondAuth(method: string, result: FakeResult) {
   authResults.set(method, result)
 }
 
+/** Fires an auth event (`SIGNED_OUT`, `PASSWORD_RECOVERY`, ...) at every subscriber. */
+export function emitAuth(event: string, session: unknown = null) {
+  for (const listener of [...authListeners]) listener(event, session)
+}
+
 /** Every `supabase.auth.<method>()` call, in order. */
 export function authCallsTo(method: string) {
   return authCalls.filter((call) => call.method === method).map((call) => call.args)
@@ -175,7 +181,10 @@ const auth = new Proxy(
     get(_target, method) {
       if (typeof method !== 'string') return undefined
       if (method === 'onAuthStateChange') {
-        return () => ({ data: { subscription: { unsubscribe: () => undefined } } })
+        return (listener: (event: string, session: unknown) => void) => {
+          authListeners.add(listener)
+          return { data: { subscription: { unsubscribe: () => authListeners.delete(listener) } } }
+        }
       }
       return async (...args: unknown[]) => {
         authCalls.push({ method, args })
