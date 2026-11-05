@@ -10,43 +10,300 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AppActivityRouteImport } from './routes/_app/activity'
+import { Route as AppHomeRouteImport } from './routes/_app/home'
+import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
+import { Route as JoinCodeRouteImport } from './routes/join.$code'
+import { Route as AppExpensesExpenseIdRouteImport } from './routes/_app/expenses/$expenseId'
+import { Route as AppFriendsIndexRouteImport } from './routes/_app/friends/index'
+import { Route as AppGroupsIndexRouteImport } from './routes/_app/groups/index'
+import { Route as AppGroupsGroupIdRouteImport } from './routes/_app/groups/$groupId'
+import { Route as AppMeIndexRouteImport } from './routes/_app/me/index'
+import { Route as AppNewExpenseRouteImport } from './routes/_app/new/expense'
+import { Route as AppNewPlanRouteImport } from './routes/_app/new/plan'
+import { Route as AppNewSettleRouteImport } from './routes/_app/new/settle'
+import { Route as AppPlansIndexRouteImport } from './routes/_app/plans/index'
+import { Route as AppPlansEventIdRouteImport } from './routes/_app/plans/$eventId'
+import { Route as AppGroupsGroupIdIndexRouteImport } from './routes/_app/groups/$groupId/index'
+import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/groups/$groupId/balances'
+import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
+import { Route as AppGroupsGroupIdPlansRouteImport } from './routes/_app/groups/$groupId/plans'
+import { Route as AppGroupsGroupIdSettingsRouteImport } from './routes/_app/groups/$groupId/settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppActivityRoute = AppActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHomeRoute = AppHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNotificationsRoute = AppNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => AppRoute,
+} as any)
 const DevKitRoute = DevKitRouteImport.update({
   id: '/dev/kit',
   path: '/dev/kit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JoinCodeRoute = JoinCodeRouteImport.update({
+  id: '/join/$code',
+  path: '/join/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppExpensesExpenseIdRoute = AppExpensesExpenseIdRouteImport.update({
+  id: '/expenses/$expenseId',
+  path: '/expenses/$expenseId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFriendsIndexRoute = AppFriendsIndexRouteImport.update({
+  id: '/friends/',
+  path: '/friends/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGroupsIndexRoute = AppGroupsIndexRouteImport.update({
+  id: '/groups/',
+  path: '/groups/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGroupsGroupIdRoute = AppGroupsGroupIdRouteImport.update({
+  id: '/groups/$groupId',
+  path: '/groups/$groupId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMeIndexRoute = AppMeIndexRouteImport.update({
+  id: '/me/',
+  path: '/me/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNewExpenseRoute = AppNewExpenseRouteImport.update({
+  id: '/new/expense',
+  path: '/new/expense',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNewPlanRoute = AppNewPlanRouteImport.update({
+  id: '/new/plan',
+  path: '/new/plan',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppNewSettleRoute = AppNewSettleRouteImport.update({
+  id: '/new/settle',
+  path: '/new/settle',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlansIndexRoute = AppPlansIndexRouteImport.update({
+  id: '/plans/',
+  path: '/plans/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlansEventIdRoute = AppPlansEventIdRouteImport.update({
+  id: '/plans/$eventId',
+  path: '/plans/$eventId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGroupsGroupIdIndexRoute = AppGroupsGroupIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
+const AppGroupsGroupIdBalancesRoute =
+  AppGroupsGroupIdBalancesRouteImport.update({
+    id: '/balances',
+    path: '/balances',
+    getParentRoute: () => AppGroupsGroupIdRoute,
+  } as any)
+const AppGroupsGroupIdMembersRoute = AppGroupsGroupIdMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
+const AppGroupsGroupIdPlansRoute = AppGroupsGroupIdPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
+const AppGroupsGroupIdSettingsRoute =
+  AppGroupsGroupIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppGroupsGroupIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
+  '/activity': typeof AppActivityRoute
+  '/home': typeof AppHomeRoute
+  '/notifications': typeof AppNotificationsRoute
   '/dev/kit': typeof DevKitRoute
+  '/join/$code': typeof JoinCodeRoute
+  '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
+  '/new/expense': typeof AppNewExpenseRoute
+  '/new/plan': typeof AppNewPlanRoute
+  '/new/settle': typeof AppNewSettleRoute
+  '/plans/$eventId': typeof AppPlansEventIdRoute
+  '/friends/': typeof AppFriendsIndexRoute
+  '/groups/': typeof AppGroupsIndexRoute
+  '/me/': typeof AppMeIndexRoute
+  '/plans/': typeof AppPlansIndexRoute
+  '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
+  '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/sign-in': typeof SignInRoute
+  '/activity': typeof AppActivityRoute
+  '/home': typeof AppHomeRoute
+  '/notifications': typeof AppNotificationsRoute
   '/dev/kit': typeof DevKitRoute
+  '/join/$code': typeof JoinCodeRoute
+  '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/new/expense': typeof AppNewExpenseRoute
+  '/new/plan': typeof AppNewPlanRoute
+  '/new/settle': typeof AppNewSettleRoute
+  '/plans/$eventId': typeof AppPlansEventIdRoute
+  '/friends': typeof AppFriendsIndexRoute
+  '/groups': typeof AppGroupsIndexRoute
+  '/me': typeof AppMeIndexRoute
+  '/plans': typeof AppPlansIndexRoute
+  '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
+  '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/groups/$groupId': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/sign-in': typeof SignInRoute
+  '/_app/activity': typeof AppActivityRoute
+  '/_app/home': typeof AppHomeRoute
+  '/_app/notifications': typeof AppNotificationsRoute
   '/dev/kit': typeof DevKitRoute
+  '/join/$code': typeof JoinCodeRoute
+  '/_app/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/_app/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
+  '/_app/new/expense': typeof AppNewExpenseRoute
+  '/_app/new/plan': typeof AppNewPlanRoute
+  '/_app/new/settle': typeof AppNewSettleRoute
+  '/_app/plans/$eventId': typeof AppPlansEventIdRoute
+  '/_app/friends/': typeof AppFriendsIndexRoute
+  '/_app/groups/': typeof AppGroupsIndexRoute
+  '/_app/me/': typeof AppMeIndexRoute
+  '/_app/plans/': typeof AppPlansIndexRoute
+  '/_app/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
+  '/_app/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/_app/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dev/kit'
+  fullPaths:
+    | '/'
+    | '/sign-in'
+    | '/activity'
+    | '/home'
+    | '/notifications'
+    | '/dev/kit'
+    | '/join/$code'
+    | '/expenses/$expenseId'
+    | '/groups/$groupId'
+    | '/new/expense'
+    | '/new/plan'
+    | '/new/settle'
+    | '/plans/$eventId'
+    | '/friends/'
+    | '/groups/'
+    | '/me/'
+    | '/plans/'
+    | '/groups/$groupId/balances'
+    | '/groups/$groupId/members'
+    | '/groups/$groupId/plans'
+    | '/groups/$groupId/settings'
+    | '/groups/$groupId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dev/kit'
-  id: '__root__' | '/' | '/dev/kit'
+  to:
+    | '/'
+    | '/sign-in'
+    | '/activity'
+    | '/home'
+    | '/notifications'
+    | '/dev/kit'
+    | '/join/$code'
+    | '/expenses/$expenseId'
+    | '/new/expense'
+    | '/new/plan'
+    | '/new/settle'
+    | '/plans/$eventId'
+    | '/friends'
+    | '/groups'
+    | '/me'
+    | '/plans'
+    | '/groups/$groupId/balances'
+    | '/groups/$groupId/members'
+    | '/groups/$groupId/plans'
+    | '/groups/$groupId/settings'
+    | '/groups/$groupId'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/sign-in'
+    | '/_app/activity'
+    | '/_app/home'
+    | '/_app/notifications'
+    | '/dev/kit'
+    | '/join/$code'
+    | '/_app/expenses/$expenseId'
+    | '/_app/groups/$groupId'
+    | '/_app/new/expense'
+    | '/_app/new/plan'
+    | '/_app/new/settle'
+    | '/_app/plans/$eventId'
+    | '/_app/friends/'
+    | '/_app/groups/'
+    | '/_app/me/'
+    | '/_app/plans/'
+    | '/_app/groups/$groupId/balances'
+    | '/_app/groups/$groupId/members'
+    | '/_app/groups/$groupId/plans'
+    | '/_app/groups/$groupId/settings'
+    | '/_app/groups/$groupId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  SignInRoute: typeof SignInRoute
   DevKitRoute: typeof DevKitRoute
+  JoinCodeRoute: typeof JoinCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +315,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/activity': {
+      id: '/_app/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof AppActivityRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/home': {
+      id: '/_app/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AppHomeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/notifications': {
+      id: '/_app/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/dev/kit': {
       id: '/dev/kit'
       path: '/dev/kit'
@@ -65,12 +357,180 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevKitRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/join/$code': {
+      id: '/join/$code'
+      path: '/join/$code'
+      fullPath: '/join/$code'
+      preLoaderRoute: typeof JoinCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/expenses/$expenseId': {
+      id: '/_app/expenses/$expenseId'
+      path: '/expenses/$expenseId'
+      fullPath: '/expenses/$expenseId'
+      preLoaderRoute: typeof AppExpensesExpenseIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/friends/': {
+      id: '/_app/friends/'
+      path: '/friends'
+      fullPath: '/friends/'
+      preLoaderRoute: typeof AppFriendsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/groups/': {
+      id: '/_app/groups/'
+      path: '/groups'
+      fullPath: '/groups/'
+      preLoaderRoute: typeof AppGroupsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/groups/$groupId': {
+      id: '/_app/groups/$groupId'
+      path: '/groups/$groupId'
+      fullPath: '/groups/$groupId'
+      preLoaderRoute: typeof AppGroupsGroupIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/me/': {
+      id: '/_app/me/'
+      path: '/me'
+      fullPath: '/me/'
+      preLoaderRoute: typeof AppMeIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/new/expense': {
+      id: '/_app/new/expense'
+      path: '/new/expense'
+      fullPath: '/new/expense'
+      preLoaderRoute: typeof AppNewExpenseRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/new/plan': {
+      id: '/_app/new/plan'
+      path: '/new/plan'
+      fullPath: '/new/plan'
+      preLoaderRoute: typeof AppNewPlanRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/new/settle': {
+      id: '/_app/new/settle'
+      path: '/new/settle'
+      fullPath: '/new/settle'
+      preLoaderRoute: typeof AppNewSettleRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/plans/': {
+      id: '/_app/plans/'
+      path: '/plans'
+      fullPath: '/plans/'
+      preLoaderRoute: typeof AppPlansIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/plans/$eventId': {
+      id: '/_app/plans/$eventId'
+      path: '/plans/$eventId'
+      fullPath: '/plans/$eventId'
+      preLoaderRoute: typeof AppPlansEventIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/groups/$groupId/': {
+      id: '/_app/groups/$groupId/'
+      path: '/'
+      fullPath: '/groups/$groupId/'
+      preLoaderRoute: typeof AppGroupsGroupIdIndexRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
+    '/_app/groups/$groupId/balances': {
+      id: '/_app/groups/$groupId/balances'
+      path: '/balances'
+      fullPath: '/groups/$groupId/balances'
+      preLoaderRoute: typeof AppGroupsGroupIdBalancesRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
+    '/_app/groups/$groupId/members': {
+      id: '/_app/groups/$groupId/members'
+      path: '/members'
+      fullPath: '/groups/$groupId/members'
+      preLoaderRoute: typeof AppGroupsGroupIdMembersRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
+    '/_app/groups/$groupId/plans': {
+      id: '/_app/groups/$groupId/plans'
+      path: '/plans'
+      fullPath: '/groups/$groupId/plans'
+      preLoaderRoute: typeof AppGroupsGroupIdPlansRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
+    '/_app/groups/$groupId/settings': {
+      id: '/_app/groups/$groupId/settings'
+      path: '/settings'
+      fullPath: '/groups/$groupId/settings'
+      preLoaderRoute: typeof AppGroupsGroupIdSettingsRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
   }
 }
 
+interface AppGroupsGroupIdRouteChildren {
+  AppGroupsGroupIdBalancesRoute: typeof AppGroupsGroupIdBalancesRoute
+  AppGroupsGroupIdMembersRoute: typeof AppGroupsGroupIdMembersRoute
+  AppGroupsGroupIdPlansRoute: typeof AppGroupsGroupIdPlansRoute
+  AppGroupsGroupIdSettingsRoute: typeof AppGroupsGroupIdSettingsRoute
+  AppGroupsGroupIdIndexRoute: typeof AppGroupsGroupIdIndexRoute
+}
+
+const AppGroupsGroupIdRouteChildren: AppGroupsGroupIdRouteChildren = {
+  AppGroupsGroupIdBalancesRoute: AppGroupsGroupIdBalancesRoute,
+  AppGroupsGroupIdMembersRoute: AppGroupsGroupIdMembersRoute,
+  AppGroupsGroupIdPlansRoute: AppGroupsGroupIdPlansRoute,
+  AppGroupsGroupIdSettingsRoute: AppGroupsGroupIdSettingsRoute,
+  AppGroupsGroupIdIndexRoute: AppGroupsGroupIdIndexRoute,
+}
+
+const AppGroupsGroupIdRouteWithChildren =
+  AppGroupsGroupIdRoute._addFileChildren(AppGroupsGroupIdRouteChildren)
+
+interface AppRouteChildren {
+  AppActivityRoute: typeof AppActivityRoute
+  AppHomeRoute: typeof AppHomeRoute
+  AppNotificationsRoute: typeof AppNotificationsRoute
+  AppExpensesExpenseIdRoute: typeof AppExpensesExpenseIdRoute
+  AppGroupsGroupIdRoute: typeof AppGroupsGroupIdRouteWithChildren
+  AppNewExpenseRoute: typeof AppNewExpenseRoute
+  AppNewPlanRoute: typeof AppNewPlanRoute
+  AppNewSettleRoute: typeof AppNewSettleRoute
+  AppPlansEventIdRoute: typeof AppPlansEventIdRoute
+  AppFriendsIndexRoute: typeof AppFriendsIndexRoute
+  AppGroupsIndexRoute: typeof AppGroupsIndexRoute
+  AppMeIndexRoute: typeof AppMeIndexRoute
+  AppPlansIndexRoute: typeof AppPlansIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppActivityRoute: AppActivityRoute,
+  AppHomeRoute: AppHomeRoute,
+  AppNotificationsRoute: AppNotificationsRoute,
+  AppExpensesExpenseIdRoute: AppExpensesExpenseIdRoute,
+  AppGroupsGroupIdRoute: AppGroupsGroupIdRouteWithChildren,
+  AppNewExpenseRoute: AppNewExpenseRoute,
+  AppNewPlanRoute: AppNewPlanRoute,
+  AppNewSettleRoute: AppNewSettleRoute,
+  AppPlansEventIdRoute: AppPlansEventIdRoute,
+  AppFriendsIndexRoute: AppFriendsIndexRoute,
+  AppGroupsIndexRoute: AppGroupsIndexRoute,
+  AppMeIndexRoute: AppMeIndexRoute,
+  AppPlansIndexRoute: AppPlansIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  SignInRoute: SignInRoute,
   DevKitRoute: DevKitRoute,
+  JoinCodeRoute: JoinCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -4,7 +4,7 @@ import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { useTheme } from '@/styles/use-theme'
 
-interface RouterContext {
+export interface RouterContext {
   queryClient: QueryClient
 }
 
