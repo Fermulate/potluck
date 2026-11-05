@@ -555,6 +555,77 @@ Notification types: `expense.created` (split members, with their `share_cents`),
 
 `supabase/seed.sql` creates `ava`, `ben`, `cleo`, `dev`, `eli` and `fay` at `@potluck.test` (password `potluck-demo`), the groups Hike crew, Roommates and Dim sum club, a 1:1 between Ava and Fay, about 30 expenses (all split types, one in EUR), settlements, a polling hike with availability from five people and an open request, a scheduled taco night with RSVPs, comments, and an invite code `hikecrew-demo`.
 
+## Security model
+
+The browser is untrusted. It holds the publishable key and, once signed in, a short-lived JWT (`jwt_expiry = 3600`, refresh tokens rotate). Everything it can do is decided inside Postgres.
+
+### Layers
+
+1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview`, and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
+2. **Row Level Security.** Enabled on every table in `public`. Policies answer "which rows" using helpers from the `private` schema. Policies use `(select auth.uid())` and `in (select private.my_group_ids())` so Postgres evaluates them once per statement instead of once per row.
+3. **Security definer RPCs.** Multi-row writes (expense plus splits, settle up, joining, role changes, scheduling) have no insert or update policy at all. They go through `public.*` functions that run as the owner, start with `private.require_user()` (signed in, account not closed) and `private.require_member(group_id)`, then check the role rules themselves. All of them set `search_path = ''` and schema-qualify every name.
+4. **Triggers and constraints** hold invariants no client can skip: exactly one owner per group, splits sum to the amount, group currency locked once money exists, `comments.group_id` copied from the parent, only the author edits a comment body.
+
+### The private schema
+
+`private` is not in `[api].schemas`, so PostgREST never exposes it. `revoke all on schema private from public` plus `alter default privileges ... revoke execute on functions from public` means a new function is callable by nobody until a migration grants it. API roles get `usage` on the schema and `execute` only on the policy helpers (`is_group_member`, `group_role`, `is_group_admin`, `my_group_ids`, `my_event_ids`, `shares_group_with`, `my_contact_ids`, `can_manage_event`) and a few pure functions (`try_uuid`, `minor_units`, `convert_minor`, `is_time_zone`). The helpers are `security definer` so they can read `group_members` without recursing into its own policy, and they only ever answer questions about `auth.uid()`.
+
+Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function` and `notify` are not executable by `anon` or `authenticated`.
+
+### Storage
+
+Paths start with an owning id, and policies parse it with `storage.foldername(name)[1]`. `private.try_uuid` turns a malformed folder into `null` instead of an error, so a bad path is simply denied.
+
+| Bucket         | Public read | Path prefix  | Write                                                                                   | Limits                     |
+| -------------- | ----------- | ------------ | --------------------------------------------------------------------------------------- | -------------------------- |
+| `avatars`      | yes         | `<user_id>`  | the user                                                                                | 5 MB, png/jpeg/webp/gif    |
+| `group-covers` | yes         | `<group_id>` | owner and admins                                                                        | 10 MB, png/jpeg/webp       |
+| `receipts`     | no          | `<group_id>` | members upload; the uploader (`owner_id`) or an admin replaces or deletes; members read | 10 MB, images, heic or pdf |
+
+`create_expense` also refuses a `receipt_path` that does not start with `<group_id>/`, so an expense cannot point at another group's receipt.
+
+### Edge function auth
+
+Each function uses one of three schemes. `verify_jwt` is set per function in `supabase/config.toml`.
+
+| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                          |
+| ---------------- | ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                              |
+| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)         |
+| `fx-sync`        | false        | same shared secret                               | same                                                                                                                |
+| `ics-feed`       | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string |
+
+The service-role client (`_shared/admin.ts`) bypasses RLS, so each function authorizes the caller before touching it.
+
+## Realtime
+
+The `supabase_realtime` publication carries `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway.
+
+Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. One channel per screen:
+
+| Channel           | Tables (filter)                                                                                           | Refetches                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `money:<groupId>` | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                                    | group money queries, the changed expense, comments |
+| `plan:<eventId>`  | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`)       | heatmap, `best_slots`, requests, RSVPs, comments  |
+
+The plan channel batches invalidations for 300 ms so a friend dragging across twenty cells causes one refetch, not twenty.
+
+## Money conventions
+
+- **Integer minor units.** Every amount is a `bigint` in the currency's minor unit: cents for USD, yen for JPY, fils for KWD. `private.minor_units()` and `minorUnits()` in `packages/core/src/currency` share the same ISO 4217 table (0, 2 or 3 digits). No floats anywhere, in SQL or TypeScript. Core uses `BigInt` for intermediate products.
+- **Rounding is half away from zero.** Postgres `round(numeric)` does this; `convert()` in core reproduces it, so a client preview equals the stored value.
+- **Largest remainder, uuid tie-break.** Splitting an amount by weights gives everyone `floor(amount * w / sum)`. The leftover units go one each to the largest fractional remainders. Ties go to the smaller user id compared as plain code points, which matches Postgres `uuid` ordering. `allocate()` in core, `private.compute_splits()` and the `group_balances` view all use this rule, so the same input gives the same cents on every client and on the server.
+- **Fixed-point weights.** Percent and shares weights are scaled to 6 decimals before splitting. Percent weights must sum to exactly 100.
+- **FX snapshot.** `fx_rate` is written once, when the expense or settlement is saved: the latest `fx_rates` row on or before `spent_at` (settlements use today), with the inverse pair as a fallback. Clients cannot send a rate. Editing an expense keeps its rate unless the currency changes. A missing rate raises `fx_rate_unavailable`.
+- **Convert once per expense.** Balances convert the expense total into group currency once, credit the payer, then split that converted total over the splits by largest remainder. Each expense nets to exactly zero in group currency.
+
+## Time zones
+
+- Instants are `timestamptz` and travel as UTC ISO strings. Calendar dates (`spent_at`, `window_start`, `window_end`, `next_run_on`) are `date` with no zone; `packages/i18n` renders them pinned to UTC so June 12 stays June 12 for everyone.
+- `profiles.timezone` (IANA) is the viewer's zone. `formatDate` and friends in `packages/i18n` require a `timeZone` argument and never fall back to the host zone.
+- `events.timezone` is the zone the availability grid is drawn in. A cell is a wall-clock time in that zone, stored as its UTC instant in `availability.slot_start`. `buildSlots()` in core skips wall times that do not exist (spring forward) and uses the first of a repeated hour (fall back), so "8 pm" stays 8 pm across a DST change. `set_availability` checks every slot against the same grid with `at time zone`.
+- Cron runs in UTC. `materialize-recurring-expenses` uses `current_date` in UTC.
+
 ## Edge functions
 
 - `notify`: fans a notification out to web push (VAPID). Expo push tokens are skipped until the native app ships.
