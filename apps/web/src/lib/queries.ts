@@ -7,7 +7,7 @@ import {
 } from '@potluck/api'
 import { useQuery } from '@tanstack/react-query'
 import { useUserId } from './auth'
-import { detectTimezone } from './locale'
+import { resolveTimeZone } from './locale'
 import { supabase } from './supabase'
 
 /** The signed-in person's profile. Only under the authenticated layout. */
@@ -19,7 +19,7 @@ export function useMyProfile() {
 /** Timezone to render times in: the profile's, or the device's while it loads. */
 export function useViewerTimezone(): string {
   const { data } = useMyProfile()
-  return data?.timezone ?? detectTimezone()
+  return resolveTimeZone(data?.timezone)
 }
 
 export function useAppConfig() {
