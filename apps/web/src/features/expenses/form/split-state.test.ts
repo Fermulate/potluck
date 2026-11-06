@@ -158,6 +158,11 @@ describe('editing a split with someone who left the group', () => {
     expect(draft.participants).toEqual([A, GONE])
     expect(draft.exact).toEqual({ [A]: 600, [GONE]: 400 })
     expect(formerParticipants(draft, ids)).toEqual([GONE])
+    // By item, only the people on the bill count.
+    const items = [{ id: 'i1', name: 'Pie', amountCents: 500, userIds: [A] }]
+    expect(formerParticipants({ ...draft, mode: 'itemized', items }, ids)).toEqual([])
+    const shared = [{ ...items[0]!, userIds: [A, GONE] }]
+    expect(formerParticipants({ ...draft, mode: 'itemized', items: shared }, ids)).toEqual([GONE])
   })
 
   it('treats an untouched draft as the same split, and any change as a new one', () => {
