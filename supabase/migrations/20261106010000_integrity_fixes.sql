@@ -266,7 +266,9 @@ alter table private.former_members enable row level security;
 revoke all on table private.former_members from public, anon, authenticated;
 grant all on table private.former_members to service_role;
 
--- Whether anything in the group still names this person: money, comments or the feed.
+-- Whether anything in the group still names this person: money, comments, or feed entries
+-- for something they did there. Joining, leaving and group settings do not count, so a leaver
+-- who never touched money or comments drops out of view (the feed then says "Someone").
 create or replace function private.referenced_in_group(gid uuid, uid uuid)
 returns boolean
 language sql
@@ -288,7 +290,9 @@ as $$
     or exists (
       select 1 from public.activity a
       where a.group_id = gid
-        and (a.actor_id = uid or (a.subject_id = uid and a.verb like 'member.%'))
+        and a.actor_id = uid
+        and a.verb not like 'member.%'
+        and a.verb not like 'group.%'
     );
 $$;
 
