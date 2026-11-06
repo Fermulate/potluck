@@ -333,9 +333,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 currency={currency}
                 groupCurrency={group.currency}
                 spentAt={spentAt}
-                savedRate={
-                  editing && editing.currency === currency ? Number(editing.fx_rate) : undefined
-                }
+                savedRate={editing && editing.currency === currency ? editing.fx_rate : undefined}
               />
             )}
           </div>
