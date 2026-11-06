@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { db, payloadOf, resetDb } from '@/test/supabase'
+import { db, payloadOf, resetDb, rowsOf } from '@/test/supabase'
 import { useWebPush } from './use-web-push'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -140,6 +140,20 @@ describe('useWebPush', () => {
       platform: 'web',
       subscription: { endpoint: ENDPOINT },
     })
+  })
+
+  it('drops the replaced subscription from push_tokens', async () => {
+    const STALE = 'https://push.example/stale'
+    browser.current = subscription(STALE)
+    seed({ tokens: [STALE] })
+    const { result } = renderPush()
+    await waitFor(() => expect(result.current.state).toBe('on'))
+
+    await act(async () => {
+      await result.current.enable()
+    })
+
+    expect(rowsOf('push_tokens').map((row) => row.token)).toEqual([ENDPOINT])
   })
 
   it('stays off or blocked when permission is not granted', async () => {
