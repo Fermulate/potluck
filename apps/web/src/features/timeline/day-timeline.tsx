@@ -1,7 +1,7 @@
+import { dayKey } from '@potluck/core'
 import { Card } from '@potluck/ui'
 import { Appear } from './appear'
 import type { DayGroup } from './days'
-import { dayKey } from './days'
 import { PlanRow } from './plan-row'
 import type { PlanRowData } from './plan-row-data'
 

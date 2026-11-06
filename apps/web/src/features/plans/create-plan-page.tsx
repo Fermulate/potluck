@@ -6,7 +6,7 @@ import {
   requestAvailability,
   type PlanMember,
 } from '@potluck/api'
-import { eventCreateSchema, SLOT_SIZES } from '@potluck/core'
+import { dayKey, eventCreateSchema, SLOT_SIZES } from '@potluck/core'
 import { hasMessage, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -31,7 +31,6 @@ import { fromZonedTime } from 'date-fns-tz'
 import { Minus, Plus } from 'lucide-react'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { dayKey } from '@/features/timeline/days'
 import { BackToPlans } from './back-link'
 import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
 import { useViewer, useViewerProfile } from './viewer'

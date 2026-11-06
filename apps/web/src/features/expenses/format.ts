@@ -1,4 +1,4 @@
-import { categoryEmoji, isCategory } from '@potluck/core'
+import { categoryEmoji, dayKey, isCategory } from '@potluck/core'
 import { formatDate, hasMessage, t } from '@potluck/i18n'
 
 /** Label for a stored category, including legacy values outside the core list. */
@@ -14,17 +14,7 @@ export { categoryEmoji }
 
 /** `YYYY-MM-DD` for "now" in `timeZone`. */
 export function todayIn(timeZone: string, now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now)
-}
-
-/** Calendar day of a timestamp in `timeZone`, as `YYYY-MM-DD`. */
-export function dayOf(timestamp: string, timeZone: string): string {
-  return todayIn(timeZone, new Date(timestamp))
+  return dayKey(now, timeZone)
 }
 
 function shiftDay(day: string, delta: number): string {

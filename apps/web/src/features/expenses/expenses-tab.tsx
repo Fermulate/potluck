@@ -1,3 +1,4 @@
+import { dayKey } from '@potluck/core'
 import type { ExpenseWithSplits, Settlement } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import {
@@ -21,7 +22,7 @@ import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
 import { expensesToCsv, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
-import { categoryEmoji, categoryLabel, dayLabel, dayOf, groupByDay } from './format'
+import { categoryEmoji, categoryLabel, dayLabel, groupByDay } from './format'
 import {
   useGroupExpenses,
   useGroupMoneyRealtime,
@@ -76,7 +77,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
       for (const settlement of settlements.data ?? []) {
         items.push({
           kind: 'settlement',
-          day: dayOf(settlement.settled_at, timeZone),
+          day: dayKey(settlement.settled_at, timeZone),
           at: settlement.settled_at,
           settlement,
         })
