@@ -44,7 +44,7 @@ function crossRows(day: string, eurRates: Rates) {
   for (const base of CURRENCIES) {
     for (const quote of CURRENCIES) {
       if (base === quote || !perEur[base] || !perEur[quote]) continue
-      rows.push({ base, quote, day, rate: Number((perEur[quote] / perEur[base]).toFixed(8)) })
+      rows.push({ base, quote, day, rate: Number((perEur[quote] / perEur[base]).toFixed(12)) })
     }
   }
   return rows
