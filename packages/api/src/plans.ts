@@ -326,12 +326,6 @@ export async function fetchEventComments(
   return data ?? []
 }
 
-/** Public URL of an avatar in the `avatars` bucket. */
-export function planAvatarUrl(client: PotluckClient, path: string | null): string | null {
-  if (!path) return null
-  return client.storage.from('avatars').getPublicUrl(path).data.publicUrl
-}
-
 // Query options --------------------------------------------------------------
 
 export const planQueries = {

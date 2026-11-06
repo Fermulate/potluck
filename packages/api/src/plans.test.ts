@@ -16,7 +16,6 @@ import {
   fetchPlanEvent,
   fetchPlanGroups,
   fetchPlanMembers,
-  planAvatarUrl,
   PlanError,
   planQueries,
   plansKeys,
@@ -312,14 +311,6 @@ describe('event reads', () => {
     for (const read of reads) {
       await expect(read()).rejects.toMatchObject({ name: 'PlanError', code: 'not_allowed' })
     }
-  })
-})
-
-describe('planAvatarUrl', () => {
-  it('builds a public avatar URL only when there is a path', () => {
-    const { client } = fakeSupabase()
-    expect(planAvatarUrl(client, 'u1/a.jpg')).toBe('https://storage.test/avatars/u1/a.jpg')
-    expect(planAvatarUrl(client, null)).toBeNull()
   })
 })
 
