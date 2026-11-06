@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import type { MoneyMember, SplitTypeValue } from '@potluck/api'
 import { firstName, SPLIT_TYPES } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
@@ -8,7 +9,6 @@ import type { ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { SPLIT_HELP } from '@/features/help/topics'
 import { joinNames } from '@/features/plans/format'
-import { avatarUrl } from '../money-data'
 import { CompactMoneyInput, PercentInput } from './compact-inputs'
 import { ItemizedEditor } from './itemized-editor'
 import { PercentSlider } from './percent-slider'
@@ -96,7 +96,7 @@ export function SplitEditor({
       <Avatar
         name={member.display_name}
         seed={member.id}
-        src={avatarUrl(member.avatar_path)}
+        src={avatarSrc(member.avatar_path)}
         size="sm"
       />
       <span className="truncate font-semibold">{displayName(member, viewerId)}</span>
@@ -291,7 +291,7 @@ export function SplitEditor({
                     <Avatar
                       name={m.display_name}
                       seed={m.id}
-                      src={avatarUrl(m.avatar_path)}
+                      src={avatarSrc(m.avatar_path)}
                       size="sm"
                       className={cn(!on && 'opacity-50 grayscale')}
                     />
@@ -322,7 +322,7 @@ export function SplitEditor({
                     id: m.id,
                     name: displayName(m, viewerId),
                     fullName: m.display_name,
-                    avatarSrc: avatarUrl(m.avatar_path),
+                    avatarSrc: avatarSrc(m.avatar_path),
                   }))}
                   percent={draft.percent}
                   onChange={(percent) => onChange({ ...draft, percent })}

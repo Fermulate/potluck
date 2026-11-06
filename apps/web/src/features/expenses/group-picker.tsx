@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import { firstName } from '@potluck/core'
 import { moneyQueries, type MoneyGroup } from '@potluck/api'
 import { groupTitle } from './format'
@@ -7,7 +8,6 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
-import { avatarUrl } from './money-data'
 
 /** Big tappable list of the viewer's groups, for flows started without one. */
 export function GroupPicker({
@@ -60,7 +60,7 @@ export function GroupPicker({
                       people={group.members.map((m) => ({
                         id: m.id,
                         name: m.display_name,
-                        src: avatarUrl(m.avatar_path),
+                        src: avatarSrc(m.avatar_path),
                       }))}
                       label={group.members.map((m) => firstName(m.display_name)).join(', ')}
                     />

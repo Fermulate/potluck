@@ -1,6 +1,6 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   cancelEvent,
-  planAvatarUrl,
   planQueries,
   plansKeys,
   scheduleEvent,
@@ -42,7 +42,6 @@ import { ScheduledHero } from './scheduled-hero'
 import { mySlots, useEventRealtime, useMyAvailability, type SaveState } from './use-event'
 import { useViewer } from './viewer'
 
-const avatarUrl = (path: string | null) => planAvatarUrl(supabase, path)
 const STATUS_TONE = {
   polling: 'saffron',
   scheduled: 'olive',
@@ -176,7 +175,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
       members={members}
       viewerId={viewerId}
       timeZone={timeZone}
-      avatarUrl={avatarUrl}
+      avatarUrl={avatarSrc}
     />
   )
   const cancelButton =
@@ -316,7 +315,7 @@ function ScheduledRsvp({
       viewerId={viewerId}
       deadline={event.rsvp_deadline}
       timeZone={timeZone}
-      avatarUrl={avatarUrl}
+      avatarUrl={avatarSrc}
     />
   )
 }
@@ -491,7 +490,7 @@ function PollingBody({
       // Outline the slot on the heatmap only. Hovering or scrolling past a card must not
       // swap the painter out from under someone who is still adding their times.
       onPreview={setPreview}
-      avatarUrl={avatarUrl}
+      avatarUrl={avatarSrc}
     />
   )
 
@@ -540,7 +539,7 @@ function PollingBody({
               highlight={highlight}
               viewerId={viewerId}
               label={t('availability.heatGridLabel', { event: event.title })}
-              avatarUrl={avatarUrl}
+              avatarUrl={avatarSrc}
             />
           )}
           {view === 'group' && rows && !iResponded && (
@@ -606,7 +605,7 @@ function NudgeBlock({
       requests={requests}
       viewerId={viewerId}
       timeZone={timeZone}
-      avatarUrl={avatarUrl}
+      avatarUrl={avatarSrc}
     />
   )
 }

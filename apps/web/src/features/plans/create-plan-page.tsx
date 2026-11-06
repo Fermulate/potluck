@@ -1,6 +1,6 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   createPlanEvent,
-  planAvatarUrl,
   planQueries,
   plansKeys,
   requestAvailability,
@@ -536,7 +536,7 @@ function WhoList({
                 <Avatar
                   name={m.displayName}
                   seed={m.userId}
-                  src={planAvatarUrl(supabase, m.avatarPath)}
+                  src={avatarSrc(m.avatarPath)}
                   size="sm"
                 />
                 <span className="truncate text-[0.9375rem] font-medium">{m.displayName}</span>

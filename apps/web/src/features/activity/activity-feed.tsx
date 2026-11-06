@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import { dayKey } from '@potluck/core'
 import { activityInfiniteQueryOptions, moneyKeys } from '@potluck/api'
 import { formatTime, t } from '@potluck/i18n'
@@ -20,7 +21,7 @@ import { useUserId } from '@/lib/auth'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { dayLabel, groupByDay } from '@/features/expenses/format'
-import { avatarUrl, useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
+import { useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
 import { describeActivity, type ActivityView } from './describe-activity'
 
 const toneClass: Record<ActivityView['tone'], string> = {
@@ -110,7 +111,7 @@ export function ActivityFeed() {
                           <Avatar
                             name={actor?.display_name ?? item.actor?.display_name ?? '?'}
                             seed={item.actor_id ?? item.id}
-                            src={avatarUrl(actor?.avatar_path ?? item.actor?.avatar_path)}
+                            src={avatarSrc(actor?.avatar_path ?? item.actor?.avatar_path)}
                             size="md"
                           />
                           <span

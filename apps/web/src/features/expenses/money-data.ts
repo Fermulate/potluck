@@ -89,12 +89,6 @@ export function invalidateMoney(queryClient: QueryClient, groupId: string, expen
   void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })
 }
 
-/** Public URL for a profile photo in the `avatars` bucket. */
-export function avatarUrl(path: string | null | undefined): string | null {
-  if (!path) return null
-  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl
-}
-
 /** First name, or "You" for the viewer. */
 export function useNameOf() {
   const people = usePeople()

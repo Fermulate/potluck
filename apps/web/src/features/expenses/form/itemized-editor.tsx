@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import { firstName } from '@potluck/core'
 import type { MoneyMember } from '@potluck/api'
 import type { Shares } from '@potluck/core'
@@ -5,7 +6,6 @@ import { t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, cn } from '@potluck/ui'
 import { Money } from '../money'
 import { Plus, X } from 'lucide-react'
-import { avatarUrl } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
 import {
   TIP_PERCENTS,
@@ -113,7 +113,7 @@ export function ItemizedEditor({
                       <Avatar
                         name={m.display_name}
                         seed={m.id}
-                        src={avatarUrl(m.avatar_path)}
+                        src={avatarSrc(m.avatar_path)}
                         size="xs"
                         className={cn(on ? 'ring-1 ring-paper/60' : 'opacity-50')}
                       />
@@ -214,7 +214,7 @@ export function ItemizedEditor({
                 <Avatar
                   name={m.display_name}
                   seed={m.id}
-                  src={avatarUrl(m.avatar_path)}
+                  src={avatarSrc(m.avatar_path)}
                   size="sm"
                 />
                 <span className="flex-1 truncate font-semibold">{name(m)}</span>

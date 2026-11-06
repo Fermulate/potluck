@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   createExpense,
   updateExpense,
@@ -35,7 +36,6 @@ import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
 import {
-  avatarUrl,
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,
@@ -253,7 +253,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const payerOptions = payers.map((m) => ({
     value: m.id,
     label: m.id === me ? t('common.you') : m.display_name,
-    icon: <Avatar name={m.display_name} seed={m.id} src={avatarUrl(m.avatar_path)} size="xs" />,
+    icon: <Avatar name={m.display_name} seed={m.id} src={avatarSrc(m.avatar_path)} size="xs" />,
   }))
 
   return (
@@ -433,7 +433,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                       <Avatar
                         name={person.display_name}
                         seed={person.id}
-                        src={avatarUrl(person.avatar_path)}
+                        src={avatarSrc(person.avatar_path)}
                         size="sm"
                       />
                       <span className="min-w-0 flex-1 truncate font-semibold">

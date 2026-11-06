@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   addExpenseComment,
   deleteExpenseComment,
@@ -13,7 +14,7 @@ import { useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
 import { isSendEnter } from '@/lib/keyboard'
 import { supabase } from '@/lib/supabase'
-import { avatarUrl, moneyErrorMessage, useNameOf, usePeople, useTimeZone } from './money-data'
+import { moneyErrorMessage, useNameOf, usePeople, useTimeZone } from './money-data'
 
 /** Comment thread on an expense. New comments show up instantly and for everyone (realtime). */
 export function ExpenseComments({
@@ -102,7 +103,7 @@ export function ExpenseComments({
                   <Avatar
                     name={author?.display_name ?? nameOf(c.author_id)}
                     seed={c.author_id}
-                    src={avatarUrl(author?.avatar_path)}
+                    src={avatarSrc(author?.avatar_path)}
                     size="sm"
                   />
                   <div className="rounded-tl-md min-w-0 flex-1 rounded-[1.125rem] bg-sunken px-3.5 py-2.5">
