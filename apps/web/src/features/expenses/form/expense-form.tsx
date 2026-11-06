@@ -30,6 +30,7 @@ import { CalendarHeart } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { departedMembers } from '../expense-math'
 import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
@@ -157,7 +158,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     !keepSplit && formerInDraft.length > 0
       ? t('expenses.form.formerInSplit', { names: formerNames })
       : null
-  const splitError = submitted && total > 0 ? (splitErrorText(preview) ?? formerError) : null
+  // Someone who left still has money on this expense: only the details can change.
+  const locked = !!editing && departedMembers(editing, memberIds).length > 0
+  const splitError =
+    submitted && total > 0 && !locked ? (splitErrorText(preview) ?? formerError) : null
   const splitMembers = [
     ...group.members,
     ...formerParticipants(savedDraft, memberIds).map(formerMember),
@@ -187,6 +191,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         notes: notes.trim() || null,
         spent_at: spentAt,
         receipt_path: receiptPath,
+      }
+      if (editing && locked) {
+        return updateExpense(supabase, editing.id, {
+          description: payload.description,
+          category: payload.category,
+          notes: payload.notes,
+          spent_at: payload.spent_at,
+          receipt_path: payload.receipt_path,
+        })
       }
       if (editing) {
         if (!keepSplit) return updateExpense(supabase, editing.id, payload)
@@ -231,14 +244,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
-    if (!description.trim() || total <= 0 || !preview.ok || formerError) return
+    if (!description.trim()) return
+    if (!locked && (total <= 0 || !preview.ok || formerError)) return
     save.mutate()
   }
 
-  const payers =
-    editing && !memberIds.includes(editing.paid_by)
-      ? [...group.members, formerMember(editing.paid_by)]
-      : group.members
+  const formerPayer = editing && !memberIds.includes(editing.paid_by) ? editing.paid_by : null
+  const payers = formerPayer ? [...group.members, formerMember(formerPayer)] : group.members
   const payerOptions = payers.map((m) => ({
     value: m.id,
     label: m.id === me ? t('common.you') : m.display_name,
@@ -283,7 +295,14 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       >
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
           <div className="flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5">
-            {draft.mode === 'itemized' ? (
+            {locked ? (
+              <>
+                <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
+                  <Money cents={total} currency={currency} tone="neutral" split />
+                </span>
+                <p className="text-sm text-mute">{t('expenses.fields.amount')}</p>
+              </>
+            ) : draft.mode === 'itemized' ? (
               <>
                 <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
                   <Money cents={total} currency={currency} tone="neutral" split />
@@ -368,7 +387,12 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t('expenses.fields.paidBy')}>
-              <Select value={paidBy} onValueChange={setPaidBy} options={payerOptions} />
+              <Select
+                value={paidBy}
+                onValueChange={setPaidBy}
+                options={payerOptions}
+                disabled={locked}
+              />
             </Field>
             <Field label={t('expenses.fields.date')}>
               <Input
@@ -396,19 +420,49 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           {editing?.split_type === 'itemized' && (
             <p className="text-sm text-mute">{t('expenses.form.itemizedEditNote')}</p>
           )}
-          {formerInDraft.length > 0 && (
-            <p className="text-sm text-mute">
-              {t('expenses.form.formerNote', { names: formerNames })}
-            </p>
+          {locked && editing ? (
+            <>
+              <p role="note" className="text-sm font-medium text-saffron-ink">
+                {t('expenses.form.departedLocked')}
+              </p>
+              <ul aria-label={t('expenses.fields.splitBetween')} className="divide-y divide-line">
+                {editing.expense_splits.map((s) => {
+                  const person =
+                    splitMembers.find((m) => m.id === s.user_id) ?? formerMember(s.user_id)
+                  return (
+                    <li key={s.user_id} className="flex items-center gap-3 py-2">
+                      <Avatar
+                        name={person.display_name}
+                        seed={person.id}
+                        src={avatarUrl(person.avatar_path)}
+                        size="sm"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-semibold">
+                        {person.id === me ? t('common.you') : person.display_name}
+                      </span>
+                      <Money cents={s.share_cents} currency={editing.currency} tone="neutral" />
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          ) : (
+            <>
+              {formerInDraft.length > 0 && (
+                <p className="text-sm text-mute">
+                  {t('expenses.form.formerNote', { names: formerNames })}
+                </p>
+              )}
+              <SplitEditor
+                members={splitMembers}
+                viewerId={me}
+                draft={draft}
+                onChange={setDraft}
+                amountCents={total}
+                currency={currency}
+              />
+            </>
           )}
-          <SplitEditor
-            members={splitMembers}
-            viewerId={me}
-            draft={draft}
-            onChange={setDraft}
-            amountCents={total}
-            currency={currency}
-          />
         </section>
 
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">

@@ -215,19 +215,10 @@ describe('ExpenseForm', () => {
     expect(screen.getByLabelText('Tip')).toHaveValue('15')
   })
 
-  describe('editing an expense split with someone who left', () => {
+  describe('editing an expense with someone who left the group', () => {
     const GONE = 'dddddddd-0000-4000-8000-000000000004'
-    const saved = expense({
-      description: 'Cabin',
-      amount_cents: 9000,
-      split_type: 'exact',
-      expense_splits: [
-        { user_id: ME, share_cents: 6000, weight: null },
-        { user_id: GONE, share_cents: 3000, weight: null },
-      ],
-    })
 
-    function edit() {
+    function edit(saved: Api.ExpenseWithSplits) {
       const onDone = vi.fn()
       const client = seededClient((c) =>
         c.setQueryData(moneyKeys.people(), [
@@ -246,10 +237,27 @@ describe('ExpenseForm', () => {
       update.mockClear()
     })
 
-    it('shows them in the split and saves new details without touching their share', async () => {
-      const { onDone } = edit()
-      expect(screen.getByRole('textbox', { name: 'Dana, amount' })).toHaveValue('30')
-      expect(screen.getByText(/Dana left the group/)).toBeInTheDocument()
+    it('locks the money when they have a share, and saves only the details', async () => {
+      const saved = expense({
+        description: 'Cabin',
+        amount_cents: 9000,
+        split_type: 'exact',
+        expense_splits: [
+          { user_id: ME, share_cents: 6000, weight: null },
+          { user_id: GONE, share_cents: 3000, weight: null },
+        ],
+      })
+      const { onDone } = edit(saved)
+      expect(
+        screen.getByText(
+          "Someone in this expense has left the group, so the amounts can't change.",
+        ),
+      ).toBeInTheDocument()
+      const split = screen.getByRole('list', { name: 'Split between' })
+      expect(within(split).getByText('Dana Gone')).toBeInTheDocument()
+      expect(within(split).getByText('$30.00')).toBeInTheDocument()
+      expect(screen.queryByRole('textbox', { name: 'Amount' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('radio', { name: 'Exact' })).not.toBeInTheDocument()
 
       fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
         target: { value: 'Cabin deposit' },
@@ -258,31 +266,44 @@ describe('ExpenseForm', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
       await waitFor(() => expect(onDone).toHaveBeenCalledWith(saved.id))
-      const payload = update.mock.calls[0]![2]
-      expect(payload).toMatchObject({ description: 'Cabin deposit', category: 'lodging' })
-      expect(payload).not.toHaveProperty('splits')
-      expect(payload).not.toHaveProperty('split_type')
+      expect(update.mock.calls[0]![2]).toEqual({
+        description: 'Cabin deposit',
+        category: 'lodging',
+        notes: null,
+        spent_at: saved.spent_at,
+        receipt_path: null,
+      })
     })
 
-    it('asks to take them out before the split itself can change', async () => {
-      const { onDone } = edit()
-      fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
-        target: { value: '50' },
+    it('locks the payer too when the payer left', async () => {
+      const saved = expense({
+        description: 'Fuel',
+        paid_by: GONE,
+        expense_splits: [
+          { user_id: ME, share_cents: 1500, weight: null },
+          { user_id: BEN, share_cents: 1500, weight: null },
+        ],
       })
-      fireEvent.change(screen.getByRole('textbox', { name: 'Dana, amount' }), {
-        target: { value: '40' },
-      })
-      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent(/Take Dana out of the split/)
-      expect(update).not.toHaveBeenCalled()
-
-      fireEvent.click(screen.getByRole('button', { name: /Dana/, pressed: true }))
-      fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
-        target: { value: '90' },
-      })
+      const { onDone } = edit(saved)
+      expect(screen.getByRole('combobox', { name: 'Paid by' })).toBeDisabled()
+      expect(screen.getByRole('combobox', { name: 'Paid by' })).toHaveTextContent('Dana Gone')
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
       await waitFor(() => expect(onDone).toHaveBeenCalled())
-      expect(update.mock.calls[0]![2].splits).toEqual([{ user_id: ME, share_cents: 9000 }])
+      expect(update.mock.calls[0]![2]).not.toHaveProperty('paid_by')
+      expect(update.mock.calls[0]![2]).not.toHaveProperty('amount_cents')
+    })
+
+    it('leaves everything editable when nobody who left has money on it', async () => {
+      const saved = expense({
+        expense_splits: [
+          { user_id: ME, share_cents: 1500, weight: null },
+          { user_id: BEN, share_cents: 1500, weight: null },
+        ],
+      })
+      edit(saved)
+      expect(screen.getByRole('textbox', { name: 'Amount' })).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'Paid by' })).not.toBeDisabled()
+      expect(screen.queryByText(/has left the group/)).not.toBeInTheDocument()
     })
   })
 })
