@@ -233,17 +233,25 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const lastMember = group.members.length === 1
   // A brand new group: put the invite link right here instead of behind a button.
   const alone = canInvite && lastMember
+  // Only closed accounts are left with the owner: nobody can take over, so leaving deletes
+  // the group (the server checks nobody active still has an open balance).
+  const onlyClosedLeft =
+    !lastMember && group.members.every((m) => m.id === viewerId || Boolean(m.deleted_at))
+  const ownerClosesGroup = me?.role === 'owner' && onlyClosedLeft
   const canLeave = me
     ? can(me.role, 'group.leave', { netCents: me.net_cents }) ||
-      (me.role === 'owner' && lastMember && me.net_cents === 0)
+      (me.role === 'owner' && lastMember && me.net_cents === 0) ||
+      ownerClosesGroup
     : false
   const leaveNote = !me
     ? undefined
-    : me.net_cents !== 0
-      ? t('groups.settings.leaveBlocked')
-      : me.role === 'owner' && !lastMember
-        ? t('groups.settings.ownerCannotLeave')
-        : undefined
+    : ownerClosesGroup
+      ? t('groups.settings.leaveLastActive')
+      : me.net_cents !== 0
+        ? t('groups.settings.leaveBlocked')
+        : me.role === 'owner' && !lastMember
+          ? t('groups.settings.ownerCannotLeave')
+          : undefined
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: groupKeys.all })
 
@@ -309,7 +317,9 @@ export function MembersPage({ groupId }: { groupId: string }) {
       case 'leave':
         return {
           title: t('groups.settings.leave'),
-          description: t('groups.settings.leaveConfirm', { group: group!.name }),
+          description: ownerClosesGroup
+            ? t('groups.settings.leaveLastActiveConfirm', { group: group!.name })
+            : t('groups.settings.leaveConfirm', { group: group!.name }),
           confirm: t('members.leave'),
           tone: 'danger' as const,
         }

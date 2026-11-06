@@ -84,6 +84,9 @@ export const groups = {
     leaveConfirm: 'Leave {group}?',
     leaveBlocked: 'You still have an open balance here. Settle up first.',
     ownerCannotLeave: 'Hand ownership to someone else before you go.',
+    leaveLastActive: 'Everyone else here has closed their account. Leaving deletes the group.',
+    leaveLastActiveConfirm:
+      'Leave and delete {group}? Its expenses and payments go with it, and this cannot be undone.',
   },
 } as const
 
