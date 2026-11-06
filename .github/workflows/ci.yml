@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   check:
-    name: Typecheck, lint, test, build
+    name: Verify (format, lint, generated files, typecheck, test, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,13 +24,10 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm exec prettier --check .
-      - name: Unit tests with coverage thresholds
-        run: pnpm test:coverage
-      - name: Edge function helper tests
-        run: pnpm test:functions
+      # Format, lint, generated files (route tree, agent map, skills copy), typecheck, unit
+      # tests with coverage, edge function tests and a production build with placeholder env.
+      # Same script developers and agents run: scripts/verify.mjs.
+      - run: pnpm verify
       - name: Coverage summary
         if: always()
         run: |
@@ -50,24 +47,25 @@ jobs:
             packages/*/coverage
             apps/*/coverage
           if-no-files-found: ignore
-      - run: pnpm build
-        # Production builds refuse to run without these. Placeholders are enough to compile.
-        env:
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_PUBLISHABLE_KEY: ci-build-placeholder
-          VITE_APP_URL: http://localhost:4173
 
   db:
     name: Database tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
       - uses: supabase/setup-cli@v1
         with:
           version: 3.0.0
+      - run: pnpm install --frozen-lockfile
       - run: supabase start -x studio,imgproxy,vector,logflare,supavisor
-      - run: supabase db lint --fail-on error
-      - run: supabase test db
+      # db lint, pgTAP, then the committed schema snapshot and database types must match a
+      # fresh generation. Same script as scripts/verify.mjs --db.
+      - run: pnpm verify:db
 
   e2e:
     name: End-to-end (Playwright)

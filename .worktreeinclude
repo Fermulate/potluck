@@ -1,0 +1,2 @@
+# Gitignored files to copy into new Claude Code worktrees.
+.env.local

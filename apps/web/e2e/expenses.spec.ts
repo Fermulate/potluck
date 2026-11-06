@@ -229,7 +229,8 @@ test.describe('expenses', () => {
         t('expenses.detail.converted', {
           amount: converted,
           currency: 'USD',
-          rate: String(quote!.rate),
+          // The quote is decimal text (1.100000000000); the detail page shows it trimmed.
+          rate: String(Number(quote!.rate)),
         }),
       ),
     ).toBeVisible()

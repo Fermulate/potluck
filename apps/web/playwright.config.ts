@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = 4173
+// E2E_PORT lets two checkouts run e2e side by side; each needs its own preview server.
+const PORT = Number(process.env.E2E_PORT ?? 4173)
 const baseURL = `http://localhost:${PORT}`
 const ci = !!process.env.CI
 

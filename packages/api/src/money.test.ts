@@ -118,6 +118,13 @@ describe('money groups', () => {
 })
 
 describe('fetchGroupExpenses', () => {
+  it('reads fx_rate as decimal text, so no digit is lost on the way to convert()', async () => {
+    const fake = fakeSupabase({ tables: { expenses: [] } })
+    await fetchGroupExpenses(fake.client, 'g1')
+    const [query] = fake.queries('expenses')
+    expect(String(argsOf(query!, 'select')[0]?.[0])).toContain('fx_rate::text')
+  })
+
   it('returns every live expense even past the per response row cap', async () => {
     const expenses = Array.from({ length: 2500 }, (_, i) => ({
       id: `e${i}`,
@@ -171,6 +178,13 @@ describe('fetchGroupSettlements', () => {
     const rows = await fetchGroupSettlements(fake.client, 'g1')
 
     expect(rows.map((r) => r.id)).toEqual(['s2', 's1'])
+  })
+
+  it('reads fx_rate as decimal text, so no digit is lost on the way to convert()', async () => {
+    const fake = fakeSupabase({ tables: { settlements: [] } })
+    await fetchGroupSettlements(fake.client, 'g1')
+    const [query] = fake.queries('settlements')
+    expect(String(argsOf(query!, 'select')[0]?.[0])).toContain('fx_rate::text')
   })
 })
 
@@ -241,26 +255,31 @@ describe('single reads', () => {
 
 describe('fetchFxRate', () => {
   const fxRates = [
-    { base: 'EUR', quote: 'USD', day: '2026-03-01', rate: 1.1 },
-    { base: 'EUR', quote: 'USD', day: '2026-06-01', rate: 1.2 },
-    { base: 'USD', quote: 'GBP', day: '2026-06-01', rate: 0.8 },
-    { base: 'USD', quote: 'JPY', day: '2026-06-01', rate: 150 },
+    // `rate::text`, as PostgREST returns it
+    { base: 'EUR', quote: 'USD', day: '2026-03-01', rate: '1.100000000000' },
+    { base: 'EUR', quote: 'USD', day: '2026-06-01', rate: '1.200000000000' },
+    { base: 'USD', quote: 'GBP', day: '2026-06-01', rate: '0.800000000000' },
+    { base: 'USD', quote: 'JPY', day: '2026-06-01', rate: '150.000000000000' },
+    { base: 'IDR', quote: 'EUR', day: '2026-06-01', rate: '0.000057600000' },
   ]
   const { client } = fakeSupabase({ tables: { fx_rates: fxRates } })
 
   it('is 1 for the same currency without a lookup', async () => {
     const fake = fakeSupabase()
-    expect(await fetchFxRate(fake.client, 'EUR', 'EUR', '2026-01-01')).toEqual({ rate: 1, day: '' })
+    expect(await fetchFxRate(fake.client, 'EUR', 'EUR', '2026-01-01')).toEqual({
+      rate: '1',
+      day: '',
+    })
     expect(fake.calls).toHaveLength(0)
   })
 
   it('uses the newest rate on or before the expense day, like private.fx_rate', async () => {
     expect(await fetchFxRate(client, 'EUR', 'USD', '2026-04-15')).toEqual({
-      rate: 1.1,
+      rate: '1.100000000000',
       day: '2026-03-01',
     })
     expect(await fetchFxRate(client, 'EUR', 'USD', '2026-06-01')).toEqual({
-      rate: 1.2,
+      rate: '1.200000000000',
       day: '2026-06-01',
     })
   })
@@ -273,7 +292,15 @@ describe('fetchFxRate', () => {
   it('falls back to the inverse pair, rounded to 12 places', async () => {
     // 1 / 150 = 0.0066666..., so the width of the rounding is visible.
     expect(await fetchFxRate(client, 'JPY', 'USD', '2026-07-01')).toEqual({
-      rate: 0.006666666667,
+      rate: '0.006666666667',
+      day: '2026-06-01',
+    })
+  })
+
+  it('keeps every digit of a large inverse, like round(1 / rate, 12)', async () => {
+    // 1 / 0.0000576 = 17361.111111111111; in JS numbers it comes out as 17361.111111111113.
+    expect(await fetchFxRate(client, 'EUR', 'IDR', '2026-07-01')).toEqual({
+      rate: '17361.111111111111',
       day: '2026-06-01',
     })
   })

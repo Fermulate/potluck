@@ -6,3 +6,4 @@ coverage
 **/routeTree.gen.ts
 supabase/.temp
 supabase/.branches
+.claude/worktrees

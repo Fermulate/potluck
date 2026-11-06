@@ -24,7 +24,8 @@ export function ConversionPreview({
   currency: string
   groupCurrency: string
   spentAt: string
-  savedRate?: number
+  /** The stored `fx_rate`, as the decimal text reads return. */
+  savedRate?: number | string
 }) {
   const { data, isPending } = useQuery({
     ...moneyQueries.fxRate(supabase, currency, groupCurrency, spentAt),
@@ -70,8 +71,8 @@ export function ConversionPreview({
   )
 }
 
-function formatRate(rate: number): string {
-  return String(Number(rate.toFixed(4)))
+function formatRate(rate: number | string): string {
+  return String(Number(Number(rate).toFixed(4)))
 }
 
 function ConversionLine({
@@ -84,7 +85,7 @@ function ConversionLine({
   amountCents: number
   currency: string
   groupCurrency: string
-  rate: number
+  rate: number | string
   detail: string
 }) {
   const converted = convert(amountCents, rate, { from: currency, to: groupCurrency })

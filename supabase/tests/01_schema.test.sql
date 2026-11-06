@@ -1,7 +1,16 @@
 -- Structure: tables, RLS everywhere, RPC signatures and privileges, indexes,
 -- seeds, buckets, realtime, cron.
+--
+-- This file pins the shape of the schema, so most schema changes have to update it:
+--   new table in public       -> tables_are list (and RLS, and an index for every foreign key)
+--   new public RPC            -> a has_function line
+--   RPC anon may call         -> the anon allowlist (also ADR 4 and docs/security.md)
+--   new realtime table        -> the publication set_eq
+--   new app_config key        -> the app_config seed rows
+--   new cron job              -> a cron.job check
+-- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(62);
+select plan(63);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -75,6 +84,16 @@ select is(
      and has_function_privilege('anon', p.oid, 'execute')),
   array['invite_preview'],
   'anon can only execute invite_preview'
+);
+
+-- Not found is PT404 (HTTP 404). P0002 reaches clients as HTTP 500; old migration files still
+-- show it, but 20261105200000_not_found_as_404 rewrote every body.
+select is(
+  (select coalesce(array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text), '{}') from pg_proc p
+   where p.pronamespace in ('public'::regnamespace, 'private'::regnamespace)
+     and p.prosrc ~ 'errcode\s*=\s*''P0002'''),
+  '{}'::text[],
+  'no function raises P0002 (use PT404 for not found)'
 );
 
 select is(

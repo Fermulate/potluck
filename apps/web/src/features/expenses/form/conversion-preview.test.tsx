@@ -12,7 +12,7 @@ const DAY = '2026-11-04'
 
 function renderPreview(
   props: Partial<Parameters<typeof ConversionPreview>[0]> = {},
-  rate?: { rate: number; day: string } | null,
+  rate?: { rate: string; day: string } | null,
 ) {
   const client = seededClient((c) => {
     if (rate !== undefined) c.setQueryData(moneyKeys.fxRate('EUR', 'USD', DAY), rate)
@@ -35,7 +35,7 @@ describe('ConversionPreview', () => {
   })
 
   it('previews the amount in the group currency at the latest rate', () => {
-    renderPreview({}, { rate: 1.08, day: '2026-11-03' })
+    renderPreview({}, { rate: '1.080000000000', day: '2026-11-03' })
     expect(
       screen.getByText(t('expenses.conversion.about', { amount: '$108.00', currency: 'USD' })),
     ).toBeInTheDocument()

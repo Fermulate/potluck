@@ -1,6 +1,6 @@
 # 3. Integer minor units and shared rounding rules
 
-- Status: accepted
+- Status: accepted, amended 2026-11-06
 - Date: 2026-11-05
 
 ## Context
@@ -13,7 +13,7 @@ Splitting $100 three ways does not divide evenly. Somebody pays the extra cent, 
 - Round half away from zero. Postgres `round(numeric)` already does this, and `convert()` in core reproduces it with `BigInt`.
 - Split by largest remainder: everyone gets the floor of their share, and the leftover cents go to the largest remainders. Ties go to the smaller user id, compared as plain code points so JavaScript and Postgres `uuid` ordering agree.
 - Scale percent and shares weights to 6 decimal fixed point before splitting.
-- Snapshot the FX rate (`numeric(18,8)`) on the row when it is written. Balances convert each expense once and split the converted total, so every expense nets to exactly zero in the group currency.
+- Snapshot the FX rate (`numeric(24,12)`, widened from `numeric(18,8)` by `20261106010000_integrity_fixes.sql`) on the row when it is written. Balances convert each expense once and split the converted total, so every expense nets to exactly zero in the group currency.
 - The server derives `equal`, `percent` and `shares` splits itself and ignores any `share_cents` the client sends for them.
 
 ## Consequences
@@ -22,4 +22,5 @@ Splitting $100 three ways does not divide evenly. Somebody pays the extra cent, 
 - Balances in a group always sum to zero, which `simplifyDebts()` checks and throws on otherwise.
 - Who gets the odd cent is deterministic but arbitrary: it depends on user ids, not on who paid or who joined first.
 - The rule is implemented three times (core `allocate()`, `private.compute_splits()`, the `group_balances` view). Changing it means changing all three and their tests.
+- Clients read `fx_rate` as text (`fx_rate::text` in `packages/api`), never as a JSON number: a rate such as 16000.123456789012 has more digits than a JS number keeps, and the lost digit can move a converted total by one minor unit. `convert()` and `invertRate()` in core take the decimal text.
 - A past expense keeps its original rate forever, even if rates are corrected later. That is intended: nobody's balance should move because of a data fix.

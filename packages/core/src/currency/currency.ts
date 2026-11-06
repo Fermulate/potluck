@@ -79,6 +79,41 @@ function scaleRate(rate: number | string): bigint {
   return scaled
 }
 
+/** `numerator / denominator` rounded half up, like Postgres `round(numeric)`. */
+function divideHalfUp(numerator: bigint, denominator: bigint): bigint {
+  const quotient = numerator / denominator
+  return (numerator % denominator) * 2n >= denominator ? quotient + 1n : quotient
+}
+
+/**
+ * Decimals Postgres computes `1 / rate` to before `round(..., 12)` sees it (select_div_scale in
+ * numeric.c): at least 16 significant digits, never fewer than the rate's own 12. With `w` the
+ * base 10000 weight of the rate's leading digit, that is `max(12, 20 + 4 * w)`: 16 for rates in
+ * [0.0001, 1), 20 for [1, 10000), 24 for [10000, 1e8).
+ */
+function quotientScale(scaled: bigint): number {
+  const exponent = scaled.toString().length - RATE_DECIMALS - 1
+  return Math.max(RATE_DECIMALS, 20 + 4 * Math.floor(exponent / 4))
+}
+
+/**
+ * `1 / rate` to 12 decimals as decimal text: what `private.fx_rate` returns for the inverse pair
+ * (`round(1 / rate, 12)`). Mirrors Postgres digit for digit, including its rounding of the quotient
+ * at the division scale before the final rounding, so 1 / 0.111518261468 gives 8.967141227242, not
+ * the exactly rounded 8.967141227241. A large inverse such as 17361.111111111111 keeps all 17
+ * digits, which a JS number cannot.
+ */
+export function invertRate(rate: number | string): string {
+  const scaled = scaleRate(rate)
+  const scale = quotientScale(scaled)
+  const quotient = divideHalfUp(10n ** BigInt(scale) * RATE_SCALE, scaled)
+  const inverse = divideHalfUp(quotient, 10n ** BigInt(scale - RATE_DECIMALS))
+  if (inverse === 0n) throw new RangeError(`fx rate too large to invert: ${rate}`)
+  const whole = inverse / RATE_SCALE
+  const fraction = (inverse % RATE_SCALE).toString().padStart(RATE_DECIMALS, '0')
+  return `${whole}.${fraction}`
+}
+
 export interface ConvertOptions {
   /** Currency of `amountMinor`. Only its minor unit count matters. Defaults to a 2 digit currency. */
   from?: string
@@ -109,7 +144,6 @@ export function convert(
   const numerator = magnitude * scaleRate(rate) * 10n ** BigInt(toDigits)
   const denominator = RATE_SCALE * 10n ** BigInt(fromDigits)
 
-  let result = numerator / denominator
-  if ((numerator % denominator) * 2n >= denominator) result += 1n
+  const result = divideHalfUp(numerator, denominator)
   return amountMinor < 0 ? -Number(result) : Number(result)
 }

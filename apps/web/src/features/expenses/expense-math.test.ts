@@ -51,7 +51,7 @@ describe('expensesToCsv', () => {
           id: 'e2',
           description: 'Pasteis, "the good ones"',
           currency: 'EUR',
-          fx_rate: 1.1,
+          fx_rate: '1.100000000000',
           amount_cents: 1000,
           spent_at: '2026-10-07',
           paid_by: BEN,

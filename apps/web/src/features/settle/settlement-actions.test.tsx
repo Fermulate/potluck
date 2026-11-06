@@ -23,7 +23,7 @@ function payment(patch: Partial<Settlement> = {}): Settlement {
     to_user: CLEO,
     amount_cents: 2000,
     currency: 'USD',
-    fx_rate: 1,
+    fx_rate: '1.000000000000',
     note: null,
     settled_at: '2026-11-04T18:00:00Z',
     created_at: '2026-11-04T18:00:00Z',

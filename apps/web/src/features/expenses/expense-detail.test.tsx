@@ -70,7 +70,7 @@ describe('ExpenseDetail', () => {
   it('shows the converted amount and shares for a foreign expense', async () => {
     renderDetail({
       currency: 'EUR',
-      fx_rate: 1.1,
+      fx_rate: '1.100000000000',
       split_type: 'shares',
       expense_splits: [
         { user_id: ME, share_cents: 2000, weight: 2 },

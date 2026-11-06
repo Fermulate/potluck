@@ -6,7 +6,7 @@
 --   tests.login('alice')                  become that user (role authenticated + JWT claims)
 --   tests.login_anon()                    become an anonymous visitor
 --   reset role                            back to the superuser (plain SQL)
---   tests.group_with(owner, members[], admins[], name)  group built directly, returns id
+--   tests.group_with(owner, members[], admins[], name, currency)  group built directly, returns id
 --   tests.remember('g', id) / tests.id('g')             stash ids for later statements
 --   tests.people('alice', 'bob')                        [{user_id}, ...] for expense splits
 

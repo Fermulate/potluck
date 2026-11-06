@@ -15,7 +15,14 @@ Start with [development.md](development.md) to get Potluck running, then read [a
 | [dogfood/performance.md](dogfood/performance.md) | the performance pass: what was measured, what changed and what it bought                      |
 | [adr/](adr/README.md)                            | you wonder why something is the way it is                                                     |
 
-Outside this folder: [CONTRIBUTING.md](../CONTRIBUTING.md) (branches, commits, PRs), [SECURITY.md](../SECURITY.md) (reporting vulnerabilities), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md).
+Outside this folder: [CONTRIBUTING.md](../CONTRIBUTING.md) (branches, commits, PRs), [SECURITY.md](../SECURITY.md) (reporting vulnerabilities), [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md), and [AGENTS.md](../AGENTS.md) (commands and rules for coding agents, with a nested `AGENTS.md` in `apps/web`, `packages/core`, `packages/api`, `packages/i18n` and `supabase`).
+
+The user guide that the app's help links open lives in its own repository, [Fermulate/potluck-docs](https://github.com/Fermulate/potluck-docs). Anchors in `apps/web/src/features/help/topics.ts` must match its headings, so a change to user-facing behavior often needs a PR there too.
+
+Generated references, checked in CI:
+
+- [`supabase/schema/current.sql`](../supabase/schema/current.sql): the live schema after every migration (`pnpm gen:schema`).
+- [`agent-map.json`](agent-map.json): routes, RPCs with arguments, grants and error codes, tables with RLS and policies, error codes with their i18n keys, i18n namespaces, edge functions (`pnpm gen:map`).
 
 ## Map of the repository
 
@@ -33,8 +40,11 @@ packages/ui/           web React components
 supabase/migrations/   schema, RLS, RPCs, triggers, storage, realtime, cron
 supabase/functions/    edge functions: notify, fx-sync, ics-feed, delete-account
 supabase/tests/        pgTAP tests
+supabase/schema/       generated snapshot of the live schema
 supabase/snippets/     local only: perf volume data and explain plans for the hot paths
 supabase/seed.sql      demo users and data
+scripts/               verify and the generators (plain Node)
+.agents/skills/        task recipes for coding agents (copied to .claude/skills)
 .github/workflows/     ci, deploy, codeql, keepalive
 ```
 

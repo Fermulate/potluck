@@ -10,6 +10,10 @@ The web app updates within minutes of a deploy, but a service worker can keep an
 ## Decision
 
 - Migrations only add things: new tables, new nullable or defaulted columns, new functions, new policies. They do not rename or drop columns, change a column's meaning, or change an RPC's arguments or return shape in place.
+- Allowed in place, because no client can tell the difference:
+  - widening a column without losing values (`20261106010000_integrity_fixes.sql` took `fx_rate` from `numeric(18,8)` to `numeric(24,12)`);
+  - dropping and recreating a view in the same migration with the same columns (the same file does this to `group_balances`, which depends on `fx_rate`);
+  - `create or replace` of a function body that keeps its arguments, return shape and error codes. Copy the newest body (see `supabase/schema/current.sql`), not the first migration that defined it.
 - When an RPC needs a breaking change, add a new function with a `_v2` suffix and keep the old one working. Remove the old one only after `app_config.min_client_version` has moved every platform past the last client that calls it.
 - Nobody edits a migration that has reached `main`. Fixes go in a new migration.
 - Never change the database through the dashboard. `supabase db push` from CI is the only writer of schema in production.

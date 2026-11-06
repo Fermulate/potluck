@@ -1,6 +1,7 @@
 /**
  * money queries and mutations. Platform-neutral: no DOM imports.
  */
+import { invertRate } from '@potluck/core'
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
@@ -11,8 +12,18 @@ export type SplitTypeValue = Database['public']['Enums']['split_type']
 export type RecurrenceValue = Database['public']['Enums']['recurrence']
 export type GroupRoleValue = Database['public']['Enums']['group_role']
 
-export type Expense = Tables['expenses']['Row']
-export type Settlement = Tables['settlements']['Row']
+/** An `expenses` row as an RPC returns it (`fx_rate` parsed as a JS number). */
+export type ExpenseRow = Tables['expenses']['Row']
+/** A `settlements` row as an RPC returns it (`fx_rate` parsed as a JS number). */
+export type SettlementRow = Tables['settlements']['Row']
+
+/**
+ * Reads select `fx_rate::text`. The column is numeric(24,12): a rate such as
+ * 16000.123456789012 has more digits than a JS number keeps, and `convert()` needs every one of
+ * them to land on the same cent as the database.
+ */
+export type Expense = Omit<ExpenseRow, 'fx_rate'> & { fx_rate: string }
+export type Settlement = Omit<SettlementRow, 'fx_rate'> & { fx_rate: string }
 export type RecurringExpense = Tables['recurring_expenses']['Row']
 
 export interface ExpenseSplit {
@@ -80,8 +91,8 @@ export interface ActivityItem {
 }
 
 export interface FxQuote {
-  /** Units of `to` per unit of `from`. */
-  rate: number
+  /** Units of `to` per unit of `from`, as exact decimal text (numeric(24,12)). */
+  rate: string
   day: string
 }
 
@@ -203,7 +214,13 @@ export async function fetchMoneyGroups(client: PotluckClient): Promise<MoneyGrou
   return (rows as unknown as GroupSelectRow[]).map(toGroup)
 }
 
-const EXPENSE_SELECT = '*, expense_splits (user_id, share_cents, weight)'
+// Every column, with fx_rate as text (see `Expense`). A column added to the table but not here
+// fails typecheck where these rows are returned as `Expense`.
+// (One literal each: supabase-js derives the row type from the select string.)
+const EXPENSE_SELECT =
+  'id, group_id, event_id, description, amount_cents, currency, fx_rate::text, paid_by, split_type, category, notes, spent_at, receipt_path, recurring_id, created_by, created_at, updated_at, deleted_at, expense_splits (user_id, share_cents, weight)'
+const SETTLEMENT_SELECT =
+  'id, group_id, from_user, to_user, amount_cents, currency, fx_rate::text, note, settled_at, created_by, created_at, deleted_at'
 
 /** Every live (not deleted) expense, newest first. */
 export async function fetchGroupExpenses(
@@ -231,7 +248,7 @@ export async function fetchGroupSettlements(
   return fetchAllPages((from, to) =>
     client
       .from('settlements')
-      .select('*')
+      .select(SETTLEMENT_SELECT)
       .eq('group_id', groupId)
       .is('deleted_at', null)
       .order('settled_at', { ascending: false })
@@ -306,22 +323,22 @@ export async function fetchFxRate(
   to: string,
   onDay: string,
 ): Promise<FxQuote | null> {
-  if (from === to) return { rate: 1, day: '' }
+  if (from === to) return { rate: '1', day: '' }
   const direct = unwrap(
     await client
       .from('fx_rates')
-      .select('rate, day')
+      .select('rate::text, day')
       .eq('base', from)
       .eq('quote', to)
       .lte('day', onDay)
       .order('day', { ascending: false })
       .limit(1),
   )
-  if (direct[0]) return { rate: Number(direct[0].rate), day: direct[0].day }
+  if (direct[0]) return { rate: direct[0].rate, day: direct[0].day }
   const inverse = unwrap(
     await client
       .from('fx_rates')
-      .select('rate, day')
+      .select('rate::text, day')
       .eq('base', to)
       .eq('quote', from)
       .lte('day', onDay)
@@ -329,7 +346,7 @@ export async function fetchFxRate(
       .limit(1),
   )
   if (inverse[0]) {
-    return { rate: Number((1 / Number(inverse[0].rate)).toFixed(12)), day: inverse[0].day }
+    return { rate: invertRate(inverse[0].rate), day: inverse[0].day }
   }
   return null
 }
@@ -418,7 +435,7 @@ export async function fetchReceiptUrl(client: PotluckClient, path: string): Prom
 export async function createExpense(
   client: PotluckClient,
   payload: ExpensePayload,
-): Promise<Expense> {
+): Promise<ExpenseRow> {
   return unwrap(await client.rpc('create_expense', { payload: payload as unknown as Json }))
 }
 
@@ -426,17 +443,20 @@ export async function updateExpense(
   client: PotluckClient,
   expenseId: string,
   payload: ExpenseUpdate,
-): Promise<Expense> {
+): Promise<ExpenseRow> {
   return unwrap(
     await client.rpc('update_expense', { id: expenseId, payload: payload as unknown as Json }),
   )
 }
 
-export async function deleteExpense(client: PotluckClient, expenseId: string): Promise<Expense> {
+export async function deleteExpense(client: PotluckClient, expenseId: string): Promise<ExpenseRow> {
   return unwrap(await client.rpc('delete_expense', { id: expenseId }))
 }
 
-export async function restoreExpense(client: PotluckClient, expenseId: string): Promise<Expense> {
+export async function restoreExpense(
+  client: PotluckClient,
+  expenseId: string,
+): Promise<ExpenseRow> {
   return unwrap(await client.rpc('restore_expense', { id: expenseId }))
 }
 
@@ -467,7 +487,10 @@ export async function deleteExpenseComment(client: PotluckClient, commentId: str
   )
 }
 
-export async function settleUp(client: PotluckClient, input: SettleUpInput): Promise<Settlement> {
+export async function settleUp(
+  client: PotluckClient,
+  input: SettleUpInput,
+): Promise<SettlementRow> {
   return unwrap(
     await client.rpc('settle_up', {
       group_id: input.groupId,

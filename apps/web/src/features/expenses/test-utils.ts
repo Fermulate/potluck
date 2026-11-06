@@ -48,7 +48,7 @@ export function expense(patch: Partial<ExpenseWithSplits>): ExpenseWithSplits {
     description: 'Tacos',
     amount_cents: 3000,
     currency: 'USD',
-    fx_rate: 1,
+    fx_rate: '1.000000000000',
     paid_by: ME,
     split_type: 'equal',
     category: 'food',

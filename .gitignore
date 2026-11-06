@@ -19,3 +19,9 @@ dev-dist/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# local agent state (settings.json and skills/ are shared and committed)
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md
+.playwright-mcp/

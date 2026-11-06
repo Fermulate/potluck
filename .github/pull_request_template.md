@@ -14,8 +14,10 @@
 
 ## Checklist
 
-- [ ] `pnpm typecheck`, `pnpm lint`, `pnpm test` and `pnpm build` pass locally
+- [ ] `pnpm verify` passes locally
+- [ ] Database changes: a new migration with pgTAP tests, regenerated files (`pnpm gen:db`), and `pnpm verify:db` passes
+- [ ] Changed a journey: its e2e spec passes (`pnpm --filter @potluck/web exec playwright test e2e/<spec>.spec.ts`)
 - [ ] Tests added or updated for new behavior
-- [ ] Database changes are in a new migration with pgTAP tests in `supabase/tests/`
+- [ ] Docs updated where the code changed them (`docs/architecture.md` for tables, RPCs, error codes)
 - [ ] No secrets, keys or personal data committed
 - [ ] UI changes checked on a phone-sized screen
