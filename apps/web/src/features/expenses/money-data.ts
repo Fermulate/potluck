@@ -119,6 +119,8 @@ export function moneyErrorMessage(error: unknown): string {
   if (code) {
     const key = `expenses.errors.${code}`
     if (hasMessage(key)) return t(key as 'expenses.errors.not_allowed')
+    const shared = `errors.codes.${code}`
+    if (hasMessage(shared)) return t(shared as 'errors.generic')
   }
   if (error instanceof TypeError) return t('errors.network')
   return t('errors.generic')

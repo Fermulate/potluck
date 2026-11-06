@@ -97,4 +97,22 @@ describe('JoinPage', () => {
     expect(await screen.findByText('This invite has gone cold')).toBeInTheDocument()
     expect(screen.getByText('This link has expired. Ask for a fresh one.')).toBeInTheDocument()
   })
+
+  it('says an archived group is not taking people', async () => {
+    state.session = { user: { id: 'u-fay', user_metadata: { onboarded: true } } }
+    state.preview = { ...valid, status: 'archived' }
+    renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
+    expect(
+      await screen.findByText('This group has been archived, so it is not taking new people.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Join Hike crew' })).not.toBeInTheDocument()
+  })
+
+  it('does not offer to join when a block stands in the way', async () => {
+    state.session = { user: { id: 'u-fay', user_metadata: { onboarded: true } } }
+    state.preview = { ...valid, status: 'blocked' }
+    renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
+    expect(await screen.findByText('You cannot join this group.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Join Hike crew' })).not.toBeInTheDocument()
+  })
 })

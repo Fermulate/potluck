@@ -325,7 +325,7 @@ export async function fetchFxRate(
       .limit(1),
   )
   if (inverse[0]) {
-    return { rate: Math.round((1 / Number(inverse[0].rate)) * 1e8) / 1e8, day: inverse[0].day }
+    return { rate: Number((1 / Number(inverse[0].rate)).toFixed(12)), day: inverse[0].day }
   }
   return null
 }

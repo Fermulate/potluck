@@ -80,11 +80,24 @@ describe('convert', () => {
     )
   })
 
+  it('keeps 12 decimals of the rate, like the database', () => {
+    // 100,000,000.00 IDR at 0.000061714286 USD per rupiah is $6,171.43 (8 decimals gave $6,171.00)
+    expect(convert(10_000_000_000, '0.000061714286', { from: 'IDR', to: 'USD' })).toBe(617_143)
+    expect(convert(10_000_000_000, 0.000061714286, { from: 'IDR', to: 'USD' })).toBe(617_143)
+    // a large rate keeps every digit when passed as text
+    expect(convert(1_000_000_000, '16000.123456789012', { from: 'USD', to: 'IDR' })).toBe(
+      16_000_123_456_789,
+    )
+    // rounded half up at the 12th decimal, like a cast to numeric(24,12)
+    expect(convert(10 ** 12, '0.0000000000015')).toBe(2)
+    expect(convert(10 ** 12, '0.0000000000014')).toBe(1)
+  })
+
   it('throws on a non-positive or invalid rate', () => {
     expect(() => convert(100, 0)).toThrow(RangeError)
     expect(() => convert(100, -1)).toThrow(RangeError)
     expect(() => convert(100, 'abc')).toThrow(RangeError)
-    expect(() => convert(100, 1e-9)).toThrow(RangeError)
+    expect(() => convert(100, 1e-13)).toThrow(RangeError)
     expect(() => convert(1.5, 1)).toThrow(RangeError)
   })
 })

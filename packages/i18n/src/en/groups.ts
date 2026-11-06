@@ -84,6 +84,9 @@ export const groups = {
     leaveConfirm: 'Leave {group}?',
     leaveBlocked: 'You still have an open balance here. Settle up first.',
     ownerCannotLeave: 'Hand ownership to someone else before you go.',
+    leaveLastActive: 'Everyone else here has closed their account. Leaving deletes the group.',
+    leaveLastActiveConfirm:
+      'Leave and delete {group}? Its expenses and payments go with it, and this cannot be undone.',
   },
 } as const
 
@@ -206,6 +209,8 @@ export const invites = {
     used: 'This link has been used up.',
     revoked: 'This link was revoked.',
     notFound: 'We could not find that invite.',
+    archived: 'This group has been archived, so it is not taking new people.',
+    blocked: 'You cannot join this group.',
     home: 'Take me home',
   },
 } as const

@@ -42,17 +42,17 @@ These are real today. Each should become an issue.
 
 ### What is stored
 
-| Data                                                      | Where                                      | Visible to                                                  |
-| --------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------- |
-| Email, password hash, sessions                            | `auth.users` (Supabase Auth)               | nobody through the API. Supabase operators                  |
-| Display name, avatar, time zone, locale, default currency | `profiles`                                 | you, people you share a group with, friends                 |
-| Groups, members, invites                                  | `groups`, `group_members`, `group_invites` | members. Invites only to admins and the invite's creator    |
-| Expenses, splits, settlements, comments                   | money tables, `comments`                   | members of that group                                       |
-| Availability, RSVPs, events                               | plans tables                               | members of that group                                       |
-| Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off) |
-| Notifications, push subscriptions                         | `notifications`, `push_tokens`             | only you                                                    |
-| Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL) |
-| Avatars, group covers                                     | public buckets                             | anyone with the URL                                         |
+| Data                                                      | Where                                      | Visible to                                                                 |
+| --------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------- |
+| Email, password hash, sessions                            | `auth.users` (Supabase Auth)               | nobody through the API. Supabase operators                                 |
+| Display name, avatar, time zone, locale, default currency | `profiles`                                 | you, people you share a group with or who left one of your groups, friends |
+| Groups, members, invites                                  | `groups`, `group_members`, `group_invites` | members. Invites only to admins and the invite's creator                   |
+| Expenses, splits, settlements, comments                   | money tables, `comments`                   | members of that group                                                      |
+| Availability, RSVPs, events                               | plans tables                               | members of that group                                                      |
+| Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off)                |
+| Notifications, push subscriptions                         | `notifications`, `push_tokens`             | only you                                                                   |
+| Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL)                |
+| Avatars, group covers                                     | public buckets                             | anyone with the URL                                                        |
 
 There is no analytics or tracking code in the app.
 

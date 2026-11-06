@@ -43,7 +43,7 @@ select delete_expense(tests.id('deleted'));
 -- c pays a back 3.00
 select tests.login('c');
 select is((select (from_user, to_user, amount_cents, currency, fx_rate)::text from settle_up(tests.id('g'), tests.uid('a'), 300)),
-  (tests.uid('c'), tests.uid('a'), 300::bigint, 'USD'::char(3), 1::numeric(18,8))::text,
+  (tests.uid('c'), tests.uid('a'), 300::bigint, 'USD'::char(3), 1::numeric(24,12))::text,
   'settle_up records a payment from the caller');
 -- d records a payment to b, then removes it
 select tests.login('d');

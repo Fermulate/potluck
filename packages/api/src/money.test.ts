@@ -269,7 +269,7 @@ describe('fetchFxRate', () => {
     expect(await fetchFxRate(client, 'GBP', 'USD', '2026-05-31')).toBeNull()
   })
 
-  it('falls back to the inverse pair, rounded to 8 places', async () => {
+  it('falls back to the inverse pair, rounded to 12 places', async () => {
     expect(await fetchFxRate(client, 'GBP', 'USD', '2026-07-01')).toEqual({
       rate: 1.25,
       day: '2026-06-01',

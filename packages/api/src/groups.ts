@@ -44,7 +44,7 @@ export interface InvitePreview {
   cover_path: string | null
   member_count: number
   first_names: string[]
-  status: 'valid' | 'expired' | 'revoked' | 'used_up'
+  status: 'valid' | 'expired' | 'revoked' | 'used_up' | 'archived' | 'blocked'
   is_member: boolean
 }
 

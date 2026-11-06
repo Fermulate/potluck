@@ -88,6 +88,24 @@ describe('MembersPage actions', () => {
     expect(screen.getByText(t('groups.settings.ownerCannotLeave'))).toBeInTheDocument()
   })
 
+  it('lets the owner close the group when only closed accounts are left', async () => {
+    const closed = { ...member('u-ben', 'Former member', 'member', 500), deleted_at: '2026-09-01' }
+    const { router } = renderMembers(
+      group({ members: [member(VIEWER, 'Ava Chen', 'owner', -500), closed] }),
+    )
+    expect(await screen.findByText(t('groups.settings.leaveLastActive'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('members.leave') }))
+    const dialog = await screen.findByRole('dialog', { name: t('groups.settings.leave') })
+    expect(
+      within(dialog).getByText(
+        t('groups.settings.leaveLastActiveConfirm', { group: group().name }),
+      ),
+    ).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: t('members.leave') }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/groups'))
+    expect(db().rpcArgs('leave_group')).toEqual([{ group_id: 'g-hike' }])
+  })
+
   it('opens the invite sheet', async () => {
     renderMembers()
     fireEvent.click(await screen.findByRole('button', { name: t('members.invite') }))

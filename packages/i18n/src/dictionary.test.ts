@@ -96,6 +96,24 @@ describe('coverage of core domain values', () => {
     expect(missingKeys(codes.map((code) => `errors.validation.${code}`))).toEqual([])
   })
 
+  it('explains the ledger and membership codes the database raises', () => {
+    const codes = [
+      'blocked',
+      'member_not_in_group',
+      'split_member_not_in_group',
+      'settlement_not_found',
+      'event_not_in_group',
+    ]
+    expect(missingKeys(codes.map((code) => `errors.codes.${code}`))).toEqual([])
+    expect(
+      missingKeys(
+        ['member_not_in_group', 'settlement_not_found', 'event_not_in_group'].map(
+          (code) => `expenses.errors.${code}`,
+        ),
+      ),
+    ).toEqual([])
+  })
+
   it('describes every activity verb', () => {
     const verbs = [
       'group.created',

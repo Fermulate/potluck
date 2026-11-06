@@ -56,14 +56,25 @@ export function parseAmount(input: string, currency: string): number | null {
   return Number.isSafeInteger(value) ? value : null
 }
 
-/** FX rates are stored as numeric(18,8). */
-const RATE_DECIMALS = 8
+/** FX rates are stored as numeric(24,12). */
+const RATE_DECIMALS = 12
 const RATE_SCALE = 10n ** BigInt(RATE_DECIMALS)
 
+/**
+ * The rate as an integer number of 1e-12 units, rounded half up like a cast to numeric(24,12).
+ * Works on the decimal text so large rates (16000.123456789012) keep every digit.
+ */
 function scaleRate(rate: number | string): bigint {
   const value = typeof rate === 'string' ? Number(rate) : rate
   if (!Number.isFinite(value) || value <= 0) throw new RangeError(`invalid fx rate: ${rate}`)
-  const scaled = BigInt(Math.round(value * Number(RATE_SCALE)))
+  const text =
+    typeof rate === 'string' && /^\d+(\.\d+)?$/.test(rate.trim())
+      ? rate.trim()
+      : value.toFixed(RATE_DECIMALS)
+  const [whole = '0', fraction = ''] = text.split('.')
+  let scaled =
+    BigInt(whole) * RATE_SCALE + BigInt(fraction.slice(0, RATE_DECIMALS).padEnd(RATE_DECIMALS, '0'))
+  if ((fraction[RATE_DECIMALS] ?? '0') >= '5') scaled += 1n
   if (scaled === 0n) throw new RangeError(`fx rate too small: ${rate}`)
   return scaled
 }
@@ -81,7 +92,7 @@ export interface ConvertOptions {
  *
  * Rounding: half away from zero ("half up" for positive amounts), the same as Postgres
  * `round(numeric)`, so client previews match what the database stores. The rate is used with
- * 8 decimal places, like the `fx_rate numeric(18,8)` column.
+ * 12 decimal places, like the `fx_rate numeric(24,12)` column.
  */
 export function convert(
   amountMinor: number,
