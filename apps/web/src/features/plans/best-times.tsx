@@ -1,10 +1,11 @@
+import { firstName } from '@potluck/core'
 import type { PlanBestSlot, PlanMember } from '@potluck/api'
 import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
 import { AvatarStack, Button, Card, ConfirmDialog, Skeleton } from '@potluck/ui'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { GoodToKnow, Help } from '@/features/help/help'
-import { firstName, joinNames } from './format'
+import { joinNames } from './format'
 
 export interface BestTimesProps {
   slots: PlanBestSlot[] | undefined

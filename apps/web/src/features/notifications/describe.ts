@@ -1,3 +1,4 @@
+import { firstName } from '@potluck/core'
 import type { NotificationRow } from '@potluck/api'
 import { formatDate, formatMoney, formatRelative, formatTime, t } from '@potluck/i18n'
 
@@ -35,14 +36,12 @@ const str = (value: unknown): string | undefined =>
 const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
-function firstName(full: string | undefined): string | undefined {
-  return full?.split(/\s+/)[0]
-}
+const firstNameOf = (full: string | undefined) => (full ? firstName(full) : undefined)
 
 /** Turns a notification row into copy and a deep link. Unknown types fall back gracefully. */
 export function describeNotification(n: NotificationRow, ctx: DescribeContext): NotificationView {
   const d = (n.data ?? {}) as Data
-  const actor = firstName(ctx.people.get(str(d.actor_id) ?? '')) ?? t('notifications.someone')
+  const actor = firstNameOf(ctx.people.get(str(d.actor_id) ?? '')) ?? t('notifications.someone')
   const groupId = str(d.group_id)
   const group = (groupId && ctx.groups.get(groupId)) || t('notifications.aGroup')
   const event = str(d.event_title) ?? t('notifications.anEvent')
@@ -83,7 +82,7 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
       const fromUser = str(d.from_user)
       const toUser = str(d.to_user)
       const name = (id: string | undefined) =>
-        firstName(ctx.people.get(id ?? '')) ?? t('notifications.someone')
+        firstNameOf(ctx.people.get(id ?? '')) ?? t('notifications.someone')
       const view =
         n.user_id !== fromUser
           ? {

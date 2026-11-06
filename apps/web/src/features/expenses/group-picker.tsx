@@ -1,3 +1,4 @@
+import { firstName } from '@potluck/core'
 import { moneyQueries, type MoneyGroup } from '@potluck/api'
 import { groupTitle } from './format'
 import { t } from '@potluck/i18n'
@@ -6,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronRight } from 'lucide-react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
-import { avatarUrl, firstName } from './money-data'
+import { avatarUrl } from './money-data'
 
 /** Big tappable list of the viewer's groups, for flows started without one. */
 export function GroupPicker({

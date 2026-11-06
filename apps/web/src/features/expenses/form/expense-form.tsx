@@ -8,7 +8,7 @@ import {
   type MoneyMember,
   type RecurrenceValue,
 } from '@potluck/api'
-import { CATEGORIES, type CategoryId } from '@potluck/core'
+import { CATEGORIES, firstName, type CategoryId } from '@potluck/core'
 import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -36,7 +36,6 @@ import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
 import {
   avatarUrl,
-  firstName,
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,

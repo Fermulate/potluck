@@ -1,4 +1,5 @@
 import { settleUp, type MoneyGroup, type MoneyMember } from '@potluck/api'
+import { firstName } from '@potluck/core'
 import { springs } from '@potluck/tokens'
 import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
@@ -25,7 +26,6 @@ import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { GoodToKnow } from '@/features/help/help'
 import {
   avatarUrl,
-  firstName,
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,

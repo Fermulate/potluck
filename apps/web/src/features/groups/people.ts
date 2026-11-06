@@ -1,3 +1,4 @@
+import { firstName as firstWord } from '@potluck/core'
 import type { GroupDetail, GroupMember, PersonSummary } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import type { AvatarStackPerson } from '@potluck/ui'
@@ -8,7 +9,7 @@ export function displayName(person: Pick<PersonSummary, 'display_name' | 'delete
 }
 
 export function firstName(person: Pick<PersonSummary, 'display_name' | 'deleted_at'>): string {
-  return displayName(person).split(/\s+/)[0] ?? ''
+  return firstWord(displayName(person))
 }
 
 export function stackPeople(members: PersonSummary[]): AvatarStackPerson[] {

@@ -1,10 +1,11 @@
+import { firstName } from '@potluck/core'
 import type { MoneyMember } from '@potluck/api'
 import type { Shares } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, cn } from '@potluck/ui'
 import { Money } from '../money'
 import { Plus, X } from 'lucide-react'
-import { avatarUrl, firstName } from '../money-data'
+import { avatarUrl } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
 import {
   TIP_PERCENTS,

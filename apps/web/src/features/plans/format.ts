@@ -52,8 +52,3 @@ export function joinNames(names: string[], max = 2): string {
     count: names.length - max,
   })
 }
-
-/** First word of a display name. */
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name
-}

@@ -7,6 +7,7 @@ import {
   myProfileQueryOptions,
   type MoneyPerson,
 } from '@potluck/api'
+import { firstName } from '@potluck/core'
 import { hasMessage, t } from '@potluck/i18n'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
@@ -107,10 +108,6 @@ export function useNameOf() {
       },
     [people, me],
   )
-}
-
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name
 }
 
 /** Turns an RPC failure into a sentence for a toast or field error. */
