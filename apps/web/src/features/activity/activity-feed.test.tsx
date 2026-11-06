@@ -3,7 +3,7 @@ import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
-import { argsOf, db, emitChange, resetDb } from '@/test/supabase'
+import { argsOf, db, emitChange, resetDb, subscriptions } from '@/test/supabase'
 import { BEN, ME, seededClient } from '../expenses/test-utils'
 import { ActivityFeed } from './activity-feed'
 
@@ -29,7 +29,7 @@ function activity(id: string, created_at: string, patch: object = {}) {
 }
 
 function renderFeed(rows: Record<string, unknown>[]) {
-  resetDb({ tables: { activity: rows } })
+  resetDb({ tables: { activity: rows, groups: [{ ...hike, group_members: [] }] } })
   return renderWithProviders(<ActivityFeed />, { path: '/activity', client: seededClient() })
 }
 
@@ -99,5 +99,13 @@ describe('ActivityFeed', () => {
     db().respond('from:activity', { data: [activity('a9', '2026-11-05T09:00:00Z')] })
     emitChange('activity')
     expect(await screen.findByRole('link', { name: /Ben added "Tacos"/ })).toBeInTheDocument()
+  })
+
+  it("listens only to the viewer's groups", async () => {
+    renderFeed([])
+    await waitFor(() =>
+      expect(subscriptions()).toContainEqual({ table: 'activity', filter: 'group_id=in.(g-hike)' }),
+    )
+    expect(subscriptions().filter((s) => s.table === 'activity')).toHaveLength(1)
   })
 })
