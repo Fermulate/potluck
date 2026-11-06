@@ -45,7 +45,7 @@ import {
 } from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
-import { receiptExtension } from './receipt'
+import { receiptExtension, receiptType } from './receipt'
 import { ReceiptField, type ReceiptValue } from './receipt-field'
 import { SplitEditor } from './split-editor'
 import {
@@ -174,7 +174,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         try {
           receiptPath = await uploadReceipt(supabase, group.id, receipt.file, {
             extension: receiptExtension(receipt.file),
-            contentType: receipt.file.type,
+            contentType: receiptType(receipt.file) ?? receipt.file.type,
           })
         } catch {
           throw new Error('receipt_upload_failed')

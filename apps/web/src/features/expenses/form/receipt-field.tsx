@@ -6,6 +6,7 @@ import { Camera, FileText, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef } from 'react'
 import { Help } from '@/features/help/help'
 import { supabase } from '@/lib/supabase'
+import { RECEIPT_ACCEPT, receiptType } from './receipt'
 
 export interface ReceiptValue {
   /** A new file to upload on save. */
@@ -15,7 +16,6 @@ export interface ReceiptValue {
 }
 
 const MAX_BYTES = 10 * 1024 * 1024
-const TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'application/pdf']
 
 function useObjectUrl(file: File | null) {
   const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
@@ -43,14 +43,14 @@ export function ReceiptField({
     enabled: !value.file && !!value.existingPath,
   })
   const isPdf = value.file
-    ? value.file.type === 'application/pdf'
+    ? receiptType(value.file) === 'application/pdf'
     : (value.existingPath ?? '').toLowerCase().endsWith('.pdf')
   const src = value.file ? localUrl : value.existingPath ? stored.data : null
   const hasReceipt = !!value.file || !!value.existingPath
 
   const pick = (file: File | undefined) => {
     if (!file) return
-    if (!TYPES.includes(file.type)) {
+    if (!receiptType(file)) {
       toast.error(t('expenses.receiptUpload.wrongType'))
       return
     }
@@ -72,7 +72,7 @@ export function ReceiptField({
       <input
         ref={inputRef}
         type="file"
-        accept={TYPES.join(',')}
+        accept={RECEIPT_ACCEPT}
         className="sr-only"
         tabIndex={-1}
         aria-labelledby={`${id}-label`}
