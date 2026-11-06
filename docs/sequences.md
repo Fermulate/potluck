@@ -357,7 +357,7 @@ sequenceDiagram
   CR->>DB: 00:10 UTC: private.materialize_recurring_expenses(current_date)
   DB->>DB: select active templates with next_run_on <= today,<br/>for update skip locked
   loop each template (own exception block)
-    alt group archived, payer or a split person left
+    alt group archived, payer or a split person left<br/>or closed their account
       DB->>DB: active = false, skip
     else
       DB->>DB: anchor_day = day of the series' first expense

@@ -3,7 +3,8 @@
 --   * Archived groups are read only: delete_expense, restore_expense,
 --     settle_up, delete_settlement, set_availability, request_availability,
 --     schedule_event and cancel_event raise group_archived like save_expense,
---     and direct writes to events, comments and event_rsvps are refused too.
+--     and direct writes to events, comments, event_rsvps and recurring_expenses
+--     are refused too.
 --   * RSVPs close at the event's rsvp_deadline (rsvp_closed).
 --   * Groups are deleted through delete_group(), owner only and only when every
 --     balance is zero (group_has_balances). A trigger refuses any other delete

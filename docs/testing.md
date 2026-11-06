@@ -10,11 +10,11 @@ flowchart TB
   e2e --> db --> unit
 ```
 
-| Layer | Tool                         | Where                                                          | Runs in CI         |
-| ----- | ---------------------------- | -------------------------------------------------------------- | ------------------ |
-| Unit  | Vitest 5                     | `packages/*/src/**/*.test.ts(x)`, `apps/web/src/**/*.test.tsx` | `ci.yml` check job |
-| DB    | pgTAP via `supabase test db` | `supabase/tests/*.test.sql`                                    | `ci.yml` db job    |
-| E2E   | Playwright + axe-core        | `apps/web/e2e/*.spec.ts`                                       | `ci.yml` e2e job   |
+| Layer | Tool                                                       | Where                                                                                             | Runs in CI         |
+| ----- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------ |
+| Unit  | Vitest 5; Node's test runner for the edge function helpers | `packages/*/src/**/*.test.ts(x)`, `apps/web/src/**/*.test.tsx`, `supabase/functions/**/*.test.ts` | `ci.yml` check job |
+| DB    | pgTAP via `supabase test db`                               | `supabase/tests/*.test.sql`                                                                       | `ci.yml` db job    |
+| E2E   | Playwright + axe-core                                      | `apps/web/e2e/*.spec.ts`                                                                          | `ci.yml` e2e job   |
 
 ## Unit tests
 
@@ -75,22 +75,23 @@ pnpm db:test    # supabase test db: every file in supabase/tests, in name order
 
 Each file runs in its own transaction and rolls back, so tests do not leak into each other or into your seed data. `000_setup.test.sql` installs helpers in a `tests` schema (`create_user`, `login`, `login_anon`, `group_with`, `people`, ...); see [development.md](development.md#writing-pgtap-tests) for the full list and an example.
 
-| File                               | Covers                                                                                                             |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `01_schema.test.sql`               | tables, RLS on everywhere, RPC signatures and privileges, indexes, seeded config, buckets, realtime, cron          |
-| `02_profiles_social.test.sql`      | profiles, friendships, blocks, reports                                                                             |
-| `03_groups_rls.test.sql`           | group, member and invite policies for owner, admin, member, outsider and anon                                      |
-| `04_group_rpcs.test.sql`           | create group, roles, remove, leave, transfer, direct groups                                                        |
-| `05_invites.test.sql`              | `create_invite`, `invite_preview`, `accept_invite`                                                                 |
-| `06_expenses.test.sql`             | expense RPCs, split math, the split sum constraint, expense RLS                                                    |
-| `07_balances_settlements.test.sql` | `group_balances`, `settle_up`, `delete_settlement`, `simplified_debts`                                             |
-| `08_events_availability.test.sql`  | events RLS, availability RPCs, `best_slots`, scheduling, RSVPs, `my_timeline`                                      |
-| `09_platform.test.sql`             | activity, comments, notifications, push tokens, app config, calendar connections, busy blocks, recurring templates |
-| `10_storage.test.sql`              | object policies for avatars, group covers and receipts                                                             |
-| `11_account.test.sql`              | `delete_my_account`                                                                                                |
-| `12_cron.test.sql`                 | recurring materialization, reminders, finishing past events                                                        |
-| `13_edge_hooks.test.sql`           | `calendar_feed_token`, push hook is a no-op without Vault config                                                   |
-| `14_query_performance.test.sql`    | inlinable money helpers, array form member read policies, balances and debts after the performance migration       |
+| File                               | Covers                                                                                                                                                                                                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01_schema.test.sql`               | tables, RLS on everywhere, RPC signatures and privileges, indexes, seeded config, buckets, realtime, cron                                                                                                                                                                  |
+| `02_profiles_social.test.sql`      | profiles, friendships, blocks, reports                                                                                                                                                                                                                                     |
+| `03_groups_rls.test.sql`           | group, member and invite policies for owner, admin, member, outsider and anon                                                                                                                                                                                              |
+| `04_group_rpcs.test.sql`           | create group, roles, remove, leave, transfer, direct groups                                                                                                                                                                                                                |
+| `05_invites.test.sql`              | `create_invite`, `invite_preview`, `accept_invite`                                                                                                                                                                                                                         |
+| `06_expenses.test.sql`             | expense RPCs, split math, the split sum constraint, expense RLS                                                                                                                                                                                                            |
+| `07_balances_settlements.test.sql` | `group_balances`, `settle_up`, `delete_settlement`, `simplified_debts`                                                                                                                                                                                                     |
+| `08_events_availability.test.sql`  | events RLS, availability RPCs, `best_slots`, scheduling, RSVPs, `my_timeline`                                                                                                                                                                                              |
+| `09_platform.test.sql`             | activity, comments, notifications, push tokens, app config, calendar connections, busy blocks, recurring templates                                                                                                                                                         |
+| `10_storage.test.sql`              | object policies for avatars, group covers and receipts                                                                                                                                                                                                                     |
+| `11_account.test.sql`              | `delete_my_account`                                                                                                                                                                                                                                                        |
+| `12_cron.test.sql`                 | recurring materialization, reminders, finishing past events                                                                                                                                                                                                                |
+| `13_edge_hooks.test.sql`           | `calendar_feed_token`, push hook is a no-op without Vault config                                                                                                                                                                                                           |
+| `14_query_performance.test.sql`    | inlinable money helpers, array form member read policies, balances and debts after the performance migration                                                                                                                                                               |
+| `14_review_fixes.test.sql`         | archived groups refuse money, plan, comment, RSVP and recurring template writes, `delete_group` and the open balance guard, resuming a paused recurring template, templates stopping for closed accounts, RSVP deadlines, editing an expense that involves a former member |
 
 Every table in `public` needs tests for both who can and who cannot read and write it. A new RPC needs tests for each error code it can raise.
 
