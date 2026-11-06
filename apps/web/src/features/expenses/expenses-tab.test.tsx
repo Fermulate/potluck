@@ -1,6 +1,6 @@
-import { moneyKeys } from '@potluck/api'
+import { moneyKeys, type RecurringExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ExpensesTab } from './expenses-tab'
 import { renderInRouter } from './router-test-utils'
@@ -92,5 +92,52 @@ describe('ExpensesTab', () => {
     })
     renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
     expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
+  })
+
+  it('waits for payments before calling the tab empty', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [])
+      // Payments still on their way.
+      void c.prefetchQuery({
+        queryKey: moneyKeys.settlements(GROUP_ID),
+        queryFn: () => new Promise<never>(() => {}),
+      })
+    })
+    renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+    await waitFor(() =>
+      expect(document.querySelector('[aria-busy="true"]')).toHaveAttribute(
+        'aria-label',
+        t('expenses.loading'),
+      ),
+    )
+    expect(screen.queryByRole('heading', { name: 'Nothing on the tab' })).not.toBeInTheDocument()
+  })
+
+  it('keeps repeating expenses reachable before the first one is due', async () => {
+    const rent: RecurringExpense = {
+      id: 'r1',
+      group_id: GROUP_ID,
+      description: 'Rent',
+      amount_cents: 145000,
+      currency: 'USD',
+      paid_by: ME,
+      split_type: 'equal',
+      category: 'rent',
+      splits: [],
+      recurrence: 'monthly',
+      next_run_on: '2026-12-05',
+      active: true,
+      created_by: ME,
+      created_at: '2026-11-05T00:00:00Z',
+      updated_at: '2026-11-05T00:00:00Z',
+    }
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+      c.setQueryData(moneyKeys.recurring(GROUP_ID), [rent])
+    })
+    renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+    expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Repeating/ })).toBeInTheDocument()
   })
 })

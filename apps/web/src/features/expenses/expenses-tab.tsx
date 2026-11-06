@@ -87,7 +87,8 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
   }, [expenses.data, settlements.data, search, category, nameOf, timeZone])
 
   const myRole = group.data?.members.find((m) => m.id === me)?.role
-  const loading = expenses.isPending || group.isPending
+  // Payments count too: wait for them before calling the tab empty.
+  const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
     !loading && (expenses.data?.length ?? 0) === 0 && (settlements.data?.length ?? 0) === 0
   const filtering = query.trim() !== '' || category !== null
@@ -111,18 +112,22 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
 
   if (empty) {
     return (
-      <EmptyState
-        illustration="🧾"
-        title={t('empty.expenses.title')}
-        description={t('empty.expenses.body')}
-        action={
-          <Button asChild leadingIcon={<Plus />}>
-            <Link to="/new/expense" search={{ groupId }}>
-              {t('empty.expenses.action')}
-            </Link>
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-4">
+        {/* Repeating expenses can exist before the first one is due. */}
+        <RecurringSection groupId={groupId} />
+        <EmptyState
+          illustration="🧾"
+          title={t('empty.expenses.title')}
+          description={t('empty.expenses.body')}
+          action={
+            <Button asChild leadingIcon={<Plus />}>
+              <Link to="/new/expense" search={{ groupId }}>
+                {t('empty.expenses.action')}
+              </Link>
+            </Button>
+          }
+        />
+      </div>
     )
   }
 
