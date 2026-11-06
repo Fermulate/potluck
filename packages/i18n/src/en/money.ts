@@ -201,7 +201,8 @@ export const expenses = {
     invalid_weight: 'Use zero or a positive number.',
     zero_shares: 'Give at least one person a share.',
     duplicate_user: 'Someone is in this split twice.',
-    split_member_not_in_group: 'Everyone in the split has to be in the group.',
+    split_member_not_in_group:
+      'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',
     payer_not_in_group: 'The payer has to be in the group.',
     fx_rate_unavailable: 'No exchange rate for that currency yet. Try the group currency.',
     invalid_amount: 'Enter an amount greater than zero.',
@@ -213,6 +214,9 @@ export const expenses = {
     group_archived: 'This group is archived.',
     invalid_recipient: 'Pick who you are paying.',
     member_not_found: 'You both need to be in the group.',
+    member_not_in_group: 'Someone in this payment has left the group, so it stays on the books.',
+    settlement_not_found: 'That payment is gone.',
+    event_not_in_group: 'That plan is not in this group.',
   },
   comments: {
     title: 'Comments',

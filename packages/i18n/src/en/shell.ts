@@ -197,7 +197,12 @@ export const errors = {
     invite_wrong_email: 'This invite was sent to a different email address.',
     invalid_friend: 'You cannot split with yourself.',
     not_a_friend: 'You can only split with friends.',
-    blocked: 'You cannot split with this person.',
+    blocked: 'A block between you and someone here stops this.',
+    member_not_in_group: 'Someone in this payment has left the group, so it stays on the books.',
+    split_member_not_in_group:
+      'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',
+    settlement_not_found: 'That payment is gone.',
+    event_not_in_group: 'That plan is not in this group.',
   },
   auth: {
     invalidCredentials: 'That email and password do not match.',
