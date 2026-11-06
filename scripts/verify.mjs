@@ -1,6 +1,6 @@
 // One pass/fail entry point with the same checks as CI.
 //
-//   pnpm verify              ci.yml "check" job: format, lint, generated files, typecheck,
+//   pnpm verify              ci.yml "check" job: format, lint, generated files, agent docs, typecheck,
 //                            unit tests with coverage, edge function tests, production build
 //   pnpm verify:db           ci.yml "db" job: db lint, pgTAP, schema snapshot, database types
 //                            (needs the local stack, reset to this branch: `pnpm db:reset`)
@@ -31,6 +31,7 @@ const checkSteps = [
   ['routes', 'node scripts/gen-routes.mjs --check'],
   ['agent-map', 'node scripts/gen-agent-map.mjs --check'],
   ['skills', 'node scripts/sync-skills.mjs --check'],
+  ['agent-docs', 'node scripts/check-agent-docs.mjs'],
   ['typecheck', turbo('typecheck')],
   ['test', turbo('test:coverage')],
   ['functions', 'pnpm test:functions'],

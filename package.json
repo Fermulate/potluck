@@ -25,6 +25,7 @@
     "gen:schema": "node scripts/gen-schema.mjs",
     "gen:map": "node scripts/gen-agent-map.mjs",
     "gen:skills": "node scripts/sync-skills.mjs",
+    "check:agent-docs": "node scripts/check-agent-docs.mjs",
     "test:coverage": "turbo run test:coverage",
     "test:functions": "node --test \"supabase/functions/**/*.test.ts\"",
     "e2e": "turbo run e2e"
