@@ -4,12 +4,12 @@ Everything you need to run Potluck on your machine and change it. For how change
 
 ## Prerequisites
 
-| Tool    | Version                          | Notes                                                                |
-| ------- | -------------------------------- | -------------------------------------------------------------------- |
-| Node.js | 22.12 or newer (`.nvmrc`: 22)    | `engine-strict=true` in `.npmrc`, so an older Node fails the install |
-| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                           |
-| Docker  | recent Docker Desktop or Engine  | runs the local Supabase stack                                        |
-| Git     | any recent                       | on Windows, see [Windows notes](#windows-notes)                      |
+| Tool    | Version                          | Notes                                                                                                                          |
+| ------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Node.js | 22.18 or newer (`.nvmrc`: 22)    | `engine-strict=true` in `.npmrc` fails the install on an older Node; 22.18 adds the type stripping `pnpm test:functions` needs |
+| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                                                                                     |
+| Docker  | recent Docker Desktop or Engine  | runs the local Supabase stack                                                                                                  |
+| Git     | any recent                       | on Windows, see [Windows notes](#windows-notes)                                                                                |
 
 The Supabase CLI comes in as a dev dependency, so `pnpm db:start` works without a global install. `npx supabase <command>` runs the same binary for commands without a script.
 

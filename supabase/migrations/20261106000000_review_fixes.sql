@@ -813,6 +813,35 @@ with check (
   and (select private.rsvp_open(event_id))
 );
 
+-- Deletes cannot raise from a policy, so these just match no row in an archived
+-- group (or, for RSVPs, after the deadline). RPCs run as the table owner and
+-- still clean up archived groups.
+alter policy "events: creator or admin delete" on public.events
+using (
+  (select private.can_manage_event(id))
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "event_rsvps: delete own" on public.event_rsvps
+using (
+  user_id = (select auth.uid())
+  and (select private.rsvp_open(event_id))
+);
+
+alter policy "recurring_expenses: creator or admin edit" on public.recurring_expenses
+with check (
+  ((select private.is_group_admin(group_id))
+    or (created_by = (select auth.uid()) and group_id in (select private.my_group_ids())))
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "recurring_expenses: creator or admin delete" on public.recurring_expenses
+using (
+  ((select private.is_group_admin(group_id))
+    or (created_by = (select auth.uid()) and group_id in (select private.my_group_ids())))
+  and (select private.group_is_open(group_id))
+);
+
 -- Locking in or cancelling a plan (schedule_event, cancel_event).
 create or replace function private.manageable_event(eid uuid)
 returns public.events

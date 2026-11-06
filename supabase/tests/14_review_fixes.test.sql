@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(42);
+select plan(44);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -26,6 +26,10 @@ select delete_expense(tests.id('gone'));
 select tests.remember('paid', (select id from settle_up(tests.id('arch'), tests.uid('ann'), 100)));
 insert into public.events (group_id, title) values (tests.id('arch'), 'Picnic');
 select tests.remember('picnic', (select id from public.events where group_id = tests.id('arch')));
+insert into public.event_rsvps (event_id, status) values (tests.id('picnic'), 'going');
+select tests.remember('arch_rent', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('arch'), 'description', 'Rent', 'amount_cents', 1000, 'recurrence', 'monthly',
+  'splits', tests.people('own', 'ann')))));
 reset role;
 update public.groups set archived_at = now() where id = tests.id('arch');
 
@@ -54,14 +58,22 @@ select throws_ok($$ insert into public.comments (event_id, body) values (tests.i
   '23514', 'group_archived', 'no comments in an archived group');
 select throws_ok($$ insert into public.event_rsvps (event_id, status) values (tests.id('picnic'), 'going') $$,
   '23514', 'group_archived', 'no RSVPs in an archived group');
+select throws_ok($$ update public.recurring_expenses set active = false where id = tests.id('arch_rent') $$,
+  '42501', null, 'recurring expenses in an archived group cannot be paused');
+delete from public.events where id = tests.id('picnic');
+delete from public.event_rsvps where event_id = tests.id('picnic');
+delete from public.recurring_expenses where id = tests.id('arch_rent');
 reset role;
 select results_eq(
   $$ select (select deleted_at is null from public.expenses where id = tests.id('live')),
             (select deleted_at is not null from public.expenses where id = tests.id('gone')),
             (select deleted_at is null from public.settlements where id = tests.id('paid')),
-            (select count(*)::int from public.settlements where group_id = tests.id('arch')) $$,
-  $$ values (true, true, true, 1) $$,
-  'nothing in the archived group changed'
+            (select count(*)::int from public.settlements where group_id = tests.id('arch')),
+            (select count(*)::int from public.events where id = tests.id('picnic')),
+            (select count(*)::int from public.event_rsvps where event_id = tests.id('picnic')),
+            (select active from public.recurring_expenses where id = tests.id('arch_rent')) $$,
+  $$ values (true, true, true, 1, 1, 1, true) $$,
+  'nothing in the archived group changed, and deletes matched no row'
 );
 
 -- Deleting groups with open balances ---------------------------------------------------------
@@ -186,6 +198,18 @@ select lives_ok(
   'RSVPs are fine before it'
 );
 reset role;
+update public.events set rsvp_deadline = now() - interval '1 hour'
+where group_id = tests.id('rg') and title = 'Open';
+select tests.login('ann');
+delete from public.event_rsvps
+where event_id = (select id from public.events where group_id = tests.id('rg') and title = 'Open');
+reset role;
+select is(
+  (select count(*)::int from public.event_rsvps r
+   join public.events e on e.id = r.event_id
+   where e.group_id = tests.id('rg') and e.title = 'Open' and r.user_id = tests.uid('ann')),
+  1, 'an answer cannot be withdrawn once the deadline has passed'
+);
 
 -- Recurring templates and closed accounts ----------------------------------------------------
 
