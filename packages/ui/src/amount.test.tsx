@@ -12,6 +12,13 @@ describe('formatMoney', () => {
     expect(formatMoney(1500, 'JPY', { locale: 'en-US' })).toBe('¥1,500')
   })
 
+  it('uses the ISO minor units the database stores, not the locale default', () => {
+    // Intl shows forints and Iraqi dinars with fewer decimals than ISO 4217 defines.
+    const plain = (text: string) => text.replace(/\s/g, ' ')
+    expect(plain(formatMoney(150000, 'HUF', { locale: 'en-US' }))).toBe('HUF 1,500.00')
+    expect(plain(formatMoney(1500, 'IQD', { locale: 'en-US' }))).toBe('IQD 1.500')
+  })
+
   it('never shows a minus on zero', () => {
     expect(formatMoney(-0, 'USD', { locale: 'en-US' })).toBe('$0.00')
   })

@@ -330,6 +330,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@potluck/core':
+        specifier: workspace:*
+        version: link:../core
       '@potluck/tokens':
         specifier: workspace:^
         version: link:../tokens
