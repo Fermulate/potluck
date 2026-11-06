@@ -15,6 +15,7 @@ export default defineConfig([
     '**/routeTree.gen.ts',
     '**/database.types.ts',
     'supabase/.temp',
+    '.claude/worktrees',
   ]),
 
   {
