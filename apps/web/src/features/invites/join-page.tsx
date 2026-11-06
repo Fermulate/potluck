@@ -46,6 +46,10 @@ function invalidReason(status: InvitePreview['status'] | 'not_found'): string {
       return t('invites.invalid.used')
     case 'revoked':
       return t('invites.invalid.revoked')
+    case 'archived':
+      return t('invites.invalid.archived')
+    case 'blocked':
+      return t('invites.invalid.blocked')
     default:
       return t('invites.invalid.notFound')
   }

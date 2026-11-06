@@ -206,6 +206,8 @@ export const invites = {
     used: 'This link has been used up.',
     revoked: 'This link was revoked.',
     notFound: 'We could not find that invite.',
+    archived: 'This group has been archived, so it is not taking new people.',
+    blocked: 'You cannot join this group.',
     home: 'Take me home',
   },
 } as const
