@@ -63,6 +63,38 @@ describe('BestTimes', () => {
     expect(screen.queryByRole('button', { name: /Pick this one/ })).not.toBeInTheDocument()
   })
 
+  it('leaves closed accounts out of who is missing', () => {
+    const closed: PlanMember = { ...member('z', 'Deleted user'), deleted: true }
+    render(
+      <BestTimes
+        slots={[
+          { ...slots[0]!, missing: ['z'] },
+          { ...slots[1]!, missing: ['b', 'z'] },
+        ]}
+        members={[...members, closed]}
+        timeZone="UTC"
+        canLock={false}
+        onLock={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('Everyone can make it')).toBeInTheDocument()
+    expect(screen.getByText(/Without Ben$/)).toBeInTheDocument()
+    expect(screen.queryByText(/Without\s*$/)).not.toBeInTheDocument()
+  })
+
+  it('counts missing people whose names it cannot read', () => {
+    render(
+      <BestTimes
+        slots={[{ ...slots[0]!, missing: ['c'] }]}
+        members={[...members.slice(0, 2), member('c', '')]}
+        timeZone="UTC"
+        canLock={false}
+        onLock={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('1 cannot make it')).toBeInTheDocument()
+  })
+
   it('has a hopeful empty state', () => {
     render(<BestTimes slots={[]} members={members} timeZone="UTC" canLock onLock={vi.fn()} />)
     expect(screen.getByText(/No time works for enough people yet/)).toBeInTheDocument()
