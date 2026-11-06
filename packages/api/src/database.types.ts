@@ -1327,6 +1327,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      delete_group: { Args: { group_id: string }; Returns: undefined }
       delete_my_account: { Args: Record<PropertyKey, never>; Returns: undefined }
       delete_settlement: {
         Args: { id: string }
