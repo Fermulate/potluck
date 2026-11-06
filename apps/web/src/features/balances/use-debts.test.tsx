@@ -18,7 +18,7 @@ function renderDebts(simplify: boolean) {
 
 describe('useDebts', () => {
   it('asks the server for simplified debts without reading the whole ledger', async () => {
-    resetDb({ tables: { expenses: [expense({})], settlements: [] } }).respond(
+    resetDb({ tables: { expenses: [{ ...expense({}) }], settlements: [] } }).respond(
       'rpc:simplified_debts',
       { data: [{ from_user: BEN, to_user: ME, amount_cents: 1000 }] },
     )
@@ -32,7 +32,7 @@ describe('useDebts', () => {
   })
 
   it('nets every pair from expenses and payments when simplifying is off', async () => {
-    resetDb({ tables: { expenses: [expense({})], settlements: [] } })
+    resetDb({ tables: { expenses: [{ ...expense({}) }], settlements: [] } })
     const { result } = renderDebts(false)
 
     await waitFor(() => expect(result.current).toHaveLength(2))
