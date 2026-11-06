@@ -92,6 +92,7 @@ Each file runs in its own transaction and rolls back, so tests do not leak into 
 | `13_edge_hooks.test.sql`           | `calendar_feed_token`, push hook is a no-op without Vault config                                                                                                                                                                                                           |
 | `14_query_performance.test.sql`    | inlinable money helpers, array form member read policies, balances and debts after the performance migration                                                                                                                                                               |
 | `14_review_fixes.test.sql`         | archived groups refuse money, plan, comment, RSVP and recurring template writes, `delete_group` and the open balance guard, resuming a paused recurring template, templates stopping for closed accounts, RSVP deadlines, editing an expense that involves a former member |
+| `15_integrity.test.sql`            | blocked joins and invite previews, splits-only edits logging and notifying, edits, deletes, restores and payments involving people who left, former members staying readable, an owner leaving with only closed accounts, rescheduling reminders, closing an account across groups, the recurring job lock order, FX precision |
 
 Every table in `public` needs tests for both who can and who cannot read and write it. A new RPC needs tests for each error code it can raise.
 
