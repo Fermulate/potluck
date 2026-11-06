@@ -101,7 +101,7 @@ sequenceDiagram
 
   G->>W: open /join/:code
   W->>DB: rpc invite_preview(code) as anon
-  DB-->>W: name, emoji, member_count, first_names,<br/>status (valid, expired, revoked, used_up), is_member
+  DB-->>W: name, emoji, member_count, first_names,<br/>status (valid, expired, revoked, used_up, archived, blocked), is_member
   alt not signed in
     W->>A: sign up or sign in, redirect back to /join/:code
   end
@@ -111,7 +111,7 @@ sequenceDiagram
   alt already a member
     DB-->>W: group_id (invite not used up)
   else checks fail
-    DB-->>W: invite_revoked, invite_expired,<br/>invite_used_up, invite_wrong_email or group_archived
+    DB-->>W: invite_revoked, invite_expired, invite_used_up,<br/>invite_wrong_email, group_archived or blocked
   else ok
     DB->>DB: insert group_members (role from invite)
     DB->>DB: trigger befriend_group_members():<br/>friendships both ways, skipping blocked pairs
@@ -148,7 +148,7 @@ sequenceDiagram
     W->>S: upload receipts/:groupId/:file (policy: member of group)
   end
   W->>DB: rpc create_expense(payload)
-  DB->>DB: require_member, payer and split people in group,<br/>receipt_path starts with group_id
+  DB->>DB: share lock the group row, require_member,<br/>payer and split people in group, receipt_path starts with group_id
   DB->>DB: fx_rate = 1, or private.fx_rate(currency, group currency, spent_at)
   alt no rate yet
     DB-->>W: error fx_rate_unavailable
@@ -192,7 +192,7 @@ sequenceDiagram
   DB-->>W: suggested payments
   P->>W: pay Ben 42.50
   W->>DB: rpc settle_up(group_id, to_user, amount_cents, currency, note)
-  DB->>DB: require_member, both people in group, amount > 0
+  DB->>DB: share lock the group row, require_member,<br/>both people in group, amount > 0
   DB->>DB: fx = private.fx_rate(currency, group currency, current_date)
   DB->>DB: insert settlements (from_user = caller)
   DB->>DB: trigger: activity settlement.created
@@ -203,7 +203,7 @@ sequenceDiagram
   W->>DB: refetch group_balances
 ```
 
-To undo a mistaken payment, call `delete_settlement(id)`. It is a soft delete open to the payer, the recipient, whoever recorded it, or an admin.
+To undo a mistaken payment, call `delete_settlement(id)`. It is a soft delete open to the payer, the recipient, whoever recorded it, or an admin, and refused once either side has left the group (`member_not_in_group`).
 
 ## Simplified debts
 
@@ -403,7 +403,7 @@ sequenceDiagram
     E->>E: hasEdgeSecret() or 403
     E->>FR: GET /v1/latest?base=EUR&symbols=USD,GBP,...
     FR-->>E: { date, rates per EUR }
-    E->>E: cross rates for every pair of 28 currencies,<br/>8 decimals
+    E->>E: cross rates for every pair of 28 currencies,<br/>12 decimals
     E->>DB: upsert fx_rates in batches of 1000 (service role)
   end
 ```
@@ -427,7 +427,9 @@ sequenceDiagram
   W->>E: POST /functions/v1/delete-account (Authorization: user JWT)
   E->>E: gateway verify_jwt, then auth.getUser()
   E->>DB: rpc delete_my_account() as the user
-  DB->>DB: owned groups: hand to oldest admin, else oldest member,<br/>delete the group if nobody else is left
+  DB->>DB: lock the row of every group the user is in, in id order
+  DB->>DB: owned groups: hand to oldest active admin, else oldest active member,<br/>delete the group if nobody else active is left
+  DB->>DB: pause recurring templates the user pays or shares (open groups)
   DB->>DB: leave groups where balance is 0,<br/>keep memberships with open balances
   DB->>DB: delete push_tokens, calendar_connections, busy_blocks,<br/>notifications, availability, requests, RSVPs,<br/>friendships, blocks
   DB->>DB: revoke open invites the user created
