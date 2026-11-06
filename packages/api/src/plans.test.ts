@@ -222,6 +222,28 @@ describe('event reads', () => {
     expect(await fetchEventRsvps(client, 'e2')).toEqual([])
   })
 
+  it('reads every availability row past the per response row cap, in a stable order', async () => {
+    // Three people, 900 slots each: 2700 rows, more than PostgREST returns at once.
+    const rows = ['u3', 'u1', 'u2'].flatMap((user_id) =>
+      Array.from({ length: 900 }, (_, i) => ({
+        event_id: 'big',
+        user_id,
+        slot_start: `2026-01-01T${String(i).padStart(4, '0')}`,
+        level: 'yes',
+      })),
+    )
+    const fake = fakeSupabase({ tables: { availability: rows } })
+
+    const all = await fetchEventAvailability(fake.client, 'big')
+
+    expect(all).toHaveLength(2700)
+    expect(all.filter((r) => r.user_id === 'u3')).toHaveLength(900)
+    expect(all[0]).toMatchObject({ user_id: 'u1', slot_start: '2026-01-01T0000' })
+    expect(all.at(-1)).toMatchObject({ user_id: 'u3', slot_start: '2026-01-01T0899' })
+    const [query] = fake.queries('availability')
+    expect(argsOf(query!, 'order').map(([column]) => column)).toEqual(['user_id', 'slot_start'])
+  })
+
   it('reads busy blocks overlapping the range', async () => {
     const rows = await fetchBusyBlocks(client, { from: '2026-01-01T09:30', to: '2026-01-01T11' })
     expect(rows.map((r) => r.id)).toEqual(['b1'])
