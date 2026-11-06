@@ -1,10 +1,14 @@
 -- Fixes from the code review. Every function keeps its signature and grants.
 --
---   * Archived groups are read only for money: delete_expense, restore_expense,
---     settle_up and delete_settlement raise group_archived like save_expense.
---   * A group with open balances cannot be deleted (group_has_balances), by
---     any role. delete_my_account may still remove a group nobody active is
---     left in.
+--   * Archived groups are read only: delete_expense, restore_expense,
+--     settle_up, delete_settlement, set_availability, request_availability,
+--     schedule_event and cancel_event raise group_archived like save_expense,
+--     and direct writes to events, comments and event_rsvps are refused too.
+--   * RSVPs close at the event's rsvp_deadline (rsvp_closed).
+--   * Groups are deleted through delete_group(), owner only and only when every
+--     balance is zero (group_has_balances). A trigger refuses any other delete
+--     of a group with open balances; delete_my_account may still remove a
+--     group nobody active is left in.
 --   * Resuming a paused recurring expense moves next_run_on to the next
 --     occurrence on or after today, so paused periods are never charged.
 --   * Recurring templates stop when their payer or anyone in the split has
@@ -630,3 +634,366 @@ revoke execute on function
   private.guard_group_delete(),
   private.require_unarchived(uuid)
 from public, anon, authenticated;
+
+-- Deleting a group goes through an RPC -------------------------------------------------------
+
+-- Owner only, and only when every balance in the group (former members
+-- included) is zero. The group row is locked first, so an expense or payment
+-- cannot land between the check and the delete. The groups_guard_delete
+-- trigger above stays as a second guard for every other path.
+create or replace function public.delete_group(group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  my_role public.group_role := private.require_member(delete_group.group_id);
+begin
+  if my_role <> 'owner' then
+    raise exception using message = 'not_allowed', detail = 'Only the owner can delete the group', errcode = '42501';
+  end if;
+  perform 1 from public.groups g where g.id = delete_group.group_id for update;
+  if exists (
+    select 1 from public.group_balances b
+    where b.group_id = delete_group.group_id and b.net_cents <> 0
+  ) then
+    raise exception using
+      message = 'group_has_balances',
+      detail = 'Settle every balance before deleting this group',
+      errcode = '23514';
+  end if;
+  delete from public.groups g where g.id = delete_group.group_id;
+end;
+$$;
+
+revoke execute on function public.delete_group(uuid) from public, anon;
+grant execute on function public.delete_group(uuid) to authenticated, service_role;
+
+drop policy "groups: owner deletes" on public.groups;
+revoke delete on table public.groups from authenticated;
+
+-- Archived groups: plans, comments and RSVPs -------------------------------------------------
+
+-- True unless the group is archived. Used by policies, so callable by clients.
+create or replace function private.group_is_open(gid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select not exists (select 1 from public.groups g where g.id = gid and g.archived_at is not null);
+$$;
+
+-- Raises group_archived for an archived group. Every RPC that writes into a
+-- group calls it (or private.require_unarchived, its twin used by the money RPCs).
+create or replace function private.require_group_open(gid uuid)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.group_is_open(gid) then
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
+  end if;
+end;
+$$;
+
+-- RSVPs are open until the event's rsvp_deadline (if any), in an open group.
+create or replace function private.rsvp_open(eid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.events e
+    where e.id = eid
+      and (e.rsvp_deadline is null or e.rsvp_deadline > now())
+      and private.group_is_open(e.group_id)
+  );
+$$;
+
+-- Direct writes from clients get a clear error code before the policies (which
+-- check the same things) turn them away. Scheduled jobs run without a user and
+-- are not affected (finishing past events, reminders).
+create or replace function private.guard_open_group_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  row jsonb := to_jsonb(new);
+  gid uuid;
+  deadline timestamptz;
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  if tg_table_name = 'event_rsvps' then
+    select e.group_id, e.rsvp_deadline into gid, deadline
+    from public.events e where e.id = (row ->> 'event_id')::uuid;
+  elsif tg_table_name = 'comments' then
+    gid := coalesce(
+      (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
+      (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (row ->> 'group_id')::uuid
+    );
+  else
+    gid := (row ->> 'group_id')::uuid;
+  end if;
+
+  perform private.require_group_open(gid);
+
+  if deadline is not null and deadline <= now() then
+    raise exception using message = 'rsvp_closed', detail = 'RSVPs for this plan are closed', errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger events_require_open_group
+before insert or update on public.events
+for each row execute function private.guard_open_group_write();
+
+create trigger comments_require_open_group
+before insert or update on public.comments
+for each row execute function private.guard_open_group_write();
+
+create trigger event_rsvps_require_open_group
+before insert or update on public.event_rsvps
+for each row execute function private.guard_open_group_write();
+
+alter policy "events: members create" on public.events
+with check (
+  group_id in (select private.my_group_ids())
+  and created_by = (select auth.uid())
+  and status = 'polling'
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "events: creator or admin edit" on public.events
+with check (
+  (select private.can_manage_event(id))
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "comments: members write own" on public.comments
+with check (
+  author_id = (select auth.uid())
+  and group_id in (select private.my_group_ids())
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "comments: author or admin update" on public.comments
+with check (
+  group_id in (select private.my_group_ids())
+  and (author_id = (select auth.uid()) or (select private.is_group_admin(group_id)))
+  and (select private.group_is_open(group_id))
+);
+
+alter policy "event_rsvps: rsvp for self" on public.event_rsvps
+with check (
+  user_id = (select auth.uid())
+  and event_id in (select private.my_event_ids())
+  and (select private.rsvp_open(event_id))
+);
+
+alter policy "event_rsvps: change own" on public.event_rsvps
+with check (
+  user_id = (select auth.uid())
+  and event_id in (select private.my_event_ids())
+  and (select private.rsvp_open(event_id))
+);
+
+-- Locking in or cancelling a plan (schedule_event, cancel_event).
+create or replace function private.manageable_event(eid uuid)
+returns public.events
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  ev public.events;
+  uid uuid := private.require_user();
+  my_role public.group_role;
+begin
+  select * into ev from public.events e where e.id = eid for update;
+  if ev.id is null then
+    raise exception using message = 'event_not_found', detail = 'Event not found', errcode = 'PT404';
+  end if;
+  my_role := private.require_member(ev.group_id);
+  if my_role = 'member' and ev.created_by is distinct from uid then
+    raise exception using message = 'not_allowed', detail = 'Only the organizer or a group admin can do that', errcode = '42501';
+  end if;
+  perform private.require_group_open(ev.group_id);
+  return ev;
+end;
+$$;
+
+-- Availability polling (set_availability, request_availability).
+create or replace function public.set_availability(event_id uuid, slots jsonb)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ev public.events := private.member_event(set_availability.event_id);
+  parsed jsonb;
+  saved int;
+begin
+  perform private.require_group_open(ev.group_id);
+  if ev.status <> 'polling' then
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
+  end if;
+  if slots is null or jsonb_typeof(slots) <> 'array' then
+    raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end if;
+  if jsonb_array_length(slots) > 5000 then
+    raise exception using message = 'invalid_slots', detail = 'Too many slots', errcode = '22023';
+  end if;
+
+  begin
+    select coalesce(jsonb_agg(jsonb_build_object('slot_start', x.slot_start, 'level', x.level)), '[]'::jsonb)
+    into parsed
+    from (
+      select
+        (e.elem ->> 'slot_start')::timestamptz as slot_start,
+        coalesce((e.elem ->> 'level')::public.availability_level, 'yes') as level
+      from jsonb_array_elements(slots) as e (elem)
+    ) x;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+    cross join lateral (
+      select (s.slot_start at time zone ev.timezone) as local_ts
+    ) l
+    cross join lateral (
+      select
+        l.local_ts::date as day,
+        (extract(hour from l.local_ts) * 60 + extract(minute from l.local_ts))::int as minute,
+        extract(second from l.local_ts) as sec
+    ) t
+    where s.slot_start is null
+       or t.day < ev.window_start
+       or t.day > ev.window_end
+       or t.sec <> 0
+       or t.minute < ev.day_start_minute
+       or t.minute + ev.slot_minutes > ev.day_end_minute
+       or (t.minute - ev.day_start_minute) % ev.slot_minutes <> 0
+  ) then
+    raise exception using message = 'invalid_slot', detail = 'Some times are outside this event''s grid', errcode = '22023';
+  end if;
+
+  if (select count(*) from jsonb_array_elements(parsed)) <> (
+    select count(distinct (s.slot_start))
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+  ) then
+    raise exception using message = 'duplicate_slot', detail = 'A time appears twice', errcode = '22023';
+  end if;
+
+  delete from public.availability a
+  where a.event_id = ev.id and a.user_id = uid;
+
+  insert into public.availability (event_id, user_id, slot_start, level)
+  select ev.id, uid, s.slot_start, s.level
+  from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level);
+
+  get diagnostics saved = row_count;
+
+  update public.availability_requests r
+  set responded_at = now()
+  where r.event_id = ev.id and r.user_id = uid;
+
+  return saved;
+end;
+$$;
+
+create or replace function public.request_availability(event_id uuid, user_ids uuid[] default null)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ev public.events := private.member_event(request_availability.event_id);
+  targets uuid[];
+begin
+  perform private.require_group_open(ev.group_id);
+  if ev.status <> 'polling' then
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
+  end if;
+
+  if user_ids is null or cardinality(user_ids) = 0 then
+    select coalesce(array_agg(m.user_id order by m.user_id), '{}') into targets
+    from public.group_members m
+    join public.profiles p on p.id = m.user_id
+    where m.group_id = ev.group_id
+      and m.user_id <> uid
+      and p.deleted_at is null
+      and not exists (select 1 from public.availability a where a.event_id = ev.id and a.user_id = m.user_id);
+  else
+    if exists (
+      select 1 from unnest(user_ids) as t (id)
+      where not exists (select 1 from public.group_members m where m.group_id = ev.group_id and m.user_id = t.id)
+    ) then
+      raise exception using message = 'member_not_found', detail = 'Everyone asked must be in the group', errcode = 'PT404';
+    end if;
+    select coalesce(array_agg(distinct t.id), '{}') into targets
+    from unnest(user_ids) as t (id)
+    join public.profiles p on p.id = t.id
+    where t.id <> uid
+      and p.deleted_at is null;
+  end if;
+
+  insert into public.availability_requests (event_id, user_id, requested_by, requested_at, responded_at)
+  select ev.id, t.id, uid, now(), null
+  from unnest(targets) as t (id)
+  on conflict (event_id, user_id) do update
+    set requested_by = excluded.requested_by,
+        requested_at = excluded.requested_at,
+        responded_at = null;
+
+  insert into public.notifications (user_id, type, data)
+  select t.id, 'availability.requested', jsonb_build_object(
+    'event_id', ev.id,
+    'group_id', ev.group_id,
+    'event_title', ev.title,
+    'actor_id', uid
+  )
+  from unnest(targets) as t (id);
+
+  if cardinality(targets) > 0 then
+    perform private.log_activity(ev.group_id, uid, 'availability.requested', ev.id,
+      jsonb_build_object('title', ev.title, 'user_ids', to_jsonb(targets)));
+  end if;
+
+  return cardinality(targets);
+end;
+$$;
+
+revoke execute on function
+  private.group_is_open(uuid),
+  private.rsvp_open(uuid),
+  private.require_group_open(uuid),
+  private.guard_open_group_write()
+from public, anon, authenticated;
+grant execute on function private.group_is_open(uuid), private.rsvp_open(uuid)
+to authenticated, service_role;

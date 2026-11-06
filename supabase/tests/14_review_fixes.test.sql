@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(30);
+select plan(42);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -24,6 +24,8 @@ select tests.remember('gone', (select id from create_expense(jsonb_build_object(
   'splits', tests.people('own', 'ann')))));
 select delete_expense(tests.id('gone'));
 select tests.remember('paid', (select id from settle_up(tests.id('arch'), tests.uid('ann'), 100)));
+insert into public.events (group_id, title) values (tests.id('arch'), 'Picnic');
+select tests.remember('picnic', (select id from public.events where group_id = tests.id('arch')));
 reset role;
 update public.groups set archived_at = now() where id = tests.id('arch');
 
@@ -36,6 +38,22 @@ select throws_ok($$ select settle_up(tests.id('arch'), tests.uid('ann'), 100) $$
   'settle_up rejects an archived group');
 select throws_ok($$ select delete_settlement(tests.id('paid')) $$, '23514', 'group_archived',
   'delete_settlement rejects an archived group');
+select throws_ok($$ select set_availability(tests.id('picnic'), '[]') $$, '23514', 'group_archived',
+  'set_availability rejects an archived group');
+select throws_ok($$ select request_availability(tests.id('picnic')) $$, '23514', 'group_archived',
+  'request_availability rejects an archived group');
+select throws_ok($$ select schedule_event(tests.id('picnic'), now() + interval '1 day') $$, '23514', 'group_archived',
+  'schedule_event rejects an archived group');
+select throws_ok($$ select cancel_event(tests.id('picnic')) $$, '23514', 'group_archived',
+  'cancel_event rejects an archived group');
+select throws_ok($$ insert into public.events (group_id, title) values (tests.id('arch'), 'Another') $$,
+  '23514', 'group_archived', 'no new plans in an archived group');
+select throws_ok($$ update public.events set title = 'Renamed' where id = tests.id('picnic') $$,
+  '23514', 'group_archived', 'plans in an archived group cannot be edited');
+select throws_ok($$ insert into public.comments (event_id, body) values (tests.id('picnic'), 'Hi') $$,
+  '23514', 'group_archived', 'no comments in an archived group');
+select throws_ok($$ insert into public.event_rsvps (event_id, status) values (tests.id('picnic'), 'going') $$,
+  '23514', 'group_archived', 'no RSVPs in an archived group');
 reset role;
 select results_eq(
   $$ select (select deleted_at is null from public.expenses where id = tests.id('live')),
@@ -53,15 +71,19 @@ select tests.login('own');
 select create_expense(jsonb_build_object(
   'group_id', tests.id('owed'), 'description', 'Dinner', 'amount_cents', 2000,
   'splits', tests.people('own', 'ann')));
-select throws_ok($$ delete from public.groups where id = tests.id('owed') $$, '23514', 'group_has_balances',
+select throws_ok($$ select delete_group(tests.id('owed')) $$, '23514', 'group_has_balances',
   'an owner cannot delete a group with open balances');
+select throws_ok($$ delete from public.groups where id = tests.id('owed') $$, '42501', null,
+  'and cannot go around the RPC with a plain delete');
 reset role;
 select is((select count(*)::int from public.groups where id = tests.id('owed')), 1, 'the group is still there');
 
 select tests.login('ann');
 select settle_up(tests.id('owed'), tests.uid('own'), 1000);
+select throws_ok($$ select delete_group(tests.id('owed')) $$, '42501', 'not_allowed',
+  'only the owner deletes a group');
 select tests.login('own');
-select lives_ok($$ delete from public.groups where id = tests.id('owed') $$, 'a settled group can be deleted');
+select lives_ok($$ select delete_group(tests.id('owed')) $$, 'a settled group can be deleted');
 reset role;
 select is((select count(*)::int from public.groups where id = tests.id('owed')), 0, 'and is gone');
 
@@ -71,7 +93,7 @@ select tests.login('own');
 select create_expense(jsonb_build_object(
   'group_id', tests.id('direct'), 'description', 'Taxi', 'amount_cents', 500,
   'splits', tests.people('own', 'ann')));
-select throws_ok($$ delete from public.groups where id = tests.id('direct') $$, '23514', 'group_has_balances',
+select throws_ok($$ select delete_group(tests.id('direct')) $$, '23514', 'group_has_balances',
   'one-on-one groups with a balance are protected too');
 reset role;
 select throws_ok($$ delete from public.groups where id = tests.id('direct') $$, '23514', 'group_has_balances',
@@ -146,6 +168,24 @@ select is(
   2,
   'resumed templates never back-charge the paused periods'
 );
+
+-- RSVP deadlines ------------------------------------------------------------------------------
+
+select tests.login('own');
+insert into public.events (group_id, title, rsvp_deadline) values (tests.id('rg'), 'Closed', now() - interval '1 hour');
+insert into public.events (group_id, title, rsvp_deadline) values (tests.id('rg'), 'Open', now() + interval '1 day');
+select tests.login('ann');
+select throws_ok(
+  $$ insert into public.event_rsvps (event_id, status)
+     values ((select id from public.events where group_id = tests.id('rg') and title = 'Closed'), 'going') $$,
+  '23514', 'rsvp_closed', 'no RSVPs after the deadline'
+);
+select lives_ok(
+  $$ insert into public.event_rsvps (event_id, status)
+     values ((select id from public.events where group_id = tests.id('rg') and title = 'Open'), 'going') $$,
+  'RSVPs are fine before it'
+);
+reset role;
 
 -- Recurring templates and closed accounts ----------------------------------------------------
 
