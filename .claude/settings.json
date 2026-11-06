@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm verify)",
+      "Bash(pnpm verify *)",
+      "Bash(pnpm verify:db)",
+      "Bash(pnpm verify:db *)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:coverage)",
+      "Bash(pnpm test:functions)",
+      "Bash(pnpm build)",
+      "Bash(pnpm format)",
+      "Bash(pnpm gen)",
+      "Bash(pnpm gen:routes)",
+      "Bash(pnpm gen:map)",
+      "Bash(pnpm gen:skills)",
+      "Bash(pnpm gen:schema)",
+      "Bash(pnpm gen:db)",
+      "Bash(pnpm db:types)",
+      "Bash(pnpm db:test)",
+      "Bash(pnpm db:start)",
+      "Bash(pnpm --filter * test)",
+      "Bash(pnpm --filter * test:coverage)",
+      "Bash(pnpm --filter * typecheck)",
+      "Bash(pnpm --filter * exec vitest run *)",
+      "Bash(pnpm --filter @potluck/web exec playwright test *)",
+      "Bash(pnpm --filter @potluck/web exec playwright show-report)",
+      "Bash(pnpm exec prettier --check *)",
+      "Bash(pnpm exec prettier --write *)",
+      "Bash(pnpm exec eslint *)",
+      "Bash(pnpm exec supabase status *)",
+      "Bash(pnpm exec supabase status)",
+      "Bash(pnpm exec supabase test db *)",
+      "Bash(pnpm exec supabase db lint *)",
+      "Bash(pnpm exec supabase migration new *)",
+      "Bash(node scripts/verify.mjs *)",
+      "Bash(node scripts/gen-routes.mjs *)",
+      "Bash(node scripts/gen-agent-map.mjs *)",
+      "Bash(node scripts/sync-skills.mjs *)",
+      "Bash(node --test *)",
+      "Bash(git status *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git diff)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ],
+    "ask": [
+      "Bash(pnpm db:reset *)",
+      "Bash(pnpm db:reset)",
+      "Bash(*supabase db reset*)",
+      "Bash(*supabase stop*)",
+      "Bash(*supabase db push*)",
+      "Bash(*supabase functions deploy*)",
+      "Bash(*supabase link*)",
+      "Bash(*--remote*)",
+      "Bash(*wrangler deploy*)",
+      "Bash(git push *)",
+      "Bash(git push)",
+      "mcp__supabase__execute_sql"
+    ],
+    "deny": [
+      "Read(/.env)",
+      "Read(/.env.local)",
+      "Read(/.env.*.local)",
+      "Read(/.env.production)",
+      "Read(/supabase/functions/.env)",
+      "Read(/supabase/functions/.env.*)",
+      "Read(/supabase/.env)",
+      "Read(/supabase/.temp/**)",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__deploy_edge_function",
+      "mcp__supabase__create_edge_function_secret",
+      "mcp__supabase__create_branch",
+      "mcp__supabase__merge_branch",
+      "mcp__supabase__rebase_branch",
+      "mcp__supabase__reset_branch",
+      "mcp__supabase__delete_branch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/protect-files.mjs"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/format.mjs"],
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
