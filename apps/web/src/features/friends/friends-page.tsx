@@ -24,12 +24,11 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 import { GroupTile } from '@/features/groups/group-bits'
-import { useMyGroups } from '@/features/groups/use-groups'
+import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { shareInvite } from '@/features/invites/share'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
-import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
 function FriendBalance({ friend }: { friend: Friend }) {
@@ -143,6 +142,8 @@ function AddFriendSheet({
   )
 }
 
+const FRIEND_TABLES = [{ table: 'expenses' }, { table: 'settlements' }, { table: 'group_members' }]
+
 export function FriendsPage() {
   const userId = useUserId()
   const navigate = useNavigate()
@@ -150,12 +151,7 @@ export function FriendsPage() {
   const { data: friends, isPending } = useQuery(friendsQueryOptions(supabase, userId))
   const [opening, setOpening] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const invalidate = useBatchedInvalidate()
-  useRealtime(
-    'friends-live',
-    [{ table: 'expenses' }, { table: 'settlements' }, { table: 'group_members' }],
-    () => invalidate(groupKeys.friends(userId)),
-  )
+  useMyGroupsRealtime('friends-live', FRIEND_TABLES, () => [groupKeys.friends(userId)])
 
   async function open(friend: Friend) {
     setOpening(friend.id)

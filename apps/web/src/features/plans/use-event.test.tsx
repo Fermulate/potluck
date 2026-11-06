@@ -1,4 +1,5 @@
 import type * as Api from '@potluck/api'
+import type * as Auth from '@/lib/auth'
 import { PlanError, plansKeys, type PlanAvailabilityRow } from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
@@ -20,6 +21,11 @@ vi.mock('@potluck/api', async (importOriginal) => ({
     setAvailability(...(args as Parameters<typeof setAvailability>)),
 }))
 vi.mock('@potluck/ui', () => ({ toast: { error: vi.fn() } }))
+vi.mock('@/lib/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof Auth>()),
+  accessToken: () => 'session-token',
+}))
+vi.mock('@/lib/supabase', () => import('@/test/supabase'))
 
 const { useMyAvailability } = await import('./use-event')
 
@@ -57,6 +63,7 @@ describe('useMyAvailability', () => {
   })
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('sends one save at a time and ends on the latest map', async () => {
@@ -197,6 +204,131 @@ describe('useMyAvailability', () => {
     act(() => vi.advanceTimersByTime(1_000))
     await flush()
     expect(calls).toHaveLength(2)
+  })
+
+  it('sends a paint still waiting on the pause when the painter unmounts', async () => {
+    const { result, unmount } = renderHook(() => useMyAvailability(EVENT, 'me', map()), {
+      wrapper,
+    })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    unmount()
+    await flush()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slots).toEqual([{ slot_start: slotA, level: 'yes' }])
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still sends the newest paint after unmounting behind a save on the wire', async () => {
+    const { result, unmount } = renderHook(() => useMyAvailability(EVENT, 'me', map()), {
+      wrapper,
+    })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    act(() => result.current.change(map([slotA, 'yes'], [slotB, 'maybe'])))
+    unmount()
+    await flush()
+    expect(calls).toHaveLength(1)
+
+    calls[0]!.deferred.resolve()
+    await flush()
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.slots.map((s) => s.slot_start)).toEqual([slotA, slotB])
+  })
+
+  it('sends a waiting paint when the tab is hidden', async () => {
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    hidden.mockRestore()
+    await flush()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slots).toEqual([{ slot_start: slotA, level: 'yes' }])
+  })
+
+  function keepaliveSends(fetchMock: ReturnType<typeof vi.fn>) {
+    return fetchMock.mock.calls.map(([url, init]) => ({
+      url,
+      keepalive: (init as RequestInit).keepalive,
+      body: JSON.parse((init as RequestInit).body as string) as unknown,
+    }))
+  }
+
+  it('sends a paint still waiting on its pause past the page when it is left', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('1')))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    expect(keepaliveSends(fetchMock)).toEqual([
+      {
+        url: 'https://db.test/rest/v1/rpc/set_availability',
+        keepalive: true,
+        body: { event_id: EVENT, slots: [{ slot_start: slotA, level: 'yes' }] },
+      },
+    ])
+    expect(calls).toHaveLength(0)
+
+    // Back from the cache, the ordinary save still runs its course.
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    expect(calls).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends the paint on the wire again past the page when it is left', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('1')))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'], [slotB, 'maybe'])))
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    expect(calls).toHaveLength(1)
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    expect(keepaliveSends(fetchMock).map((s) => s.body)).toEqual([
+      {
+        event_id: EVENT,
+        slots: [
+          { slot_start: slotA, level: 'yes' },
+          { slot_start: slotB, level: 'maybe' },
+        ],
+      },
+    ])
+
+    calls[0]!.deferred.resolve()
+    await flush()
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a paint too big for a keepalive request through the client instead', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('1')))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    const month = map(
+      ...Array.from({ length: 1_200 }, (_, i): [string, PaintLevel] => [
+        new Date(Date.UTC(2026, 5, 1, 0, 30 * i)).toISOString(),
+        'yes',
+      ]),
+    )
+    act(() => result.current.change(month))
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    await flush()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slots).toHaveLength(1_200)
   })
 
   it('mirrors the server rows until the first paint, then keeps the edits', async () => {

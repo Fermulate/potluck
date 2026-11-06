@@ -6,7 +6,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { group, groupTables, member, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
-import { db, emitChange, resetDb } from '@/test/supabase'
+import { db, emitChange, resetDb, subscriptions } from '@/test/supabase'
 import { FriendsPage } from './friends-page'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -173,5 +173,19 @@ describe('FriendsPage', () => {
     const before = db().queries('friendships').length
     emitChange('settlements')
     await waitFor(() => expect(db().queries('friendships').length).toBeGreaterThan(before))
+  })
+
+  it("listens to money moving in the viewer's groups only", async () => {
+    renderPage()
+    await openTab('Ben Ortiz')
+    await waitFor(() =>
+      expect(subscriptions()).toContainEqual({
+        table: 'settlements',
+        filter: `group_id=in.(${withBen.id})`,
+      }),
+    )
+    expect(subscriptions().filter((s) => !s.filter)).toEqual([
+      { table: 'group_members', filter: undefined },
+    ])
   })
 })

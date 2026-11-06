@@ -157,6 +157,11 @@ export function subscribedTables() {
   return listeners.map((l) => l.table)
 }
 
+/** Realtime subscriptions currently live, with their filters. */
+export function subscriptions() {
+  return listeners.map((l) => ({ table: l.table, filter: l.filter }))
+}
+
 export function emitChange(table: string, eventType = 'INSERT', row: unknown = {}) {
   for (const l of listeners.filter((l) => l.table === table)) {
     l.handler({ table, eventType, new: row, old: {} })
@@ -219,3 +224,4 @@ export const supabase = new Proxy(
 ) as typeof fake.client
 
 export const supabaseUrl = 'https://db.test'
+export const supabaseKey = 'test-key'

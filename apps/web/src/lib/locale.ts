@@ -25,6 +25,14 @@ export function currencyLabel(code: string): string {
   }
 }
 
+/**
+ * The zone to render times in: the profile's when it has one (UTC included, someone may pick
+ * it on purpose), otherwise the device's. Every screen resolves the zone through this.
+ */
+export function resolveTimeZone(profileZone: string | null | undefined): string {
+  return profileZone || detectTimezone()
+}
+
 export function detectTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'

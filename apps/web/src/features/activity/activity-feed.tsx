@@ -18,10 +18,10 @@ import { Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
-import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { dayLabel, groupByDay } from '@/features/expenses/format'
 import { useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
+import { useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { describeActivity, type ActivityView } from './describe-activity'
 
 const toneClass: Record<ActivityView['tone'], string> = {
@@ -32,11 +32,11 @@ const toneClass: Record<ActivityView['tone'], string> = {
   tomato: 'bg-tomato-soft',
 }
 
+const ACTIVITY_TABLES = [{ table: 'activity', event: 'INSERT' as const }]
+const activityKeys = () => [moneyKeys.activity()]
+
 function useActivityRealtime() {
-  const invalidate = useBatchedInvalidate()
-  useRealtime('activity-feed', [{ table: 'activity', event: 'INSERT' }], () =>
-    invalidate(moneyKeys.activity()),
-  )
+  useMyGroupsRealtime('activity-feed', ACTIVITY_TABLES, activityKeys)
 }
 
 /** Everything that happened across the viewer's groups, newest first, grouped by day. */

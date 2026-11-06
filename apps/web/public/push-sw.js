@@ -27,15 +27,24 @@ self.addEventListener('notificationclick', (event) => {
   const href =
     target.origin === self.location.origin ? target.href : self.location.origin + '/notifications'
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
-      for (const client of clients) {
-        if (new URL(client.url).origin !== self.location.origin) continue
-        await client.focus()
-        if ('navigate' in client) return client.navigate(href)
-        return undefined
-      }
-      return self.clients.openWindow(href)
-    }),
-  )
+  event.waitUntil(openApp(href))
 })
+
+/**
+ * Brings the app to `href`: reuses an open tab this worker controls (only those can be
+ * navigated), otherwise opens a new window. A navigate that fails still ends in a window.
+ */
+async function openApp(href) {
+  const controlled = await self.clients.matchAll({ type: 'window' })
+  const client = controlled.find((c) => new URL(c.url).origin === self.location.origin)
+  if (client && 'navigate' in client) {
+    try {
+      const focused = await client.focus()
+      const navigated = await (focused || client).navigate(href)
+      if (navigated) return navigated
+    } catch {
+      // Fall through to a fresh window.
+    }
+  }
+  return self.clients.openWindow(href)
+}

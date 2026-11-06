@@ -32,6 +32,7 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
 vi.mock('@/lib/realtime', () => ({
   useRealtime: () => undefined,
   useBatchedInvalidate: () => () => undefined,
+  inFilter: () => undefined,
 }))
 
 describe('GroupsPage', () => {

@@ -1,4 +1,4 @@
-import { fetchPushTokens, savePushToken, type Json } from '@potluck/api'
+import { deletePushToken, fetchPushTokens, savePushToken, type Json } from '@potluck/api'
 import { useCallback, useEffect, useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { useAppConfig } from '@/lib/queries'
@@ -70,7 +70,12 @@ export function useWebPush() {
       const reg = await pushRegistration()
       if (!reg) throw new Error('no_service_worker')
       const stale = await reg.pushManager.getSubscription()
-      if (stale) await stale.unsubscribe()
+      if (stale) {
+        await stale.unsubscribe()
+        // The old endpoint is dead now; drop its row so notify stops sending to it. A failure
+        // here is not worth blocking the new subscription over.
+        await deletePushToken(supabase, userId, stale.endpoint).catch(() => undefined)
+      }
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: base64UrlToBytes(vapidKey),

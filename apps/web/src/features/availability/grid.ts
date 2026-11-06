@@ -16,11 +16,18 @@ export interface GridDay {
   key: string
   /** Noon UTC of that calendar day, safe to format in UTC. */
   date: Date
+  /**
+   * Minutes this day's cells sit after their row labels on the viewer's clock: nonzero only
+   * when the viewer's offset from the event zone changes inside the window (a DST switch).
+   */
+  shift: number
 }
 
 export interface GridRow {
-  /** Wall minute in the viewer's zone of the row's first slot, for the row label. */
+  /** Wall minute in the viewer's zone of the row label. */
   minute: number
+  /** A slot of this row that sits at `minute`, to format the label from. */
+  slot: string
 }
 
 export interface GridModel {
@@ -58,6 +65,24 @@ function zonedParts(date: Date, timeZone: string) {
     day: `${pick('year')}-${pick('month')}-${pick('day')}`,
     minute: Number(pick('hour')) * 60 + Number(pick('minute')),
   }
+}
+
+/** The value seen most often; on a tie, the one that got there first. */
+function mostCommon(values: readonly number[]): number {
+  const counts = new Map<number, number>()
+  let best = values[0]!
+  for (const v of values) {
+    const n = (counts.get(v) ?? 0) + 1
+    counts.set(v, n)
+    if (n > counts.get(best)!) best = v
+  }
+  return best
+}
+
+/** Signed difference between two wall minutes, wrapped across midnight into (-720, 720]. */
+function wallDiff(a: number, b: number): number {
+  const d = (((a - b) % 1440) + 1440) % 1440
+  return d > 720 ? d - 1440 : d
 }
 
 /** Normalize any timestamptz text (`2026-06-12 18:00:00+00`, ISO) to a UTC ISO string. */
@@ -98,7 +123,7 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
   const col = new Map(dayKeys.map((d, i) => [d, i]))
   const row = new Map(eventMinutes.map((m, i) => [m, i]))
   const labelDay = new Map<string, string>()
-  const labelMinute: number[] = []
+  const rowSlots: (typeof located)[] = eventMinutes.map(() => [])
 
   const cells: (string | null)[][] = eventMinutes.map(() => dayKeys.map(() => null))
   const index = new Map<string, { row: number; col: number }>()
@@ -106,17 +131,29 @@ export function buildGridModel(event: GridEvent, viewerTimeZone: string): GridMo
     const r = row.get(l.eventMinute)!
     const c = col.get(l.eventDay)!
     if (!labelDay.has(l.eventDay)) labelDay.set(l.eventDay, l.day)
-    labelMinute[r] ??= l.minute
+    rowSlots[r]!.push(l)
     cells[r]![c] = l.slot
     index.set(l.slot, { row: r, col: c })
   }
 
+  // A row's label is the viewer time most of its slots share. When the viewer's clock moves
+  // against the event zone mid window, the other days carry a shift instead of a wrong label.
+  const rows = rowSlots.map((ls) => {
+    const label = mostCommon(ls.map((l) => l.minute))
+    return { minute: label, slot: ls.find((l) => l.minute === label)!.slot }
+  })
+  const dayShifts: number[][] = dayKeys.map(() => [])
+  for (const l of located) {
+    const r = row.get(l.eventMinute)!
+    dayShifts[col.get(l.eventDay)!]!.push(wallDiff(l.minute, rows[r]!.minute))
+  }
+
   return {
-    days: dayKeys.map((eventDay) => {
+    days: dayKeys.map((eventDay, c) => {
       const key = labelDay.get(eventDay)!
-      return { key, date: new Date(`${key}T12:00:00Z`) }
+      return { key, date: new Date(`${key}T12:00:00Z`), shift: mostCommon(dayShifts[c]!) }
     }),
-    rows: eventMinutes.map((_, r) => ({ minute: labelMinute[r]! })),
+    rows,
     cells,
     slots,
     index,

@@ -16,7 +16,7 @@ import { errorMessage } from '@/lib/errors'
 import { CreateGroupSheet } from './create-group-sheet'
 import { GroupTile, ViewerBalance } from './group-bits'
 import { groupTransitionName, stackPeople } from './people'
-import { useGroupsRealtime, useMyGroups } from './use-groups'
+import { useAllGroupsRealtime, useMyGroups } from './use-groups'
 
 function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
   const reduced = usePrefersReducedMotion()
@@ -91,7 +91,7 @@ export function GroupsPage({
 }) {
   const { data, isPending, error, refetch } = useMyGroups()
   const [showArchived, setShowArchived] = useState(false)
-  useGroupsRealtime()
+  useAllGroupsRealtime()
 
   const shared = (data ?? []).filter((g) => !g.is_direct)
   const active = shared.filter((g) => !g.archived_at)

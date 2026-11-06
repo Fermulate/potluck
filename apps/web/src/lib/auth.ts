@@ -97,6 +97,11 @@ export function useSession(): Session | null {
   return useSyncExternalStore(subscribe, () => current)
 }
 
+/** The session's access token, for the one request sent outside the client (`rpc-keepalive`). */
+export function accessToken(): string | null {
+  return current?.access_token ?? null
+}
+
 /**
  * The signed-in user's id. Only call under the authenticated `_app` layout. Right after sign
  * out it keeps returning the last id for the one render before the redirect lands.

@@ -12,6 +12,7 @@ import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
+import { resolveTimeZone } from '@/lib/locale'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
@@ -40,10 +41,7 @@ export function useGroupSettlements(groupId: string) {
 
 /** The viewer's IANA zone, for rendering timestamps. Falls back to the browser's. */
 export function useTimeZone(): string {
-  const { data } = useViewer()
-  return data?.timezone && data.timezone !== 'UTC'
-    ? data.timezone
-    : (Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC')
+  return resolveTimeZone(useViewer().data?.timezone)
 }
 
 /**

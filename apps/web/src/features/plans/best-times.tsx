@@ -58,8 +58,16 @@ export function BestTimes({
     people
       .filter((m) => !slot.missing.includes(m.userId))
       .map((m) => ({ id: m.userId, name: m.displayName, src: avatarUrl?.(m.avatarPath) }))
-  const missingNames = (slot: PlanBestSlot) =>
-    slot.missing.map((id) => firstName(byId.get(id)?.displayName ?? '')).filter(Boolean)
+  // Closed accounts can still sit in `missing` (the server ranks every member); nobody can
+  // wait on them, so they drop out here.
+  const whoIsMissing = (slot: PlanBestSlot) => {
+    const missing = slot.missing.filter((id) => byId.has(id))
+    if (missing.length === 0) return t('bestTime.everyoneCanMake')
+    const names = missing.map((id) => firstName(byId.get(id)!.displayName)).filter(Boolean)
+    return names.length === missing.length
+      ? t('bestTime.missing', { names: joinNames(names, 2) })
+      : t('bestTime.missingCount', { count: missing.length })
+  }
   const preview = (slot: PlanBestSlot | null) => onPreview?.(slot)
 
   const lockLabel = (slot: PlanBestSlot) =>
@@ -110,11 +118,7 @@ export function BestTimes({
               size="sm"
               label={t('availability.freeCount', { count: free(top!).length })}
             />
-            <span className="truncate text-sm">
-              {top!.missing.length === 0
-                ? t('bestTime.everyoneCanMake')
-                : t('bestTime.missing', { names: joinNames(missingNames(top!), 2) })}
-            </span>
+            <span className="truncate text-sm">{whoIsMissing(top!)}</span>
           </div>
           {canLock && (
             <Button size="sm" variant="ink" onClick={() => setConfirming(top!)}>
@@ -148,9 +152,7 @@ export function BestTimes({
                       {t('bestTime.score', { yes: slot.yes_count, maybe: slot.maybe_count })}
                     </span>
                     {'. '}
-                    {slot.missing.length === 0
-                      ? t('bestTime.everyoneCanMake')
-                      : t('bestTime.missing', { names: joinNames(missingNames(slot), 2) })}
+                    {whoIsMissing(slot)}
                   </p>
                 </div>
                 {canLock && (
