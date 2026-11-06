@@ -1,7 +1,16 @@
 import { PlanError } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { createClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 import { errorMessage } from './errors'
+
+/** A client whose every request fails the way the browser reports an unreachable host. */
+function unreachable(wording: string) {
+  return createClient('http://supabase.test', 'publishable-key', {
+    global: { fetch: () => Promise.reject(new TypeError(wording)) },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  })
+}
 
 describe('errorMessage', () => {
   it('translates stable RPC codes carried in message', () => {
@@ -51,16 +60,40 @@ describe('errorMessage', () => {
     expect(errorMessage(new TypeError('Failed to fetch'), 'events.errors')).toBe(
       t('errors.network'),
     )
-    // Firefox and WebKit wording for the same failure.
-    expect(errorMessage(new TypeError('NetworkError when attempting to fetch resource.'))).toBe(
-      t('errors.network'),
-    )
-    expect(errorMessage(new TypeError('Load failed'))).toBe(t('errors.network'))
+  })
+
+  // Chrome, Firefox, WebKit and React Native wording for an unreachable host. PostgREST answers
+  // with a plain error object, not the TypeError itself.
+  it.each([
+    'Failed to fetch',
+    'NetworkError when attempting to fetch resource.',
+    'Load failed',
+    'Network request failed',
+  ])('says offline when an RPC fails with "%s"', async (wording) => {
+    const { error } = await unreachable(wording).rpc('settle_up', {
+      p_group_id: 'g',
+      p_to_user: 'u',
+      p_amount_cents: 1,
+    })
+    expect(error).not.toBeInstanceOf(Error)
+    expect(errorMessage(error, 'expenses.errors')).toBe(t('errors.network'))
+  })
+
+  it('says offline when signing in never got an answer', async () => {
+    const { error } = await unreachable('Failed to fetch').auth.signInWithPassword({
+      email: 'ava@example.com',
+      password: 'hunter22',
+    })
+    expect(error?.name).toBe('AuthRetryableFetchError')
+    expect(errorMessage(error)).toBe(t('errors.network'))
   })
 
   it('does not call a bug offline', () => {
+    expect(errorMessage(new TypeError("Cannot read properties of undefined (reading 'id')"))).toBe(
+      t('errors.generic'),
+    )
     expect(
-      errorMessage(new TypeError("Cannot read properties of undefined (reading 'id')")),
+      errorMessage({ message: 'TypeError: Cannot read properties of undefined', code: '' }),
     ).toBe(t('errors.generic'))
   })
 })

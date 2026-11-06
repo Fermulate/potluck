@@ -37,7 +37,9 @@ export type ErrorScope = 'expenses.errors' | 'events.errors'
 
 /**
  * `fetch` rejects with a TypeError when the request never got an answer; each browser words it
- * differently. Any other TypeError is a bug, not the network.
+ * differently. supabase-js hands that on as a plain `{ message: 'TypeError: Failed to fetch',
+ * code: '' }` from PostgREST and as an AuthRetryableFetchError from auth, so the wording is
+ * matched on any error without a stable code. Any other failure is a bug, not the network.
  */
 const FETCH_FAILURES = [
   'Failed to fetch',
@@ -48,7 +50,9 @@ const FETCH_FAILURES = [
 
 function isNetworkError(error: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
-  return error instanceof TypeError && FETCH_FAILURES.some((text) => error.message.includes(text))
+  if (!error || typeof error !== 'object' || errorCode(error)) return false
+  const message = (error as { message?: unknown }).message
+  return typeof message === 'string' && FETCH_FAILURES.some((text) => message.includes(text))
 }
 
 /**

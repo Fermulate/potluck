@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(52);
+select plan(56);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -14,9 +14,38 @@ select tests.create_user('stranger');
 select tests.create_user('closer', 'Cora Closer');
 select tests.create_user('stayer');
 select tests.create_user('quitter', 'Quinn Quitter');
+select tests.create_user('gone');
+select tests.create_user('unseen');
 select tests.create_user('boss');
 select tests.create_user('ghost');
 select tests.create_user('multi');
+
+-- Leavers nobody refers to ----------------------------------------------------------------------
+
+-- Only leavers the group still names are kept readable. The feed names everyone who joins or
+-- leaves, so a member the feed never saw stands in for someone nothing refers to. Nothing is
+-- pending yet, so the feed trigger can be switched off for that one membership.
+select tests.remember('u', tests.group_with('stayer', '{}', '{}', 'Unseen'));
+reset role;
+set constraints all immediate;
+alter table public.group_members disable trigger group_members_activity;
+insert into public.group_members (group_id, user_id) values (tests.id('u'), tests.uid('unseen'));
+delete from public.friendships where user_id = tests.uid('unseen') or friend_id = tests.uid('unseen');
+delete from public.group_members where group_id = tests.id('u') and user_id = tests.uid('unseen');
+alter table public.group_members enable trigger group_members_activity;
+set constraints all deferred;
+select is(
+  (select count(*)::int from private.former_members where group_id = tests.id('u') and user_id = tests.uid('unseen')),
+  0,
+  'a leaver nothing in the group refers to is not recorded'
+);
+select tests.login('stayer');
+select is(
+  (select count(*)::int from public.profiles where id = tests.uid('unseen')),
+  0,
+  'so the people still there cannot read them'
+);
+reset role;
 
 -- Blocks and invites ----------------------------------------------------------------------------
 
@@ -228,6 +257,20 @@ select is(
   (select count(*)::int from private.former_members where group_id = tests.id('t') and user_id = tests.uid('quitter')),
   0,
   'rejoining clears the former member row'
+);
+
+-- Operators hard-delete accounts (the app only soft-closes them); the membership goes with the
+-- profile and leaves no tombstone behind.
+select tests.remember('gone', tests.uid('gone'));
+insert into public.group_members (group_id, user_id) values (tests.id('t'), tests.id('gone'));
+select lives_ok(
+  $$ delete from auth.users where id = tests.id('gone') $$,
+  'hard-deleting a member with no money in the group works'
+);
+select is(
+  (select count(*)::int from private.former_members where user_id = tests.id('gone')),
+  0,
+  'and records no former member for the vanished profile'
 );
 
 -- Owner left with closed accounts ---------------------------------------------------------------
