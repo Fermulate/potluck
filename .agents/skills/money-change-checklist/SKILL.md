@@ -37,8 +37,8 @@ Rules: [ADR 3](../../../docs/adr/0003-integer-minor-units-and-shared-rounding.md
 
 - [ ] `packages/core`: exact integer assertions, a `fast-check` property where it fits (sums, order
       independence). `pnpm --filter @potluck/core exec vitest run src/<area>`.
-- [ ] SQL: the same cases in `supabase/tests/06_expenses`, `07_balances_settlements` or
-      `15_integrity` (start with `delete from public.fx_rates;`).
+- [ ] SQL: the same cases in `supabase/tests/06_expenses.test.sql`,
+      `07_balances_settlements.test.sql` or `15_integrity.test.sql` (start with `delete from public.fx_rates;`).
 - [ ] Web: the screen that shows the number (`apps/web/src/features/expenses`, `balances`, `settle`).
 - [ ] e2e only for a journey: `apps/web/e2e/expenses.spec.ts`, `balances.spec.ts`. Note e2e sets
       today's EUR to USD rate to 1.1 in the shared dev database.
