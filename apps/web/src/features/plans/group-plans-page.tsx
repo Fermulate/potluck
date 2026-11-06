@@ -1,10 +1,11 @@
 import { planQueries, plansKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, Card, EmptyState, Skeleton } from '@potluck/ui'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { Appear } from '@/features/timeline/appear'
 import { DayTimeline } from '@/features/timeline/day-timeline'
@@ -18,21 +19,12 @@ import { useViewer } from './viewer'
 
 /** Keeps a group's event list fresh while the tab is open. */
 function useGroupEventsRealtime(groupId: string) {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    const channel = supabase
-      .channel(`group-plans:${groupId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'events', filter: `group_id=eq.${groupId}` },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: plansKeys.groupEvents(groupId) })
-          void queryClient.invalidateQueries({ queryKey: plansKeys.timelineAll() })
-        },
-      )
-      .subscribe()
-    return () => void supabase.removeChannel(channel)
-  }, [groupId, queryClient])
+  const bump = useBatchedInvalidate()
+  useRealtime(
+    `group-plans:${groupId}`,
+    [{ table: 'events', filter: `group_id=eq.${groupId}` }],
+    () => bump(plansKeys.groupEvents(groupId), plansKeys.timelineAll()),
+  )
 }
 
 /** The Plans tab inside a group: open polls, the group's calendar, and past plans. */
