@@ -10,6 +10,7 @@ import { Avatar, IconButton, Skeleton, cn, toast } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SendHorizontal } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { isSendEnter } from '@/lib/keyboard'
 import { supabase } from '@/lib/supabase'
 import { planErrorMessage } from './format'
 
@@ -128,7 +129,7 @@ export function CommentsThread({
           maxLength={2000}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) submit(e)
+            if (isSendEnter(e)) submit(e)
           }}
           placeholder={t('events.comments.placeholder')}
           className="field-sizing-content max-h-40 min-h-11 flex-1 resize-none rounded-[1.375rem] border border-line-strong bg-card px-4 py-2.5 text-[0.9375rem] text-ink placeholder:text-mute focus-visible:border-ink focus-visible:outline-none"

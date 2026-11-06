@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SendHorizontal, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
+import { isSendEnter } from '@/lib/keyboard'
 import { supabase } from '@/lib/supabase'
 import { avatarUrl, moneyErrorMessage, useNameOf, usePeople, useTimeZone } from './money-data'
 
@@ -139,7 +140,7 @@ export function ExpenseComments({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (isSendEnter(e)) {
               e.preventDefault()
               e.currentTarget.form?.requestSubmit()
             }
