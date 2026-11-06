@@ -22,7 +22,7 @@ cp .env.example .env.local
 pnpm dev               # http://localhost:5173
 ```
 
-Demo accounts, Windows notes, edge functions and the rest of the local setup are in [docs/development.md](docs/development.md). The full developer docs start at [docs/README.md](docs/README.md).
+Demo accounts, Windows notes, edge functions and the rest of the local setup are in [docs/development.md](docs/development.md). The full developer docs start at [docs/README.md](docs/README.md). Coding agents start at [AGENTS.md](AGENTS.md).
 
 ## Repository layout
 
@@ -47,6 +47,8 @@ Demo accounts, Windows notes, edge functions and the rest of the local setup are
 | `pnpm typecheck` | TypeScript across all workspaces                |
 | `pnpm lint`      | ESLint                                          |
 | `pnpm test`      | Vitest across all workspaces                    |
+| `pnpm verify`    | every check the CI check job runs               |
+| `pnpm verify:db` | every check the CI db job runs                  |
 | `pnpm format`    | Prettier                                        |
 | `pnpm db:start`  | Start local Supabase                            |
 | `pnpm db:reset`  | Recreate the local DB from migrations + seed    |
@@ -68,7 +70,7 @@ Use short, conventional-ish messages in the imperative: `feat: add expense form`
 ## Pull requests
 
 - Open a PR against `main` and fill in the template.
-- CI must pass (typecheck, lint, test, build, database tests).
+- CI must pass. Run `pnpm verify` (format, lint, generated files, typecheck, unit tests with coverage, edge function tests, build) and, if you touched `supabase/`, `pnpm db:reset && pnpm verify:db` (db lint, pgTAP, schema snapshot, database types) first: they are the scripts CI runs. Changed a journey? Run its e2e spec too ([docs/testing.md](docs/testing.md#end-to-end-tests)).
 - Every PR needs an approving review from a code owner (see `.github/CODEOWNERS`).
 - Keep PRs small. Split large changes into reviewable steps.
 
@@ -76,10 +78,12 @@ Use short, conventional-ish messages in the imperative: `feat: add expense form`
 
 Never edit the database by hand in the Supabase dashboard. All schema changes go through migrations:
 
-1. `npx supabase migration new <name>` and write the SQL in `supabase/migrations/`.
-2. `pnpm db:reset` to apply it locally from scratch.
+1. `npx supabase migration new <name>` and write the SQL in `supabase/migrations/`. Copy the live body of any function you redefine from `supabase/schema/current.sql`.
+2. `pnpm db:reset` to apply it locally from scratch (the local stack is shared by every checkout on your machine; see [docs/development.md](docs/development.md#shared-local-stack)).
 3. Add or update pgTAP tests in `supabase/tests/` (tables, constraints, and especially row level security policies), then run `pnpm db:test`.
-4. `pnpm db:types` and commit the regenerated types alongside the migration.
+4. `pnpm gen:db` and commit the regenerated types, schema snapshot and agent map alongside the migration.
+
+The full checklist is in [docs/development.md](docs/development.md#writing-a-migration).
 
 Every table in an exposed schema must have row level security enabled with tests covering who can and cannot read or write it.
 
