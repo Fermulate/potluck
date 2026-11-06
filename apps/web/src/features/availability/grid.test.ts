@@ -37,10 +37,29 @@ describe('buildGridModel', () => {
       { ...event, window_start: '2026-10-20', window_end: '2026-10-30' },
       'Europe/London',
     )
-    expect(model.rows.map((r) => r.minute)).toEqual([1380, 1410, 0, 30])
     expect(model.index.get('2026-10-20T22:00:00.000Z')).toEqual({ row: 0, col: 0 })
     expect(model.index.get('2026-10-26T22:00:00.000Z')).toEqual({ row: 0, col: 6 })
     expect(model.slots).toHaveLength(11 * 4)
+  })
+
+  it('labels rows from the days most of the window shares and marks the shifted days', () => {
+    // Oct 20 to 24 run on BST (18:00 New York is 23:00 London), Oct 25 to 30 on GMT (22:00).
+    const model = buildGridModel(
+      { ...event, window_start: '2026-10-20', window_end: '2026-10-30' },
+      'Europe/London',
+    )
+    expect(model.rows.map((r) => r.minute)).toEqual([1320, 1350, 1380, 1410])
+    expect(model.rows[0]!.slot).toBe('2026-10-25T22:00:00.000Z')
+    expect(model.days.map((d) => d.shift)).toEqual([60, 60, 60, 60, 60, 0, 0, 0, 0, 0, 0])
+  })
+
+  it('has no shifted days when both clocks move together', () => {
+    const model = buildGridModel(
+      { ...event, window_start: '2026-10-28', window_end: '2026-11-04' },
+      'America/Chicago',
+    )
+    expect(model.days.every((d) => d.shift === 0)).toBe(true)
+    expect(model.rows.map((r) => r.minute)).toEqual([1020, 1050, 1080, 1110])
   })
 
   it('keeps every slot when the viewer clock repeats an hour on fall back night', () => {
