@@ -112,6 +112,9 @@ export interface ExpensePayload {
   recurrence?: RecurrenceValue
 }
 
+/** `update_expense` takes only the keys that change; leaving out `splits` keeps the stored ones. */
+export type ExpenseUpdate = Partial<Omit<ExpensePayload, 'group_id' | 'recurrence'>>
+
 export interface SettleUpInput {
   groupId: string
   toUser: string
@@ -418,7 +421,7 @@ export async function createExpense(
 export async function updateExpense(
   client: PotluckClient,
   expenseId: string,
-  payload: Omit<ExpensePayload, 'group_id' | 'recurrence'>,
+  payload: ExpenseUpdate,
 ): Promise<Expense> {
   return unwrap(
     await client.rpc('update_expense', { id: expenseId, payload: payload as unknown as Json }),
