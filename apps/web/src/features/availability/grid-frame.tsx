@@ -1,7 +1,7 @@
 import { cn } from '@potluck/ui'
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react'
 import type { GridModel } from './grid'
-import { dayNum, fullDay, month, rowHour, rowTime, weekday } from './grid-labels'
+import { axisLabels, dayNum, fullDay, month, shiftName, shiftShort, weekday } from './grid-labels'
 
 export interface GridFrameProps extends HTMLAttributes<HTMLDivElement> {
   model: GridModel
@@ -17,7 +17,11 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
   { model, label, renderCell, className, ...props },
   ref,
 ) {
-  const columns = `2.75rem repeat(${model.days.length}, minmax(2.25rem, 1fr))`
+  const axis = axisLabels(model)
+  // Labels like "10:30 AM" need more room than a bare hour.
+  const wideAxis = axis.some((a, r) => a.visible && model.rows[r]!.minute % 60 !== 0)
+  const shifted = model.days.some((day) => day.shift !== 0)
+  const columns = `${wideAxis ? '3.75rem' : '2.75rem'} repeat(${model.days.length}, minmax(2.25rem, 1fr))`
   return (
     <div className="-mx-4 scrollbar-none overflow-x-auto px-4 pb-1">
       <div
@@ -36,11 +40,14 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
             const m = month.format(day.date)
             const prev = model.days[i - 1]
             const showMonth = !prev || month.format(prev.date) !== m
+            const shift = shiftName(day.shift)
             return (
               <span
                 role="columnheader"
                 key={day.key}
-                aria-label={fullDay.format(day.date)}
+                aria-label={
+                  shift ? `${fullDay.format(day.date)}, ${shift}` : fullDay.format(day.date)
+                }
                 className="flex flex-col items-center pb-1.5 text-center leading-tight"
               >
                 <span aria-hidden className="text-[0.6875rem] font-semibold text-mute">
@@ -58,14 +65,17 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
                 >
                   {m}
                 </span>
+                {shifted && (
+                  <span aria-hidden className="text-[0.625rem] font-bold text-mute">
+                    {shiftShort(day.shift) ?? ' '}
+                  </span>
+                )}
               </span>
             )
           })}
         </div>
-        {model.rows.map((row, r) => {
-          const time = rowTime(model, r) ?? ''
-          const hour = rowHour(model, r) ?? time
-          const onHour = row.minute % 60 === 0
+        {model.rows.map((_, r) => {
+          const { time, visible } = axis[r]!
           return (
             <div role="row" key={r} className="contents">
               <span
@@ -74,7 +84,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
                 style={{ height: '1.5rem' }}
               >
                 <span className="sr-only">{time}</span>
-                {onHour && <span aria-hidden>{hour}</span>}
+                {visible && <span aria-hidden>{visible}</span>}
               </span>
               {model.days.map((day, c) => {
                 const slot = model.cells[r]![c]
