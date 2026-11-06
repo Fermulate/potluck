@@ -255,6 +255,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@potluck/core':
+        specifier: workspace:*
+        version: link:../core
       '@supabase/supabase-js':
         specifier: 'catalog:'
         version: 2.119.0
