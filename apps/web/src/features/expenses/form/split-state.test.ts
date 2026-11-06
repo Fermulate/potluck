@@ -3,10 +3,12 @@ import {
   FULL,
   draftFromExpense,
   evenPercent,
+  formerParticipants,
   initialDraft,
   moveBoundary,
   previewSplit,
   roundingExtras,
+  sameSplit,
   setPercent,
   splitsPayload,
   tipFor,
@@ -138,6 +140,55 @@ describe('split previews and payloads', () => {
     expect(draft.mode).toBe('percent')
     expect(draft.participants).toEqual([A, B])
     expect(draft.percent).toEqual({ [A]: 7000, [B]: 3000 })
+  })
+})
+
+describe('editing a split with someone who left the group', () => {
+  const GONE = 'dddddddd-0000-4000-8000-000000000004'
+  const saved = {
+    split_type: 'exact' as const,
+    expense_splits: [
+      { user_id: A, share_cents: 600, weight: null },
+      { user_id: GONE, share_cents: 400, weight: null },
+    ],
+  }
+
+  it('keeps them in the draft, with their exact share, and says who they are', () => {
+    const draft = draftFromExpense(saved, ids)
+    expect(draft.participants).toEqual([A, GONE])
+    expect(draft.exact).toEqual({ [A]: 600, [GONE]: 400 })
+    expect(formerParticipants(draft, ids)).toEqual([GONE])
+  })
+
+  it('treats an untouched draft as the same split, and any change as a new one', () => {
+    const start = draftFromExpense(saved, ids)
+    expect(sameSplit(start, draftFromExpense(saved, ids))).toBe(true)
+    expect(sameSplit(start, { ...start, exact: { ...start.exact, [A]: 500 } })).toBe(false)
+    expect(sameSplit(start, { ...start, mode: 'equal' })).toBe(false)
+    const without = toggleParticipant(start, GONE, [...ids, GONE])
+    expect(without.participants).toEqual([A])
+    expect(formerParticipants(without, ids)).toEqual([])
+    expect(sameSplit(start, without)).toBe(false)
+    // Taking them out and back in again is the same split.
+    expect(sameSplit(start, toggleParticipant(without, GONE, [...ids, GONE]))).toBe(true)
+    expect(sameSplit({ ...start, mode: 'itemized' }, { ...start, mode: 'itemized' })).toBe(false)
+  })
+
+  it('compares percent and share values too', () => {
+    const pct = draftFromExpense(
+      {
+        split_type: 'percent',
+        expense_splits: [
+          { user_id: A, share_cents: 700, weight: 70 },
+          { user_id: B, share_cents: 300, weight: 30 },
+        ],
+      },
+      ids,
+    )
+    expect(sameSplit(pct, { ...pct, percent: { [A]: 6000, [B]: 4000 } })).toBe(false)
+    expect(sameSplit(pct, { ...pct })).toBe(true)
+    const shares = { ...pct, mode: 'shares' as const, shares: { [A]: 1, [B]: 2 } }
+    expect(sameSplit(shares, { ...shares, shares: { [A]: 2, [B]: 2 } })).toBe(false)
   })
 })
 
