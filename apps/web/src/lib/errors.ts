@@ -35,10 +35,20 @@ export function isNotFoundError(error: unknown): boolean {
 /** Screens with their own wording for server codes, e.g. `expenses.errors.sum_mismatch`. */
 export type ErrorScope = 'expenses.errors' | 'events.errors'
 
-/** `fetch` rejects with a TypeError when the request never got an answer. */
+/**
+ * `fetch` rejects with a TypeError when the request never got an answer; each browser words it
+ * differently. Any other TypeError is a bug, not the network.
+ */
+const FETCH_FAILURES = [
+  'Failed to fetch',
+  'NetworkError when attempting to fetch resource',
+  'Load failed',
+  'Network request failed',
+]
+
 function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError) return true
-  return typeof navigator !== 'undefined' && navigator.onLine === false
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
+  return error instanceof TypeError && FETCH_FAILURES.some((text) => error.message.includes(text))
 }
 
 /**

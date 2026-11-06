@@ -51,5 +51,16 @@ describe('errorMessage', () => {
     expect(errorMessage(new TypeError('Failed to fetch'), 'events.errors')).toBe(
       t('errors.network'),
     )
+    // Firefox and WebKit wording for the same failure.
+    expect(errorMessage(new TypeError('NetworkError when attempting to fetch resource.'))).toBe(
+      t('errors.network'),
+    )
+    expect(errorMessage(new TypeError('Load failed'))).toBe(t('errors.network'))
+  })
+
+  it('does not call a bug offline', () => {
+    expect(
+      errorMessage(new TypeError("Cannot read properties of undefined (reading 'id')")),
+    ).toBe(t('errors.generic'))
   })
 })

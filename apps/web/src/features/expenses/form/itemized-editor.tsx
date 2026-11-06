@@ -27,6 +27,7 @@ export function ItemizedEditor({
   draft,
   onChange,
   currency,
+  locale,
   shares,
 }: {
   members: MoneyMember[]
@@ -34,6 +35,7 @@ export function ItemizedEditor({
   draft: SplitDraft
   onChange: (draft: SplitDraft) => void
   currency: string
+  locale: string
   shares: Shares | null
 }) {
   const name = (m: MoneyMember) => (m.id === viewerId ? t('common.you') : firstName(m.display_name))
@@ -66,6 +68,7 @@ export function ItemizedEditor({
                 />
                 <CompactMoneyInput
                   currency={currency}
+                  locale={locale}
                   value={item.amountCents}
                   onValueChange={(amountCents) => update(item.id, { amountCents })}
                   aria-label={`${t('expenses.itemized.itemAmount')}, ${label}`}
@@ -152,6 +155,7 @@ export function ItemizedEditor({
           <CompactMoneyInput
             id="itemized-tax"
             currency={currency}
+            locale={locale}
             value={draft.taxCents}
             onValueChange={(taxCents) => onChange({ ...draft, taxCents })}
             className="h-10 w-28"
@@ -192,6 +196,7 @@ export function ItemizedEditor({
           <CompactMoneyInput
             id="itemized-tip"
             currency={currency}
+            locale={locale}
             value={draft.tipCents}
             onValueChange={(tipCents) => onChange({ ...draft, tipCents, tipPercent: null })}
             className="h-10 w-28"

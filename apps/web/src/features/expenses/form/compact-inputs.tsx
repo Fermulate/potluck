@@ -1,4 +1,3 @@
-import { DEFAULT_LOCALE } from '@potluck/i18n'
 import { cn, parseDecimalInput, sanitizeDecimalInput, useMoneyText } from '@potluck/ui'
 import { useState, type InputHTMLAttributes } from 'react'
 
@@ -15,14 +14,14 @@ export function CompactMoneyInput({
   value,
   onValueChange,
   currency,
-  locale = DEFAULT_LOCALE,
+  locale,
   className,
   ...props
 }: {
   value: number | null
   onValueChange: (cents: number | null) => void
   currency: string
-  locale?: string
+  locale: string
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   const { text, onTextChange } = useMoneyText({ value, onValueChange, currency, locale })
   return (
@@ -52,13 +51,13 @@ function formatPercent(basisPoints: number, locale: string): string {
 export function PercentInput({
   basisPoints,
   onCommit,
-  locale = DEFAULT_LOCALE,
+  locale,
   className,
   ...props
 }: {
   basisPoints: number
   onCommit: (basisPoints: number) => void
-  locale?: string
+  locale: string
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   const shown = formatPercent(basisPoints, locale)
   const [draft, setDraft] = useState<string | null>(null)

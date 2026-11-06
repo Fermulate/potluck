@@ -459,6 +459,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 onChange={setDraft}
                 amountCents={total}
                 currency={currency}
+                locale={DEFAULT_LOCALE}
               />
             </>
           )}

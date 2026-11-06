@@ -37,6 +37,8 @@ export interface SplitEditorProps {
   onChange: (draft: SplitDraft) => void
   amountCents: number
   currency: string
+  /** How amounts and percents are typed, the same as the main amount field. */
+  locale: string
 }
 
 function displayName(member: MoneyMember, viewerId: string) {
@@ -50,6 +52,7 @@ export function SplitEditor({
   onChange,
   amountCents,
   currency,
+  locale,
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
   const byId = new Map(members.map((m) => [m.id, m]))
@@ -130,6 +133,7 @@ export function SplitEditor({
         {personCell(m)}
         <CompactMoneyInput
           currency={currency}
+          locale={locale}
           value={draft.exact[m.id] ?? null}
           onValueChange={(cents) =>
             onChange({ ...draft, exact: { ...draft.exact, [m.id]: cents } })
@@ -167,6 +171,7 @@ export function SplitEditor({
       <li key={m.id} className="flex items-center gap-3 py-1.5">
         {personCell(m)}
         <PercentInput
+          locale={locale}
           basisPoints={draft.percent[m.id] ?? 0}
           onCommit={(bp) =>
             onChange({ ...draft, percent: setPercent(draft.percent, draft.participants, m.id, bp) })
@@ -263,6 +268,7 @@ export function SplitEditor({
           draft={draft}
           onChange={onChange}
           currency={currency}
+          locale={locale}
           shares={shares}
         />
       ) : (
