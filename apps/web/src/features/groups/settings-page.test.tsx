@@ -1,5 +1,5 @@
 import type * as AuthModule from '@/lib/auth'
-import type { GroupDetail } from '@potluck/api'
+import { moneyKeys, plansKeys, type GroupDetail } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -85,6 +85,17 @@ describe('GroupSettingsPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: t('common.undo') }))
     await waitFor(() => expect(groupUpdates()[1]).toEqual({ archived_at: null }))
+  })
+
+  it('drops an archived group from the New expense and New plan pickers', async () => {
+    const { queryClient } = renderSettings()
+    queryClient.setQueryData(moneyKeys.myGroups(), [])
+    queryClient.setQueryData(plansKeys.myGroups(), [])
+    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.archive') }))
+    await waitFor(() =>
+      expect(queryClient.getQueryState(moneyKeys.myGroups())?.isInvalidated).toBe(true),
+    )
+    expect(queryClient.getQueryState(plansKeys.myGroups())?.isInvalidated).toBe(true)
   })
 
   it('brings an archived group back', async () => {

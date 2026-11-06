@@ -1,4 +1,5 @@
 import type * as AuthModule from '@/lib/auth'
+import { moneyKeys, plansKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -58,6 +59,22 @@ describe('CreateGroupSheet', () => {
       { name: 'Taco Tuesdays', emoji: GROUP_EMOJIS[2], color: 'sea', currency: 'EUR' },
     ])
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('refreshes the New expense and New plan group pickers', async () => {
+    db().respond('rpc:create_group', { data: { id: 'g-ski', name: 'Ski trip' } })
+    const { router, queryClient } = renderSheet()
+    queryClient.setQueryData(moneyKeys.myGroups(), [])
+    queryClient.setQueryData(plansKeys.myGroups(), [])
+    const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
+      target: { value: 'Ski trip' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: t('groups.create.submit') }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-ski/members'))
+    expect(queryClient.getQueryState(moneyKeys.myGroups())?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(plansKeys.myGroups())?.isInvalidated).toBe(true)
   })
 
   it('keeps the sheet open and explains when creating fails', async () => {
