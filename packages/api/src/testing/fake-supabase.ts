@@ -4,7 +4,7 @@
  * Every `.from(table)` chain, `.rpc(name, args)`, storage, auth and edge function call is
  * recorded in `calls`. Responses come from, in order:
  *   1. canned results queued with `respond(key, ...)` (the last one sticks for later calls),
- *   2. the in-memory `tables`, for plain reads (eq / is / in / lt / lte / gt / gte / order /
+ *   2. the in-memory `tables`, for plain reads (eq / is / in / lt / lte / gt / gte / or / order /
  *      limit / range / single / maybeSingle), capped at `maxRows` like PostgREST `max_rows`,
  *   3. `{ data: null, error: null }`.
  *
@@ -56,6 +56,52 @@ function compare(a: unknown, b: unknown) {
   return String(a).localeCompare(String(b))
 }
 
+/** Splits a PostgREST logic list on top level commas, leaving nested and()/or() and quotes. */
+function splitTerms(list: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let quoted = false
+  let current = ''
+  for (const ch of list) {
+    if (ch === '"') quoted = !quoted
+    if (!quoted && ch === '(') depth += 1
+    if (!quoted && ch === ')') depth -= 1
+    if (!quoted && depth === 0 && ch === ',') {
+      out.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  out.push(current)
+  return out
+}
+
+const COMPARE: Record<string, (c: number) => boolean> = {
+  eq: (c) => c === 0,
+  neq: (c) => c !== 0,
+  lt: (c) => c < 0,
+  lte: (c) => c <= 0,
+  gt: (c) => c > 0,
+  gte: (c) => c >= 0,
+}
+
+/** A row predicate for one `or()` / `and()` term such as `and(a.eq.1,b.lt."x")`. */
+function logicFilter(term: string): (row: Row) => boolean {
+  const group = /^(and|or)\((.*)\)$/.exec(term)
+  if (group) {
+    const parts = splitTerms(group[2]!).map(logicFilter)
+    return group[1] === 'and'
+      ? (row) => parts.every((p) => p(row))
+      : (row) => parts.some((p) => p(row))
+  }
+  const match = /^([^.]+)\.(eq|neq|lt|lte|gt|gte)\.(.*)$/.exec(term)
+  if (!match) throw new Error(`fake-supabase: cannot read the filter ${term}`)
+  const [, column, op, raw] = match
+  const value = raw!.replace(/^"(.*)"$/, '$1')
+  return (row) => COMPARE[op!]!(compare(row[column!], value))
+}
+
 function runInMemory(rows: Row[], ops: Op[], maxRows: number): FakeResult {
   let out = rows
   const sorts: { column: string; ascending: boolean }[] = []
@@ -74,6 +120,9 @@ function runInMemory(rows: Row[], ops: Op[], maxRows: number): FakeResult {
         break
       case 'in':
         out = out.filter((r) => (value as unknown[]).includes(r[column]))
+        break
+      case 'or':
+        out = out.filter(logicFilter(`or(${column})`))
         break
       case 'lt':
         out = out.filter((r) => compare(r[column], value) < 0)
