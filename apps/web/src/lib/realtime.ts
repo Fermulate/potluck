@@ -34,6 +34,18 @@ export function useBatchedInvalidate(delay = 300) {
 
 type PostgresEvent = '*' | 'INSERT' | 'UPDATE' | 'DELETE'
 
+/** Realtime caps an `in` filter at 100 values. */
+const MAX_IN_VALUES = 100
+
+/**
+ * `column=in.(a,b)` for a set of ids, or undefined when there are too many for Realtime to take
+ * (the subscription then relies on RLS alone).
+ */
+export function inFilter(column: string, ids: readonly string[]): string | undefined {
+  if (ids.length === 0 || ids.length > MAX_IN_VALUES) return undefined
+  return `${column}=in.(${[...ids].sort().join(',')})`
+}
+
 export interface RealtimeSubscription {
   table: string
   event?: PostgresEvent
