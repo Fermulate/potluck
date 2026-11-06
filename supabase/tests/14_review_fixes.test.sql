@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(44);
+select plan(49);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -59,10 +59,11 @@ select throws_ok($$ insert into public.comments (event_id, body) values (tests.i
 select throws_ok($$ insert into public.event_rsvps (event_id, status) values (tests.id('picnic'), 'going') $$,
   '23514', 'group_archived', 'no RSVPs in an archived group');
 select throws_ok($$ update public.recurring_expenses set active = false where id = tests.id('arch_rent') $$,
-  '42501', null, 'recurring expenses in an archived group cannot be paused');
+  '23514', 'group_archived', 'recurring expenses in an archived group cannot be paused');
+select throws_ok($$ delete from public.recurring_expenses where id = tests.id('arch_rent') $$,
+  '23514', 'group_archived', 'nor removed');
 delete from public.events where id = tests.id('picnic');
 delete from public.event_rsvps where event_id = tests.id('picnic');
-delete from public.recurring_expenses where id = tests.id('arch_rent');
 reset role;
 select results_eq(
   $$ select (select deleted_at is null from public.expenses where id = tests.id('live')),
@@ -224,8 +225,34 @@ select tests.login('bob');
 select tests.remember('bob_pays', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('rg'), 'description', 'Power', 'amount_cents', 3000, 'recurrence', 'monthly',
   'splits', tests.people('own', 'bob')))));
-select delete_my_account();
 reset role;
+select tests.remember('shelved', tests.group_with('own', array['bob'], '{}', 'Shelved'));
+select tests.login('bob');
+select tests.remember('shelved_storage', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('shelved'), 'description', 'Storage', 'amount_cents', 1000, 'recurrence', 'monthly',
+  'splits', tests.people('own', 'bob')))));
+reset role;
+update public.groups set archived_at = now() where id = tests.id('shelved');
+select tests.login('bob');
+select lives_ok($$ select delete_my_account() $$, 'closing an account works with a template in an archived group');
+reset role;
+select is(
+  (select active from public.recurring_expenses where id = tests.id('shelved_storage')),
+  true,
+  'the archived group is left as it is (the job stops that template when it comes due)'
+);
+select tests.remember('attic', tests.group_with('own', '{}', '{}', 'Attic'));
+select tests.login('own');
+select tests.remember('attic_rent', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('attic'), 'description', 'Rent', 'amount_cents', 1000, 'recurrence', 'monthly',
+  'splits', tests.people('own')))));
+reset role;
+update public.groups set archived_at = now() where id = tests.id('attic');
+select tests.login('own');
+select lives_ok($$ select delete_group(tests.id('attic')) $$, 'an archived group with a template can still be deleted');
+reset role;
+select is((select count(*)::int from public.recurring_expenses where id = tests.id('attic_rent')), 0,
+  'and the template goes with it');
 select is(
   (select count(*)::int from public.group_members where group_id = tests.id('rg') and user_id = tests.uid('bob')),
   1,

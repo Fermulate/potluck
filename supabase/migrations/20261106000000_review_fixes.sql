@@ -244,6 +244,7 @@ begin
 
   update public.recurring_expenses r set active = false
   where r.active
+    and private.group_is_open(r.group_id)
     and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
 
   delete from public.group_members m
@@ -729,12 +730,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  row jsonb := to_jsonb(new);
+  row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
   gid uuid;
   deadline timestamptz;
 begin
   if auth.uid() is null then
-    return new;
+    return coalesce(new, old);
   end if;
 
   if tg_table_name = 'event_rsvps' then
@@ -755,7 +756,7 @@ begin
   if deadline is not null and deadline <= now() then
     raise exception using message = 'rsvp_closed', detail = 'RSVPs for this plan are closed', errcode = '23514';
   end if;
-  return new;
+  return coalesce(new, old);
 end;
 $$;
 
@@ -769,6 +770,12 @@ for each row execute function private.guard_open_group_write();
 
 create trigger event_rsvps_require_open_group
 before insert or update on public.event_rsvps
+for each row execute function private.guard_open_group_write();
+
+-- Pausing, resuming and removing a template are direct client writes too. The
+-- cascade from a deleted group runs after the group row is gone, so it passes.
+create trigger recurring_expenses_require_open_group
+before update or delete on public.recurring_expenses
 for each row execute function private.guard_open_group_write();
 
 alter policy "events: members create" on public.events
@@ -813,9 +820,9 @@ with check (
   and (select private.rsvp_open(event_id))
 );
 
--- Deletes cannot raise from a policy, so these just match no row in an archived
--- group (or, for RSVPs, after the deadline). RPCs run as the table owner and
--- still clean up archived groups.
+-- Nothing in the apps deletes plans or RSVPs directly, so a policy that matches
+-- no row in an archived group (or, for RSVPs, after the deadline) is enough.
+-- RPCs run as the table owner and still clean up archived groups.
 alter policy "events: creator or admin delete" on public.events
 using (
   (select private.can_manage_event(id))
@@ -830,13 +837,6 @@ using (
 
 alter policy "recurring_expenses: creator or admin edit" on public.recurring_expenses
 with check (
-  ((select private.is_group_admin(group_id))
-    or (created_by = (select auth.uid()) and group_id in (select private.my_group_ids())))
-  and (select private.group_is_open(group_id))
-);
-
-alter policy "recurring_expenses: creator or admin delete" on public.recurring_expenses
-using (
   ((select private.is_group_admin(group_id))
     or (created_by = (select auth.uid()) and group_id in (select private.my_group_ids())))
   and (select private.group_is_open(group_id))
