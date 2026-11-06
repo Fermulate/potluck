@@ -1,27 +1,9 @@
+import { minorUnits } from '@potluck/core'
 import { ChevronDown } from 'lucide-react'
 import { forwardRef, useState, type ChangeEvent } from 'react'
-import { minorUnitScale } from './amount'
 import { cn } from './cn'
+import { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from './decimal-input'
 import { useField } from './field'
-
-function separators(locale?: string): { decimal: string; group: string | undefined } {
-  const parts = new Intl.NumberFormat(locale).formatToParts(1234.5)
-  return {
-    decimal: parts.find((p) => p.type === 'decimal')?.value ?? '.',
-    group: parts.find((p) => p.type === 'group')?.value,
-  }
-}
-
-/**
- * Rewrites typed text so "." is the only decimal mark. When the locale
- * separator is present, grouping is dropped and the separator becomes ".";
- * otherwise a typed "." already means the decimal point.
- */
-function toPlainDecimal(text: string, locale?: string): string {
-  const { decimal, group } = separators(locale)
-  if (!text.includes(decimal)) return text
-  return (group ? text.split(group).join('') : text).replace(decimal, '.')
-}
 
 function currencySymbol(currency: string, locale?: string): string {
   return (
@@ -37,45 +19,57 @@ function currencySymbol(currency: string, locale?: string): string {
  * precision. Returns null for empty input.
  */
 export function parseMoneyInput(text: string, currency: string, locale?: string): number | null {
-  const normalized = toPlainDecimal(text, locale).replace(/[^\d.]/g, '')
-  if (normalized === '' || normalized === '.') return null
-  const [whole = '0', fraction = ''] = normalized.split('.')
-  const scale = minorUnitScale(currency, locale)
-  const digits = Math.round(Math.log10(scale))
-  const frac = fraction.slice(0, digits).padEnd(digits, '0')
-  return Number(whole || '0') * scale + Number(frac || '0')
+  return parseDecimalInput(text, minorUnits(currency), locale)
 }
 
-function centsToText(cents: number | null, currency: string, locale?: string): string {
-  if (cents === null) return ''
-  const scale = minorUnitScale(currency, locale)
-  const digits = Math.round(Math.log10(scale))
-  const whole = Math.floor(cents / scale)
-  const frac = cents % scale
-  if (digits === 0 || frac === 0) return String(whole)
-  return `${whole}${separators(locale).decimal}${String(frac).padStart(digits, '0')}`
+/** Editable text for an amount in minor units, e.g. "12.50" or "12,50" in German. */
+export function formatMoneyInput(cents: number | null, currency: string, locale?: string): string {
+  return formatDecimalInput(cents, minorUnits(currency), locale)
 }
 
-/** Keeps only digits and a single separator, with at most `digits` decimals. */
-function sanitize(raw: string, locale: string | undefined, digits: number): string {
-  const sep = separators(locale).decimal
-  let out = ''
-  let seenSep = false
-  let fraction = 0
-  for (const ch of toPlainDecimal(raw, locale)) {
-    if (ch >= '0' && ch <= '9') {
-      if (seenSep) {
-        if (fraction >= digits) continue
-        fraction++
-      }
-      out += ch
-    } else if (ch === '.' && !seenSep && digits > 0) {
-      seenSep = true
-      out += out === '' ? `0${sep}` : sep
+export interface MoneyTextOptions {
+  value: number | null
+  onValueChange: (cents: number | null) => void
+  currency: string
+  locale?: string
+  /** Largest allowed value in minor units. */
+  max?: number
+}
+
+/**
+ * The text state behind a money field. Typing is sanitized for the locale and currency, parent
+ * updates are followed, and the text is redrawn when the currency or locale changes (the minor
+ * units stay put).
+ */
+export function useMoneyText({ value, onValueChange, currency, locale, max }: MoneyTextOptions) {
+  const digits = minorUnits(currency)
+  const [text, setText] = useState(() => formatMoneyInput(value, currency, locale))
+  const [lastValue, setLastValue] = useState(value)
+  const format = `${currency}|${locale ?? ''}`
+  const [lastFormat, setLastFormat] = useState(format)
+
+  if (format !== lastFormat) {
+    setLastFormat(format)
+    setLastValue(value)
+    setText(formatMoneyInput(value, currency, locale))
+  } else if (value !== lastValue) {
+    // Sync when the parent changes the value (reset, quick amounts).
+    setLastValue(value)
+    if (value !== parseMoneyInput(text, currency, locale)) {
+      setText(formatMoneyInput(value, currency, locale))
     }
   }
-  // No leading zeros like "007".
-  return out.replace(/^0+(?=\d)/, '')
+
+  const onTextChange = (raw: string) => {
+    const next = sanitizeDecimalInput(raw, digits, locale)
+    const cents = parseMoneyInput(next, currency, locale)
+    if (cents !== null && max !== undefined && cents > max) return
+    setText(next)
+    setLastValue(cents)
+    onValueChange(cents)
+  }
+
+  return { text, onTextChange }
 }
 
 export interface MoneyInputProps {
@@ -115,33 +109,8 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(function
   ref,
 ) {
   const field = useField()
-  const digits = Math.round(Math.log10(minorUnitScale(currency, locale)))
-  const [text, setText] = useState(() => centsToText(value, currency, locale))
-  const [lastValue, setLastValue] = useState(value)
-  const format = `${currency}|${locale ?? ''}`
-  const [lastFormat, setLastFormat] = useState(format)
-
-  // Reformat when the currency or locale changes; the minor units stay put.
-  if (format !== lastFormat) {
-    setLastFormat(format)
-    setLastValue(value)
-    setText(centsToText(value, currency, locale))
-  } else if (value !== lastValue) {
-    // Sync when the parent changes the value (reset, quick amounts).
-    setLastValue(value)
-    if (value !== parseMoneyInput(text, currency, locale)) {
-      setText(centsToText(value, currency, locale))
-    }
-  }
-
-  const onChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const next = sanitize(e.target.value, locale, digits)
-    const cents = parseMoneyInput(next, currency, locale)
-    if (cents !== null && cents > max) return
-    setText(next)
-    setLastValue(cents)
-    onValueChange(cents)
-  }
+  const { text, onTextChange } = useMoneyText({ value, onValueChange, currency, locale, max })
+  const onChange = (e: ChangeEvent<HTMLInputElement>) => onTextChange(e.target.value)
 
   const symbol = currencySymbol(currency, locale)
   const chip = (

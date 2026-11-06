@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import { Field } from './field'
-import { MoneyInput, parseMoneyInput } from './money-input'
+import { formatMoneyInput, MoneyInput, parseMoneyInput } from './money-input'
 
 describe('parseMoneyInput', () => {
   it('turns typed text into cents', () => {
@@ -24,6 +24,21 @@ describe('parseMoneyInput', () => {
 
   it('handles currencies without cents', () => {
     expect(parseMoneyInput('1500', 'JPY', 'ja-JP')).toBe(1500)
+  })
+
+  it('scales by the ISO minor units, so forints keep two decimals', () => {
+    expect(parseMoneyInput('1500', 'HUF', 'en-US')).toBe(150000)
+    expect(parseMoneyInput('2.5', 'IQD', 'en-US')).toBe(2500)
+  })
+})
+
+describe('formatMoneyInput', () => {
+  it('writes minor units back as editable text in the locale', () => {
+    expect(formatMoneyInput(1250, 'USD', 'en-US')).toBe('12.50')
+    expect(formatMoneyInput(1250, 'EUR', 'de-DE')).toBe('12,50')
+    expect(formatMoneyInput(2000, 'USD', 'en-US')).toBe('20')
+    expect(formatMoneyInput(1500, 'JPY', 'en-US')).toBe('1500')
+    expect(formatMoneyInput(null, 'USD', 'en-US')).toBe('')
   })
 })
 

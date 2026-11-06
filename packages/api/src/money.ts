@@ -126,7 +126,11 @@ export interface SettleUpInput {
 export const moneyKeys = {
   all: ['potluck', 'money'] as const,
   people: () => [...moneyKeys.all, 'people'] as const,
-  myGroups: () => [...moneyKeys.all, 'my-groups'] as const,
+  /**
+   * The group picker on New expense. Lives under `groupKeys.all` so every group change (create,
+   * join, leave, archive, delete) refreshes it with the groups list.
+   */
+  myGroups: () => ['potluck', 'groups', 'picker', 'money'] as const,
   group: (groupId: string) => [...moneyKeys.all, 'group', groupId] as const,
   groupInfo: (groupId: string) => [...moneyKeys.group(groupId), 'info'] as const,
   expenses: (groupId: string) => [...moneyKeys.group(groupId), 'expenses'] as const,

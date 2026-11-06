@@ -20,7 +20,7 @@ import { useState, type ReactNode } from 'react'
 import { GroupTile } from '@/features/groups/group-bits'
 import { Wordmark } from '@/features/shell/brand'
 import { needsOnboarding, useSession } from '@/lib/auth'
-import { errorMessage } from '@/lib/errors'
+import { errorMessage, isNotFoundError } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 
 function namesLine(preview: InvitePreview): string | null {
@@ -113,6 +113,22 @@ export function JoinPage({ code }: { code: string }) {
         <Skeleton className="size-28 rounded-[1.75rem]" />
         <Skeleton shape="line" className="h-10 w-56" />
         <Skeleton shape="line" className="w-40" />
+      </Frame>
+    )
+  }
+
+  // A dropped connection is not a dead invite: offer a retry instead of "gone cold".
+  if (!preview.data && preview.isError && !isNotFoundError(preview.error)) {
+    return (
+      <Frame>
+        <span aria-hidden className="text-7xl">
+          📡
+        </span>
+        <h1 className="flourish text-4xl leading-tight">{t('invites.join.loadFailedTitle')}</h1>
+        <p className="max-w-xs text-mute">{t('invites.join.loadFailed')}</p>
+        <Button loading={preview.isFetching} onClick={() => void preview.refetch()}>
+          {t('common.retry')}
+        </Button>
       </Frame>
     )
   }

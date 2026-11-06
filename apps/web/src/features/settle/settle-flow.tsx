@@ -1,4 +1,6 @@
+import { avatarSrc } from '@/lib/queries'
 import { settleUp, type MoneyGroup, type MoneyMember } from '@potluck/api'
+import { firstName } from '@potluck/core'
 import { springs } from '@potluck/tokens'
 import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
@@ -23,13 +25,7 @@ import { useDebts } from '@/features/balances/use-debts'
 import { groupTitle } from '@/features/expenses/format'
 import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { GoodToKnow } from '@/features/help/help'
-import {
-  avatarUrl,
-  firstName,
-  invalidateMoney,
-  moneyErrorMessage,
-  useMoneyGroup,
-} from '@/features/expenses/money-data'
+import { invalidateMoney, moneyErrorMessage, useMoneyGroup } from '@/features/expenses/money-data'
 
 interface Done {
   to: MoneyMember
@@ -140,7 +136,7 @@ function PersonPicker({
           onClick={() => onPick(m)}
           className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-sunken/70"
         >
-          <Avatar name={m.display_name} seed={m.id} src={avatarUrl(m.avatar_path)} size="md" />
+          <Avatar name={m.display_name} seed={m.id} src={avatarSrc(m.avatar_path)} size="md" />
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate font-semibold">{m.display_name}</span>
             {owed > 0 && (
@@ -266,7 +262,7 @@ function PaymentForm({
               <Avatar
                 name={self.display_name}
                 seed={self.id}
-                src={avatarUrl(self.avatar_path)}
+                src={avatarSrc(self.avatar_path)}
                 size="lg"
               />
             )}
@@ -274,7 +270,7 @@ function PaymentForm({
             <Avatar
               name={recipient.display_name}
               seed={recipient.id}
-              src={avatarUrl(recipient.avatar_path)}
+              src={avatarSrc(recipient.avatar_path)}
               size="lg"
             />
           </div>

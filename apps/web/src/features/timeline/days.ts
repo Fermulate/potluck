@@ -1,21 +1,5 @@
+import { dayKey } from '@potluck/core'
 import { DEFAULT_LOCALE, formatDate, t } from '@potluck/i18n'
-
-const keyFormats = new Map<string, Intl.DateTimeFormat>()
-
-/** `YYYY-MM-DD` of an instant in a zone. */
-export function dayKey(value: string | number | Date, timeZone: string): string {
-  let f = keyFormats.get(timeZone)
-  if (!f) {
-    f = new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    keyFormats.set(timeZone, f)
-  }
-  return f.format(new Date(value))
-}
 
 const DAY = 86_400_000
 const daysBetween = (a: string, b: string) =>

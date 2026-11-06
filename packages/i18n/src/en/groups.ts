@@ -202,6 +202,8 @@ export const invites = {
     signUpToJoin: 'Create an account to join',
     whoIsIn: '{names} are already in.',
     whoIsInOne: '{names} is already in.',
+    loadFailedTitle: 'We could not open this invite',
+    loadFailed: 'The link may be fine. Check your connection and try again.',
   },
   invalid: {
     title: 'This invite has gone cold',

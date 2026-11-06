@@ -1,6 +1,7 @@
 import { PlanError } from '@potluck/api'
 import { formatTime, hasMessage, t } from '@potluck/i18n'
 import { fromZonedTime } from 'date-fns-tz'
+import { errorMessage } from '@/lib/errors'
 
 /** "2 hours", "90 minutes" -> "1 h 30 min". */
 export function formatDuration(minutes: number): string {
@@ -35,9 +36,7 @@ export function planErrorCode(error: unknown): string | null {
 
 /** Human message for an error thrown by the plans API. */
 export function planErrorMessage(error: unknown): string {
-  const code = planErrorCode(error)
-  if (code) return (t as (k: string) => string)(`events.errors.${code}`)
-  return t('errors.generic')
+  return errorMessage(error, 'events.errors')
 }
 
 /** "Ava", "Ava and Ben", "Ava, Ben and 2 others". */
@@ -51,9 +50,4 @@ export function joinNames(names: string[], max = 2): string {
     name: names.slice(0, max).join(', '),
     count: names.length - max,
   })
-}
-
-/** First word of a display name. */
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name
 }

@@ -1,0 +1,1 @@
+export { firstName } from './names'

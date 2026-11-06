@@ -476,7 +476,7 @@ sequenceDiagram
   DP->>SB: migrate job (environment production):<br/>supabase link, db push, config push, functions deploy
   alt migrate failed
     DP-->>GH: stop, web is not deployed
-  else success or skipped (no Supabase secrets)
+  else success (without Supabase secrets the push step is skipped, the job still succeeds)
     DP->>DP: build web
     DP->>CF: wrangler deploy
     loop up to 6 tries, 10 s apart

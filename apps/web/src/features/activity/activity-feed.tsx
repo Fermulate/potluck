@@ -1,3 +1,5 @@
+import { avatarSrc } from '@/lib/queries'
+import { dayKey } from '@potluck/core'
 import { activityInfiniteQueryOptions, moneyKeys } from '@potluck/api'
 import { formatTime, t } from '@potluck/i18n'
 import {
@@ -18,8 +20,8 @@ import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
-import { dayLabel, dayOf, groupByDay } from '@/features/expenses/format'
-import { avatarUrl, useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
+import { dayLabel, groupByDay } from '@/features/expenses/format'
+import { useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
 import { describeActivity, type ActivityView } from './describe-activity'
 
 const toneClass: Record<ActivityView['tone'], string> = {
@@ -52,7 +54,7 @@ export function ActivityFeed() {
     const items = (feed.data?.pages.flat() ?? []).filter(
       (item) => !(item.verb === 'group.created' && item.group?.is_direct),
     )
-    return groupByDay(items, (item) => dayOf(item.created_at, timeZone))
+    return groupByDay(items, (item) => dayKey(item.created_at, timeZone))
   }, [feed.data, timeZone])
 
   return (
@@ -109,7 +111,7 @@ export function ActivityFeed() {
                           <Avatar
                             name={actor?.display_name ?? item.actor?.display_name ?? '?'}
                             seed={item.actor_id ?? item.id}
-                            src={avatarUrl(actor?.avatar_path ?? item.actor?.avatar_path)}
+                            src={avatarSrc(actor?.avatar_path ?? item.actor?.avatar_path)}
                             size="md"
                           />
                           <span

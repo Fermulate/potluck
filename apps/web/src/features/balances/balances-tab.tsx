@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import { moneyQueries } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, Card, EmptyState, Skeleton, cn } from '@potluck/ui'
@@ -10,7 +11,6 @@ import { supabase } from '@/lib/supabase'
 import { GoodToKnow } from '@/features/help/help'
 import { Money } from '@/features/expenses/money'
 import {
-  avatarUrl,
   useGroupMoneyRealtime,
   useMoneyGroup,
   useNameOf,
@@ -150,14 +150,14 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                         <Avatar
                           name={from?.display_name ?? '?'}
                           seed={d.from_user}
-                          src={avatarUrl(from?.avatar_path)}
+                          src={avatarSrc(from?.avatar_path)}
                           size="sm"
                         />
                         <ArrowRight className="mx-0.5 size-3.5 text-mute" strokeWidth={2.5} />
                         <Avatar
                           name={to?.display_name ?? '?'}
                           seed={d.to_user}
-                          src={avatarUrl(to?.avatar_path)}
+                          src={avatarSrc(to?.avatar_path)}
                           size="sm"
                         />
                       </span>
@@ -194,7 +194,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                         <Avatar
                           name={person?.display_name ?? '?'}
                           seed={r.id}
-                          src={avatarUrl(person?.avatar_path)}
+                          src={avatarSrc(person?.avatar_path)}
                           size="sm"
                         />
                         <span className="min-w-0 flex-1 truncate font-semibold">

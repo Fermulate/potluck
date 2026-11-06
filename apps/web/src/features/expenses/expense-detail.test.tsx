@@ -189,6 +189,20 @@ describe('ExpenseComments', () => {
     expect(insert).toEqual({ expense_id: ID, body: 'Worth it' })
   })
 
+  it('leaves Enter alone while an input method is composing', async () => {
+    renderDetail()
+    const box = await screen.findByRole('textbox', { name: t('expenses.comments.placeholder') })
+    fireEvent.change(box, { target: { value: 'かんぱい' } })
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    expect(box).toHaveValue('かんぱい')
+    expect(
+      db()
+        .queries('comments')
+        .some((call) => payloadOf(call, 'insert')),
+    ).toBe(false)
+  })
+
   it('gives the text back when posting fails', async () => {
     db().respond('from:comments', { error: { message: 'Server error' } })
     renderDetail()

@@ -182,6 +182,21 @@ describe('EventPage while polling', () => {
     expect(insert).toEqual({ event_id: 'ev-1', body: 'Guac is on me' })
   })
 
+  it('does not post the Enter that confirms an input method composition', async () => {
+    db().respond('from:comments', { data: [] })
+    renderEvent()
+    const box = await screen.findByRole('textbox', { name: t('events.comments.label') })
+    expect(await screen.findByText(t('events.comments.empty'))).toBeInTheDocument()
+    fireEvent.change(box, { target: { value: '你好' } })
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    expect(box).toHaveValue('你好')
+    expect(
+      db()
+        .queries('comments')
+        .some((call) => payloadOf(call, 'insert')),
+    ).toBe(false)
+  })
+
   it('gives the comment back when posting fails', async () => {
     db().respond('from:comments', (call) =>
       payloadOf(call, 'insert') ? { error: { message: 'Server error' } } : { data: [] },

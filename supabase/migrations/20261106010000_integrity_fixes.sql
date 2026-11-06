@@ -4,8 +4,9 @@
 --     between them and someone already in it (accept_invite raises blocked).
 --     invite_preview reports blocked and archived so the join page can say so.
 --   * Former members stay readable: co-members can read the profile of anyone
---     who has left one of their groups (private.former_members), so old
---     expenses, payments and activity keep their names.
+--     who has left one of their groups while something there still names them
+--     (private.former_members), so old expenses, payments and activity keep
+--     their names.
 --   * Membership changes and money writes serialize on the group row:
 --     remove_member and leave_group lock it before reading balances, and every
 --     RPC that moves a balance takes a share lock on it first. Lock order is
@@ -265,6 +266,38 @@ alter table private.former_members enable row level security;
 revoke all on table private.former_members from public, anon, authenticated;
 grant all on table private.former_members to service_role;
 
+-- Whether anything in the group still names this person: money, comments, or feed entries
+-- for something they did there. Joining, leaving and group settings do not count, so a leaver
+-- who never touched money or comments drops out of view (the feed then says "Someone").
+create or replace function private.referenced_in_group(gid uuid, uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.expenses e where e.group_id = gid and e.paid_by = uid)
+    or exists (
+      select 1 from public.expense_splits s
+      join public.expenses e on e.id = s.expense_id
+      where e.group_id = gid and s.user_id = uid
+    )
+    or exists (
+      select 1 from public.settlements st
+      where st.group_id = gid and uid in (st.from_user, st.to_user)
+    )
+    or exists (select 1 from public.comments c where c.group_id = gid and c.author_id = uid)
+    or exists (
+      select 1 from public.activity a
+      where a.group_id = gid
+        and a.actor_id = uid
+        and a.verb not like 'member.%'
+        and a.verb not like 'group.%'
+    );
+$$;
+
+revoke execute on function private.referenced_in_group(uuid, uuid) from public, anon, authenticated;
+
 create or replace function private.track_former_members()
 returns trigger
 language plpgsql
@@ -278,8 +311,11 @@ begin
     return null;
   end if;
 
-  -- Rows removed by a cascading group delete have nothing to point at.
-  if exists (select 1 from public.groups g where g.id = old.group_id) then
+  -- Rows removed by a cascading group or profile delete have nothing to point at, and a
+  -- leaver nothing in the group names anymore has nothing to be read for.
+  if exists (select 1 from public.groups g where g.id = old.group_id)
+     and exists (select 1 from public.profiles p where p.id = old.user_id)
+     and private.referenced_in_group(old.group_id, old.user_id) then
     insert into private.former_members (group_id, user_id)
     values (old.group_id, old.user_id)
     on conflict (group_id, user_id) do update set left_at = excluded.left_at;
@@ -292,29 +328,48 @@ create trigger group_members_track_former
 after insert or delete on public.group_members
 for each row execute function private.track_former_members();
 
--- Everyone who left before this table existed and is still referenced in the group.
+-- The feed's own trigger runs first on the same delete; a membership taken away by a cascading
+-- profile delete has nobody left to log.
+create or replace function private.group_members_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform private.log_activity(new.group_id, new.user_id, 'member.joined', new.user_id,
+      jsonb_build_object('user_id', new.user_id, 'role', new.role));
+  elsif tg_op = 'UPDATE' then
+    if new.role is distinct from old.role then
+      perform private.log_activity(new.group_id, auth.uid(), 'member.role_changed', new.user_id,
+        jsonb_build_object('user_id', new.user_id, 'from', old.role, 'to', new.role));
+    end if;
+  elsif exists (select 1 from public.profiles p where p.id = old.user_id) then
+    perform private.log_activity(
+      old.group_id,
+      coalesce(auth.uid(), old.user_id),
+      case when auth.uid() is null or auth.uid() = old.user_id then 'member.left' else 'member.removed' end,
+      old.user_id,
+      jsonb_build_object('user_id', old.user_id)
+    );
+  end if;
+  return null;
+end;
+$$;
+
+-- Everyone who left before this table existed (the feed logs every departure) and is still
+-- referenced in the group.
 insert into private.former_members (group_id, user_id)
-select x.group_id, x.user_id
-from (
-  select e.group_id, e.paid_by as user_id from public.expenses e
-  union
-  select e.group_id, s.user_id from public.expense_splits s join public.expenses e on e.id = s.expense_id
-  union
-  select st.group_id, st.from_user from public.settlements st
-  union
-  select st.group_id, st.to_user from public.settlements st
-  union
-  select c.group_id, c.author_id from public.comments c
-  union
-  select a.group_id, a.actor_id from public.activity a
-  union
-  select a.group_id, a.subject_id from public.activity a where a.verb like 'member.%'
-) x
-where x.user_id is not null
-  and exists (select 1 from public.profiles p where p.id = x.user_id)
+select distinct a.group_id, a.subject_id
+from public.activity a
+where a.verb in ('member.left', 'member.removed')
+  and a.subject_id is not null
+  and exists (select 1 from public.profiles p where p.id = a.subject_id)
   and not exists (
-    select 1 from public.group_members m where m.group_id = x.group_id and m.user_id = x.user_id
+    select 1 from public.group_members m where m.group_id = a.group_id and m.user_id = a.subject_id
   )
+  and private.referenced_in_group(a.group_id, a.subject_id)
 on conflict do nothing;
 
 -- People who have left one of my groups.

@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, resetDb } from '@/test/supabase'
 import { renderWithClient, seededClient } from '../test-utils'
-import { receiptExtension } from './receipt'
+import { receiptExtension, receiptType } from './receipt'
 import { ReceiptField, type ReceiptValue } from './receipt-field'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -75,6 +75,13 @@ describe('ReceiptField', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  it('takes an iPhone HEIC photo the browser could not type', () => {
+    const { input, onChange } = renderField()
+    const photo = new File(['heic'], 'IMG_0042.HEIC', { type: '' })
+    fireEvent.change(input, { target: { files: [photo] } })
+    expect(onChange).toHaveBeenLastCalledWith({ file: photo, existingPath: null })
+  })
+
   it('shows the stored receipt when editing', async () => {
     db().respond('storage:receipts.createSignedUrl', {
       data: { signedUrl: 'https://files.test/r.png' },
@@ -96,5 +103,25 @@ describe('receiptExtension', () => {
   it('prefers the type, then the file name', () => {
     expect(receiptExtension(new File([], 'a', { type: 'image/jpeg' }))).toBe('jpg')
     expect(receiptExtension(new File([], 'scan.tiff', { type: 'image/tiff' }))).toBe('tiff')
+  })
+})
+
+describe('receiptType', () => {
+  it('keeps a type the bucket accepts', () => {
+    expect(receiptType(new File([], 'a.png', { type: 'image/png' }))).toBe('image/png')
+  })
+
+  it('reads the extension when the browser gave no type', () => {
+    expect(receiptType(new File([], 'IMG_1.heic', { type: '' }))).toBe('image/heic')
+    expect(receiptType(new File([], 'IMG_1.HEIF', { type: '' }))).toBe('image/heic')
+    expect(receiptType(new File([], 'scan.pdf', { type: 'application/octet-stream' }))).toBe(
+      'application/pdf',
+    )
+  })
+
+  it('refuses everything else', () => {
+    expect(receiptType(new File([], 'notes.txt', { type: 'text/plain' }))).toBeNull()
+    expect(receiptType(new File([], 'notes.heic', { type: 'text/plain' }))).toBeNull()
+    expect(receiptType(new File([], 'mystery', { type: '' }))).toBeNull()
   })
 })

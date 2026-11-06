@@ -1,3 +1,4 @@
+import { dayKey } from '@potluck/core'
 import type { ExpenseWithSplits, Settlement } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import {
@@ -21,7 +22,7 @@ import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
 import { expensesToCsv, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
-import { categoryEmoji, categoryLabel, dayLabel, dayOf, groupByDay } from './format'
+import { categoryEmoji, categoryLabel, dayLabel, groupByDay } from './format'
 import {
   useGroupExpenses,
   useGroupMoneyRealtime,
@@ -76,7 +77,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
       for (const settlement of settlements.data ?? []) {
         items.push({
           kind: 'settlement',
-          day: dayOf(settlement.settled_at, timeZone),
+          day: dayKey(settlement.settled_at, timeZone),
           at: settlement.settled_at,
           settlement,
         })
@@ -87,7 +88,8 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
   }, [expenses.data, settlements.data, search, category, nameOf, timeZone])
 
   const myRole = group.data?.members.find((m) => m.id === me)?.role
-  const loading = expenses.isPending || group.isPending
+  // Payments count too: wait for them before calling the tab empty.
+  const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
     !loading && (expenses.data?.length ?? 0) === 0 && (settlements.data?.length ?? 0) === 0
   const filtering = query.trim() !== '' || category !== null
@@ -111,18 +113,22 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
 
   if (empty) {
     return (
-      <EmptyState
-        illustration="🧾"
-        title={t('empty.expenses.title')}
-        description={t('empty.expenses.body')}
-        action={
-          <Button asChild leadingIcon={<Plus />}>
-            <Link to="/new/expense" search={{ groupId }}>
-              {t('empty.expenses.action')}
-            </Link>
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-4">
+        {/* Repeating expenses can exist before the first one is due. */}
+        <RecurringSection groupId={groupId} />
+        <EmptyState
+          illustration="🧾"
+          title={t('empty.expenses.title')}
+          description={t('empty.expenses.body')}
+          action={
+            <Button asChild leadingIcon={<Plus />}>
+              <Link to="/new/expense" search={{ groupId }}>
+                {t('empty.expenses.action')}
+              </Link>
+            </Button>
+          }
+        />
+      </div>
     )
   }
 

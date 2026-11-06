@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(49);
+select plan(51);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -137,11 +137,14 @@ select tests.remember('monthly', (select recurring_id from create_expense(jsonb_
 select tests.remember('weekly', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('rg'), 'description', 'Cleaner', 'amount_cents', 3000, 'recurrence', 'weekly',
   'spent_at', '2025-01-01', 'splits', tests.people('own', 'ann')))));
+select tests.remember('mid', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('rg'), 'description', 'Phone', 'amount_cents', 500, 'recurrence', 'monthly',
+  'spent_at', '2025-01-15', 'splits', tests.people('own', 'ann')))));
 select tests.remember('future', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('rg'), 'description', 'Gym', 'amount_cents', 2000, 'recurrence', 'monthly',
   'splits', tests.people('own', 'ann')))));
 update public.recurring_expenses set active = false
-where id in (tests.id('monthly'), tests.id('weekly'), tests.id('future'));
+where id in (tests.id('monthly'), tests.id('weekly'), tests.id('future'), tests.id('mid'));
 update public.recurring_expenses set description = 'Flat rent' where id = tests.id('monthly');
 select is(
   (select next_run_on from public.recurring_expenses where id = tests.id('monthly')),
@@ -150,7 +153,7 @@ select is(
 );
 
 update public.recurring_expenses set active = true
-where id in (tests.id('monthly'), tests.id('weekly'), tests.id('future'));
+where id in (tests.id('monthly'), tests.id('weekly'), tests.id('future'), tests.id('mid'));
 reset role;
 select ok(
   (select next_run_on >= current_date and next_run_on < current_date + 31
@@ -162,6 +165,16 @@ select is(
   (select least(31, extract(day from (date_trunc('month', next_run_on) + interval '1 month - 1 day'))::int)
    from public.recurring_expenses where id = tests.id('monthly')),
   'and keeps the series anchor day (the 31st, clamped to the month end)'
+);
+select ok(
+  (select next_run_on >= current_date and next_run_on < current_date + 31
+   from public.recurring_expenses where id = tests.id('mid')),
+  'a mid-month series also resumes from today'
+);
+select is(
+  (select extract(day from next_run_on)::int from public.recurring_expenses where id = tests.id('mid')),
+  15,
+  'on its own day, not the month end'
 );
 select ok(
   (select next_run_on >= current_date and next_run_on < current_date + 7

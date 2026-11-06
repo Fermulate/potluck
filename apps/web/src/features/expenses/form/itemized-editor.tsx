@@ -1,10 +1,11 @@
+import { avatarSrc } from '@/lib/queries'
+import { firstName } from '@potluck/core'
 import type { MoneyMember } from '@potluck/api'
 import type { Shares } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, cn } from '@potluck/ui'
 import { Money } from '../money'
 import { Plus, X } from 'lucide-react'
-import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput } from './compact-inputs'
 import {
   TIP_PERCENTS,
@@ -26,6 +27,7 @@ export function ItemizedEditor({
   draft,
   onChange,
   currency,
+  locale,
   shares,
 }: {
   members: MoneyMember[]
@@ -33,6 +35,7 @@ export function ItemizedEditor({
   draft: SplitDraft
   onChange: (draft: SplitDraft) => void
   currency: string
+  locale: string
   shares: Shares | null
 }) {
   const name = (m: MoneyMember) => (m.id === viewerId ? t('common.you') : firstName(m.display_name))
@@ -65,6 +68,7 @@ export function ItemizedEditor({
                 />
                 <CompactMoneyInput
                   currency={currency}
+                  locale={locale}
                   value={item.amountCents}
                   onValueChange={(amountCents) => update(item.id, { amountCents })}
                   aria-label={`${t('expenses.itemized.itemAmount')}, ${label}`}
@@ -112,7 +116,7 @@ export function ItemizedEditor({
                       <Avatar
                         name={m.display_name}
                         seed={m.id}
-                        src={avatarUrl(m.avatar_path)}
+                        src={avatarSrc(m.avatar_path)}
                         size="xs"
                         className={cn(on ? 'ring-1 ring-paper/60' : 'opacity-50')}
                       />
@@ -151,6 +155,7 @@ export function ItemizedEditor({
           <CompactMoneyInput
             id="itemized-tax"
             currency={currency}
+            locale={locale}
             value={draft.taxCents}
             onValueChange={(taxCents) => onChange({ ...draft, taxCents })}
             className="h-10 w-28"
@@ -191,6 +196,7 @@ export function ItemizedEditor({
           <CompactMoneyInput
             id="itemized-tip"
             currency={currency}
+            locale={locale}
             value={draft.tipCents}
             onValueChange={(tipCents) => onChange({ ...draft, tipCents, tipPercent: null })}
             className="h-10 w-28"
@@ -213,7 +219,7 @@ export function ItemizedEditor({
                 <Avatar
                   name={m.display_name}
                   seed={m.id}
-                  src={avatarUrl(m.avatar_path)}
+                  src={avatarSrc(m.avatar_path)}
                   size="sm"
                 />
                 <span className="flex-1 truncate font-semibold">{name(m)}</span>

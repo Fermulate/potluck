@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   createExpense,
   updateExpense,
@@ -8,7 +9,7 @@ import {
   type MoneyMember,
   type RecurrenceValue,
 } from '@potluck/api'
-import { CATEGORIES, type CategoryId } from '@potluck/core'
+import { CATEGORIES, firstName, type CategoryId } from '@potluck/core'
 import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -35,8 +36,6 @@ import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
 import {
-  avatarUrl,
-  firstName,
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,
@@ -45,7 +44,7 @@ import {
 } from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
-import { receiptExtension } from './receipt'
+import { receiptExtension, receiptType } from './receipt'
 import { ReceiptField, type ReceiptValue } from './receipt-field'
 import { SplitEditor } from './split-editor'
 import {
@@ -174,7 +173,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         try {
           receiptPath = await uploadReceipt(supabase, group.id, receipt.file, {
             extension: receiptExtension(receipt.file),
-            contentType: receipt.file.type,
+            contentType: receiptType(receipt.file) ?? receipt.file.type,
           })
         } catch {
           throw new Error('receipt_upload_failed')
@@ -254,7 +253,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const payerOptions = payers.map((m) => ({
     value: m.id,
     label: m.id === me ? t('common.you') : m.display_name,
-    icon: <Avatar name={m.display_name} seed={m.id} src={avatarUrl(m.avatar_path)} size="xs" />,
+    icon: <Avatar name={m.display_name} seed={m.id} src={avatarSrc(m.avatar_path)} size="xs" />,
   }))
 
   return (
@@ -434,7 +433,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                       <Avatar
                         name={person.display_name}
                         seed={person.id}
-                        src={avatarUrl(person.avatar_path)}
+                        src={avatarSrc(person.avatar_path)}
                         size="sm"
                       />
                       <span className="min-w-0 flex-1 truncate font-semibold">
@@ -460,6 +459,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 onChange={setDraft}
                 amountCents={total}
                 currency={currency}
+                locale={DEFAULT_LOCALE}
               />
             </>
           )}

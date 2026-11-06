@@ -244,6 +244,7 @@ describe('fetchFxRate', () => {
     { base: 'EUR', quote: 'USD', day: '2026-03-01', rate: 1.1 },
     { base: 'EUR', quote: 'USD', day: '2026-06-01', rate: 1.2 },
     { base: 'USD', quote: 'GBP', day: '2026-06-01', rate: 0.8 },
+    { base: 'USD', quote: 'JPY', day: '2026-06-01', rate: 150 },
   ]
   const { client } = fakeSupabase({ tables: { fx_rates: fxRates } })
 
@@ -270,8 +271,9 @@ describe('fetchFxRate', () => {
   })
 
   it('falls back to the inverse pair, rounded to 12 places', async () => {
-    expect(await fetchFxRate(client, 'GBP', 'USD', '2026-07-01')).toEqual({
-      rate: 1.25,
+    // 1 / 150 = 0.0066666..., so the width of the rounding is visible.
+    expect(await fetchFxRate(client, 'JPY', 'USD', '2026-07-01')).toEqual({
+      rate: 0.006666666667,
       day: '2026-06-01',
     })
   })

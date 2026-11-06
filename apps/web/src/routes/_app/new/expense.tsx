@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-router'
 import { t } from '@potluck/i18n'
 import { ExpenseForm } from '@/features/expenses/form/expense-form'
 import { GroupPicker } from '@/features/expenses/group-picker'
@@ -14,8 +14,10 @@ function NewExpense() {
   const { groupId, eventId } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
+  // Only step back inside the app; a shared or typed link has nothing in-app to return to.
+  const canGoBack = useCanGoBack()
   const close = () => {
-    if (window.history.length > 1) router.history.back()
+    if (canGoBack) router.history.back()
     else if (groupId) void navigate({ to: '/groups/$groupId', params: { groupId } })
     else void navigate({ to: '/home' })
   }

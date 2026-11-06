@@ -1,16 +1,17 @@
 import {
   groupKeys,
-  moneyErrorCode,
   moneyKeys,
   plansKeys,
   moneyQueries,
   myProfileQueryOptions,
   type MoneyPerson,
 } from '@potluck/api'
-import { hasMessage, t } from '@potluck/i18n'
+import { firstName } from '@potluck/core'
+import { t } from '@potluck/i18n'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
+import { errorMessage } from '@/lib/errors'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
@@ -88,12 +89,6 @@ export function invalidateMoney(queryClient: QueryClient, groupId: string, expen
   void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })
 }
 
-/** Public URL for a profile photo in the `avatars` bucket. */
-export function avatarUrl(path: string | null | undefined): string | null {
-  if (!path) return null
-  return supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl
-}
-
 /** First name, or "You" for the viewer. */
 export function useNameOf() {
   const people = usePeople()
@@ -109,19 +104,7 @@ export function useNameOf() {
   )
 }
 
-export function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name
-}
-
 /** Turns an RPC failure into a sentence for a toast or field error. */
 export function moneyErrorMessage(error: unknown): string {
-  const code = moneyErrorCode(error)
-  if (code) {
-    const key = `expenses.errors.${code}`
-    if (hasMessage(key)) return t(key as 'expenses.errors.not_allowed')
-    const shared = `errors.codes.${code}`
-    if (hasMessage(shared)) return t(shared as 'errors.generic')
-  }
-  if (error instanceof TypeError) return t('errors.network')
-  return t('errors.generic')
+  return errorMessage(error, 'expenses.errors')
 }

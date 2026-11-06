@@ -1,5 +1,6 @@
+import { avatarSrc } from '@/lib/queries'
 import type { MoneyMember, SplitTypeValue } from '@potluck/api'
-import { SPLIT_TYPES } from '@potluck/core'
+import { firstName, SPLIT_TYPES } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
 import { Money } from '../money'
@@ -8,7 +9,6 @@ import type { ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { SPLIT_HELP } from '@/features/help/topics'
 import { joinNames } from '@/features/plans/format'
-import { avatarUrl, firstName } from '../money-data'
 import { CompactMoneyInput, PercentInput } from './compact-inputs'
 import { ItemizedEditor } from './itemized-editor'
 import { PercentSlider } from './percent-slider'
@@ -37,6 +37,8 @@ export interface SplitEditorProps {
   onChange: (draft: SplitDraft) => void
   amountCents: number
   currency: string
+  /** How amounts and percents are typed, the same as the main amount field. */
+  locale: string
 }
 
 function displayName(member: MoneyMember, viewerId: string) {
@@ -50,6 +52,7 @@ export function SplitEditor({
   onChange,
   amountCents,
   currency,
+  locale,
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
   const byId = new Map(members.map((m) => [m.id, m]))
@@ -96,7 +99,7 @@ export function SplitEditor({
       <Avatar
         name={member.display_name}
         seed={member.id}
-        src={avatarUrl(member.avatar_path)}
+        src={avatarSrc(member.avatar_path)}
         size="sm"
       />
       <span className="truncate font-semibold">{displayName(member, viewerId)}</span>
@@ -130,6 +133,7 @@ export function SplitEditor({
         {personCell(m)}
         <CompactMoneyInput
           currency={currency}
+          locale={locale}
           value={draft.exact[m.id] ?? null}
           onValueChange={(cents) =>
             onChange({ ...draft, exact: { ...draft.exact, [m.id]: cents } })
@@ -167,6 +171,7 @@ export function SplitEditor({
       <li key={m.id} className="flex items-center gap-3 py-1.5">
         {personCell(m)}
         <PercentInput
+          locale={locale}
           basisPoints={draft.percent[m.id] ?? 0}
           onCommit={(bp) =>
             onChange({ ...draft, percent: setPercent(draft.percent, draft.participants, m.id, bp) })
@@ -263,6 +268,7 @@ export function SplitEditor({
           draft={draft}
           onChange={onChange}
           currency={currency}
+          locale={locale}
           shares={shares}
         />
       ) : (
@@ -291,7 +297,7 @@ export function SplitEditor({
                     <Avatar
                       name={m.display_name}
                       seed={m.id}
-                      src={avatarUrl(m.avatar_path)}
+                      src={avatarSrc(m.avatar_path)}
                       size="sm"
                       className={cn(!on && 'opacity-50 grayscale')}
                     />
@@ -322,7 +328,7 @@ export function SplitEditor({
                     id: m.id,
                     name: displayName(m, viewerId),
                     fullName: m.display_name,
-                    avatarSrc: avatarUrl(m.avatar_path),
+                    avatarSrc: avatarSrc(m.avatar_path),
                   }))}
                   percent={draft.percent}
                   onChange={(percent) => onChange({ ...draft, percent })}

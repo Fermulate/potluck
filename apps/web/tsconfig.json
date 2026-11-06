@@ -8,5 +8,12 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "route-preloads.ts", "prerender-landing.ts"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "route-preloads.ts",
+    "prerender-landing.ts",
+    "require-env.ts",
+    "require-env.test.ts"
+  ]
 }

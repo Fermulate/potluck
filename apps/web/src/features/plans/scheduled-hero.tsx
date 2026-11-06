@@ -1,3 +1,4 @@
+import { dayKey } from '@potluck/core'
 import { DEFAULT_LOCALE, formatDate, formatTime, t } from '@potluck/i18n'
 import { Button, Card, Stamp, StampAnimation, cn } from '@potluck/ui'
 import { CalendarPlus, MapPin } from 'lucide-react'
@@ -9,21 +10,6 @@ export interface ScheduledHeroProps {
   location: string | null
   /** True right after the viewer locked it in: the date stamps down onto the strip. */
   justLocked: boolean
-}
-
-const dayParts = new Map<string, Intl.DateTimeFormat>()
-function localDayKey(date: Date, timeZone: string): string {
-  let f = dayParts.get(timeZone)
-  if (!f) {
-    f = new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-    dayParts.set(timeZone, f)
-  }
-  return f.format(date)
 }
 
 const weekdayFmt = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
@@ -40,7 +26,7 @@ const stampCaption = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
 
 /** A week of days around the chosen date, as noon-UTC dates for easy formatting. */
 function weekAround(startsAt: string, timeZone: string) {
-  const key = localDayKey(new Date(startsAt), timeZone)
+  const key = dayKey(startsAt, timeZone)
   const center = Date.parse(`${key}T12:00:00Z`)
   return Array.from({ length: 7 }, (_, i) => {
     const date = new Date(center + (i - 3) * 86_400_000)

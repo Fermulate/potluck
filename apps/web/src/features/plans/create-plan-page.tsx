@@ -1,12 +1,12 @@
+import { avatarSrc } from '@/lib/queries'
 import {
   createPlanEvent,
-  planAvatarUrl,
   planQueries,
   plansKeys,
   requestAvailability,
   type PlanMember,
 } from '@potluck/api'
-import { eventCreateSchema, SLOT_SIZES } from '@potluck/core'
+import { dayKey, eventCreateSchema, SLOT_SIZES } from '@potluck/core'
 import { hasMessage, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -31,7 +31,6 @@ import { fromZonedTime } from 'date-fns-tz'
 import { Minus, Plus } from 'lucide-react'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
-import { dayKey } from '@/features/timeline/days'
 import { BackToPlans } from './back-link'
 import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
 import { useViewer, useViewerProfile } from './viewer'
@@ -537,7 +536,7 @@ function WhoList({
                 <Avatar
                   name={m.displayName}
                   seed={m.userId}
-                  src={planAvatarUrl(supabase, m.avatarPath)}
+                  src={avatarSrc(m.avatarPath)}
                   size="sm"
                 />
                 <span className="truncate text-[0.9375rem] font-medium">{m.displayName}</span>

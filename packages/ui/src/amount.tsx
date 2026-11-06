@@ -1,3 +1,4 @@
+import { minorUnits } from '@potluck/core'
 import { durations } from '@potluck/tokens'
 import { animate } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
@@ -10,19 +11,22 @@ export type AmountSurface = 'default' | 'hero'
 
 const formatters = new Map<string, Intl.NumberFormat>()
 
+/** Digits follow the `@potluck/core` minor unit table, the same one the database uses. */
 function formatter(currency: string, locale: string | undefined, sign: AmountSign) {
   const key = `${locale ?? ''}|${currency}|${sign}`
   let f = formatters.get(key)
   if (!f) {
-    f = new Intl.NumberFormat(locale, { style: 'currency', currency, signDisplay: sign })
+    const digits = minorUnits(currency)
+    f = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      signDisplay: sign,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
     formatters.set(key, f)
   }
   return f
-}
-
-/** Minor units per major unit for a currency (USD 100, JPY 1, KWD 1000). */
-export function minorUnitScale(currency: string, locale?: string): number {
-  return 10 ** (formatter(currency, locale, 'auto').resolvedOptions().maximumFractionDigits ?? 2)
 }
 
 /** Formats integer minor units (cents) with the currency, using a true minus sign. */
@@ -33,7 +37,7 @@ export function formatMoney(
 ): string {
   // `|| 0` folds -0 into 0, so a negated zero balance never reads as "−$0.00".
   return formatter(currency, locale, sign)
-    .format((cents || 0) / minorUnitScale(currency, locale))
+    .format((cents || 0) / 10 ** minorUnits(currency))
     .replace('-', '−')
 }
 
@@ -113,8 +117,7 @@ export function Amount({
 }: AmountProps) {
   const value = useCountUp(cents || 0, countUp)
   const f = formatter(currency, locale, sign)
-  const scale = minorUnitScale(currency, locale)
-  const parts = f.formatToParts(value / scale)
+  const parts = f.formatToParts(value / 10 ** minorUnits(currency))
   const resolvedTone =
     tone === 'auto'
       ? cents < 0

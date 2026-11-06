@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayKey, dayLabel, groupByDay } from './days'
-
-describe('dayKey', () => {
-  it('uses the local calendar day in the zone', () => {
-    expect(dayKey('2026-06-13T02:00:00Z', 'America/Los_Angeles')).toBe('2026-06-12')
-    expect(dayKey('2026-06-13T02:00:00Z', 'Europe/Paris')).toBe('2026-06-13')
-  })
-})
+import { dayLabel, groupByDay } from './days'
 
 describe('dayLabel', () => {
   it('says today, tomorrow, a weekday this week, else a short date', () => {

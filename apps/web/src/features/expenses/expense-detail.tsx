@@ -1,3 +1,4 @@
+import { avatarSrc } from '@/lib/queries'
 import { moneyQueries, restoreExpense } from '@potluck/api'
 import { can, convert } from '@potluck/core'
 import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
@@ -24,7 +25,6 @@ import { CategoryTile } from './expense-row'
 import { categoryLabel } from './format'
 import { Money } from './money'
 import {
-  avatarUrl,
   invalidateMoney,
   moneyErrorMessage,
   useGroupMoneyRealtime,
@@ -203,7 +203,7 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
                 <Avatar
                   name={payer?.display_name ?? nameOf(e.paid_by)}
                   seed={e.paid_by}
-                  src={avatarUrl(payer?.avatar_path)}
+                  src={avatarSrc(payer?.avatar_path)}
                   size="sm"
                 />
                 {e.paid_by === me
@@ -238,7 +238,7 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
                     <Avatar
                       name={person?.display_name ?? nameOf(s.user_id)}
                       seed={s.user_id}
-                      src={avatarUrl(person?.avatar_path)}
+                      src={avatarSrc(person?.avatar_path)}
                       size="md"
                     />
                     <span className="flex min-w-0 flex-1 flex-col">
