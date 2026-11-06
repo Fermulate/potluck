@@ -196,7 +196,11 @@ describe('ExpenseComments', () => {
     fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
     fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
     expect(box).toHaveValue('かんぱい')
-    expect(db().queries('comments').some((call) => payloadOf(call, 'insert'))).toBe(false)
+    expect(
+      db()
+        .queries('comments')
+        .some((call) => payloadOf(call, 'insert')),
+    ).toBe(false)
   })
 
   it('gives the text back when posting fails', async () => {

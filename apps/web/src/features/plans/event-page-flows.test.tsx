@@ -190,7 +190,11 @@ describe('EventPage while polling', () => {
     fireEvent.change(box, { target: { value: '你好' } })
     fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
     expect(box).toHaveValue('你好')
-    expect(db().queries('comments').some((call) => payloadOf(call, 'insert'))).toBe(false)
+    expect(
+      db()
+        .queries('comments')
+        .some((call) => payloadOf(call, 'insert')),
+    ).toBe(false)
   })
 
   it('gives the comment back when posting fails', async () => {
