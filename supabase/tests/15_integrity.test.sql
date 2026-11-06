@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(10);
+select plan(16);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -52,6 +52,56 @@ select is(
   (select count(*)::int from public.group_members where group_id = tests.id('g') and user_id in (tests.uid('blk'), tests.uid('rev'))),
   0,
   'blocked people never got a membership'
+);
+
+-- Former members stay readable ------------------------------------------------------------------
+
+select tests.remember('t', tests.group_with('stayer', array['closer', 'quitter'], '{}', 'Tombstones'));
+select tests.login('closer');
+select create_expense(jsonb_build_object(
+  'group_id', tests.id('t'), 'description', 'Groceries', 'amount_cents', 1000, 'splits', tests.people('closer', 'stayer')));
+select tests.login('stayer');
+select settle_up(tests.id('t'), tests.uid('closer'), 500);
+select tests.login('closer');
+select delete_my_account();
+select tests.login('quitter');
+select leave_group(tests.id('t'));
+reset role;
+select is(
+  (select count(*)::int from public.group_members where group_id = tests.id('t') and user_id = tests.uid('closer')),
+  0,
+  'the closed account had a zero balance, so its membership is gone'
+);
+
+select tests.login('stayer');
+select is(
+  (select display_name from public.profiles where id = tests.uid('closer')),
+  'Former member',
+  'co-members still read the closed account on old expenses'
+);
+select is(
+  (select display_name from public.profiles where id = tests.uid('quitter')),
+  'Quinn Quitter',
+  'and people who left'
+);
+select tests.login('stranger');
+select is(
+  (select count(*)::int from public.profiles where id in (tests.uid('closer'), tests.uid('quitter'))),
+  0,
+  'other people still cannot'
+);
+select tests.login('quitter');
+select is(
+  (select count(*)::int from public.profiles where id = tests.uid('closer')),
+  0,
+  'nor can former members read each other'
+);
+reset role;
+insert into public.group_members (group_id, user_id) values (tests.id('t'), tests.uid('quitter'));
+select is(
+  (select count(*)::int from private.former_members where group_id = tests.id('t') and user_id = tests.uid('quitter')),
+  0,
+  'rejoining clears the former member row'
 );
 
 select * from finish();

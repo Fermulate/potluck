@@ -3,6 +3,9 @@
 --   * Blocks: nobody joins a group through an invite while a block stands
 --     between them and someone already in it (accept_invite raises blocked).
 --     invite_preview reports blocked and archived so the join page can say so.
+--   * Former members stay readable: co-members can read the profile of anyone
+--     who has left one of their groups (private.former_members), so old
+--     expenses, payments and activity keep their names.
 
 -- Blocks --------------------------------------------------------------------------------------
 
@@ -228,3 +231,98 @@ revoke execute on function
   private.has_block(uuid, uuid),
   private.blocked_in_group(uuid, uuid)
 from public, anon, authenticated;
+
+-- Former members ------------------------------------------------------------------------------
+
+-- Who has left which group (or had their account closed). Kept so the people
+-- still there can read the name on old expenses, payments and activity.
+-- Rejoining removes the row; deleting the group removes them all.
+create table private.former_members (
+  group_id uuid not null references public.groups (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  left_at timestamptz not null default now(),
+  primary key (group_id, user_id)
+);
+
+create index former_members_user_id_idx on private.former_members (user_id);
+
+alter table private.former_members enable row level security;
+revoke all on table private.former_members from public, anon, authenticated;
+grant all on table private.former_members to service_role;
+
+create or replace function private.track_former_members()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if tg_op = 'INSERT' then
+    delete from private.former_members f
+    where f.group_id = new.group_id and f.user_id = new.user_id;
+    return null;
+  end if;
+
+  -- Rows removed by a cascading group delete have nothing to point at.
+  if exists (select 1 from public.groups g where g.id = old.group_id) then
+    insert into private.former_members (group_id, user_id)
+    values (old.group_id, old.user_id)
+    on conflict (group_id, user_id) do update set left_at = excluded.left_at;
+  end if;
+  return null;
+end;
+$$;
+
+create trigger group_members_track_former
+after insert or delete on public.group_members
+for each row execute function private.track_former_members();
+
+-- Everyone who left before this table existed and is still referenced in the group.
+insert into private.former_members (group_id, user_id)
+select x.group_id, x.user_id
+from (
+  select e.group_id, e.paid_by as user_id from public.expenses e
+  union
+  select e.group_id, s.user_id from public.expense_splits s join public.expenses e on e.id = s.expense_id
+  union
+  select st.group_id, st.from_user from public.settlements st
+  union
+  select st.group_id, st.to_user from public.settlements st
+  union
+  select c.group_id, c.author_id from public.comments c
+  union
+  select a.group_id, a.actor_id from public.activity a
+  union
+  select a.group_id, a.subject_id from public.activity a where a.verb like 'member.%'
+) x
+where x.user_id is not null
+  and exists (select 1 from public.profiles p where p.id = x.user_id)
+  and not exists (
+    select 1 from public.group_members m where m.group_id = x.group_id and m.user_id = x.user_id
+  )
+on conflict do nothing;
+
+-- People who have left one of my groups.
+create or replace function private.my_former_contact_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select f.user_id
+  from public.group_members mine
+  join private.former_members f on f.group_id = mine.group_id
+  where mine.user_id = (select auth.uid());
+$$;
+
+grant execute on function private.my_former_contact_ids() to authenticated, service_role;
+
+alter policy "profiles: read self and contacts" on public.profiles
+using (
+  id = (select auth.uid())
+  or id in (select private.my_contact_ids())
+  or id in (select private.my_former_contact_ids())
+);
+
+revoke execute on function private.track_former_members() from public, anon, authenticated;
