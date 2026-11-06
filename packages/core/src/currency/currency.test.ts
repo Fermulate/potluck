@@ -120,7 +120,8 @@ describe('invertRate', () => {
   })
 
   it('keeps digits a JS number would drop', () => {
-    expect(Number((1 / 0.0000576).toFixed(12))).not.toBe(17361.111111111111)
+    expect(String(Number((1 / 0.0000576).toFixed(12)))).toBe('17361.111111111113')
+    expect(invertRate(0.0000576)).toBe('17361.111111111111')
     expect(convert(1_000_000, invertRate(0.0000576))).toBe(convert(1_000_000, '17361.111111111111'))
   })
 

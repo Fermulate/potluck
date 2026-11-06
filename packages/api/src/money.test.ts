@@ -298,7 +298,7 @@ describe('fetchFxRate', () => {
   })
 
   it('keeps every digit of a large inverse, like round(1 / rate, 12)', async () => {
-    // 1 / 0.0000576 = 17361.111111111111; as a JS number it would be 17361.11111111111.
+    // 1 / 0.0000576 = 17361.111111111111; in JS numbers it comes out as 17361.111111111113.
     expect(await fetchFxRate(client, 'EUR', 'IDR', '2026-07-01')).toEqual({
       rate: '17361.111111111111',
       day: '2026-06-01',
