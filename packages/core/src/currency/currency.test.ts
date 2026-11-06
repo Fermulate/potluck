@@ -1,6 +1,6 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { convert, minorUnits, parseAmount } from '../index'
+import { convert, invertRate, minorUnits, parseAmount } from '../index'
 
 describe('parseAmount', () => {
   it('parses typed amounts into minor units', () => {
@@ -93,11 +93,46 @@ describe('convert', () => {
     expect(convert(10 ** 12, '0.0000000000014')).toBe(1)
   })
 
+  it('needs the rate as text once it has more digits than a JS number holds', () => {
+    // numeric(24,12) keeps 17 digits here; JSON.parse keeps about 16 (16000.123456789011).
+    // The database credits 888,336,454.40; the parsed number would give one cent less.
+    expect(convert(5_552_060, '16000.123456789012')).toBe(88_833_645_440)
+    expect(convert(5_552_060, JSON.parse('16000.123456789012') as number)).toBe(88_833_645_439)
+  })
+
   it('throws on a non-positive or invalid rate', () => {
     expect(() => convert(100, 0)).toThrow(RangeError)
     expect(() => convert(100, -1)).toThrow(RangeError)
     expect(() => convert(100, 'abc')).toThrow(RangeError)
     expect(() => convert(100, 1e-13)).toThrow(RangeError)
     expect(() => convert(1.5, 1)).toThrow(RangeError)
+  })
+})
+
+describe('invertRate', () => {
+  it('matches round(1 / rate, 12) in Postgres', () => {
+    // Values from `select round(1 / x::numeric(24,12), 12)` on the local database.
+    expect(invertRate('16000.123456789012')).toBe('0.000062499518')
+    expect(invertRate('0.000057600000')).toBe('17361.111111111111')
+    expect(invertRate('1.084')).toBe('0.922509225092')
+    expect(invertRate('3.000000000007')).toBe('0.333333333333')
+    expect(invertRate('0.000000000003')).toBe('333333333333.333333333333')
+  })
+
+  it('keeps digits a JS number would drop', () => {
+    expect(Number((1 / 0.0000576).toFixed(12))).not.toBe(17361.111111111111)
+    expect(convert(1_000_000, invertRate(0.0000576))).toBe(convert(1_000_000, '17361.111111111111'))
+  })
+
+  it('round-trips for exact rates', () => {
+    expect(invertRate('0.5')).toBe('2.000000000000')
+    expect(invertRate(invertRate('0.5'))).toBe('0.500000000000')
+    expect(invertRate(1)).toBe('1.000000000000')
+  })
+
+  it('throws on a rate it cannot invert', () => {
+    expect(() => invertRate(0)).toThrow(RangeError)
+    expect(() => invertRate('abc')).toThrow(RangeError)
+    expect(() => invertRate('3000000000000')).toThrow(RangeError)
   })
 })

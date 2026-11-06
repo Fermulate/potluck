@@ -79,6 +79,22 @@ function scaleRate(rate: number | string): bigint {
   return scaled
 }
 
+/**
+ * `1 / rate` to 12 decimals, rounded half up, as decimal text: what `private.fx_rate` returns
+ * for the inverse pair (`round(1 / rate, 12)`). Exact, so a large inverse such as
+ * 17361.111111111111 keeps all 17 digits, which a JS number cannot.
+ */
+export function invertRate(rate: number | string): string {
+  const scaled = scaleRate(rate)
+  const numerator = RATE_SCALE * RATE_SCALE
+  let inverse = numerator / scaled
+  if ((numerator % scaled) * 2n >= scaled) inverse += 1n
+  if (inverse === 0n) throw new RangeError(`fx rate too large to invert: ${rate}`)
+  const whole = inverse / RATE_SCALE
+  const fraction = (inverse % RATE_SCALE).toString().padStart(RATE_DECIMALS, '0')
+  return `${whole}.${fraction}`
+}
+
 export interface ConvertOptions {
   /** Currency of `amountMinor`. Only its minor unit count matters. Defaults to a 2 digit currency. */
   from?: string
