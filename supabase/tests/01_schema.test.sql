@@ -1,7 +1,7 @@
 -- Structure: tables, RLS everywhere, RPC signatures and privileges, indexes,
 -- seeds, buckets, realtime, cron.
 begin;
-select plan(59);
+select plan(61);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -169,6 +169,10 @@ select ok(not has_table_privilege('anon', 'public.groups', 'select'), 'anon cann
 
 -- Signup trigger
 select has_trigger('auth', 'users', 'on_auth_user_created', 'profile trigger on auth.users');
+
+-- Money guards
+select has_trigger('public', 'groups', 'groups_guard_delete', 'groups with open balances cannot be deleted');
+select has_trigger('public', 'recurring_expenses', 'recurring_expenses_skip_paused', 'resuming a template skips paused periods');
 
 select * from finish();
 rollback;
