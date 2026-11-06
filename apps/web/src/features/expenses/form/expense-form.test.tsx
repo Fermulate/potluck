@@ -1,8 +1,17 @@
 import type * as Api from '@potluck/api'
-import { createExpense } from '@potluck/api'
+import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BEN, CLEO, GROUP_ID, ME, renderWithClient } from '../test-utils'
+import {
+  BEN,
+  CLEO,
+  GROUP_ID,
+  ME,
+  expense,
+  members,
+  renderWithClient,
+  seededClient,
+} from '../test-utils'
 import { ExpenseForm } from './expense-form'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
@@ -10,9 +19,18 @@ vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-0000000
 vi.mock('@potluck/api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
   createExpense: vi.fn(async () => ({ id: 'new-expense' })),
+  // Like the server: a rewritten split may only name current members.
+  updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
+    const current = new Set(members.map((m) => m.id))
+    if (payload.splits?.some((s) => !current.has(s.user_id))) {
+      throw { message: 'split_member_not_in_group', code: '23514' }
+    }
+    return { id }
+  }),
 }))
 
 const create = vi.mocked(createExpense)
+const update = vi.mocked(updateExpense)
 
 function setup() {
   const onDone = vi.fn()
@@ -195,5 +213,76 @@ describe('ExpenseForm', () => {
       target: { value: '40' },
     })
     expect(screen.getByLabelText('Tip')).toHaveValue('15')
+  })
+
+  describe('editing an expense split with someone who left', () => {
+    const GONE = 'dddddddd-0000-4000-8000-000000000004'
+    const saved = expense({
+      description: 'Cabin',
+      amount_cents: 9000,
+      split_type: 'exact',
+      expense_splits: [
+        { user_id: ME, share_cents: 6000, weight: null },
+        { user_id: GONE, share_cents: 3000, weight: null },
+      ],
+    })
+
+    function edit() {
+      const onDone = vi.fn()
+      const client = seededClient((c) =>
+        c.setQueryData(moneyKeys.people(), [
+          ...members,
+          { id: GONE, display_name: 'Dana Gone', avatar_path: null, deleted_at: null },
+        ]),
+      )
+      renderWithClient(
+        <ExpenseForm mode="edit" expense={saved} onDone={onDone} onClose={() => {}} />,
+        client,
+      )
+      return { onDone }
+    }
+
+    beforeEach(() => {
+      update.mockClear()
+    })
+
+    it('shows them in the split and saves new details without touching their share', async () => {
+      const { onDone } = edit()
+      expect(screen.getByRole('textbox', { name: 'Dana, amount' })).toHaveValue('30')
+      expect(screen.getByText(/Dana left the group/)).toBeInTheDocument()
+
+      fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+        target: { value: 'Cabin deposit' },
+      })
+      fireEvent.click(screen.getByRole('radio', { name: /Lodging/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+      await waitFor(() => expect(onDone).toHaveBeenCalledWith(saved.id))
+      const payload = update.mock.calls[0]![2]
+      expect(payload).toMatchObject({ description: 'Cabin deposit', category: 'lodging' })
+      expect(payload).not.toHaveProperty('splits')
+      expect(payload).not.toHaveProperty('split_type')
+    })
+
+    it('asks to take them out before the split itself can change', async () => {
+      const { onDone } = edit()
+      fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
+        target: { value: '50' },
+      })
+      fireEvent.change(screen.getByRole('textbox', { name: 'Dana, amount' }), {
+        target: { value: '40' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Take Dana out of the split/)
+      expect(update).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole('button', { name: /Dana/, pressed: true }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'You, amount' }), {
+        target: { value: '90' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(onDone).toHaveBeenCalled())
+      expect(update.mock.calls[0]![2].splits).toEqual([{ user_id: ME, share_cents: 9000 }])
+    })
   })
 })

@@ -104,6 +104,10 @@ export const expenses = {
     eventLinked: 'Linked to a plan',
     itemizedTotal: 'The total comes from the items below.',
     itemizedEditNote: 'Item details are not kept after saving, so this opens as exact amounts.',
+    formerMember: 'Former member',
+    formerNote:
+      '{names} left the group. Their share stays as it is while the split and amount do not change.',
+    formerInSplit: 'Take {names} out of the split to change it.',
   },
   currencyPicker: {
     title: 'Pick a currency',

@@ -5,6 +5,7 @@ import {
   type ExpensePayload,
   type ExpenseWithSplits,
   type MoneyGroup,
+  type MoneyMember,
   type RecurrenceValue,
 } from '@potluck/api'
 import { CATEGORIES, type CategoryId } from '@potluck/core'
@@ -22,6 +23,7 @@ import {
   toast,
 } from '@potluck/ui'
 import { Help } from '@/features/help/help'
+import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarHeart } from 'lucide-react'
@@ -33,9 +35,11 @@ import { groupTitle } from '../format'
 import { MoneyPageShell } from '../money-page-shell'
 import {
   avatarUrl,
+  firstName,
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,
+  usePeople,
   useTimeZone,
 } from '../money-data'
 import { ConversionPreview } from './conversion-preview'
@@ -46,8 +50,10 @@ import { SplitEditor } from './split-editor'
 import {
   draftFromExpense,
   effectiveAmount,
+  formerParticipants,
   initialDraft,
   previewSplit,
+  sameSplit,
   splitErrorText,
   splitsPayload,
   type SplitDraft,
@@ -101,6 +107,18 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const queryClient = useQueryClient()
   const formId = useId()
   const memberIds = group.members.map((m) => m.id)
+  const people = usePeople()
+  // Someone who has left the group can still be in an older expense, as payer or in the split.
+  const formerMember = (id: string): MoneyMember => {
+    const person = people.get(id)
+    return {
+      id,
+      display_name: person?.display_name ?? t('expenses.form.formerMember'),
+      avatar_path: person?.avatar_path ?? null,
+      deleted_at: person?.deleted_at ?? null,
+      role: 'member',
+    }
+  }
 
   const [amount, setAmount] = useState<number | null>(editing?.amount_cents ?? null)
   const [currency, setCurrency] = useState(editing?.currency ?? group.currency)
@@ -116,9 +134,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     existingPath: editing?.receipt_path ?? null,
   })
   const [recurrence, setRecurrence] = useState<Recurrence>('none')
-  const [draft, setDraft] = useState<SplitDraft>(() =>
+  const [savedDraft] = useState<SplitDraft>(() =>
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds),
   )
+  const [draft, setDraft] = useState<SplitDraft>(savedDraft)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
@@ -127,7 +146,22 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const descriptionError =
     submitted && !description.trim() ? t('expenses.form.descriptionRequired') : undefined
   const amountError = submitted && total <= 0 ? t('expenses.form.amountRequired') : undefined
-  const splitError = submitted && total > 0 ? splitErrorText(preview) : null
+  // An unchanged split is not resent, so the stored shares (former members' too) stay as they are.
+  const keepSplit = !!editing && total === editing.amount_cents && sameSplit(draft, savedDraft)
+  const formerInDraft = formerParticipants(draft, memberIds)
+  const formerNames = joinNames(
+    formerInDraft.map((id) => firstName(formerMember(id).display_name)),
+    3,
+  )
+  const formerError =
+    !keepSplit && formerInDraft.length > 0
+      ? t('expenses.form.formerInSplit', { names: formerNames })
+      : null
+  const splitError = submitted && total > 0 ? (splitErrorText(preview) ?? formerError) : null
+  const splitMembers = [
+    ...group.members,
+    ...formerParticipants(savedDraft, memberIds).map(formerMember),
+  ]
 
   const save = useMutation({
     mutationFn: async () => {
@@ -155,7 +189,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         receipt_path: receiptPath,
       }
       if (editing) {
-        return updateExpense(supabase, editing.id, payload)
+        if (!keepSplit) return updateExpense(supabase, editing.id, payload)
+        const { splits: _splits, split_type: _type, ...details } = payload
+        return updateExpense(supabase, editing.id, details)
       }
       return createExpense(supabase, {
         ...payload,
@@ -195,11 +231,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
-    if (!description.trim() || total <= 0 || !preview.ok) return
+    if (!description.trim() || total <= 0 || !preview.ok || formerError) return
     save.mutate()
   }
 
-  const payerOptions = group.members.map((m) => ({
+  const payers =
+    editing && !memberIds.includes(editing.paid_by)
+      ? [...group.members, formerMember(editing.paid_by)]
+      : group.members
+  const payerOptions = payers.map((m) => ({
     value: m.id,
     label: m.id === me ? t('common.you') : m.display_name,
     icon: <Avatar name={m.display_name} seed={m.id} src={avatarUrl(m.avatar_path)} size="xs" />,
@@ -356,8 +396,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           {editing?.split_type === 'itemized' && (
             <p className="text-sm text-mute">{t('expenses.form.itemizedEditNote')}</p>
           )}
+          {formerInDraft.length > 0 && (
+            <p className="text-sm text-mute">
+              {t('expenses.form.formerNote', { names: formerNames })}
+            </p>
+          )}
           <SplitEditor
-            members={group.members}
+            members={splitMembers}
             viewerId={me}
             draft={draft}
             onChange={setDraft}
