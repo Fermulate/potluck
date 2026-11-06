@@ -172,6 +172,8 @@ export const errors = {
     not_allowed: 'You do not have permission to do that.',
     member_not_found: 'That person is not in this group anymore.',
     member_has_balance: 'They still have an open balance here. Settle up first.',
+    group_has_balances:
+      'Someone still owes money here. Settle every balance before deleting the group.',
     owner_must_transfer: 'Hand ownership to someone else before you go.',
     use_transfer_ownership: 'Use transfer ownership to make someone the owner.',
     use_leave_group: 'Use leave group to remove yourself.',
