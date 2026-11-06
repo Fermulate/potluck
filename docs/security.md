@@ -80,5 +80,5 @@ Closed accounts get `account_deleted` from every RPC and never receive notificat
 - **The service role key never leaves Supabase.** Only edge functions use it, through `_shared/admin.ts`, and only after they have authorized the caller. It is never in GitHub, in `.env` files or in the web app.
 - **`EDGE_SECRET` lives in two places**: the edge function secrets and the Vault entry `edge_secret`. Rotate both together ([deployment.md](deployment.md#vault-entries)).
 - **VAPID private key** is an edge function secret only. Rotating it invalidates every existing push subscription, and browsers have to subscribe again.
-- **CI secrets** (`CLOUDFLARE_API_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`) are GitHub Actions secrets, scoped as narrowly as the providers allow. Fork PRs do not receive them.
+- **CI secrets** (listed in [deployment.md](deployment.md#secrets)) are GitHub Actions secrets, scoped as narrowly as the providers allow. Fork PRs do not receive them.
 - **If a secret leaks**, rotate it first, then investigate. Report leaks in this repository through private vulnerability reporting.
