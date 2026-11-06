@@ -15,6 +15,8 @@
 --     deleting a payment with someone who has left (member_not_in_group).
 --   * An edit that only changes who is in the split, or their shares, is
 --     logged and notified as expense.updated like any other edit.
+--   * The owner can leave when only closed accounts are left with them, which
+--     deletes the group, as long as no active person has an open balance.
 --   * schedule_event keeps reminder_sent_at unless the start time changes.
 
 -- Blocks --------------------------------------------------------------------------------------
@@ -382,8 +384,9 @@ begin
 end;
 $$;
 
--- Owners must transfer ownership first, unless they are the last member, in
--- which case leaving deletes the group.
+-- Owners must transfer ownership first. When nobody else active is left
+-- (alone, or only closed accounts remain), the owner leaving deletes the group,
+-- as long as no active person is owed or owes anything there.
 create or replace function public.leave_group(group_id uuid)
 returns void
 language plpgsql
@@ -394,24 +397,40 @@ as $$
 declare
   my_role public.group_role := private.require_member(leave_group.group_id);
   uid uuid := auth.uid();
-  others int;
+  others_active int;
 begin
   perform 1 from public.groups g where g.id = leave_group.group_id for no key update;
+
+  select count(*) into others_active
+  from public.group_members m
+  join public.profiles p on p.id = m.user_id
+  where m.group_id = leave_group.group_id and m.user_id <> uid and p.deleted_at is null;
+
+  if my_role = 'owner' and others_active = 0 then
+    if exists (
+      select 1 from public.group_balances b
+      join public.profiles p on p.id = b.user_id
+      where b.group_id = leave_group.group_id
+        and b.user_id <> uid
+        and p.deleted_at is null
+        and b.net_cents <> 0
+    ) then
+      raise exception using message = 'member_has_balance', detail = 'Someone here still has an unsettled balance', errcode = '23514';
+    end if;
+    -- Whatever is left is between the owner and closed accounts, which nobody
+    -- can settle anymore; the delete guard allows this like closing an account.
+    perform set_config('potluck.closing_account', 'on', true);
+    delete from public.groups g where g.id = leave_group.group_id;
+    perform set_config('potluck.closing_account', '', true);
+    return;
+  end if;
 
   if private.member_balance(leave_group.group_id, uid) <> 0 then
     raise exception using message = 'member_has_balance', detail = 'Settle up before leaving this group', errcode = '23514';
   end if;
 
-  select count(*) into others
-  from public.group_members m
-  where m.group_id = leave_group.group_id and m.user_id <> uid;
-
   if my_role = 'owner' then
-    if others > 0 then
-      raise exception using message = 'owner_must_transfer', detail = 'Transfer ownership before leaving', errcode = '23514';
-    end if;
-    delete from public.groups g where g.id = leave_group.group_id;
-    return;
+    raise exception using message = 'owner_must_transfer', detail = 'Transfer ownership before leaving', errcode = '23514';
   end if;
 
   delete from public.group_members m

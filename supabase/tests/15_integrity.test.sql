@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(34);
+select plan(39);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -227,6 +227,37 @@ select is(
   (select count(*)::int from private.former_members where group_id = tests.id('t') and user_id = tests.uid('quitter')),
   0,
   'rejoining clears the former member row'
+);
+
+-- Owner left with closed accounts ---------------------------------------------------------------
+
+select tests.remember('o', tests.group_with('boss', array['ghost'], '{}', 'Haunted'));
+select tests.remember('o2', tests.group_with('boss', array['stayer'], '{}', 'Busy'));
+select tests.login('ghost');
+select create_expense(jsonb_build_object(
+  'group_id', tests.id('o'), 'description', 'Seance', 'amount_cents', 1000, 'splits', tests.people('ghost', 'boss')));
+select delete_my_account();
+reset role;
+select is(
+  (select count(*)::int from public.group_members where group_id = tests.id('o') and user_id = tests.uid('ghost')),
+  1,
+  'the closed account with an open balance stays in the group'
+);
+
+select tests.login('boss');
+select throws_ok(
+  $$ select transfer_ownership(tests.id('o'), tests.uid('ghost')) $$,
+  'PT404', 'member_not_found',
+  'ownership cannot go to a closed account'
+);
+select lives_ok($$ select leave_group(tests.id('o')) $$, 'the last active member can leave');
+reset role;
+select is((select count(*)::int from public.groups where id = tests.id('o')), 0, 'which deletes the group');
+select tests.login('boss');
+select throws_ok(
+  $$ select leave_group(tests.id('o2')) $$,
+  '23514', 'owner_must_transfer',
+  'with someone active left, the owner still has to transfer'
 );
 
 -- Rescheduling ----------------------------------------------------------------------------------
