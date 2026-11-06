@@ -10,8 +10,8 @@
 --     remove_member and leave_group lock it before reading balances, and every
 --     RPC that moves a balance takes a share lock on it first. Lock order is
 --     always the group row, then the expense or payment row.
---     Closing an account locks the rows of every group the account is in
---     the same way before memberships are removed.
+--     Closing an account and the recurring expenses job lock the group rows
+--     the same way before reading balances or membership.
 --   * Nothing moves a former member's balance: editing or deleting an expense
 --     they are part of (as payer or with a share) is refused, and so is
 --     deleting a payment with someone who has left (member_not_in_group).
@@ -1192,5 +1192,100 @@ begin
     locale = 'en',
     deleted_at = now()
   where p.id = uid;
+end;
+$$;
+
+-- Recurring expenses job -----------------------------------------------------------------------
+
+-- Same as 20261106000000_review_fixes.sql, but each template's group row is
+-- share locked before its template row and before membership is checked, the
+-- order every money RPC uses. The template is then locked and re-read, and
+-- skipped if someone else holds it or it is no longer due.
+create or replace function private.materialize_recurring_expenses(run_on date default current_date)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  cand record;
+  r public.recurring_expenses;
+  g public.groups;
+  fx numeric;
+  new_id uuid;
+  due date;
+  anchor_day int;
+  runs int;
+  made int := 0;
+begin
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+
+  for cand in
+    select x.id, x.group_id from public.recurring_expenses x
+    where x.active and x.next_run_on <= run_on
+    order by x.next_run_on, x.id
+  loop
+    begin
+      select * into g from public.groups x where x.id = cand.group_id for share;
+
+      select * into r from public.recurring_expenses x
+      where x.id = cand.id and x.active and x.next_run_on <= run_on
+      for update skip locked;
+      if not found then
+        continue;
+      end if;
+
+      if g.archived_at is not null
+         or not exists (select 1 from public.group_members m where m.group_id = r.group_id and m.user_id = r.paid_by)
+         or exists (
+           select 1 from jsonb_array_elements(r.splits) e
+           where not exists (
+             select 1 from public.group_members m
+             where m.group_id = r.group_id and m.user_id = (e ->> 'user_id')::uuid
+           )
+         )
+         or exists (
+           select 1 from public.profiles p
+           where p.deleted_at is not null
+             and (p.id = r.paid_by
+                  or p.id in (select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e))
+         ) then
+        update public.recurring_expenses x set active = false where x.id = r.id;
+        continue;
+      end if;
+
+      due := r.next_run_on;
+      anchor_day := private.recurring_anchor_day(r);
+      runs := 0;
+      while due <= run_on and runs < 12 loop
+        fx := private.fx_rate(r.currency, g.currency, due);
+        exit when fx is null;
+
+        insert into public.expenses (
+          group_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
+          category, spent_at, recurring_id, created_by
+        ) values (
+          r.group_id, r.description, r.amount_cents, r.currency, fx, r.paid_by, r.split_type,
+          r.category, due, r.id, r.created_by
+        )
+        returning id into new_id;
+
+        insert into public.expense_splits (expense_id, user_id, share_cents, weight)
+        select new_id, c.user_id, c.share_cents, c.weight
+        from private.compute_splits(r.amount_cents, r.split_type, r.splits) c;
+
+        due := private.recurring_step(due, r.recurrence, anchor_day);
+        runs := runs + 1;
+        made := made + 1;
+      end loop;
+
+      update public.recurring_expenses x set next_run_on = due where x.id = r.id;
+    exception
+      when others then
+        raise warning 'recurring expense % skipped: %', cand.id, sqlerrm;
+    end;
+  end loop;
+
+  return made;
 end;
 $$;

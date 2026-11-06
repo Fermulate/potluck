@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(48);
+select plan(51);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -312,6 +312,36 @@ select is(
   (select user_id from public.group_members where group_id = tests.id('mo') and role = 'owner'),
   tests.uid('pal'),
   'the heir owns the group'
+);
+
+-- Recurring expenses job ------------------------------------------------------------------------
+
+select tests.remember('rj', tests.group_with('own', array['pal'], '{}', 'Rent share'));
+select tests.remember('ra', tests.group_with('own', array['pal'], '{}', 'Old flat'));
+select tests.login('own');
+select tests.remember('rj_t', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('rj'), 'description', 'Rent', 'amount_cents', 2000, 'spent_at', current_date - 40,
+  'recurrence', 'monthly', 'splits', tests.people('own', 'pal')))));
+select tests.remember('ra_t', (select recurring_id from create_expense(jsonb_build_object(
+  'group_id', tests.id('ra'), 'description', 'Old rent', 'amount_cents', 2000, 'spent_at', current_date - 40,
+  'recurrence', 'monthly', 'splits', tests.people('own', 'pal')))));
+reset role;
+update public.groups set archived_at = now() where id = tests.id('ra');
+select private.materialize_recurring_expenses(current_date);
+select is(
+  (select count(*)::int from public.expenses where recurring_id = tests.id('rj_t')),
+  2,
+  'the job still adds the due expense in an open group'
+);
+select ok(
+  (select next_run_on > current_date from public.recurring_expenses where id = tests.id('rj_t')),
+  'and moves the next run past today'
+);
+select results_eq(
+  $$ select active, (select count(*)::int from public.expenses e where e.recurring_id = r.id)
+     from public.recurring_expenses r where r.id = tests.id('ra_t') $$,
+  $$ values (false, 1) $$,
+  'a template in an archived group is paused without a new expense'
 );
 
 -- FX precision ----------------------------------------------------------------------------------
