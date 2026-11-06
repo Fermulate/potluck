@@ -32,15 +32,31 @@ export function isNotFoundError(error: unknown): boolean {
   return errorCode(error)?.endsWith('_not_found') ?? false
 }
 
-/** A friendly, translated message for any error the API layer throws. */
-export function errorMessage(error: unknown): string {
+/** Screens with their own wording for server codes, e.g. `expenses.errors.sum_mismatch`. */
+export type ErrorScope = 'expenses.errors' | 'events.errors'
+
+/** `fetch` rejects with a TypeError when the request never got an answer. */
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) return true
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+/**
+ * A friendly, translated message for any error the API layer throws. With a `scope`, that
+ * screen's wording for a code wins; every screen then shares the auth, general and network
+ * fallbacks.
+ */
+export function errorMessage(error: unknown, scope?: ErrorScope): string {
   const code = errorCode(error)
   if (code) {
+    if (scope && hasMessage(`${scope}.${code}`)) {
+      return (t as (key: string) => string)(`${scope}.${code}`)
+    }
     const auth = AUTH_CODES[code]
     if (auth) return auth()
     const key = `errors.codes.${code}`
     if (hasMessage(key)) return t(key as 'errors.generic')
   }
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return t('errors.network')
+  if (isNetworkError(error)) return t('errors.network')
   return t('errors.generic')
 }

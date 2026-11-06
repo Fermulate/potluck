@@ -1,6 +1,5 @@
 import {
   groupKeys,
-  moneyErrorCode,
   moneyKeys,
   plansKeys,
   moneyQueries,
@@ -8,10 +7,11 @@ import {
   type MoneyPerson,
 } from '@potluck/api'
 import { firstName } from '@potluck/core'
-import { hasMessage, t } from '@potluck/i18n'
+import { t } from '@potluck/i18n'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
+import { errorMessage } from '@/lib/errors'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
@@ -106,13 +106,5 @@ export function useNameOf() {
 
 /** Turns an RPC failure into a sentence for a toast or field error. */
 export function moneyErrorMessage(error: unknown): string {
-  const code = moneyErrorCode(error)
-  if (code) {
-    const key = `expenses.errors.${code}`
-    if (hasMessage(key)) return t(key as 'expenses.errors.not_allowed')
-    const shared = `errors.codes.${code}`
-    if (hasMessage(shared)) return t(shared as 'errors.generic')
-  }
-  if (error instanceof TypeError) return t('errors.network')
-  return t('errors.generic')
+  return errorMessage(error, 'expenses.errors')
 }
