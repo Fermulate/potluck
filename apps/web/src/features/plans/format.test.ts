@@ -1,5 +1,15 @@
+import { PlanError } from '@potluck/api'
 import { describe, expect, it } from 'vitest'
-import { minuteOfDayIn } from './format'
+import { minuteOfDayIn, planErrorMessage } from './format'
+
+describe('planErrorMessage', () => {
+  it('explains archived groups and closed RSVPs', () => {
+    expect(planErrorMessage(new PlanError('group_archived'))).toBe(
+      'This group is archived, so its plans are read only.',
+    )
+    expect(planErrorMessage(new PlanError('rsvp_closed'))).toBe('RSVPs for this plan are closed.')
+  })
+})
 
 describe('minuteOfDayIn', () => {
   it('turns a wall minute of a calendar day in a zone into the instant', () => {

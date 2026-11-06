@@ -185,6 +185,7 @@ export const errors = {
     group_currency_locked: 'The currency is locked once money has been added.',
     group_owner_required: 'A group always needs an owner.',
     group_archived: 'This group is archived.',
+    rsvp_closed: 'RSVPs for this plan are closed.',
     direct_group: 'One-on-one tabs cannot have invite links.',
     invalid_role: 'Invites cannot make someone the owner.',
     invalid_max_uses: 'Uses must be at least 1.',
