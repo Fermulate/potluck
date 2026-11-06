@@ -119,6 +119,8 @@ export function CheckEmail({
             try {
               await onResend()
               toast.success(t('auth.checkEmail.resent'))
+            } catch (error) {
+              toast.error(errorMessage(error))
             } finally {
               setBusy(false)
             }

@@ -69,6 +69,17 @@ describe('SignUpPage', () => {
     expect(await screen.findByRole('button', { name: t('auth.signUp.submit') })).toBeVisible()
   })
 
+  it('says so when the resend fails', async () => {
+    respondAuth('signUp', { data: { session: null } })
+    respondAuth('resend', { error: { code: 'over_email_send_rate_limit', message: 'Slow down' } })
+    renderPage()
+    await submit()
+
+    fireEvent.click(await screen.findByRole('button', { name: t('auth.checkEmail.resend') }))
+    expect(await screen.findByText(t('errors.rateLimited'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('auth.checkEmail.resend') })).toBeEnabled()
+  })
+
   it('refuses short passwords before calling the server', async () => {
     renderPage()
     await submit('short')
