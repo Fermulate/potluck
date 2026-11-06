@@ -20,6 +20,7 @@ flowchart TB
 
 ```sh
 pnpm test                               # every workspace, through turbo
+pnpm test:functions                     # edge function helpers (Node's test runner)
 pnpm --filter @potluck/core test        # one package
 cd packages/core && pnpm vitest         # watch mode
 ```

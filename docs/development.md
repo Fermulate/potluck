@@ -108,18 +108,19 @@ For performance work, `supabase/snippets/perf_volume.sql` adds 40 more accounts 
 
 Run from the repo root. Turbo runs the per-package scripts in dependency order and caches what it can.
 
-| Command          | What it does                                        |
-| ---------------- | --------------------------------------------------- |
-| `pnpm dev`       | Vite dev server for `apps/web`                      |
-| `pnpm build`     | production build of every package that has one      |
-| `pnpm typecheck` | `tsc --noEmit` in every workspace                   |
-| `pnpm lint`      | ESLint over the repo, zero warnings allowed         |
-| `pnpm test`      | Vitest in every workspace                           |
-| `pnpm format`    | Prettier over the repo                              |
-| `pnpm db:start`  | start local Supabase                                |
-| `pnpm db:reset`  | rebuild the local database from migrations and seed |
-| `pnpm db:types`  | regenerate `packages/api/src/database.types.ts`     |
-| `pnpm db:test`   | run the pgTAP tests in `supabase/tests`             |
+| Command               | What it does                                        |
+| --------------------- | --------------------------------------------------- |
+| `pnpm dev`            | Vite dev server for `apps/web`                      |
+| `pnpm build`          | production build of every package that has one      |
+| `pnpm typecheck`      | `tsc --noEmit` in every workspace                   |
+| `pnpm lint`           | ESLint over the repo, zero warnings allowed         |
+| `pnpm test`           | Vitest in every workspace                           |
+| `pnpm test:functions` | Node tests for the edge function helpers            |
+| `pnpm format`         | Prettier over the repo                              |
+| `pnpm db:start`       | start local Supabase                                |
+| `pnpm db:reset`       | rebuild the local database from migrations and seed |
+| `pnpm db:types`       | regenerate `packages/api/src/database.types.ts`     |
+| `pnpm db:test`        | run the pgTAP tests in `supabase/tests`             |
 
 Filter to one package with `pnpm --filter @potluck/core test`, or run Vitest in watch mode inside a package with `pnpm vitest`.
 
