@@ -1166,6 +1166,7 @@ begin
 
   update public.recurring_expenses r set active = false
   where r.active
+    and private.group_is_open(r.group_id)
     and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
 
   delete from public.group_members m
