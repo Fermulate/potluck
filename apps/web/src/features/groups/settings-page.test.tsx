@@ -120,7 +120,18 @@ describe('GroupSettingsPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/groups'))
-    expect(rowsOf('groups')).toEqual([])
+    expect(db().rpcArgs('delete_group')).toEqual([{ group_id: 'g-hike' }])
+  })
+
+  it('explains when the server still sees an open balance and keeps the group', async () => {
+    const { router } = renderSettings(group({ members: square }))
+    db().respond('rpc:delete_group', { error: { message: 'group_has_balances', code: '23514' } })
+    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.delete') }))
+    const dialog = await screen.findByRole('dialog', { name: t('groups.settings.delete') })
+    fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
+
+    expect(await screen.findByText(t('errors.codes.group_has_balances'))).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/groups/g-hike/settings')
   })
 
   it('is read only for plain members, who can only head off to leave', async () => {
