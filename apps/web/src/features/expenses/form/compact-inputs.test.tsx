@@ -17,7 +17,13 @@ function MoneyHarness({ locale, currency = 'EUR' }: { locale: string; currency?:
         currency={code}
         locale={locale}
       />
-      <MoneyInput label="Total" value={big} onValueChange={setBig} currency={code} locale={locale} />
+      <MoneyInput
+        label="Total"
+        value={big}
+        onValueChange={setBig}
+        currency={code}
+        locale={locale}
+      />
       <output aria-label="line cents">{compact ?? 'empty'}</output>
       <output aria-label="total cents">{big ?? 'empty'}</output>
       <button type="button" onClick={() => setCode('JPY')}>
