@@ -4,6 +4,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
+import { fetchAllPages, PAGE_SIZE } from './paging'
 
 type Tables = Database['public']['Tables']
 export type SplitTypeValue = Database['public']['Enums']['split_type']
@@ -196,20 +197,6 @@ export async function fetchMoneyGroups(client: PotluckClient): Promise<MoneyGrou
 }
 
 const EXPENSE_SELECT = '*, expense_splits (user_id, share_cents, weight)'
-
-/** PostgREST caps each response at `max_rows` (supabase/config.toml), so read in pages. */
-const PAGE_SIZE = 1000
-
-async function fetchAllPages<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const batch = unwrap(await page(from, from + PAGE_SIZE - 1))
-    rows.push(...batch)
-    if (batch.length < PAGE_SIZE) return rows
-  }
-}
 
 /** Every live (not deleted) expense, newest first. */
 export async function fetchGroupExpenses(
