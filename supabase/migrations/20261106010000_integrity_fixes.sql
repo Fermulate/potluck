@@ -1251,7 +1251,11 @@ begin
              and (p.id = r.paid_by
                   or p.id in (select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e))
          ) then
+        -- The archived group guard refuses template writes from signed in
+        -- callers; the job's own pause is allowed through, for this update only.
+        perform set_config('potluck.system_write', 'on', true);
         update public.recurring_expenses x set active = false where x.id = r.id;
+        perform set_config('potluck.system_write', '', true);
         continue;
       end if;
 
@@ -1288,5 +1292,45 @@ begin
   end loop;
 
   return made;
+end;
+$$;
+
+-- Same as 20261106000000_review_fixes.sql, plus a transaction-local
+-- potluck.system_write switch that only the recurring expenses job turns on,
+-- around its own pause of a template. Clients cannot set it through the API.
+create or replace function private.guard_open_group_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
+  gid uuid;
+  deadline timestamptz;
+begin
+  if auth.uid() is null or current_setting('potluck.system_write', true) = 'on' then
+    return coalesce(new, old);
+  end if;
+
+  if tg_table_name = 'event_rsvps' then
+    select e.group_id, e.rsvp_deadline into gid, deadline
+    from public.events e where e.id = (row ->> 'event_id')::uuid;
+  elsif tg_table_name = 'comments' then
+    gid := coalesce(
+      (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
+      (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (row ->> 'group_id')::uuid
+    );
+  else
+    gid := (row ->> 'group_id')::uuid;
+  end if;
+
+  perform private.require_group_open(gid);
+
+  if deadline is not null and deadline <= now() then
+    raise exception using message = 'rsvp_closed', detail = 'RSVPs for this plan are closed', errcode = '23514';
+  end if;
+  return coalesce(new, old);
 end;
 $$;

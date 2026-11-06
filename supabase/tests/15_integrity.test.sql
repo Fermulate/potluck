@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(51);
+select plan(52);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -343,6 +343,13 @@ select results_eq(
   $$ values (false, 1) $$,
   'a template in an archived group is paused without a new expense'
 );
+select tests.login('own');
+select throws_ok(
+  $$ update public.recurring_expenses set active = true where id = tests.id('ra_t') $$,
+  '23514', 'group_archived',
+  'people still cannot touch templates in an archived group after the job ran'
+);
+reset role;
 
 -- FX precision ----------------------------------------------------------------------------------
 
