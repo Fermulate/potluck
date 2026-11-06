@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(27);
+select plan(30);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -190,15 +190,18 @@ select is(
 );
 update public.profiles set deleted_at = null where id = tests.uid('ann');
 
--- Editing an expense that splits with a former member ----------------------------------------
+-- Editing expenses that involve a former member ---------------------------------------------
 
 select tests.remember('fg', tests.group_with('own', array['eve'], '{}', 'Former'));
 select tests.login('own');
 select tests.remember('fe', (select id from create_expense(jsonb_build_object(
   'group_id', tests.id('fg'), 'description', 'Snacks', 'amount_cents', 1000,
   'splits', tests.people('own', 'eve')))));
+-- eve paid one and owes half of the other, so she leaves square
 select tests.login('eve');
-select settle_up(tests.id('fg'), tests.uid('own'), 500);
+select tests.remember('fp', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('fg'), 'description', 'Drinks', 'amount_cents', 1000,
+  'splits', tests.people('own', 'eve')))));
 select leave_group(tests.id('fg'));
 select tests.login('own');
 select lives_ok(
@@ -215,6 +218,23 @@ select results_eq(
   $$ select user_id, share_cents from public.expense_splits where expense_id = tests.id('fe') order by share_cents, user_id $$,
   $$ select * from (values (tests.uid('own'), 500::bigint), (tests.uid('eve'), 500::bigint)) v order by 2, 1 $$,
   'the former member keeps their share'
+);
+
+select tests.login('own');
+select lives_ok(
+  $$ select update_expense(tests.id('fp'), '{"description": "Party drinks"}') $$,
+  'an expense paid by a former member can still be edited'
+);
+select throws_ok(
+  $$ select update_expense(tests.id('fe'), jsonb_build_object('paid_by', tests.uid('eve'))) $$,
+  '23514', 'payer_not_in_group',
+  'but nobody new can be made the payer'
+);
+reset role;
+select is(
+  (select (description, paid_by)::text from public.expenses where id = tests.id('fp')),
+  ('Party drinks', tests.uid('eve'))::text,
+  'and the payer stays'
 );
 
 select * from finish();

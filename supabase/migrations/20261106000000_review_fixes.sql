@@ -9,6 +9,9 @@
 --     occurrence on or after today, so paused periods are never charged.
 --   * Recurring templates stop when their payer or anyone in the split has
 --     closed their account.
+--   * Editing an expense paid by someone who has left the group works as long
+--     as the payer stays the same (the split already kept stored shares when
+--     it is not resent).
 
 -- Recurrence steps --------------------------------------------------------------------------
 
@@ -394,6 +397,229 @@ begin
   where x.id = s.id
   returning * into s;
   return s;
+end;
+$$;
+
+-- Expenses paid by former members ---------------------------------------------------------
+
+create or replace function private.save_expense(eid uuid, payload jsonb)
+returns public.expenses
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  my_role public.group_role;
+  prev public.expenses;
+  g public.groups;
+  p jsonb := coalesce(payload, '{}'::jsonb);
+  gid uuid;
+  v_description text;
+  v_amount bigint;
+  v_currency text;
+  v_fx numeric;
+  v_paid_by uuid;
+  v_split_type public.split_type;
+  v_spent_at date;
+  v_receipt text;
+  v_event uuid;
+  v_recurrence public.recurrence;
+  split_input jsonb;
+  rewrite_splits boolean;
+  computed jsonb;
+  result public.expenses;
+  recurring uuid;
+begin
+  if jsonb_typeof(p) <> 'object' then
+    raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end if;
+
+  if eid is null then
+    begin
+      gid := (p ->> 'group_id')::uuid;
+    exception when invalid_text_representation then
+      gid := null;
+    end;
+    if gid is null then
+      raise exception using message = 'group_required', detail = 'Pick a group for this expense', errcode = '22023';
+    end if;
+    my_role := private.require_member(gid);
+  else
+    select * into prev from public.expenses e where e.id = eid for update;
+    if prev.id is null then
+      raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+    end if;
+    gid := prev.group_id;
+    my_role := private.require_member(gid);
+    if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by then
+      raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
+    end if;
+    if prev.deleted_at is not null then
+      raise exception using message = 'expense_deleted', detail = 'Restore this expense before editing it', errcode = '23514';
+    end if;
+    if p ? 'group_id' and (p ->> 'group_id') is distinct from gid::text then
+      raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
+    end if;
+  end if;
+
+  select * into g from public.groups x where x.id = gid;
+  if g.archived_at is not null then
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
+  end if;
+
+  -- Merge with the stored row on update.
+  v_description := btrim(coalesce(p ->> 'description', prev.description, ''));
+  if v_description = '' then
+    raise exception using message = 'description_required', detail = 'Add a description', errcode = '22023';
+  end if;
+
+  if p ? 'amount_cents' then
+    if jsonb_typeof(p -> 'amount_cents') <> 'number'
+       or (p ->> 'amount_cents')::numeric <> trunc((p ->> 'amount_cents')::numeric)
+       or (p ->> 'amount_cents')::numeric <= 0
+       or (p ->> 'amount_cents')::numeric > 100000000000 then
+      raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+    end if;
+    v_amount := (p ->> 'amount_cents')::bigint;
+  else
+    v_amount := prev.amount_cents;
+  end if;
+  if v_amount is null then
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+  end if;
+
+  v_currency := upper(coalesce(nullif(btrim(p ->> 'currency'), ''), prev.currency, g.currency));
+  if v_currency !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+
+  begin
+    v_spent_at := coalesce((p ->> 'spent_at')::date, prev.spent_at, current_date);
+    v_paid_by := coalesce((p ->> 'paid_by')::uuid, prev.paid_by, uid);
+    v_split_type := coalesce((p ->> 'split_type')::public.split_type, prev.split_type, 'equal');
+    v_event := case when p ? 'event_id' then (p ->> 'event_id')::uuid else prev.event_id end;
+    v_recurrence := (p ->> 'recurrence')::public.recurrence;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end;
+
+  if v_currency = g.currency then
+    v_fx := 1;
+  elsif prev.id is not null and prev.currency = v_currency then
+    v_fx := prev.fx_rate;
+  else
+    v_fx := private.fx_rate(v_currency::char(3), g.currency, v_spent_at);
+    if v_fx is null then
+      raise exception using
+        message = 'fx_rate_unavailable',
+        detail = format('No exchange rate from %s to %s yet', v_currency, g.currency),
+        errcode = '23514';
+    end if;
+  end if;
+
+  -- Only a new payer must be a member: an older expense paid by someone who has since left can
+  -- still have its details edited.
+  if v_paid_by is distinct from prev.paid_by
+     and not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = v_paid_by) then
+    raise exception using message = 'payer_not_in_group', detail = 'The payer is not in this group', errcode = '23514';
+  end if;
+
+  if v_event is not null and not exists (
+    select 1 from public.events ev where ev.id = v_event and ev.group_id = gid
+  ) then
+    raise exception using message = 'event_not_in_group', detail = 'That event is not in this group', errcode = '22023';
+  end if;
+
+  v_receipt := case when p ? 'receipt_path' then nullif(p ->> 'receipt_path', '') else prev.receipt_path end;
+  if v_receipt is not null and v_receipt not like gid::text || '/%' then
+    raise exception using message = 'invalid_receipt_path', detail = 'Receipts must be stored under the group folder', errcode = '22023';
+  end if;
+
+  -- Decide which splits to write.
+  if p ? 'splits' then
+    split_input := p -> 'splits';
+    rewrite_splits := true;
+  elsif prev.id is null then
+    raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
+  elsif v_amount <> prev.amount_cents or v_split_type <> prev.split_type then
+    -- Re-derive from the stored people and weights.
+    select jsonb_agg(jsonb_build_object('user_id', s.user_id, 'weight', s.weight) order by s.user_id)
+    into split_input
+    from public.expense_splits s where s.expense_id = prev.id;
+    rewrite_splits := true;
+  else
+    rewrite_splits := false;
+  end if;
+
+  if rewrite_splits then
+    select jsonb_agg(to_jsonb(c)) into computed
+    from private.compute_splits(v_amount, v_split_type, split_input) c;
+
+    if exists (
+      select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric)
+      where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
+    ) then
+      raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
+    end if;
+  end if;
+
+  -- The expense row and its splits are written one after the other, so the
+  -- sum check must run at commit even if the caller made constraints immediate.
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+
+  if prev.id is null then
+    if v_recurrence is not null then
+      insert into public.recurring_expenses (
+        group_id, description, amount_cents, currency, paid_by, split_type, category,
+        splits, recurrence, next_run_on, created_by
+      ) values (
+        gid, v_description, v_amount, v_currency, v_paid_by, v_split_type, p ->> 'category',
+        split_input, v_recurrence,
+        (v_spent_at + case v_recurrence
+          when 'weekly' then interval '1 week'
+          when 'monthly' then interval '1 month'
+          else interval '1 year' end)::date,
+        uid
+      )
+      returning id into recurring;
+    end if;
+
+    insert into public.expenses (
+      group_id, event_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
+      category, notes, spent_at, receipt_path, recurring_id, created_by
+    ) values (
+      gid, v_event, v_description, v_amount, v_currency, v_fx, v_paid_by, v_split_type,
+      nullif(btrim(p ->> 'category'), ''), nullif(p ->> 'notes', ''), v_spent_at, v_receipt, recurring, uid
+    )
+    returning * into result;
+  else
+    update public.expenses e set
+      description = v_description,
+      amount_cents = v_amount,
+      currency = v_currency,
+      fx_rate = v_fx,
+      paid_by = v_paid_by,
+      split_type = v_split_type,
+      category = case when p ? 'category' then nullif(btrim(p ->> 'category'), '') else e.category end,
+      notes = case when p ? 'notes' then nullif(p ->> 'notes', '') else e.notes end,
+      spent_at = v_spent_at,
+      receipt_path = v_receipt,
+      event_id = v_event
+    where e.id = prev.id
+    returning * into result;
+  end if;
+
+  if rewrite_splits then
+    delete from public.expense_splits s where s.expense_id = result.id;
+    insert into public.expense_splits (expense_id, user_id, share_cents, weight)
+    select result.id, s.user_id, s.share_cents, s.weight
+    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
+  end if;
+
+  return result;
 end;
 $$;
 
