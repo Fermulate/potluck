@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(16);
+select plan(25);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -52,6 +52,67 @@ select is(
   (select count(*)::int from public.group_members where group_id = tests.id('g') and user_id in (tests.uid('blk'), tests.uid('rev'))),
   0,
   'blocked people never got a membership'
+);
+
+-- People who left -------------------------------------------------------------------------------
+
+select tests.remember('s', tests.group_with('own', array['mem'], '{}', 'Taxi pool'));
+select tests.login('own');
+select tests.remember('taxi', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('s'), 'description', 'Taxi', 'amount_cents', 1000, 'splits', tests.people('own', 'mem')))));
+select tests.login('mem');
+select tests.remember('pay', (select id from settle_up(tests.id('s'), tests.uid('own'), 500)));
+select lives_ok($$ select leave_group(tests.id('s')) $$, 'settled member leaves');
+
+select tests.login('own');
+select throws_ok(
+  $$ select delete_settlement(tests.id('pay')) $$,
+  '23514', 'member_not_in_group',
+  'a payment with someone who left cannot be removed'
+);
+select throws_ok(
+  $$ select update_expense(tests.id('taxi'), jsonb_build_object('amount_cents', 2000)) $$,
+  '23514', 'split_member_not_in_group',
+  'the amount of an expense shared with someone who left is locked'
+);
+select throws_ok(
+  $$ select update_expense(tests.id('taxi'), jsonb_build_object('splits', tests.people('own'))) $$,
+  '23514', 'split_member_not_in_group',
+  'so is dropping them from the split'
+);
+select lives_ok(
+  $$ select update_expense(tests.id('taxi'), jsonb_build_object('description', 'Cab', 'notes', 'airport')) $$,
+  'details can still change'
+);
+select throws_ok(
+  $$ select delete_expense(tests.id('taxi')) $$,
+  '23514', 'split_member_not_in_group',
+  'and the expense cannot be deleted'
+);
+reset role;
+select is(
+  (select net_cents from public.group_balances where group_id = tests.id('s') and user_id = tests.uid('mem')),
+  0::bigint,
+  'the former member stays settled'
+);
+
+select tests.remember('s2', tests.group_with('own', array['pal'], '{}', 'Paid by a leaver'));
+select tests.login('pal');
+select tests.remember('beer', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('s2'), 'description', 'Beer', 'amount_cents', 800, 'splits', tests.people('own')))));
+select tests.login('own');
+select settle_up(tests.id('s2'), tests.uid('pal'), 800);
+select tests.login('pal');
+select leave_group(tests.id('s2'));
+select tests.login('own');
+select throws_ok(
+  $$ select update_expense(tests.id('beer'), jsonb_build_object('amount_cents', 900, 'splits', tests.people('own'))) $$,
+  '23514', 'split_member_not_in_group',
+  'the amount of an expense paid by someone who left is locked'
+);
+select lives_ok(
+  $$ select update_expense(tests.id('beer'), jsonb_build_object('category', 'drinks')) $$,
+  'its details are not'
 );
 
 -- Former members stay readable ------------------------------------------------------------------

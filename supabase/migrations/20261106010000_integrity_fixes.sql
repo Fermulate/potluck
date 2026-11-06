@@ -6,6 +6,13 @@
 --   * Former members stay readable: co-members can read the profile of anyone
 --     who has left one of their groups (private.former_members), so old
 --     expenses, payments and activity keep their names.
+--   * Membership changes and money writes serialize on the group row:
+--     remove_member and leave_group lock it before reading balances, and every
+--     RPC that moves a balance takes a share lock on it first. Lock order is
+--     always the group row, then the expense or payment row.
+--   * Nothing moves a former member's balance: editing or deleting an expense
+--     they are part of (as payer or with a share) is refused, and so is
+--     deleting a payment with someone who has left (member_not_in_group).
 
 -- Blocks --------------------------------------------------------------------------------------
 
@@ -326,3 +333,528 @@ using (
 );
 
 revoke execute on function private.track_former_members() from public, anon, authenticated;
+
+-- Membership changes --------------------------------------------------------------------------
+
+create or replace function public.remove_member(group_id uuid, user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  my_role public.group_role := private.require_member(remove_member.group_id);
+  target_role public.group_role;
+begin
+  if remove_member.user_id = auth.uid() then
+    raise exception using message = 'use_leave_group', detail = 'Use leave group to remove yourself', errcode = '22023';
+  end if;
+  if my_role = 'member' then
+    raise exception using message = 'not_allowed', detail = 'Only owners and admins can remove members', errcode = '42501';
+  end if;
+
+  -- Waits for money writes in flight; new ones wait for this transaction.
+  perform 1 from public.groups g where g.id = remove_member.group_id for no key update;
+
+  select m.role into target_role
+  from public.group_members m
+  where m.group_id = remove_member.group_id and m.user_id = remove_member.user_id;
+
+  if target_role is null then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+  if target_role = 'owner' then
+    raise exception using message = 'cannot_remove_owner', detail = 'The owner cannot be removed', errcode = '42501';
+  end if;
+  if my_role = 'admin' and target_role <> 'member' then
+    raise exception using message = 'not_allowed', detail = 'Admins can only manage regular members', errcode = '42501';
+  end if;
+  if private.member_balance(remove_member.group_id, remove_member.user_id) <> 0 then
+    raise exception using message = 'member_has_balance', detail = 'This member still has an unsettled balance', errcode = '23514';
+  end if;
+
+  delete from public.group_members m
+  where m.group_id = remove_member.group_id and m.user_id = remove_member.user_id;
+end;
+$$;
+
+-- Owners must transfer ownership first, unless they are the last member, in
+-- which case leaving deletes the group.
+create or replace function public.leave_group(group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  my_role public.group_role := private.require_member(leave_group.group_id);
+  uid uuid := auth.uid();
+  others int;
+begin
+  perform 1 from public.groups g where g.id = leave_group.group_id for no key update;
+
+  if private.member_balance(leave_group.group_id, uid) <> 0 then
+    raise exception using message = 'member_has_balance', detail = 'Settle up before leaving this group', errcode = '23514';
+  end if;
+
+  select count(*) into others
+  from public.group_members m
+  where m.group_id = leave_group.group_id and m.user_id <> uid;
+
+  if my_role = 'owner' then
+    if others > 0 then
+      raise exception using message = 'owner_must_transfer', detail = 'Transfer ownership before leaving', errcode = '23514';
+    end if;
+    delete from public.groups g where g.id = leave_group.group_id;
+    return;
+  end if;
+
+  delete from public.group_members m
+  where m.group_id = leave_group.group_id and m.user_id = uid;
+end;
+$$;
+
+-- Expenses ------------------------------------------------------------------------------------
+
+create or replace function private.require_unarchived(gid uuid)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.groups g where g.id = gid and g.archived_at is not null) then
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
+  end if;
+end;
+$$;
+
+create or replace function private.save_expense(eid uuid, payload jsonb)
+returns public.expenses
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  my_role public.group_role;
+  prev public.expenses;
+  g public.groups;
+  p jsonb := coalesce(payload, '{}'::jsonb);
+  gid uuid;
+  v_description text;
+  v_amount bigint;
+  v_currency text;
+  v_fx numeric;
+  v_paid_by uuid;
+  v_split_type public.split_type;
+  v_spent_at date;
+  v_receipt text;
+  v_event uuid;
+  v_recurrence public.recurrence;
+  split_input jsonb;
+  rewrite_splits boolean;
+  computed jsonb;
+  result public.expenses;
+  recurring uuid;
+  payer_left boolean := false;
+  sharer_left boolean := false;
+begin
+  if jsonb_typeof(p) <> 'object' then
+    raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end if;
+
+  if eid is null then
+    begin
+      gid := (p ->> 'group_id')::uuid;
+    exception when invalid_text_representation then
+      gid := null;
+    end;
+    if gid is null then
+      raise exception using message = 'group_required', detail = 'Pick a group for this expense', errcode = '22023';
+    end if;
+    my_role := private.require_member(gid);
+    -- Serializes with remove_member and leave_group (group row first, always).
+    perform 1 from public.groups x where x.id = gid for share;
+  else
+    select e.group_id into gid from public.expenses e where e.id = eid;
+    if gid is null then
+      raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+    end if;
+    my_role := private.require_member(gid);
+    perform 1 from public.groups x where x.id = gid for share;
+
+    select * into prev from public.expenses e where e.id = eid for update;
+    if prev.id is null then
+      raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+    end if;
+    if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by then
+      raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
+    end if;
+    if prev.deleted_at is not null then
+      raise exception using message = 'expense_deleted', detail = 'Restore this expense before editing it', errcode = '23514';
+    end if;
+    if p ? 'group_id' and (p ->> 'group_id') is distinct from gid::text then
+      raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
+    end if;
+
+    payer_left := not exists (
+      select 1 from public.group_members m where m.group_id = gid and m.user_id = prev.paid_by
+    );
+    sharer_left := exists (
+      select 1 from public.expense_splits s
+      where s.expense_id = prev.id
+        and s.share_cents > 0
+        and not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
+    );
+  end if;
+
+  select * into g from public.groups x where x.id = gid;
+  if g.archived_at is not null then
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
+  end if;
+
+  -- Merge with the stored row on update.
+  v_description := btrim(coalesce(p ->> 'description', prev.description, ''));
+  if v_description = '' then
+    raise exception using message = 'description_required', detail = 'Add a description', errcode = '22023';
+  end if;
+
+  if p ? 'amount_cents' then
+    if jsonb_typeof(p -> 'amount_cents') <> 'number'
+       or (p ->> 'amount_cents')::numeric <> trunc((p ->> 'amount_cents')::numeric)
+       or (p ->> 'amount_cents')::numeric <= 0
+       or (p ->> 'amount_cents')::numeric > 100000000000 then
+      raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+    end if;
+    v_amount := (p ->> 'amount_cents')::bigint;
+  else
+    v_amount := prev.amount_cents;
+  end if;
+  if v_amount is null then
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+  end if;
+
+  v_currency := upper(coalesce(nullif(btrim(p ->> 'currency'), ''), prev.currency, g.currency));
+  if v_currency !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+
+  begin
+    v_spent_at := coalesce((p ->> 'spent_at')::date, prev.spent_at, current_date);
+    v_paid_by := coalesce((p ->> 'paid_by')::uuid, prev.paid_by, uid);
+    v_split_type := coalesce((p ->> 'split_type')::public.split_type, prev.split_type, 'equal');
+    v_event := case when p ? 'event_id' then (p ->> 'event_id')::uuid else prev.event_id end;
+    v_recurrence := (p ->> 'recurrence')::public.recurrence;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end;
+
+  if v_currency = g.currency then
+    v_fx := 1;
+  elsif prev.id is not null and prev.currency = v_currency then
+    v_fx := prev.fx_rate;
+  else
+    v_fx := private.fx_rate(v_currency::char(3), g.currency, v_spent_at);
+    if v_fx is null then
+      raise exception using
+        message = 'fx_rate_unavailable',
+        detail = format('No exchange rate from %s to %s yet', v_currency, g.currency),
+        errcode = '23514';
+    end if;
+  end if;
+
+  -- Only a new payer must be a member: an older expense paid by someone who has since left can
+  -- still have its details edited.
+  if v_paid_by is distinct from prev.paid_by
+     and not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = v_paid_by) then
+    raise exception using message = 'payer_not_in_group', detail = 'The payer is not in this group', errcode = '23514';
+  end if;
+
+  if v_event is not null and not exists (
+    select 1 from public.events ev where ev.id = v_event and ev.group_id = gid
+  ) then
+    raise exception using message = 'event_not_in_group', detail = 'That event is not in this group', errcode = '22023';
+  end if;
+
+  v_receipt := case when p ? 'receipt_path' then nullif(p ->> 'receipt_path', '') else prev.receipt_path end;
+  if v_receipt is not null and v_receipt not like gid::text || '/%' then
+    raise exception using message = 'invalid_receipt_path', detail = 'Receipts must be stored under the group folder', errcode = '22023';
+  end if;
+
+  -- Decide which splits to write.
+  if p ? 'splits' then
+    split_input := p -> 'splits';
+    rewrite_splits := true;
+  elsif prev.id is null then
+    raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
+  elsif v_amount <> prev.amount_cents or v_split_type <> prev.split_type then
+    -- Re-derive from the stored people and weights.
+    select jsonb_agg(jsonb_build_object('user_id', s.user_id, 'weight', s.weight) order by s.user_id)
+    into split_input
+    from public.expense_splits s where s.expense_id = prev.id;
+    rewrite_splits := true;
+  else
+    rewrite_splits := false;
+  end if;
+
+  if rewrite_splits then
+    select jsonb_agg(to_jsonb(c)) into computed
+    from private.compute_splits(v_amount, v_split_type, split_input) c;
+
+    if exists (
+      select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric)
+      where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
+    ) then
+      raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
+    end if;
+  end if;
+
+  -- A former member's balance is settled at zero and must stay there: the
+  -- payer is credited the converted total and each person debited their share,
+  -- so neither may change while they are out of the group.
+  if (payer_left and (v_paid_by <> prev.paid_by or v_amount <> prev.amount_cents or v_currency <> prev.currency))
+     or (sharer_left and (rewrite_splits or v_amount <> prev.amount_cents or v_currency <> prev.currency)) then
+    raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
+  end if;
+
+  -- The expense row and its splits are written one after the other, so the
+  -- sum check must run at commit even if the caller made constraints immediate.
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+
+  if prev.id is null then
+    if v_recurrence is not null then
+      insert into public.recurring_expenses (
+        group_id, description, amount_cents, currency, paid_by, split_type, category,
+        splits, recurrence, next_run_on, created_by
+      ) values (
+        gid, v_description, v_amount, v_currency, v_paid_by, v_split_type, p ->> 'category',
+        split_input, v_recurrence,
+        (v_spent_at + case v_recurrence
+          when 'weekly' then interval '1 week'
+          when 'monthly' then interval '1 month'
+          else interval '1 year' end)::date,
+        uid
+      )
+      returning id into recurring;
+    end if;
+
+    insert into public.expenses (
+      group_id, event_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
+      category, notes, spent_at, receipt_path, recurring_id, created_by
+    ) values (
+      gid, v_event, v_description, v_amount, v_currency, v_fx, v_paid_by, v_split_type,
+      nullif(btrim(p ->> 'category'), ''), nullif(p ->> 'notes', ''), v_spent_at, v_receipt, recurring, uid
+    )
+    returning * into result;
+  else
+    update public.expenses e set
+      description = v_description,
+      amount_cents = v_amount,
+      currency = v_currency,
+      fx_rate = v_fx,
+      paid_by = v_paid_by,
+      split_type = v_split_type,
+      category = case when p ? 'category' then nullif(btrim(p ->> 'category'), '') else e.category end,
+      notes = case when p ? 'notes' then nullif(p ->> 'notes', '') else e.notes end,
+      spent_at = v_spent_at,
+      receipt_path = v_receipt,
+      event_id = v_event
+    where e.id = prev.id
+    returning * into result;
+  end if;
+
+  if rewrite_splits then
+    delete from public.expense_splits s where s.expense_id = result.id;
+    insert into public.expense_splits (expense_id, user_id, share_cents, weight)
+    select result.id, s.user_id, s.share_cents, s.weight
+    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
+  end if;
+
+  return result;
+end;
+$$;
+
+create or replace function public.delete_expense(id uuid)
+returns public.expenses
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  gid uuid := (select x.group_id from public.expenses x where x.id = delete_expense.id);
+  e public.expenses;
+begin
+  if gid is not null then
+    perform private.require_member(gid);
+    perform 1 from public.groups g where g.id = gid for share;
+  end if;
+  e := private.editable_expense(delete_expense.id);
+
+  if e.deleted_at is null and exists (
+    select s.user_id from public.expense_splits s where s.expense_id = e.id and s.share_cents > 0
+    union
+    select e.paid_by
+    except
+    select m.user_id from public.group_members m where m.group_id = e.group_id
+  ) then
+    raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
+  end if;
+
+  update public.expenses x
+  set deleted_at = coalesce(x.deleted_at, now())
+  where x.id = e.id
+  returning * into e;
+  return e;
+end;
+$$;
+
+create or replace function public.restore_expense(id uuid)
+returns public.expenses
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  gid uuid := (select x.group_id from public.expenses x where x.id = restore_expense.id);
+  e public.expenses;
+begin
+  if gid is not null then
+    perform private.require_member(gid);
+    perform 1 from public.groups g where g.id = gid for share;
+  end if;
+  e := private.editable_expense(restore_expense.id);
+
+  if e.deleted_at is null then
+    return e;
+  end if;
+
+  if exists (
+    select s.user_id from public.expense_splits s where s.expense_id = e.id
+    union
+    select e.paid_by
+    except
+    select m.user_id from public.group_members m where m.group_id = e.group_id
+  ) then
+    raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
+  end if;
+
+  update public.expenses x set deleted_at = null where x.id = e.id returning * into e;
+  return e;
+end;
+$$;
+
+revoke execute on function private.require_unarchived(uuid) from public, anon, authenticated;
+
+-- Payments ------------------------------------------------------------------------------------
+
+create or replace function public.settle_up(
+  group_id uuid,
+  to_user uuid,
+  amount_cents bigint,
+  currency text default null,
+  note text default null
+)
+returns public.settlements
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := auth.uid();
+  payer uuid := uid;
+  g public.groups;
+  cur text;
+  fx numeric;
+  result public.settlements;
+begin
+  perform private.require_member(settle_up.group_id);
+  perform 1 from public.groups x where x.id = settle_up.group_id for share;
+  perform private.require_unarchived(settle_up.group_id);
+  select * into g from public.groups x where x.id = settle_up.group_id;
+
+  if settle_up.amount_cents is null or settle_up.amount_cents <= 0 or settle_up.amount_cents > 100000000000 then
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+  end if;
+  if settle_up.to_user is null or settle_up.to_user = payer then
+    raise exception using message = 'invalid_recipient', detail = 'Pick who you paid', errcode = '22023';
+  end if;
+  if (
+    select count(*) from public.group_members m
+    where m.group_id = settle_up.group_id and m.user_id in (payer, settle_up.to_user)
+  ) <> 2 then
+    raise exception using message = 'member_not_found', detail = 'Both people must be in the group', errcode = 'PT404';
+  end if;
+
+  cur := upper(coalesce(nullif(btrim(settle_up.currency), ''), g.currency));
+  if cur !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+  fx := private.fx_rate(cur::char(3), g.currency, current_date);
+  if fx is null then
+    raise exception using
+      message = 'fx_rate_unavailable',
+      detail = format('No exchange rate from %s to %s yet', cur, g.currency),
+      errcode = '23514';
+  end if;
+
+  insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
+  values (
+    settle_up.group_id, payer, settle_up.to_user, settle_up.amount_cents, cur, fx,
+    nullif(btrim(settle_up.note), ''), now(), uid
+  )
+  returning * into result;
+
+  return result;
+end;
+$$;
+
+-- Removing a payment with someone who has left would reopen a debt nobody can settle.
+create or replace function public.delete_settlement(id uuid)
+returns public.settlements
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  s public.settlements;
+  my_role public.group_role;
+  uid uuid := private.require_user();
+  gid uuid;
+begin
+  select x.group_id into gid from public.settlements x where x.id = delete_settlement.id;
+  if gid is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  my_role := private.require_member(gid);
+  perform 1 from public.groups g where g.id = gid for share;
+
+  select * into s from public.settlements x where x.id = delete_settlement.id for update;
+  if s.id is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and uid not in (s.from_user, s.to_user) and uid is distinct from s.created_by then
+    raise exception using message = 'not_allowed', detail = 'You can only remove payments you were part of', errcode = '42501';
+  end if;
+  perform private.require_unarchived(s.group_id);
+
+  if s.deleted_at is null and (
+    select count(*) from public.group_members m
+    where m.group_id = s.group_id and m.user_id in (s.from_user, s.to_user)
+  ) <> 2 then
+    raise exception using message = 'member_not_in_group', detail = 'Someone in this payment has left the group', errcode = '23514';
+  end if;
+
+  update public.settlements x set deleted_at = coalesce(x.deleted_at, now())
+  where x.id = s.id
+  returning * into s;
+  return s;
+end;
+$$;
