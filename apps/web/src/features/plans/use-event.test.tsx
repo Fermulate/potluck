@@ -311,6 +311,26 @@ describe('useMyAvailability', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('sends a paint too big for a keepalive request through the client instead', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('1')))
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    const month = map(
+      ...Array.from({ length: 1_200 }, (_, i): [string, PaintLevel] => [
+        new Date(Date.UTC(2026, 5, 1, 0, 30 * i)).toISOString(),
+        'yes',
+      ]),
+    )
+    act(() => result.current.change(month))
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    await flush()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slots).toHaveLength(1_200)
+  })
+
   it('mirrors the server rows until the first paint, then keeps the edits', async () => {
     const { result, rerender } = renderHook(
       ({ initial }: { initial: Map<string, PaintLevel> }) =>

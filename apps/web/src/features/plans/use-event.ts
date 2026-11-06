@@ -197,13 +197,14 @@ export function useMyAvailability(
     // Safari and pages headed for the back/forward cache can skip visibilitychange on the way
     // out, and a fetch still running at unload is dropped, so the newest map the server has not
     // confirmed (waiting on its pause, or on the wire) is sent again on a request that outlives
-    // the page. The normal path is left as it is, so a page restored from the cache carries on.
+    // the page; the server serializes the two. The normal path is left as it is, so a page
+    // restored from the cache carries on, and a map the keepalive request cannot carry takes it.
     const onPageHide = () => {
       const next = pending.current ?? sending.current
       if (!next) return
-      void rpcKeepalive('set_availability', { event_id: eventId, slots: slotRows(next) }).catch(
-        () => undefined,
-      )
+      if (!rpcKeepalive('set_availability', { event_id: eventId, slots: slotRows(next) })) {
+        void save()
+      }
     }
     document.addEventListener('visibilitychange', onHide)
     window.addEventListener('pagehide', onPageHide)
