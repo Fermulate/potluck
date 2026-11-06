@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(32);
+select plan(34);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -227,6 +227,36 @@ select is(
   (select count(*)::int from private.former_members where group_id = tests.id('t') and user_id = tests.uid('quitter')),
   0,
   'rejoining clears the former member row'
+);
+
+-- Rescheduling ----------------------------------------------------------------------------------
+
+select tests.login('own');
+with ev as (
+  insert into public.events (group_id, title, window_start, window_end)
+  values (tests.id('m'), 'Picnic', current_date + 3, current_date + 9)
+  returning id
+)
+select tests.remember('ev', id) from ev;
+select schedule_event(tests.id('ev'), date_trunc('hour', now()) + interval '2 days');
+reset role;
+update public.events set reminder_sent_at = now() where id = tests.id('ev');
+
+select tests.login('own');
+select schedule_event(tests.id('ev'), date_trunc('hour', now()) + interval '2 days');
+reset role;
+select isnt(
+  (select reminder_sent_at from public.events where id = tests.id('ev')),
+  null,
+  'locking in the same time again keeps the reminder as sent'
+);
+select tests.login('own');
+select schedule_event(tests.id('ev'), date_trunc('hour', now()) + interval '2 days 1 hour');
+reset role;
+select is(
+  (select reminder_sent_at from public.events where id = tests.id('ev')),
+  null,
+  'moving the time sends the reminder again'
 );
 
 select * from finish();

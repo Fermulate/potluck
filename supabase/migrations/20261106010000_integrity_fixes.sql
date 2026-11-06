@@ -15,6 +15,7 @@
 --     deleting a payment with someone who has left (member_not_in_group).
 --   * An edit that only changes who is in the split, or their shares, is
 --     logged and notified as expense.updated like any other edit.
+--   * schedule_event keeps reminder_sent_at unless the start time changes.
 
 -- Blocks --------------------------------------------------------------------------------------
 
@@ -912,5 +913,41 @@ begin
   where x.id = s.id
   returning * into s;
   return s;
+end;
+$$;
+
+-- Plans ---------------------------------------------------------------------------------------
+
+-- Locks in a time. Can also reschedule an already scheduled event; the
+-- reminder goes out again only when the start time actually moves.
+create or replace function public.schedule_event(event_id uuid, starts_at timestamptz)
+returns public.events
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  ev public.events := private.manageable_event(schedule_event.event_id);
+begin
+  if schedule_event.starts_at is null then
+    raise exception using message = 'starts_at_required', detail = 'Pick a start time', errcode = '22023';
+  end if;
+  if ev.status not in ('polling', 'scheduled') then
+    raise exception using message = 'event_not_schedulable', detail = 'This event can no longer be scheduled', errcode = '23514';
+  end if;
+
+  update public.events e set
+    status = 'scheduled',
+    starts_at = schedule_event.starts_at,
+    ends_at = schedule_event.starts_at + make_interval(mins => e.duration_minutes),
+    reminder_sent_at = case
+      when e.starts_at is distinct from schedule_event.starts_at then null
+      else e.reminder_sent_at
+    end
+  where e.id = ev.id
+  returning * into ev;
+
+  return ev;
 end;
 $$;
