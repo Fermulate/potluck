@@ -33,6 +33,7 @@ import {
   usePeople,
   useTimeZone,
 } from './money-data'
+import { departedMembers } from './expense-math'
 import { useDeleteExpense } from './use-delete-expense'
 
 export function ExpenseDetail({ expenseId }: { expenseId: string }) {
@@ -78,6 +79,13 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const mayEdit = can(role, 'expense.edit', { isOwn })
   const mayDelete = can(role, 'expense.delete', { isOwn })
   const deleted = !!e.deleted_at
+  // The server will not delete an expense that still moves money for someone who left.
+  const departed = group.data
+    ? departedMembers(
+        e,
+        group.data.members.map((m) => m.id),
+      ).length > 0
+    : false
   const groupCurrency = group.data?.currency ?? e.currency
   const foreign = e.currency !== groupCurrency
   const isPdf = e.receipt_path?.toLowerCase().endsWith('.pdf')
@@ -124,7 +132,7 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
                 {t('common.edit')}
               </Link>
             )}
-            {mayDelete && (
+            {mayDelete && !departed && (
               <IconButton
                 size="sm"
                 variant="ghost"
@@ -136,6 +144,12 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
           </div>
         )}
       </div>
+
+      {!deleted && departed && (mayEdit || mayDelete) && (
+        <p role="note" className="mt-4 text-sm font-medium text-saffron-ink">
+          {t('expenses.detail.departedLocked')}
+        </p>
+      )}
 
       {deleted && (
         <div
