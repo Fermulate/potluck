@@ -1,6 +1,6 @@
 -- Group, membership and invite RLS across owner / admin / member / outsider / anon.
 begin;
-select plan(27);
+select plan(30);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -59,11 +59,12 @@ select throws_ok(
   '42501', null, 'roles change through RPCs only'
 );
 
--- Deleting
+-- Deleting (only through delete_group, owner only)
 select tests.login('admin');
-delete from public.groups where id = tests.id('g');
+select throws_ok($$ select delete_group(tests.id('g')) $$, '42501', 'not_allowed', 'admins cannot delete the group');
 select tests.login('member');
-delete from public.groups where id = tests.id('g');
+select throws_ok($$ select delete_group(tests.id('g')) $$, '42501', 'not_allowed', 'members cannot delete the group');
+select throws_ok($$ delete from public.groups where id = tests.id('g') $$, '42501', null, 'nobody deletes a group directly');
 reset role;
 select is((select count(*)::int from public.groups where id = tests.id('g')), 1, 'admins and members cannot delete the group');
 
@@ -132,7 +133,7 @@ select throws_ok(
 
 -- Owner deletes
 select tests.login('owner');
-delete from public.groups where id = tests.id('g');
+select delete_group(tests.id('g'));
 reset role;
 select is((select count(*)::int from public.groups where id = tests.id('g')), 0, 'owner can delete the group');
 

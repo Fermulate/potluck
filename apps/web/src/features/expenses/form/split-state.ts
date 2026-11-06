@@ -110,6 +110,32 @@ export function draftFromExpense(
   }
 }
 
+/** People in the split who are no longer in the group (only an older expense can have them). */
+export function formerParticipants(draft: SplitDraft, memberIds: readonly string[]): string[] {
+  const members = new Set(memberIds)
+  const people =
+    draft.mode === 'itemized'
+      ? [...new Set(billedItems(draft.items).flatMap((i) => i.userIds))]
+      : draft.participants
+  return people.filter((id) => !members.has(id))
+}
+
+/**
+ * Whether two drafts split the same way: same mode, same people, same values. Saving an
+ * unchanged split can leave the stored shares alone, which is the only way to keep someone who
+ * has left the group in it (the server rejects them in a rewritten split).
+ */
+export function sameSplit(a: SplitDraft, b: SplitDraft): boolean {
+  if (a.mode !== b.mode || a.mode === 'itemized') return false
+  const people = new Set(b.participants)
+  if (a.participants.length !== people.size || a.participants.some((id) => !people.has(id))) {
+    return false
+  }
+  const values = a.mode === 'exact' ? 'exact' : a.mode === 'equal' ? null : a.mode
+  if (!values) return true
+  return a.participants.every((id) => (a[values][id] ?? 0) === (b[values][id] ?? 0))
+}
+
 /** Toggle someone in or out of the split; percentages reset to even when the people change. */
 export function toggleParticipant(
   draft: SplitDraft,

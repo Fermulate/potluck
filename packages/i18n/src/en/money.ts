@@ -104,6 +104,11 @@ export const expenses = {
     eventLinked: 'Linked to a plan',
     itemizedTotal: 'The total comes from the items below.',
     itemizedEditNote: 'Item details are not kept after saving, so this opens as exact amounts.',
+    formerMember: 'Former member',
+    formerNote:
+      '{names} left the group. Their share stays as it is while the split and amount do not change.',
+    formerInSplit: 'Take {names} out of the split to change it.',
+    departedLocked: "Someone in this expense has left the group, so the amounts can't change.",
   },
   currencyPicker: {
     title: 'Pick a currency',
@@ -176,6 +181,8 @@ export const expenses = {
     split: 'Split {type}',
     notes: 'Notes',
     receipt: 'Receipt',
+    departedLocked:
+      "Someone in this expense has left the group, so it can't be deleted or have its amounts changed.",
     deletedBanner: 'This expense was deleted.',
     owes: 'owes {amount}',
     paidAndOwes: 'paid, share {amount}',

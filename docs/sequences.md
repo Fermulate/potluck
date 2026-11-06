@@ -357,7 +357,7 @@ sequenceDiagram
   CR->>DB: 00:10 UTC: private.materialize_recurring_expenses(current_date)
   DB->>DB: select active templates with next_run_on <= today,<br/>for update skip locked
   loop each template (own exception block)
-    alt group archived, payer or a split person left
+    alt group archived, payer or a split person left<br/>or closed their account
       DB->>DB: active = false, skip
     else
       DB->>DB: anchor_day = day of the series' first expense
@@ -441,7 +441,7 @@ After this every RPC answers `account_deleted` for that id, and closed accounts 
 
 ## Deploy pipeline
 
-`deploy.yml` runs on pull requests, pushes to `main` and manual dispatch. `ci.yml` and `codeql.yml` run alongside it, and CI has to pass before a PR merges (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+`deploy.yml` runs on pull requests, after every completed CI run on `main` (`workflow_run`) and on manual dispatch. Production jobs only run when that CI run succeeded. `codeql.yml` runs alongside, and CI has to pass before a PR merges (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ```mermaid
 sequenceDiagram
@@ -464,7 +464,11 @@ sequenceDiagram
     CF-->>DP: preview URL for alias pr-N (in the job log)
   end
   D->>GH: merge to main
-  GH->>DP: push to main
+  GH->>CI: push to main: checks, pgTAP, e2e
+  alt CI failed
+    CI-->>GH: deploy.yml jobs skip, nothing ships
+  else CI passed
+  GH->>DP: workflow_run (CI completed, success)
   DP->>SB: migrate job (environment production):<br/>supabase link, db push, config push, functions deploy
   alt migrate failed
     DP-->>GH: stop, web is not deployed
@@ -475,6 +479,7 @@ sequenceDiagram
       DP->>CF: GET VITE_APP_URL/groups
     end
     CF-->>DP: 200 (SPA fallback) or fail the job
+  end
   end
 ```
 

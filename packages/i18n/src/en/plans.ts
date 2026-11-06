@@ -151,6 +151,8 @@ export const events = {
     duplicate_slot: 'A time showed up twice. Try again?',
     member_not_found: 'Someone you picked is no longer in the group.',
     starts_at_required: 'Pick a start time.',
+    group_archived: 'This group is archived, so its plans are read only.',
+    rsvp_closed: 'RSVPs for this plan are closed.',
     saveFailed: 'Your times did not save. We will keep trying.',
     saveGaveUp: 'Your times still did not save. Tap Try again to resend.',
   },

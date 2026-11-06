@@ -4,6 +4,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
+import { fetchAllPages, PAGE_SIZE } from './paging'
 
 type Tables = Database['public']['Tables']
 export type SplitTypeValue = Database['public']['Enums']['split_type']
@@ -111,6 +112,9 @@ export interface ExpensePayload {
   recurrence?: RecurrenceValue
 }
 
+/** `update_expense` takes only the keys that change; leaving out `splits` keeps the stored ones. */
+export type ExpenseUpdate = Partial<Omit<ExpensePayload, 'group_id' | 'recurrence'>>
+
 export interface SettleUpInput {
   groupId: string
   toUser: string
@@ -196,20 +200,6 @@ export async function fetchMoneyGroups(client: PotluckClient): Promise<MoneyGrou
 }
 
 const EXPENSE_SELECT = '*, expense_splits (user_id, share_cents, weight)'
-
-/** PostgREST caps each response at `max_rows` (supabase/config.toml), so read in pages. */
-const PAGE_SIZE = 1000
-
-async function fetchAllPages<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const batch = unwrap(await page(from, from + PAGE_SIZE - 1))
-    rows.push(...batch)
-    if (batch.length < PAGE_SIZE) return rows
-  }
-}
 
 /** Every live (not deleted) expense, newest first. */
 export async function fetchGroupExpenses(
@@ -367,22 +357,36 @@ export async function fetchFxCurrencies(
 
 export const ACTIVITY_PAGE_SIZE = 30
 
-/** The feed across every group the viewer is in, newest first. Pass `before` to page. */
+/** Where the next activity page starts: just after this row in (created_at, id) order. */
+export interface ActivityCursor {
+  createdAt: string
+  id: string
+}
+
+/**
+ * The feed across every group the viewer is in, newest first. Pass `before` to page. Ordered by
+ * (created_at, id) and paged on both, so rows sharing a timestamp are never skipped or repeated.
+ */
 export async function fetchActivity(
   client: PotluckClient,
-  { before, limit = ACTIVITY_PAGE_SIZE }: { before?: string; limit?: number } = {},
+  { before, limit = ACTIVITY_PAGE_SIZE }: { before?: ActivityCursor; limit?: number } = {},
 ): Promise<ActivityItem[]> {
-  let query = client
-    .from('activity')
-    .select(
-      `id, group_id, actor_id, verb, subject_id, data, created_at,
+  let query = client.from('activity').select(
+    `id, group_id, actor_id, verb, subject_id, data, created_at,
       actor:profiles!activity_actor_id_fkey (id, display_name, avatar_path),
       group:groups (id, name, emoji, is_direct)`,
-    )
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (before) query = query.lt('created_at', before)
-  return unwrap(await query) as unknown as ActivityItem[]
+  )
+  if (before) {
+    const at = `"${before.createdAt}"`
+    query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt."${before.id}")`)
+  }
+  const rows = unwrap(
+    await query
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(limit),
+  )
+  return rows as unknown as ActivityItem[]
 }
 
 /** The feed as an infinite query, shared by the screen and its route loader. */
@@ -390,9 +394,13 @@ export const activityInfiniteQueryOptions = (client: PotluckClient) =>
   infiniteQueryOptions({
     queryKey: moneyKeys.activity(),
     queryFn: ({ pageParam }) => fetchActivity(client, { before: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last: ActivityItem[]) =>
-      last.length < ACTIVITY_PAGE_SIZE ? undefined : last[last.length - 1]?.created_at,
+    initialPageParam: undefined as ActivityCursor | undefined,
+    getNextPageParam: (last: ActivityItem[]): ActivityCursor | undefined => {
+      const tail = last[last.length - 1]
+      return last.length < ACTIVITY_PAGE_SIZE || !tail
+        ? undefined
+        : { createdAt: tail.created_at, id: tail.id }
+    },
   })
 
 export async function fetchReceiptUrl(client: PotluckClient, path: string): Promise<string> {
@@ -413,7 +421,7 @@ export async function createExpense(
 export async function updateExpense(
   client: PotluckClient,
   expenseId: string,
-  payload: Omit<ExpensePayload, 'group_id' | 'recurrence'>,
+  payload: ExpenseUpdate,
 ): Promise<Expense> {
   return unwrap(
     await client.rpc('update_expense', { id: expenseId, payload: payload as unknown as Json }),

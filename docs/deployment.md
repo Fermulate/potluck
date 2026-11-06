@@ -4,11 +4,11 @@ Potluck runs on two free tiers: Cloudflare serves the static web app, and one Su
 
 ## Environments
 
-| Environment | Web                                                                          | Backend                                 | Deployed by                        |
-| ----------- | ---------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------- |
-| Local       | http://localhost:5173 (`pnpm dev`)                                           | local Supabase in Docker                | you                                |
-| Preview     | `https://pr-<number>-potluck.potluck-web.workers.dev` (worker version alias) | **production** Supabase project         | `deploy.yml` on every pull request |
-| Production  | https://potluck.potluck-web.workers.dev                                      | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` on push to `main`     |
+| Environment | Web                                                                          | Backend                                 | Deployed by                            |
+| ----------- | ---------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- |
+| Local       | http://localhost:5173 (`pnpm dev`)                                           | local Supabase in Docker                | you                                    |
+| Preview     | `https://pr-<number>-potluck.potluck-web.workers.dev` (worker version alias) | **production** Supabase project         | `deploy.yml` on every pull request     |
+| Production  | https://potluck.potluck-web.workers.dev                                      | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` after CI passes on `main` |
 
 Previews are web-only. They build with the same `VITE_*` variables as production, so a preview signs in against production data and runs whatever migrations production already has. A PR that needs a new migration cannot be fully tested on its preview: test it locally.
 
@@ -46,7 +46,7 @@ Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the
 
 ## What a production deploy does
 
-On push to `main`:
+A push to `main` runs `ci.yml` first. When that run finishes, `deploy.yml` starts (`workflow_run`) and its production jobs run only if CI succeeded, checking out the exact commit CI tested. A red CI run never reaches production. `workflow_dispatch` redeploys `main` by hand. Pull request previews do not wait for CI.
 
 1. **migrate** (environment `production`):
    ```sh
@@ -146,7 +146,7 @@ You can run your own Potluck on your own Supabase project and Cloudflare account
 4. **Edit `apps/web/wrangler.jsonc`** if you want a different worker name. The URL is `https://<name>.<your-subdomain>.workers.dev`.
 5. **Add the GitHub variables and secrets** listed above, with your values. `SUPABASE_PROJECT_REF` is required, otherwise the workflow links the upstream project and fails.
 6. **Set edge function secrets and Vault entries** as above, with your URLs.
-7. **Push to `main`.** The workflow applies migrations, pushes auth config, deploys functions and the web app, and smoke tests it.
+7. **Push to `main`.** Once CI is green, the deploy workflow applies migrations, pushes auth config, deploys functions and the web app, and smoke tests it.
 8. **Backfill FX rates** with the `fx-sync?from=` call.
 9. **Auth email.** The built-in Supabase SMTP is rate limited and meant for testing. For real users, configure your own SMTP server under `[auth.email.smtp]` or in the dashboard.
 

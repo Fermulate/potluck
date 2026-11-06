@@ -4,12 +4,12 @@ Everything you need to run Potluck on your machine and change it. For how change
 
 ## Prerequisites
 
-| Tool    | Version                          | Notes                                                                |
-| ------- | -------------------------------- | -------------------------------------------------------------------- |
-| Node.js | 22.12 or newer (`.nvmrc`: 22)    | `engine-strict=true` in `.npmrc`, so an older Node fails the install |
-| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                           |
-| Docker  | recent Docker Desktop or Engine  | runs the local Supabase stack                                        |
-| Git     | any recent                       | on Windows, see [Windows notes](#windows-notes)                      |
+| Tool    | Version                          | Notes                                                                                                                          |
+| ------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Node.js | 22.18 or newer (`.nvmrc`: 22)    | `engine-strict=true` in `.npmrc` fails the install on an older Node; 22.18 adds the type stripping `pnpm test:functions` needs |
+| pnpm    | 9 (`packageManager` pins 9.15.9) | `corepack enable` picks the pinned version                                                                                     |
+| Docker  | recent Docker Desktop or Engine  | runs the local Supabase stack                                                                                                  |
+| Git     | any recent                       | on Windows, see [Windows notes](#windows-notes)                                                                                |
 
 The Supabase CLI comes in as a dev dependency, so `pnpm db:start` works without a global install. `npx supabase <command>` runs the same binary for commands without a script.
 
@@ -108,18 +108,19 @@ For performance work, `supabase/snippets/perf_volume.sql` adds 40 more accounts 
 
 Run from the repo root. Turbo runs the per-package scripts in dependency order and caches what it can.
 
-| Command          | What it does                                        |
-| ---------------- | --------------------------------------------------- |
-| `pnpm dev`       | Vite dev server for `apps/web`                      |
-| `pnpm build`     | production build of every package that has one      |
-| `pnpm typecheck` | `tsc --noEmit` in every workspace                   |
-| `pnpm lint`      | ESLint over the repo, zero warnings allowed         |
-| `pnpm test`      | Vitest in every workspace                           |
-| `pnpm format`    | Prettier over the repo                              |
-| `pnpm db:start`  | start local Supabase                                |
-| `pnpm db:reset`  | rebuild the local database from migrations and seed |
-| `pnpm db:types`  | regenerate `packages/api/src/database.types.ts`     |
-| `pnpm db:test`   | run the pgTAP tests in `supabase/tests`             |
+| Command               | What it does                                        |
+| --------------------- | --------------------------------------------------- |
+| `pnpm dev`            | Vite dev server for `apps/web`                      |
+| `pnpm build`          | production build of every package that has one      |
+| `pnpm typecheck`      | `tsc --noEmit` in every workspace                   |
+| `pnpm lint`           | ESLint over the repo, zero warnings allowed         |
+| `pnpm test`           | Vitest in every workspace                           |
+| `pnpm test:functions` | Node tests for the edge function helpers            |
+| `pnpm format`         | Prettier over the repo                              |
+| `pnpm db:start`       | start local Supabase                                |
+| `pnpm db:reset`       | rebuild the local database from migrations and seed |
+| `pnpm db:types`       | regenerate `packages/api/src/database.types.ts`     |
+| `pnpm db:test`        | run the pgTAP tests in `supabase/tests`             |
 
 Filter to one package with `pnpm --filter @potluck/core test`, or run Vitest in watch mode inside a package with `pnpm vitest`.
 

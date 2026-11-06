@@ -104,6 +104,19 @@ describe('ExpenseDetail', () => {
     expect(db().rpcArgs('delete_expense')).toEqual([{ id: ID }])
   })
 
+  it('offers no delete when someone who left still has money on it, and says why', async () => {
+    renderDetail({
+      expense_splits: [
+        { user_id: ME, share_cents: 1500, weight: null },
+        { user_id: 'dddddddd-0000-4000-8000-000000000004', share_cents: 1500, weight: null },
+      ],
+    })
+    expect(await screen.findByText(t('expenses.detail.departedLocked'))).toBeInTheDocument()
+    const actions = screen.getByRole('group', { name: t('expenses.detail.actions') })
+    expect(within(actions).getByRole('link', { name: t('common.edit') })).toBeInTheDocument()
+    expect(within(actions).queryByRole('button', { name: t('common.delete') })).toBeNull()
+  })
+
   it('keeps the expense when deleting is refused', async () => {
     db().respond('rpc:delete_expense', { error: { message: 'not_allowed' } })
     const { router } = renderDetail()

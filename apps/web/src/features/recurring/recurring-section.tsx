@@ -84,7 +84,8 @@ function RecurringRow({ item, groupId }: { item: RecurringExpense; groupId: stri
   const group = useMoneyGroup(groupId)
   const [confirm, setConfirm] = useState(false)
   const role = group.data?.members.find((m) => m.id === me)?.role
-  const allowed = can(role, 'expense.edit', { isOwn: item.created_by === me })
+  const allowed =
+    !group.data?.archived_at && can(role, 'expense.edit', { isOwn: item.created_by === me })
   const key = moneyKeys.recurring(groupId)
 
   const toggle = useMutation({

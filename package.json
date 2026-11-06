@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "turbo run dev",
@@ -18,6 +18,7 @@
     "db:types": "supabase gen types typescript --local > packages/api/src/database.types.ts && prettier --write packages/api/src/database.types.ts",
     "db:test": "supabase test db",
     "test:coverage": "turbo run test:coverage",
+    "test:functions": "node --test \"supabase/functions/**/*.test.ts\"",
     "e2e": "turbo run e2e"
   },
   "devDependencies": {

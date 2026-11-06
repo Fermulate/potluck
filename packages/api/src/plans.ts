@@ -7,6 +7,7 @@ import { queryOptions } from '@tanstack/react-query'
 import type { Database } from './database.types'
 import type { PotluckClient } from './index'
 import { fetchMyProfile, meKeys, type ProfileRow } from './me'
+import { fetchAllPages } from './paging'
 
 type Tables = Database['public']['Tables']
 type Functions = Database['public']['Functions']
@@ -254,12 +255,17 @@ export async function fetchEventAvailability(
   client: PotluckClient,
   eventId: string,
 ): Promise<PlanAvailabilityRow[]> {
-  const { data, error } = await client
-    .from('availability')
-    .select('event_id, user_id, slot_start, level')
-    .eq('event_id', eventId)
-  if (error) fail(error)
-  return data ?? []
+  // A busy poll easily passes the response row cap; a cut off list would seed the painter
+  // without some of the viewer's slots, and saving replaces them all.
+  return fetchAllPages((from, to) =>
+    client
+      .from('availability')
+      .select('event_id, user_id, slot_start, level')
+      .eq('event_id', eventId)
+      .order('user_id')
+      .order('slot_start')
+      .range(from, to),
+  ).catch(fail)
 }
 
 export async function fetchAvailabilityRequests(

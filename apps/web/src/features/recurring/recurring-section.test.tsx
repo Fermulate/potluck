@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb, rowsOf } from '@/test/supabase'
-import { BEN, GROUP_ID, ME, seededClient } from '../expenses/test-utils'
+import { BEN, GROUP_ID, ME, group, seededClient } from '../expenses/test-utils'
 import { RecurringSection } from './recurring-section'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -41,9 +41,12 @@ const rows = [
   }),
 ]
 
-function renderSection(list = rows) {
+function renderSection(list = rows, archived_at: string | null = null) {
   resetDb({ tables: { recurring_expenses: list.map((r) => ({ ...r })) } })
-  const client = seededClient((c) => c.setQueryData(moneyKeys.recurring(GROUP_ID), list))
+  const client = seededClient((c) => {
+    c.setQueryData(moneyKeys.recurring(GROUP_ID), list)
+    c.setQueryData(moneyKeys.groupInfo(GROUP_ID), { ...group, archived_at })
+  })
   return renderWithProviders(
     <>
       <RecurringSection groupId={GROUP_ID} />
@@ -135,6 +138,18 @@ describe('RecurringSection', () => {
       await screen.findByText(t('expenses.recurring.removedToast', { description: 'Rent' })),
     ).toBeInTheDocument()
     expect(rowsOf('recurring_expenses').map((r) => r.id)).toEqual(['r-net'])
+  })
+
+  it('offers no pause or stop in an archived group', async () => {
+    renderSection(rows, '2026-11-01T00:00:00Z')
+    await expand()
+    expect(within(row('Rent')).getByText('Rent')).toBeInTheDocument()
+    expect(
+      within(row('Rent')).queryByRole('button', { name: t('expenses.recurring.pause') }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(row('Rent')).queryByRole('button', { name: t('expenses.recurring.remove') }),
+    ).not.toBeInTheDocument()
   })
 
   it('reports a failed stop', async () => {

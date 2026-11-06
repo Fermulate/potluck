@@ -16,6 +16,23 @@ export function viewerLine(expense: ExpenseWithSplits, viewerId: string): Viewer
   return mine > 0 ? { kind: 'borrowed', cents: mine } : { kind: 'none' }
 }
 
+/**
+ * People who have left the group but still carry money in this expense: the payer, or anyone
+ * with a share. The server keeps such an expense's amounts, payer and split as they are and
+ * will not delete it, so screens lock those parts.
+ */
+export function departedMembers(
+  expense: Pick<ExpenseWithSplits, 'paid_by' | 'expense_splits'>,
+  memberIds: readonly string[],
+): string[] {
+  const members = new Set(memberIds)
+  const involved = [
+    expense.paid_by,
+    ...expense.expense_splits.filter((s) => s.share_cents > 0).map((s) => s.user_id),
+  ]
+  return [...new Set(involved)].filter((id) => !members.has(id))
+}
+
 /** Plain decimal for a CSV cell: 1234 USD cents -> "12.34", 1500 JPY -> "1500". */
 export function decimal(cents: number, currency: string): string {
   const digits = minorUnits(currency)
@@ -26,10 +43,15 @@ export function decimal(cents: number, currency: string): string {
   return `${sign}${Math.floor(abs / scale)}.${String(abs % scale).padStart(digits, '0')}`
 }
 
+/** Leading characters that make Excel, Sheets or LibreOffice treat a cell as a formula. */
+const FORMULA_START = /^[=+\-@\t\r]/
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
+
 function cell(value: string | number | null | undefined): string {
   const text = value == null ? '' : String(value)
-  // Quote anything with separators, quotes or newlines; neutralize spreadsheet formulas.
-  const safe = /^[=+\-@]/.test(text) && !/^-?\d/.test(text) ? `'${text}` : text
+  // Neutralize spreadsheet formulas (a plain negative number is fine); quote anything with
+  // separators, quotes or newlines.
+  const safe = FORMULA_START.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
 }
 

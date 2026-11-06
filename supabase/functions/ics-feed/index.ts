@@ -2,6 +2,7 @@
 // The token (from calendar_feed_token()) is the credential, so this function
 // does not require a JWT. Returns scheduled events from the owner's groups.
 import { adminClient } from '../_shared/admin.ts'
+import { escapeText, fold } from './ics.ts'
 
 const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.potluck-web.workers.dev'
 
@@ -10,25 +11,6 @@ function stamp(iso: string): string {
     .toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d{3}/, '')
-}
-
-function escapeText(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\n/g, '\\n')
-    .replace(/[,;]/g, (c) => `\\${c}`)
-}
-
-/** RFC 5545 lines are folded at 75 octets. */
-function fold(line: string): string {
-  const out: string[] = []
-  let rest = line
-  while (rest.length > 74) {
-    out.push(rest.slice(0, 74))
-    rest = ' ' + rest.slice(74)
-  }
-  out.push(rest)
-  return out.join('\r\n')
 }
 
 Deno.serve(async (req) => {

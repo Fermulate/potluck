@@ -1,7 +1,7 @@
 -- Structure: tables, RLS everywhere, RPC signatures and privileges, indexes,
 -- seeds, buckets, realtime, cron.
 begin;
-select plan(59);
+select plan(62);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -59,6 +59,7 @@ select has_function('public', 'schedule_event', array['uuid', 'timestamp with ti
 select has_function('public', 'cancel_event', array['uuid'], 'cancel_event');
 select has_function('public', 'my_timeline', array['timestamp with time zone', 'timestamp with time zone'], 'my_timeline');
 select has_function('public', 'delete_my_account', array[]::text[], 'delete_my_account');
+select has_function('public', 'delete_group', array['uuid'], 'delete_group');
 
 select is(
   (select count(*)::int from pg_proc p
@@ -169,6 +170,10 @@ select ok(not has_table_privilege('anon', 'public.groups', 'select'), 'anon cann
 
 -- Signup trigger
 select has_trigger('auth', 'users', 'on_auth_user_created', 'profile trigger on auth.users');
+
+-- Money guards
+select has_trigger('public', 'groups', 'groups_guard_delete', 'groups with open balances cannot be deleted');
+select has_trigger('public', 'recurring_expenses', 'recurring_expenses_skip_paused', 'resuming a template skips paused periods');
 
 select * from finish();
 rollback;

@@ -9,9 +9,9 @@ import {
 } from '@potluck/api'
 import { hasMessage, t } from '@potluck/i18n'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
-import { useBatchedInvalidate } from '@/lib/realtime'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 
 /** The viewer's profile. Shares the Me cache entry, so screens never fetch it twice. */
@@ -51,34 +51,28 @@ export function useTimeZone(): string {
  */
 export function useGroupMoneyRealtime(groupId: string | undefined) {
   const bump = useBatchedInvalidate()
-  useEffect(() => {
-    if (!groupId) return
-    const filter = `group_id=eq.${groupId}`
-    const channel = supabase
-      .channel(`money:${groupId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter }, (p) => {
-        const id = (p.new as { id?: string } | null)?.id
-        bump(moneyKeys.group(groupId), ...(id ? [moneyKeys.expense(id)] : []))
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter }, () =>
-        bump(moneyKeys.group(groupId)),
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activity', filter },
-        (p) => {
-          const row = p.new as { verb?: string; data?: { expense_id?: string } }
-          if (row.verb === 'comment.created' && row.data?.expense_id) {
-            bump(moneyKeys.comments(row.data.expense_id))
-          }
-          bump(moneyKeys.activity())
-        },
-      )
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [groupId, bump])
+  const filter = `group_id=eq.${groupId}`
+  useRealtime(
+    groupId ? `money:${groupId}` : null,
+    [
+      { table: 'expenses', filter },
+      { table: 'settlements', filter },
+      { table: 'activity', event: 'INSERT', filter },
+    ],
+    (payload) => {
+      if (!groupId) return
+      if (payload.table === 'activity') {
+        const row = payload.new as { verb?: string; data?: { expense_id?: string } }
+        if (row.verb === 'comment.created' && row.data?.expense_id) {
+          bump(moneyKeys.comments(row.data.expense_id))
+        }
+        bump(moneyKeys.activity())
+        return
+      }
+      const id = payload.table === 'expenses' ? (payload.new as { id?: string } | null)?.id : null
+      bump(moneyKeys.group(groupId), ...(id ? [moneyKeys.expense(id)] : []))
+    },
+  )
 }
 
 /**

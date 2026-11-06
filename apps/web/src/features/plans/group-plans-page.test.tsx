@@ -117,4 +117,16 @@ describe('GroupPlansPage', () => {
     emitChange('events', 'UPDATE')
     await waitFor(() => expect(db().queries('events').length).toBeGreaterThan(before))
   })
+
+  it('keeps refetching after another copy of the page on the same group closes', async () => {
+    const first = renderWithProviders(<GroupPlansPage groupId="g-hike" />, {
+      path: '/groups/g-hike/plans',
+    })
+    renderWithProviders(<GroupPlansPage groupId="g-hike" />, { path: '/groups/g-hike/plans' })
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /Quiz night/ })).toHaveLength(2))
+    first.unmount()
+    const before = db().queries('events').length
+    emitChange('events', 'UPDATE')
+    await waitFor(() => expect(db().queries('events').length).toBeGreaterThan(before))
+  })
 })

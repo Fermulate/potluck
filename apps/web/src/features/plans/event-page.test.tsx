@@ -149,7 +149,7 @@ describe('EventPage', () => {
     cell!.focus()
     fireEvent.keyDown(cell!, { key: ' ' })
     await waitFor(() => expect(cell).toHaveAttribute('aria-selected', 'true'))
-    await waitFor(() => expect(setAvailability).toHaveBeenCalled(), { timeout: 3000 })
+    await waitFor(() => expect(setAvailability).toHaveBeenCalled())
     expect(screen.getByRole('heading', { name: 'When are you free?' })).toBe(painter)
     expect(painterFirst()).toBe(true)
   })

@@ -3,7 +3,6 @@ import { pairwiseDebts } from '@potluck/core'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useGroupExpenses, useGroupSettlements } from '@/features/expenses/money-data'
 
 /**
  * Who owes whom in the group currency: the server's simplified set when the group simplifies
@@ -15,8 +14,12 @@ export function useDebts(groupId: string, group: MoneyGroup | undefined): Debt[]
     ...moneyQueries.simplified(supabase, groupId),
     enabled: !!group && simplify,
   })
-  const expenses = useGroupExpenses(groupId)
-  const settlements = useGroupSettlements(groupId)
+  // The whole ledger is only needed to net pairs by hand; the server simplifies on its own.
+  const expenses = useQuery({ ...moneyQueries.expenses(supabase, groupId), enabled: !simplify })
+  const settlements = useQuery({
+    ...moneyQueries.settlements(supabase, groupId),
+    enabled: !simplify,
+  })
   const pairwise = useMemo(() => {
     if (!group || simplify || !expenses.data || !settlements.data) return undefined
     return pairwiseDebts(

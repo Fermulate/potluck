@@ -1,13 +1,18 @@
 name: Deploy
 
+# Production deploys only after CI passed on main: this workflow runs when the CI run for a
+# push to main completes, and its jobs skip unless that run succeeded. Pull requests still get
+# a preview straight away; workflow_dispatch redeploys main by hand.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.event.pull_request.number || github.ref }}
+  group: deploy-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -22,14 +27,21 @@ env:
 jobs:
   migrate:
     name: Apply database migrations
-    if: github.event_name != 'pull_request'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The commit CI just tested, not whatever main points at now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.0.0
       - name: Push migrations and auth config
         if: env.HAS_SUPABASE == 'true'
         env:
@@ -50,11 +62,17 @@ jobs:
   web:
     name: Deploy web to Cloudflare
     needs: [migrate]
-    if: always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
+    # Previews deploy on their own; production only after migrate ran (so only after green CI).
+    if: >-
+      always() &&
+      ((github.event_name == 'pull_request' && needs.migrate.result == 'skipped') ||
+       (github.event_name != 'pull_request' && needs.migrate.result == 'success'))
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:

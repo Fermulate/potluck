@@ -77,6 +77,8 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Room for a few slow findBy waits (see src/test/setup.ts) before a test is called hung.
+    testTimeout: 20_000,
     css: false,
     exclude: ['e2e/**', 'node_modules/**'],
     coverage: {

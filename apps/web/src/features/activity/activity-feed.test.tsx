@@ -71,7 +71,12 @@ describe('ActivityFeed', () => {
     fireEvent.click(await screen.findByRole('button', { name: t('activity.loadMore') }))
     expect(await screen.findByRole('link', { name: /Firewood/ })).toBeInTheDocument()
     const [, second] = db().queries('activity')
-    expect(argsOf(second!, 'lt')).toEqual([['created_at', page.at(-1)!.created_at]])
+    const last = page.at(-1)!
+    expect(argsOf(second!, 'or')).toEqual([
+      [
+        `created_at.lt."${last.created_at}",and(created_at.eq."${last.created_at}",id.lt."${last.id}")`,
+      ],
+    ])
     await waitFor(() =>
       expect(
         screen.queryByRole('button', { name: t('activity.loadMore') }),

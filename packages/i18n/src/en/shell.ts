@@ -172,6 +172,8 @@ export const errors = {
     not_allowed: 'You do not have permission to do that.',
     member_not_found: 'That person is not in this group anymore.',
     member_has_balance: 'They still have an open balance here. Settle up first.',
+    group_has_balances:
+      'Someone still owes money here. Settle every balance before deleting the group.',
     owner_must_transfer: 'Hand ownership to someone else before you go.',
     use_transfer_ownership: 'Use transfer ownership to make someone the owner.',
     use_leave_group: 'Use leave group to remove yourself.',
@@ -183,6 +185,7 @@ export const errors = {
     group_currency_locked: 'The currency is locked once money has been added.',
     group_owner_required: 'A group always needs an owner.',
     group_archived: 'This group is archived.',
+    rsvp_closed: 'RSVPs for this plan are closed.',
     direct_group: 'One-on-one tabs cannot have invite links.',
     invalid_role: 'Invites cannot make someone the owner.',
     invalid_max_uses: 'Uses must be at least 1.',

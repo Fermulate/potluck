@@ -8,6 +8,12 @@ describe('errorMessage', () => {
     )
   })
 
+  it('explains why a group with open balances cannot be deleted', () => {
+    expect(errorMessage({ message: 'group_has_balances', code: '23514' })).toBe(
+      'Someone still owes money here. Settle every balance before deleting the group.',
+    )
+  })
+
   it('translates auth error codes', () => {
     expect(
       errorMessage({ code: 'invalid_credentials', message: 'Invalid login credentials' }),

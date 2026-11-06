@@ -1,8 +1,9 @@
 import { plansKeys, setAvailability, type PlanAvailabilityRow } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { toast } from '@potluck/ui'
-import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { slotKey, type PaintLevel } from '@/features/availability/grid'
 import { planErrorCode, planErrorMessage } from './format'
@@ -13,62 +14,42 @@ import { planErrorCode, planErrorMessage } from './format'
  * themselves). Invalidations are batched so a burst of rows refetches once.
  */
 export function useEventRealtime(eventId: string, groupId: string | undefined) {
-  const queryClient = useQueryClient()
-  useEffect(() => {
-    if (!groupId) return
-    const pending = new Map<string, QueryKey>()
-    let timer: number | undefined
-    const flush = () => {
-      timer = undefined
-      for (const key of pending.values()) void queryClient.invalidateQueries({ queryKey: key })
-      pending.clear()
-    }
-    const bump = (...keys: QueryKey[]) => {
-      for (const key of keys) pending.set(JSON.stringify(key), key)
-      timer ??= window.setTimeout(flush, 300)
-    }
-
-    const channel = supabase
-      .channel(`plan:${eventId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'availability', filter: `event_id=eq.${eventId}` },
-        () =>
+  const bump = useBatchedInvalidate()
+  useRealtime(
+    groupId ? `plan:${eventId}` : null,
+    [
+      { table: 'availability', filter: `event_id=eq.${eventId}` },
+      { table: 'events', filter: `id=eq.${eventId}` },
+      { table: 'event_rsvps', filter: `event_id=eq.${eventId}` },
+      { table: 'activity', event: 'INSERT', filter: `group_id=eq.${groupId}` },
+    ],
+    (payload) => {
+      switch (payload.table) {
+        case 'availability':
           bump(
             plansKeys.availability(eventId),
             plansKeys.bestSlots(eventId),
             plansKeys.requests(eventId),
-          ),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'events', filter: `id=eq.${eventId}` },
-        () =>
-          bump(plansKeys.event(eventId), plansKeys.timelineAll(), plansKeys.groupEvents(groupId)),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'event_rsvps', filter: `event_id=eq.${eventId}` },
-        () => bump(plansKeys.rsvps(eventId)),
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activity', filter: `group_id=eq.${groupId}` },
-        (payload) => {
+          )
+          break
+        case 'events':
+          if (groupId) {
+            bump(plansKeys.event(eventId), plansKeys.timelineAll(), plansKeys.groupEvents(groupId))
+          }
+          break
+        case 'event_rsvps':
+          bump(plansKeys.rsvps(eventId))
+          break
+        case 'activity': {
           const row = payload.new as { verb?: string; data?: { event_id?: string } }
           if (row.verb === 'comment.created' && row.data?.event_id === eventId) {
             bump(plansKeys.comments(eventId))
           }
           if (row.verb === 'availability.requested') bump(plansKeys.requests(eventId))
-        },
-      )
-      .subscribe()
-
-    return () => {
-      if (timer) window.clearTimeout(timer)
-      void supabase.removeChannel(channel)
-    }
-  }, [eventId, groupId, queryClient])
+        }
+      }
+    },
+  )
 }
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'failed' | 'rejected'

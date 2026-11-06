@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decimal, expensesToCsv, viewerLine } from './expense-math'
+import { decimal, departedMembers, expensesToCsv, viewerLine } from './expense-math'
 import { BEN, CLEO, ME, expense, members } from './test-utils'
 
 describe('viewerLine', () => {
@@ -15,6 +15,30 @@ describe('viewerLine', () => {
         ME,
       ),
     ).toEqual({ kind: 'none' })
+  })
+})
+
+describe('departedMembers', () => {
+  const GONE = 'dddddddd-0000-4000-8000-000000000004'
+  const ids = [ME, BEN, CLEO]
+
+  it('finds a payer or a share holder who is no longer in the group', () => {
+    expect(departedMembers(expense({}), ids)).toEqual([])
+    expect(departedMembers(expense({ paid_by: GONE }), ids)).toEqual([GONE])
+    const split = [
+      { user_id: ME, share_cents: 1000, weight: null },
+      { user_id: GONE, share_cents: 2000, weight: null },
+    ]
+    expect(departedMembers(expense({ expense_splits: split }), ids)).toEqual([GONE])
+    expect(departedMembers(expense({ paid_by: GONE, expense_splits: split }), ids)).toEqual([GONE])
+  })
+
+  it('ignores someone who left with a zero share', () => {
+    const split = [
+      { user_id: ME, share_cents: 3000, weight: 1 },
+      { user_id: GONE, share_cents: 0, weight: 0 },
+    ]
+    expect(departedMembers(expense({ expense_splits: split }), ids)).toEqual([])
   })
 })
 
@@ -47,6 +71,26 @@ describe('expensesToCsv', () => {
       '2026-11-04,Tacos,Food,Ava Chen,30.00,USD,1,30.00,10.00,10.00,10.00,',
       '',
     ])
+  })
+
+  it('neutralizes anything a spreadsheet would run as a formula, but not plain numbers', () => {
+    const notesCell = (notes: string) => {
+      const csv = expensesToCsv([expense({ notes })], members, 'USD')
+      return csv.slice(csv.indexOf('\r\n') + 2).replace(/^(?:[^,]*,){11}/, '')
+    }
+    // Leading minus followed by a digit used to slip through as "a negative number".
+    expect(notesCell('-1+1|cmd')).toBe(`'-1+1|cmd\r\n`)
+    expect(notesCell(`-2+3+cmd|' /C calc'!A0`)).toBe(`'-2+3+cmd|' /C calc'!A0\r\n`)
+    expect(notesCell('=1+1')).toBe(`'=1+1\r\n`)
+    expect(notesCell('+1+1')).toBe(`'+1+1\r\n`)
+    expect(notesCell('@SUM(A1)')).toBe(`'@SUM(A1)\r\n`)
+    expect(notesCell('\t=1+1')).toBe(`'\t=1+1\r\n`)
+    expect(notesCell('\r=1+1')).toBe(`"'\r=1+1"\r\n`)
+    // Real numbers stay numbers.
+    expect(notesCell('-5')).toBe('-5\r\n')
+    expect(notesCell('-12.50')).toBe('-12.50\r\n')
+    expect(notesCell('42')).toBe('42\r\n')
+    expect(notesCell('Split 3 ways')).toBe('Split 3 ways\r\n')
   })
 
   it('formats amounts by the currency minor unit', () => {
