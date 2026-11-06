@@ -499,7 +499,27 @@ The schema lives in `supabase/migrations`, pgTAP tests in `supabase/tests` (`pnp
 
 ### Errors
 
-Every RPC raises `message = <stable snake_case code>`, `detail = <readable English>`, `errcode = <sqlstate>`. Clients translate the code (PostgREST returns it as `message`, the English text as `details`). SQLSTATEs: `42501` not signed in or not allowed, `PT404` not found (PostgREST answers 404; migrations before 20261105200000 used `P0002`), `22023` invalid input, `23514` business rule. Common codes: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `member_not_found`, `member_has_balance`, `owner_must_transfer`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `split_member_not_in_group`, `payer_not_in_group`, `fx_rate_unavailable`, `invalid_amount`, `expense_not_found`, `expense_deleted`, `event_not_found`, `event_not_polling`, `event_not_schedulable`, `invalid_slot`, `duplicate_slot`, `group_currency_locked`, `group_archived` (any write into an archived group: expenses, recurring expenses, payments, plans, availability, comments, RSVPs), `group_has_balances` (deleting a group while anyone, former members included, has a non-zero balance), `rsvp_closed` (RSVP after the event's `rsvp_deadline`), `blocked` (joining a group, or opening a 1:1 tab, across a block in either direction), `member_not_in_group` (removing a payment with someone who has left), `settlement_not_found`, `event_not_in_group` (linking an expense to a plan in another group).
+Every RPC raises `message = <stable snake_case code>`, `detail = <readable English>`, `errcode = <sqlstate>`. PostgREST returns the code as `message` and the English text as `details`; clients translate the code.
+
+SQLSTATEs:
+
+- `42501`: not signed in, or not allowed.
+- `PT404`: not found. PostgREST answers 404. Migrations before `20261105200000_not_found_as_404.sql` show `P0002` (HTTP 500); that migration rewrote every body, so never copy `P0002` from an old file. pgTAP (`01_schema.test.sql`) and `apps/web/src/lib/server-codes.test.ts` fail on it.
+- `22023`: invalid input.
+- `23514`: business rule.
+
+Where the wording lives (`errorMessage` in `apps/web/src/lib/errors.ts`): the screen's scope first (`expenses.errors.<code>` in `packages/i18n/src/en/money.ts`, `events.errors.<code>` in `en/plans.ts`), then the auth codes, then `errors.codes.<code>` in `en/shell.ts`, then the generic message. `server-codes.test.ts` fails when a code raised in any migration has no wording on any screen or is missing from this list. `docs/agent-map.json` (`errorCodes`) shows, per code, its SQLSTATEs, the functions that raise it and the keys that translate it.
+
+Codes:
+
+- Session and membership: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `blocked` (joining a group, or opening a 1:1 tab, across a block in either direction).
+- Groups and roles: `group_name_required`, `invalid_currency`, `group_currency_locked`, `group_owner_required`, `group_archived` (any write into an archived group: expenses, recurring expenses, payments, plans, availability, comments, RSVPs), `group_has_balances` (deleting a group while anyone, former members included, has a non-zero balance), `member_not_found`, `member_has_balance`, `owner_must_transfer`, `already_owner`, `cannot_change_owner`, `cannot_remove_owner`, `use_transfer_ownership`, `use_leave_group`.
+- 1:1 tabs: `invalid_friend`, `not_a_friend`.
+- Invites: `direct_group`, `invalid_role`, `invalid_max_uses`, `invalid_expiry`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`.
+- Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left).
+- Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`.
+- Payments: `invalid_recipient`, `settlement_not_found`, `member_not_in_group` (removing a payment with someone who has left).
+- Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
 
 ### RPC details and deviations
 
