@@ -1,6 +1,7 @@
 import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
 import type { InvitePreview } from '@potluck/api'
+import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
@@ -9,6 +10,7 @@ import { JoinPage } from './join-page'
 const state = vi.hoisted(() => ({
   session: null as null | { user: { id: string; user_metadata: Record<string, unknown> } },
   preview: null as InvitePreview | null,
+  failure: null as Error | null,
   acceptInvite: vi.fn(async () => 'g-hike'),
 }))
 
@@ -19,6 +21,7 @@ vi.mock('@potluck/api', async (importOriginal) => {
     invitePreviewQueryOptions: () => ({
       queryKey: ['test', 'preview'],
       queryFn: async () => {
+        if (state.failure) throw state.failure
         if (!state.preview) throw new Error('invite_not_found')
         return state.preview
       },
@@ -48,7 +51,28 @@ describe('JoinPage', () => {
   beforeEach(() => {
     state.session = null
     state.preview = valid
+    state.failure = null
     vi.clearAllMocks()
+  })
+
+  it('offers a retry when the invite could not be loaded, instead of calling it dead', async () => {
+    state.failure = new TypeError('Failed to fetch')
+    renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
+    expect(
+      await screen.findByRole('heading', { name: t('invites.join.loadFailedTitle') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(t('invites.invalid.title'))).not.toBeInTheDocument()
+
+    state.failure = null
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'Hike crew' })).toBeInTheDocument()
+  })
+
+  it('still says gone cold for an unknown code', async () => {
+    state.preview = null
+    renderWithProviders(<JoinPage code="nope" />, { path: '/join/nope' })
+    expect(await screen.findByText(t('invites.invalid.notFound'))).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).not.toBeInTheDocument()
   })
 
   it('shows the group and who is already in', async () => {
