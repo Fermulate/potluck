@@ -80,6 +80,29 @@ describe('split previews and payloads', () => {
     expect(splitsPayload(draft, 1001)).toEqual([{ user_id: A }, { user_id: B }])
   })
 
+  it('gives someone toggled back in a share again', () => {
+    const zeroed = {
+      ...initialDraft(ids),
+      mode: 'shares' as const,
+      shares: { [A]: 2, [B]: 1, [C]: 0 },
+    }
+    const out = toggleParticipant(zeroed, C, ids)
+    const back = toggleParticipant(out, C, ids)
+    expect(back.participants).toEqual(ids)
+    expect(back.shares[C]).toBe(1)
+    expect(previewSplit(back, 400)).toEqual({ ok: true, shares: { [A]: 200, [B]: 100, [C]: 100 } })
+  })
+
+  it('keeps a share count someone had when toggled back in', () => {
+    const draft = {
+      ...initialDraft(ids),
+      mode: 'shares' as const,
+      shares: { [A]: 1, [B]: 1, [C]: 3 },
+    }
+    const back = toggleParticipant(toggleParticipant(draft, C, ids), C, ids)
+    expect(back.shares[C]).toBe(3)
+  })
+
   it('sends weights for percent and shares, cents for exact', () => {
     const base = initialDraft(ids)
     expect(

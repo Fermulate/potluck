@@ -136,7 +136,10 @@ export function sameSplit(a: SplitDraft, b: SplitDraft): boolean {
   return a.participants.every((id) => (a[values][id] ?? 0) === (b[values][id] ?? 0))
 }
 
-/** Toggle someone in or out of the split; percentages reset to even when the people change. */
+/**
+ * Toggle someone in or out of the split; percentages reset to even when the people change.
+ * Someone coming back in gets at least one share, so they never rejoin owing nothing.
+ */
 export function toggleParticipant(
   draft: SplitDraft,
   id: string,
@@ -147,11 +150,12 @@ export function toggleParticipant(
   if (has) set.delete(id)
   else set.add(id)
   const participants = memberOrder.filter((m) => set.has(m))
+  const shares = draft.shares[id] ?? 0
   return {
     ...draft,
     participants,
     percent: evenPercent(participants),
-    shares: { ...draft.shares, [id]: draft.shares[id] ?? 1 },
+    shares: { ...draft.shares, [id]: has ? shares : Math.max(1, shares) },
   }
 }
 
