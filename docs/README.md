@@ -9,6 +9,7 @@ Start with [development.md](development.md) to get Potluck running, then read [a
 | [sequences.md](sequences.md)                     | you want to know what actually happens when someone adds an expense, joins a group or deploys |
 | [testing.md](testing.md)                         | writing tests, checking coverage, running pgTAP                                               |
 | [deployment.md](deployment.md)                   | configuring CI, setting secrets, rolling back, or running your own copy                       |
+| [launch-checklist.md](launch-checklist.md)       | seeing what is live and what still needs credentials or a person                              |
 | [security.md](security.md)                       | you touch auth, RLS, storage or edge functions, or want to know what data we keep             |
 | [design.md](design.md)                           | building UI: palette, type, motion, accessibility                                             |
 | [dogfood/performance.md](dogfood/performance.md) | the performance pass: what was measured, what changed and what it bought                      |

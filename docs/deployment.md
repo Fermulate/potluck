@@ -32,13 +32,15 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 
 ### Secrets
 
-| Name                       | Used for                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`     | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account |
-| `SUPABASE_ACCESS_TOKEN`    | Supabase CLI (personal access token from the dashboard)                           |
-| `SUPABASE_DB_PASSWORD`     | `supabase db push` to the remote database                                         |
-| `SUPABASE_URL`             | `keepalive.yml` daily ping                                                        |
-| `SUPABASE_PUBLISHABLE_KEY` | `keepalive.yml` daily ping                                                        |
+| Name                                   | Used for                                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`                 | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account        |
+| `SUPABASE_ACCESS_TOKEN`                | Supabase CLI (personal access token from the dashboard)                                  |
+| `SUPABASE_DB_PASSWORD`                 | `supabase db push` to the remote database                                                |
+| `SUPABASE_URL`                         | `keepalive.yml` daily ping                                                               |
+| `SUPABASE_PUBLISHABLE_KEY`             | `keepalive.yml` daily ping                                                               |
+| `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push`, once Google sign in is enabled (`production` environment secret) |
+| `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`  | `supabase config push`, once Apple sign in is enabled (`production` environment secret)  |
 
 Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without both Supabase secrets the `migrate` job logs a notice and skips. That keeps forks green.
 
