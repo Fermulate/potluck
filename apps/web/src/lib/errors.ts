@@ -20,6 +20,18 @@ export function errorCode(error: unknown): string | null {
   return null
 }
 
+/**
+ * True when the thing asked for does not exist (or is hidden from the viewer): RPCs raise
+ * `*_not_found` with SQLSTATE PT404, which PostgREST answers with HTTP 404, and `.single()`
+ * on zero rows fails with PGRST116. Retrying never changes the answer.
+ */
+export function isNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const e = error as { code?: unknown; status?: unknown }
+  if (e.code === 'PT404' || e.code === 'PGRST116' || e.status === 404) return true
+  return errorCode(error)?.endsWith('_not_found') ?? false
+}
+
 /** A friendly, translated message for any error the API layer throws. */
 export function errorMessage(error: unknown): string {
   const code = errorCode(error)
