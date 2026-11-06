@@ -44,7 +44,7 @@ select is(pg_temp.shares(tests.id('e_equal_forged')), array[3334, 3333, 3333]::b
 reset role;
 select is(
   (select (paid_by, created_by, split_type, currency, fx_rate, spent_at)::text from public.expenses where id = tests.id('e_equal')),
-  (tests.uid('m1'), tests.uid('m1'), 'equal'::public.split_type, 'USD'::char(3), 1::numeric(18,8), current_date)::text,
+  (tests.uid('m1'), tests.uid('m1'), 'equal'::public.split_type, 'USD'::char(3), 1::numeric(24,12), current_date)::text,
   'defaults: caller pays, group currency, rate 1, today'
 );
 select tests.login('m1');

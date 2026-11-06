@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(39);
+select plan(45);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -289,6 +289,40 @@ select is(
   null,
   'moving the time sends the reminder again'
 );
+
+-- FX precision ----------------------------------------------------------------------------------
+
+insert into public.fx_rates (base, quote, day, rate) values
+  ('IDR', 'USD', current_date, 0.000061714286),
+  ('USD', 'KRW', current_date, 1400)
+on conflict (base, quote, day) do update set rate = excluded.rate;
+delete from public.fx_rates where base = 'KRW' and quote = 'USD';
+
+select is(
+  (select rate from public.fx_rates where base = 'IDR' and quote = 'USD' and day = current_date),
+  0.000061714286::numeric,
+  'rates keep 12 decimals'
+);
+select is(private.fx_rate('KRW', 'USD', current_date), 0.000714285714::numeric, 'inverse rates are rounded to 12 decimals');
+
+select tests.login('own');
+select tests.remember('rupiah', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('m'), 'description', 'Villa', 'amount_cents', 10000000000, 'currency', 'IDR',
+  'splits', tests.people('own')))));
+reset role;
+select is(
+  (select fx_rate from public.expenses where id = tests.id('rupiah')),
+  0.000061714286::numeric,
+  'the expense snapshots the full rate'
+);
+select is(
+  (select private.convert_minor(e.amount_cents, e.fx_rate, e.currency, 'USD') from public.expenses e where e.id = tests.id('rupiah')),
+  617143::bigint,
+  '100,000,000 IDR converts to 6,171.43 USD (8 decimals gave 6,171.00)'
+);
+select is(private.convert_minor(1050, 1.1, 'EUR', 'USD'), 1155::bigint, 'ordinary conversions are unchanged');
+
+select has_index('public', 'fx_rates', 'fx_rates_quote_day_idx', 'currency picker lookups by quote are indexed');
 
 select * from finish();
 rollback;

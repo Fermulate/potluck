@@ -18,6 +18,7 @@
 --   * The owner can leave when only closed accounts are left with them, which
 --     deletes the group, as long as no active person has an open balance.
 --   * schedule_event keeps reminder_sent_at unless the start time changes.
+--   * FX rates keep 12 decimal places instead of 8 (IDR, KRW and friends).
 
 -- Blocks --------------------------------------------------------------------------------------
 
@@ -970,3 +971,140 @@ begin
   return ev;
 end;
 $$;
+
+-- FX precision --------------------------------------------------------------------------------
+
+-- Cross rates for weak currencies (1 IDR = 0.0000617 USD) kept only three or
+-- four significant digits at 8 decimals. 12 decimals keep at least eight.
+-- Stored rates have at most 8 decimals, so widening changes no balance.
+drop view public.group_balances;
+
+alter table public.fx_rates alter column rate type numeric(24, 12);
+alter table public.expenses alter column fx_rate type numeric(24, 12);
+alter table public.settlements alter column fx_rate type numeric(24, 12);
+
+create or replace function private.convert_minor(amount bigint, rate numeric, from_currency text, to_currency text)
+returns bigint
+language sql
+immutable
+parallel safe
+return case
+    when from_currency = to_currency then round(amount::numeric * rate::numeric(24, 12))::bigint
+    else round(
+      amount::numeric * rate::numeric(24, 12)
+      * power(10::numeric, private.minor_units(to_currency) - private.minor_units(from_currency))
+    )::bigint
+  end;
+
+create or replace function private.fx_rate(from_currency char(3), to_currency char(3), on_day date default current_date)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  result numeric;
+begin
+  if from_currency = to_currency then
+    return 1;
+  end if;
+
+  select r.rate into result
+  from public.fx_rates r
+  where r.base = from_currency and r.quote = to_currency and r.day <= on_day
+  order by r.day desc
+  limit 1;
+
+  if result is null then
+    select round(1 / r.rate, 12) into result
+    from public.fx_rates r
+    where r.base = to_currency and r.quote = from_currency and r.day <= on_day
+    order by r.day desc
+    limit 1;
+  end if;
+
+  return result;
+end;
+$$;
+
+-- Unchanged from 20261105071431_group_balances_view.sql.
+create view public.group_balances
+with (security_invoker = true)
+as
+with expense_totals as not materialized (
+  select
+    e.id,
+    e.group_id,
+    e.paid_by,
+    private.convert_minor(e.amount_cents, e.fx_rate, e.currency, g.currency) as total
+  from public.expenses e
+  join public.groups g on g.id = e.group_id
+  where e.deleted_at is null
+),
+split_parts as (
+  select
+    t.id,
+    t.group_id,
+    t.total,
+    s.user_id,
+    div(t.total::numeric * s.share_cents, sum(s.share_cents) over w) as base,
+    mod(t.total::numeric * s.share_cents, sum(s.share_cents) over w) as rem
+  from expense_totals t
+  join public.expense_splits s on s.expense_id = t.id
+  window w as (partition by t.group_id, t.id)
+),
+split_shares as (
+  select
+    p.group_id,
+    p.user_id,
+    p.base + case
+      when row_number() over (partition by p.group_id, p.id order by p.rem desc, p.user_id)
+           <= p.total - sum(p.base) over (partition by p.group_id, p.id)
+      then 1 else 0
+    end as share
+  from split_parts p
+),
+ledger as (
+  select m.group_id, m.user_id, 0::numeric as delta
+  from public.group_members m
+
+  union all
+
+  select t.group_id, t.paid_by, t.total::numeric
+  from expense_totals t
+
+  union all
+
+  select s.group_id, s.user_id, -s.share
+  from split_shares s
+
+  union all
+
+  select st.group_id, st.from_user,
+         private.convert_minor(st.amount_cents, st.fx_rate, st.currency, g.currency)::numeric
+  from public.settlements st
+  join public.groups g on g.id = st.group_id
+  where st.deleted_at is null
+
+  union all
+
+  select st.group_id, st.to_user,
+         -private.convert_minor(st.amount_cents, st.fx_rate, st.currency, g.currency)::numeric
+  from public.settlements st
+  join public.groups g on g.id = st.group_id
+  where st.deleted_at is null
+)
+select l.group_id, l.user_id, sum(l.delta)::bigint as net_cents
+from ledger l
+group by l.group_id, l.user_id;
+
+comment on view public.group_balances is 'Net balance per member in group currency (positive = is owed).';
+
+revoke all on table public.group_balances from anon, authenticated;
+grant select on table public.group_balances to authenticated;
+grant select on table public.group_balances to service_role;
+
+-- The currency picker asks which currencies convert into the group currency
+-- (base = X or quote = X); the primary key only covers the base side.
+create index fx_rates_quote_day_idx on public.fx_rates (quote, day desc) include (base);

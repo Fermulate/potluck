@@ -67,7 +67,7 @@ select is(
 );
 select is(
   (select (created_by, paid_by, fx_rate)::text from public.expenses where recurring_id = tests.id('r') and spent_at = '2026-04-15'),
-  (tests.uid('m1'), tests.uid('m1'), 1::numeric(18,8))::text,
+  (tests.uid('m1'), tests.uid('m1'), 1::numeric(24,12))::text,
   'creator, payer and rate come from the template'
 );
 select is(
