@@ -646,8 +646,8 @@ Each recurring template runs inside its own `begin ... exception` block, so one 
 ## Time zones
 
 - Instants are `timestamptz` and travel as UTC ISO strings. Calendar dates (`spent_at`, `window_start`, `window_end`, `next_run_on`) are `date` with no zone; `packages/i18n` renders them pinned to UTC so June 12 stays June 12 for everyone.
-- `profiles.timezone` (IANA) is the viewer's zone. `formatDate` and friends in `packages/i18n` require a `timeZone` argument and never fall back to the host zone.
-- `events.timezone` is the zone the availability grid is drawn in. A cell is a wall-clock time in that zone, stored as its UTC instant in `availability.slot_start`. `buildSlots()` in core skips wall times that do not exist (spring forward) and uses the first of a repeated hour (fall back), so "8 pm" stays 8 pm across a DST change. `set_availability` checks every slot against the same grid with `at time zone`.
+- `profiles.timezone` (IANA) is the viewer's zone, UTC included; the device zone stands in only while the profile loads or when it has none (`resolveTimeZone` in `apps/web/src/lib/locale.ts`, used by every screen). `formatDate` and friends in `packages/i18n` require a `timeZone` argument and never fall back to the host zone.
+- `events.timezone` is the zone the availability grid is drawn in. A cell is a wall-clock time in that zone, stored as its UTC instant in `availability.slot_start`. `buildSlots()` in core skips wall times that do not exist (spring forward) and uses the first of a repeated hour (fall back), so "8 pm" stays 8 pm across a DST change. `set_availability` checks every slot against the same grid with `at time zone`. The web grid keeps rows and columns on that event-zone grid and labels them in the viewer's zone: each row takes the viewer time most of its slots share, and a day the viewer's clock moved against (a DST switch inside the window) shows how far its cells sit off the row labels ("+1 h"). Every viewer hour gets an axis label, so an hourly poll seen from a half hour zone reads "3:30 AM", "4:30 AM".
 - Cron runs in UTC. `materialize-recurring-expenses` uses `current_date` in UTC.
 
 ## Edge functions
