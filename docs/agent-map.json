@@ -1684,7 +1684,7 @@
       "code": "group_required",
       "sqlstates": ["22023"],
       "raisedBy": ["private.save_expense"],
-      "i18n": []
+      "i18n": ["expenses.errors.group_required"]
     },
     {
       "code": "invalid_amount",
@@ -1720,7 +1720,7 @@
       "code": "invalid_payload",
       "sqlstates": ["22023"],
       "raisedBy": ["private.save_expense"],
-      "i18n": []
+      "i18n": ["expenses.errors.invalid_payload"]
     },
     {
       "code": "invalid_receipt_path",
@@ -1756,7 +1756,7 @@
       "code": "invalid_splits",
       "sqlstates": ["22023"],
       "raisedBy": ["private.compute_splits"],
-      "i18n": []
+      "i18n": ["expenses.errors.invalid_splits"]
     },
     {
       "code": "invalid_weight",
