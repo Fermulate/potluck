@@ -355,8 +355,10 @@ sequenceDiagram
   participant E as Edge notify
 
   CR->>DB: 00:10 UTC: private.materialize_recurring_expenses(current_date)
-  DB->>DB: select active templates with next_run_on <= today,<br/>for update skip locked
+  DB->>DB: collect active templates with next_run_on <= today
+  DB->>DB: share lock their group rows, in group id order
   loop each template (own exception block)
+    DB->>DB: lock and re-read the template,<br/>for update skip locked (skip if taken or no longer due)
     alt group archived, payer or a split person left<br/>or closed their account
       DB->>DB: active = false, skip
     else

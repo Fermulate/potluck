@@ -326,6 +326,7 @@ select tests.remember('ra_t', (select recurring_id from create_expense(jsonb_bui
   'group_id', tests.id('ra'), 'description', 'Old rent', 'amount_cents', 2000, 'spent_at', current_date - 40,
   'recurrence', 'monthly', 'splits', tests.people('own', 'pal')))));
 reset role;
+select set_config('request.jwt.claims', '', true);
 update public.groups set archived_at = now() where id = tests.id('ra');
 select private.materialize_recurring_expenses(current_date);
 select is(

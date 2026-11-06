@@ -352,18 +352,20 @@ set search_path = ''
 as $$
 #variable_conflict use_column
 declare
-  my_role public.group_role := private.require_member(remove_member.group_id);
+  my_role public.group_role;
   target_role public.group_role;
 begin
+  -- Waits for money writes in flight; new ones wait for this transaction.
+  -- Membership is read once the lock is held, so a caller removed meanwhile is refused.
+  perform 1 from public.groups g where g.id = remove_member.group_id for no key update;
+  my_role := private.require_member(remove_member.group_id);
+
   if remove_member.user_id = auth.uid() then
     raise exception using message = 'use_leave_group', detail = 'Use leave group to remove yourself', errcode = '22023';
   end if;
   if my_role = 'member' then
     raise exception using message = 'not_allowed', detail = 'Only owners and admins can remove members', errcode = '42501';
   end if;
-
-  -- Waits for money writes in flight; new ones wait for this transaction.
-  perform 1 from public.groups g where g.id = remove_member.group_id for no key update;
 
   select m.role into target_role
   from public.group_members m
@@ -398,11 +400,12 @@ set search_path = ''
 as $$
 #variable_conflict use_column
 declare
-  my_role public.group_role := private.require_member(leave_group.group_id);
+  my_role public.group_role;
   uid uuid := auth.uid();
   others_active int;
 begin
   perform 1 from public.groups g where g.id = leave_group.group_id for no key update;
+  my_role := private.require_member(leave_group.group_id);
 
   select count(*) into others_active
   from public.group_members m
@@ -504,16 +507,17 @@ begin
     if gid is null then
       raise exception using message = 'group_required', detail = 'Pick a group for this expense', errcode = '22023';
     end if;
-    my_role := private.require_member(gid);
-    -- Serializes with remove_member and leave_group (group row first, always).
+    -- Serializes with remove_member and leave_group (group row first, always),
+    -- then membership is checked, so a caller removed while waiting is refused.
     perform 1 from public.groups x where x.id = gid for share;
+    my_role := private.require_member(gid);
   else
     select e.group_id into gid from public.expenses e where e.id = eid;
     if gid is null then
       raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
     end if;
-    my_role := private.require_member(gid);
     perform 1 from public.groups x where x.id = gid for share;
+    my_role := private.require_member(gid);
 
     select * into prev from public.expenses e where e.id = eid for update;
     if prev.id is null then
@@ -770,8 +774,8 @@ declare
   e public.expenses;
 begin
   if gid is not null then
-    perform private.require_member(gid);
     perform 1 from public.groups g where g.id = gid for share;
+    perform private.require_member(gid);
   end if;
   e := private.editable_expense(delete_expense.id);
 
@@ -804,8 +808,8 @@ declare
   e public.expenses;
 begin
   if gid is not null then
-    perform private.require_member(gid);
     perform 1 from public.groups g where g.id = gid for share;
+    perform private.require_member(gid);
   end if;
   e := private.editable_expense(restore_expense.id);
 
@@ -814,7 +818,7 @@ begin
   end if;
 
   if exists (
-    select s.user_id from public.expense_splits s where s.expense_id = e.id
+    select s.user_id from public.expense_splits s where s.expense_id = e.id and s.share_cents > 0
     union
     select e.paid_by
     except
@@ -853,8 +857,8 @@ declare
   fx numeric;
   result public.settlements;
 begin
-  perform private.require_member(settle_up.group_id);
   perform 1 from public.groups x where x.id = settle_up.group_id for share;
+  perform private.require_member(settle_up.group_id);
   perform private.require_unarchived(settle_up.group_id);
   select * into g from public.groups x where x.id = settle_up.group_id;
 
@@ -912,8 +916,8 @@ begin
   if gid is null then
     raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
   end if;
-  my_role := private.require_member(gid);
   perform 1 from public.groups g where g.id = gid for share;
+  my_role := private.require_member(gid);
 
   select * into s from public.settlements x where x.id = delete_settlement.id for update;
   if s.id is null then
@@ -1198,10 +1202,12 @@ $$;
 
 -- Recurring expenses job -----------------------------------------------------------------------
 
--- Same as 20261106000000_review_fixes.sql, but each template's group row is
--- share locked before its template row and before membership is checked, the
--- order every money RPC uses. The template is then locked and re-read, and
--- skipped if someone else holds it or it is no longer due.
+-- Same as 20261106000000_review_fixes.sql, but the group rows of every due
+-- template are share locked up front, in id order (the order delete_my_account
+-- uses, so the two cannot deadlock), before any template row is locked or
+-- membership is checked: group row first, the order every money RPC uses. Each
+-- template is then locked and re-read, and skipped if someone else holds it or
+-- it is no longer due.
 create or replace function private.materialize_recurring_expenses(run_on date default current_date)
 returns int
 language plpgsql
@@ -1209,7 +1215,8 @@ security definer
 set search_path = ''
 as $$
 declare
-  cand record;
+  due_ids uuid[];
+  cand_id uuid;
   r public.recurring_expenses;
   g public.groups;
   fx numeric;
@@ -1221,20 +1228,24 @@ declare
 begin
   set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
 
-  for cand in
-    select x.id, x.group_id from public.recurring_expenses x
-    where x.active and x.next_run_on <= run_on
-    order by x.next_run_on, x.id
-  loop
-    begin
-      select * into g from public.groups x where x.id = cand.group_id for share;
+  select coalesce(array_agg(x.id order by x.next_run_on, x.id), '{}') into due_ids
+  from public.recurring_expenses x
+  where x.active and x.next_run_on <= run_on;
 
+  perform 1 from public.groups x
+  where x.id in (select t.group_id from public.recurring_expenses t where t.id = any(due_ids))
+  order by x.id
+  for share;
+
+  foreach cand_id in array due_ids loop
+    begin
       select * into r from public.recurring_expenses x
-      where x.id = cand.id and x.active and x.next_run_on <= run_on
+      where x.id = cand_id and x.active and x.next_run_on <= run_on
       for update skip locked;
       if not found then
         continue;
       end if;
+      select * into g from public.groups x where x.id = r.group_id;
 
       if g.archived_at is not null
          or not exists (select 1 from public.group_members m where m.group_id = r.group_id and m.user_id = r.paid_by)
@@ -1251,11 +1262,7 @@ begin
              and (p.id = r.paid_by
                   or p.id in (select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e))
          ) then
-        -- The archived group guard refuses template writes from signed in
-        -- callers; the job's own pause is allowed through, for this update only.
-        perform set_config('potluck.system_write', 'on', true);
         update public.recurring_expenses x set active = false where x.id = r.id;
-        perform set_config('potluck.system_write', '', true);
         continue;
       end if;
 
@@ -1287,50 +1294,10 @@ begin
       update public.recurring_expenses x set next_run_on = due where x.id = r.id;
     exception
       when others then
-        raise warning 'recurring expense % skipped: %', cand.id, sqlerrm;
+        raise warning 'recurring expense % skipped: %', cand_id, sqlerrm;
     end;
   end loop;
 
   return made;
-end;
-$$;
-
--- Same as 20261106000000_review_fixes.sql, plus a transaction-local
--- potluck.system_write switch that only the recurring expenses job turns on,
--- around its own pause of a template. Clients cannot set it through the API.
-create or replace function private.guard_open_group_write()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
-  gid uuid;
-  deadline timestamptz;
-begin
-  if auth.uid() is null or current_setting('potluck.system_write', true) = 'on' then
-    return coalesce(new, old);
-  end if;
-
-  if tg_table_name = 'event_rsvps' then
-    select e.group_id, e.rsvp_deadline into gid, deadline
-    from public.events e where e.id = (row ->> 'event_id')::uuid;
-  elsif tg_table_name = 'comments' then
-    gid := coalesce(
-      (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
-      (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
-      (row ->> 'group_id')::uuid
-    );
-  else
-    gid := (row ->> 'group_id')::uuid;
-  end if;
-
-  perform private.require_group_open(gid);
-
-  if deadline is not null and deadline <= now() then
-    raise exception using message = 'rsvp_closed', detail = 'RSVPs for this plan are closed', errcode = '23514';
-  end if;
-  return coalesce(new, old);
 end;
 $$;
