@@ -65,7 +65,7 @@ describe('SettleFlow', () => {
       }),
     )
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('$0.00')).toBeInTheDocument(), { timeout: 3000 })
+    await waitFor(() => expect(screen.getByText('$0.00')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to Hike crew' }))
     expect(onFinish).toHaveBeenCalled()
