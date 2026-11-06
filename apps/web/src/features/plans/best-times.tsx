@@ -118,9 +118,7 @@ export function BestTimes({
               size="sm"
               label={t('availability.freeCount', { count: free(top!).length })}
             />
-            <span className="truncate text-sm">
-              {whoIsMissing(top!)}
-            </span>
+            <span className="truncate text-sm">{whoIsMissing(top!)}</span>
           </div>
           {canLock && (
             <Button size="sm" variant="ink" onClick={() => setConfirming(top!)}>
