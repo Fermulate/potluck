@@ -10,6 +10,8 @@
 --     remove_member and leave_group lock it before reading balances, and every
 --     RPC that moves a balance takes a share lock on it first. Lock order is
 --     always the group row, then the expense or payment row.
+--     Closing an account locks the rows of every group the account is in
+--     the same way before memberships are removed.
 --   * Nothing moves a former member's balance: editing or deleting an expense
 --     they are part of (as payer or with a share) is refused, and so is
 --     deleting a payment with someone who has left (member_not_in_group).
@@ -1108,3 +1110,87 @@ grant select on table public.group_balances to service_role;
 -- The currency picker asks which currencies convert into the group currency
 -- (base = X or quote = X); the primary key only covers the base side.
 create index fx_rates_quote_day_idx on public.fx_rates (quote, day desc) include (base);
+
+-- Closing an account ---------------------------------------------------------------------------
+
+-- Same as 20261106000000_review_fixes.sql, plus the group rows of every group
+-- the account is in are locked first (in id order, so two closings cannot
+-- deadlock), before ownership moves and zero-balance memberships are removed.
+-- An expense or payment in flight finishes first, so no balance it creates is
+-- left behind on a membership that was just deleted.
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+  owned record;
+  heir uuid;
+begin
+  if uid is null then
+    raise exception using message = 'not_authenticated', detail = 'You need to be signed in', errcode = '42501';
+  end if;
+
+  if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is not null) then
+    return;
+  end if;
+
+  perform 1 from public.groups g
+  where g.id in (select m.group_id from public.group_members m where m.user_id = uid)
+  order by g.id
+  for no key update;
+
+  for owned in
+    select m.group_id from public.group_members m where m.user_id = uid and m.role = 'owner'
+  loop
+    select m.user_id into heir
+    from public.group_members m
+    join public.profiles p on p.id = m.user_id
+    where m.group_id = owned.group_id and m.user_id <> uid and p.deleted_at is null
+    order by (m.role = 'admin') desc, m.joined_at, m.user_id
+    limit 1;
+
+    if heir is null then
+      perform set_config('potluck.closing_account', 'on', true);
+      delete from public.groups g where g.id = owned.group_id;
+      perform set_config('potluck.closing_account', '', true);
+    else
+      update public.group_members m set role = 'member'
+      where m.group_id = owned.group_id and m.user_id = uid;
+      update public.group_members m set role = 'owner'
+      where m.group_id = owned.group_id and m.user_id = heir;
+    end if;
+  end loop;
+
+  update public.recurring_expenses r set active = false
+  where r.active
+    and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
+
+  delete from public.group_members m
+  where m.user_id = uid
+    and private.member_balance(m.group_id, uid) = 0;
+
+  delete from public.push_tokens t where t.user_id = uid;
+  delete from public.calendar_connections c where c.user_id = uid;
+  delete from public.busy_blocks b where b.user_id = uid;
+  delete from public.notifications n where n.user_id = uid;
+  delete from public.availability a where a.user_id = uid;
+  delete from public.availability_requests r where r.user_id = uid;
+  delete from public.event_rsvps r where r.user_id = uid;
+  delete from public.friendships f where f.user_id = uid or f.friend_id = uid;
+  delete from public.blocks b where b.blocker_id = uid or b.blocked_id = uid;
+
+  update public.group_invites i set revoked_at = now()
+  where i.created_by = uid and i.revoked_at is null;
+
+  update public.profiles p set
+    display_name = 'Former member',
+    avatar_path = null,
+    timezone = 'UTC',
+    locale = 'en',
+    deleted_at = now()
+  where p.id = uid;
+end;
+$$;

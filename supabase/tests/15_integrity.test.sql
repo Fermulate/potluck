@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(45);
+select plan(48);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -16,6 +16,7 @@ select tests.create_user('stayer');
 select tests.create_user('quitter', 'Quinn Quitter');
 select tests.create_user('boss');
 select tests.create_user('ghost');
+select tests.create_user('multi');
 
 -- Blocks and invites ----------------------------------------------------------------------------
 
@@ -288,6 +289,29 @@ select is(
   (select reminder_sent_at from public.events where id = tests.id('ev')),
   null,
   'moving the time sends the reminder again'
+);
+
+-- Closing an account in several groups ----------------------------------------------------------
+
+select tests.remember('mo', tests.group_with('multi', array['pal'], '{}', 'Owned by multi'));
+select tests.remember('mz', tests.group_with('own', array['multi'], '{}', 'Settled'));
+select tests.remember('md', tests.group_with('own', array['multi'], '{}', 'Owing'));
+select tests.login('own');
+select create_expense(jsonb_build_object(
+  'group_id', tests.id('md'), 'description', 'Rent', 'amount_cents', 1000, 'splits', tests.people('own', 'multi')));
+select tests.login('multi');
+select lives_ok($$ select delete_my_account() $$, 'closing an account locks and walks every group it is in');
+reset role;
+select results_eq(
+  $$ select g, (select m.role::text from public.group_members m where m.group_id = g and m.user_id = tests.uid('multi'))
+     from unnest(array[tests.id('mo'), tests.id('mz'), tests.id('md')]) g $$,
+  $$ values (tests.id('mo'), null::text), (tests.id('mz'), null::text), (tests.id('md'), 'member'::text) $$,
+  'settled memberships removed (the owned one after handing it over), open balance kept'
+);
+select is(
+  (select user_id from public.group_members where group_id = tests.id('mo') and role = 'owner'),
+  tests.uid('pal'),
+  'the heir owns the group'
 );
 
 -- FX precision ----------------------------------------------------------------------------------
