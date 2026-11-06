@@ -64,6 +64,21 @@ pnpm db:reset        # drop and rebuild from migrations + seed
 npx supabase stop    # stop containers, keep data
 ```
 
+### Shared local stack
+
+There is one stack per machine. `project_id = "potluck"` and the ports above are fixed, so every clone and every worktree (`.claude/worktrees/*` included) talks to the same containers and the same database.
+
+- `pnpm db:reset` drops all data and applies the migrations of the checkout you run it from, for everyone. Run it only when nobody else (another worktree, another agent) is using the stack, and expect `pnpm db:test` and `pnpm verify:db` to test whatever schema was reset last.
+- Do not `supabase stop` a stack you did not start.
+- e2e runs create users and set today's EUR to USD rate in this database.
+- To get a separate stack for one checkout, change `project_id` in its `supabase/config.toml` and move every `port`, `shadow_port` and `inspector_port` value to a free block (for example 55321 and up), then point `VITE_SUPABASE_URL` and the publishable key in that checkout's `.env.local` at it. Do not commit that change.
+
+### Worktrees
+
+- Each worktree needs its own `pnpm install` and a copy of `.env.local` (Claude Code copies the files listed in `.worktreeinclude`).
+- `.claude/worktrees/` is ignored by git, ESLint and Prettier, so linting the main checkout never walks into a worktree.
+- Two checkouts can run e2e at once only on different ports: `E2E_PORT=4174 pnpm e2e`.
+
 ### Edge functions locally
 
 Database hooks (`notify` on new notifications, the daily `fx-sync`) do nothing locally, because the Vault secrets `project_url` and `edge_secret` do not exist there. That keeps tests and seeding from making network calls.
@@ -117,14 +132,25 @@ Run from the repo root. Turbo runs the per-package scripts in dependency order a
 | `pnpm typecheck`      | `tsc --noEmit` in every workspace                   |
 | `pnpm lint`           | ESLint over the repo, zero warnings allowed         |
 | `pnpm test`           | Vitest in every workspace                           |
+| `pnpm test:coverage`  | Vitest with the coverage thresholds CI enforces     |
 | `pnpm test:functions` | Node tests for the edge function helpers            |
+| `pnpm e2e`            | Playwright journeys (see [testing.md](testing.md))  |
+| `pnpm verify`         | every check of the CI check job                     |
+| `pnpm verify:db`      | every check of the CI db job                        |
 | `pnpm format`         | Prettier over the repo                              |
 | `pnpm db:start`       | start local Supabase                                |
 | `pnpm db:reset`       | rebuild the local database from migrations and seed |
 | `pnpm db:types`       | regenerate `packages/api/src/database.types.ts`     |
 | `pnpm db:test`        | run the pgTAP tests in `supabase/tests`             |
+| `pnpm gen:routes`     | regenerate `apps/web/src/routeTree.gen.ts`          |
+| `pnpm gen:schema`     | regenerate `supabase/schema/current.sql`            |
+| `pnpm gen:map`        | regenerate `docs/agent-map.json`                    |
+| `pnpm gen:skills`     | copy `.agents/skills` to `.claude/skills`           |
+| `pnpm gen` / `gen:db` | the generators without / with the database          |
 
-Filter to one package with `pnpm --filter @potluck/core test`, or run Vitest in watch mode inside a package with `pnpm vitest`.
+Filter to one package with `pnpm --filter @potluck/core test`, run one file with `pnpm --filter @potluck/core exec vitest run src/currency/currency.test.ts`, or run Vitest in watch mode inside a package with `pnpm vitest`.
+
+Every generated file has a `--check` mode that `pnpm verify` or `pnpm verify:db` runs, so a stale one fails CI with the command to fix it.
 
 ## Windows notes
 
@@ -138,7 +164,8 @@ Filter to one package with `pnpm --filter @potluck/core test`, or run Vitest in 
   `git config --global core.longpaths true` avoids the same problem in Git.
 
 - **Line endings.** `.gitattributes` forces LF. If your editor writes CRLF, Prettier and ESLint will complain.
-- **Shell.** The scripts assume a POSIX shell. Git Bash or WSL both work; `db:types` uses `>` redirection, which PowerShell also handles.
+- **Shell.** The repo scripts are plain Node (`scripts/*.mjs`), so they run the same from Git Bash, WSL or PowerShell.
+- **Non-interactive shells** (CI, coding agents): `export CI=true` stops pnpm and turbo from prompting.
 - **Docker.** Docker Desktop with the WSL 2 backend runs the Supabase stack. Give it at least 4 GB of memory.
 
 ## Regenerating database types
@@ -150,21 +177,29 @@ pnpm db:reset   # apply the migration from scratch
 pnpm db:types   # supabase gen types typescript --local, then prettier
 ```
 
-Commit the regenerated file in the same PR as the migration. Do not edit it by hand.
+Commit the regenerated file in the same PR as the migration. Do not edit it by hand. `pnpm gen:db` regenerates it together with the schema snapshot and the agent map.
+
+## The schema snapshot
+
+`supabase/schema/current.sql` is `supabase db dump` of the `public` and `private` schemas after every migration ran, plus the realtime publication and the cron jobs. Functions are redefined across migrations (`settle_up` has three versions), so this is the one place to read the live definition of a table, policy or function. `pnpm gen:schema` regenerates it; CI fails when it is stale. [`agent-map.json`](agent-map.json) indexes it: each RPC's arguments, grants and error codes, and the newest migration that defines it.
 
 ## Writing a migration
 
-1. `npx supabase migration new <short_name>` creates `supabase/migrations/<timestamp>_<short_name>.sql`.
-2. Follow the existing patterns:
+1. `npx supabase migration new <short_name>` creates `supabase/migrations/<timestamp>_<short_name>.sql`. Never pick a timestamp by hand, and make sure it sorts after the newest migration on `main` (rebase and rename if not): a later `create or replace` silently wins over an earlier one, whatever the merge order.
+2. Redefining a function: copy its live body from `supabase/schema/current.sql`, not from the migration that first created it, and say so in the header ("Body as in X plus ...").
+3. Follow the existing patterns:
    - `revoke all ... from anon, authenticated`, then grant the exact columns clients need.
    - `alter table ... enable row level security` and policies for every new table in `public`. Use `(select auth.uid())` and the helpers in `private`. For membership checks on read policies write `group_id = any (array(select private.my_group_ids()))`: it runs once per statement and, unlike `in (select ...)`, can use the `group_id` index.
-   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'`. One exception: small immutable SQL helpers evaluated per row (`private.minor_units`, `private.convert_minor`) use a SQL-standard body (`return ...`) and no `set` clause, so the planner can inline them. Those bodies are bound when the function is created, so the caller's search path cannot change them. `supabase db advisors` reports them as `function_search_path_mutable`; that warning is expected.
+   - Functions: `security definer` only when they must bypass RLS, always `set search_path = ''`, schema-qualify every name, raise errors as `message = '<snake_case_code>', detail = '<English>', errcode = '<sqlstate>'` with `PT404` for not found (never `P0002`, which old files still show).
+   - New `public` functions: `revoke execute on function public.<name>(...) from public, anon;` then `grant execute ... to authenticated, service_role;`. Supabase's default privileges grant execute on new public functions to `anon`; only `invite_preview` is meant to be anon-callable.
+   - Balance-moving RPCs share lock the group row (`perform 1 from public.groups g where g.id = gid for share`) before `private.require_member` and before any expense or payment row. Writes into a group call `private.require_unarchived` (money) or `private.require_group_open` (everything else). One exception: small immutable SQL helpers evaluated per row (`private.minor_units`, `private.convert_minor`) use a SQL-standard body (`return ...`) and no `set` clause, so the planner can inline them. Those bodies are bound when the function is created, so the caller's search path cannot change them. `supabase db advisors` reports them as `function_search_path_mutable`; that warning is expected.
    - Helpers that clients must not call go in `private` and get an explicit `grant execute` only if a policy needs them.
    - Additive only. A breaking RPC change is a new `_v2` function ([ADR 8](adr/0008-additive-migrations-and-versioned-rpcs.md)).
-3. If the change affects money or scheduling rules, change the matching function in `packages/core` too and test both.
-4. Add error codes the client can show to the `errors` namespace in `packages/i18n/src/en/shell.ts`.
-5. `pnpm db:reset`, `pnpm db:test`, `pnpm db:types`.
-6. Update [architecture.md](architecture.md) if you added a table, RPC, bucket, channel or job.
+4. If the change affects money or scheduling rules, change the matching function in `packages/core` too and test both.
+5. Give every new error code wording (see [Adding strings](#adding-strings)) and add it to the error list in [architecture.md](architecture.md#errors).
+6. Update `supabase/tests/01_schema.test.sql` if you added a table, a public RPC, an anon-callable RPC, a realtime table, an `app_config` key or a cron job (its header lists what it pins), and bump `plan(N)`.
+7. `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then `pnpm verify:db`.
+8. Update [architecture.md](architecture.md) if you added a table, RPC, bucket, channel or job.
 
 Never change the schema in the Supabase dashboard. Production is only changed by `supabase db push` from the deploy workflow.
 
@@ -211,6 +246,8 @@ rollback;
 
 For every policy, test both sides: who can read or write, and who cannot. For every RPC, test the rejections, not only the happy path.
 
+`plan(N)` is a hand count; `finish()` fails with "planned N but ran M" when it is off. Two files share the prefix `14_`; the next new file is `17_`. Run one file with `npx supabase test db supabase/tests/000_setup.test.sql supabase/tests/<file>.test.sql`.
+
 ## Adding strings
 
 1. Find the feature file in `packages/i18n/src/en/` (`groups.ts`, `money.ts`, `plans.ts`, ...). Add the key there, never in `en.ts`.
@@ -218,11 +255,15 @@ For every policy, test both sides: who can read or write, and who cannot. For ev
 3. No em or en dashes in copy. The voice notes are at the top of `en.ts` and in [design.md](design.md).
 4. In code: `t('expenses.paidSummary', { name, amount })`. A wrong key or a missing placeholder fails `pnpm typecheck`.
 
+Error codes from the database: `errorMessage(error, scope)` in `apps/web/src/lib/errors.ts` tries the screen's scope first (`expenses.errors.<code>` in `en/money.ts`, `events.errors.<code>` in `en/plans.ts`), then the auth codes, then `errors.codes.<code>` in `en/shell.ts`, then a generic message. Put the wording in the scope of the screen that shows it, or in `errors.codes` when several do. `apps/web/src/lib/server-codes.test.ts` fails when a code raised in any migration has no wording.
+
 A new namespace needs one line in `en.ts` to add it to the dictionary.
 
 ## Adding a route
 
-Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router Vite plugin, which regenerates `routeTree.gen.ts` while `pnpm dev` or `pnpm build` runs. Do not edit that file.
+Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router Vite plugin, which regenerates `routeTree.gen.ts` while `pnpm dev` or `pnpm build` runs. Without Vite, `pnpm gen:routes` does the same (a new route fails `pnpm typecheck` until the tree is regenerated). Do not edit that file.
+
+- Signed-out pages must be added to the public paths in `apps/web/src/features/shell/use-auth-redirects.ts`, or signing out on them redirects to `/sign-in`.
 
 - Signed-in screens go under `routes/_app/`. The `_app.tsx` layout redirects to `/sign-in` without a session, to `/welcome` until the account is onboarded, and renders the shell from `features/shell/app-layout.tsx` (side rail, bottom tabs, quick-add sheet).
 - `$param` segments become params: `routes/_app/groups/$groupId/balances.tsx` is `/groups/:groupId/balances`.
