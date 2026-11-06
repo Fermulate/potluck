@@ -16,6 +16,23 @@ export function viewerLine(expense: ExpenseWithSplits, viewerId: string): Viewer
   return mine > 0 ? { kind: 'borrowed', cents: mine } : { kind: 'none' }
 }
 
+/**
+ * People who have left the group but still carry money in this expense: the payer, or anyone
+ * with a share. The server keeps such an expense's amounts, payer and split as they are and
+ * will not delete it, so screens lock those parts.
+ */
+export function departedMembers(
+  expense: Pick<ExpenseWithSplits, 'paid_by' | 'expense_splits'>,
+  memberIds: readonly string[],
+): string[] {
+  const members = new Set(memberIds)
+  const involved = [
+    expense.paid_by,
+    ...expense.expense_splits.filter((s) => s.share_cents > 0).map((s) => s.user_id),
+  ]
+  return [...new Set(involved)].filter((id) => !members.has(id))
+}
+
 /** Plain decimal for a CSV cell: 1234 USD cents -> "12.34", 1500 JPY -> "1500". */
 export function decimal(cents: number, currency: string): string {
   const digits = minorUnits(currency)
