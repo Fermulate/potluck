@@ -17,6 +17,8 @@ const PNPM_BUILTINS = new Set([
   'turbo',
   'vitest',
 ])
+// U+2013 and U+2014, built from code points so this file stays free of them.
+const DASHES = new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`)
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage', '.turbo', 'worktrees'])
 
 function find(dir, out = []) {
@@ -40,7 +42,7 @@ for (const file of files) {
   const lines = text.split('\n').length
   const budget = name === 'AGENTS.md' ? 200 : 120
   if (lines > budget) problems.push(`${name}: ${lines} lines, budget ${budget}`)
-  if (/[–—]/.test(text)) problems.push(`${name}: contains an em or en dash`)
+  if (DASHES.test(text)) problems.push(`${name}: contains an em or en dash`)
 
   for (const [, script] of text.matchAll(/`pnpm ([a-z][\w:-]*)/g)) {
     if (!PNPM_BUILTINS.has(script) && !scripts.has(script)) {
