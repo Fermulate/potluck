@@ -203,8 +203,9 @@ export async function updateGroup(
   return data
 }
 
+/** Owner only; the server refuses while anyone still has an open balance (group_has_balances). */
 export async function deleteGroup(client: PotluckClient, groupId: string) {
-  const { error } = await client.from('groups').delete().eq('id', groupId)
+  const { error } = await client.rpc('delete_group', { group_id: groupId })
   if (error) throw error
 }
 

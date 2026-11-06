@@ -168,12 +168,11 @@ describe('group mutations', () => {
     expect(argsOf(query!, 'eq')).toEqual([['id', 'g1']])
   })
 
-  it('deletes a group by id', async () => {
+  it('deletes a group through delete_group, which checks balances on the server', async () => {
     const fake = fakeSupabase()
     await deleteGroup(fake.client, 'g1')
-    const [query] = fake.queries('groups')
-    expect(argsOf(query!, 'delete')).toHaveLength(1)
-    expect(argsOf(query!, 'eq')).toEqual([['id', 'g1']])
+    expect(fake.rpcArgs('delete_group')).toEqual([{ group_id: 'g1' }])
+    expect(fake.queries('groups')).toHaveLength(0)
   })
 
   it('calls the member RPCs with their arguments', async () => {
@@ -200,6 +199,7 @@ describe('group mutations', () => {
       .respond('rpc:remove_member', { error: boom })
       .respond('rpc:leave_group', { error: boom })
       .respond('rpc:transfer_ownership', { error: boom })
+      .respond('rpc:delete_group', { error: boom })
     const { client } = fake
 
     await expect(createGroup(client, { name: 'x' })).rejects.toBe(boom)
