@@ -87,8 +87,8 @@ const RETRY_DELAY = 1_000
  * saved after a short pause. Saves run one at a time so the server always ends on the latest
  * map; a save that fails for a passing reason is retried with backoff, then marked failed,
  * while one the server rejects outright (poll closed, not a member, bad slots) is dropped and
- * the server state refetched. A pending save is flushed when the owner unmounts or the tab is
- * hidden, so mount this where it outlives the painter.
+ * the server state refetched. A pending save is flushed when the owner unmounts, the tab is
+ * hidden or the page is left, so mount this where it outlives the painter.
  */
 export function useMyAvailability(
   eventId: string,
@@ -189,9 +189,14 @@ export function useMyAvailability(
     const onHide = () => {
       if (document.visibilityState === 'hidden') void save()
     }
+    // Safari and pages headed for the back/forward cache can skip visibilitychange on the way
+    // out; pagehide is the last reliable moment to send a paint still waiting on its pause.
+    const onPageHide = () => void save()
     document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', onPageHide)
     return () => {
       document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', onPageHide)
       void save()
     }
   }, [save])

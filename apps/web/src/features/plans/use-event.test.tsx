@@ -199,6 +199,47 @@ describe('useMyAvailability', () => {
     expect(calls).toHaveLength(2)
   })
 
+  it('sends a paint still waiting on the pause when the painter unmounts', async () => {
+    const { result, unmount } = renderHook(() => useMyAvailability(EVENT, 'me', map()), {
+      wrapper,
+    })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    unmount()
+    await flush()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.slots).toEqual([{ slot_start: slotA, level: 'yes' }])
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still sends the newest paint after unmounting behind a save on the wire', async () => {
+    const { result, unmount } = renderHook(() => useMyAvailability(EVENT, 'me', map()), {
+      wrapper,
+    })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => vi.advanceTimersByTime(700))
+    await flush()
+    act(() => result.current.change(map([slotA, 'yes'], [slotB, 'maybe'])))
+    unmount()
+    await flush()
+    expect(calls).toHaveLength(1)
+
+    calls[0]!.deferred.resolve()
+    await flush()
+    expect(calls).toHaveLength(2)
+    expect(calls[1]!.slots.map((s) => s.slot_start)).toEqual([slotA, slotB])
+  })
+
+  it('sends a waiting paint when the page is hidden or unloaded', async () => {
+    const { result } = renderHook(() => useMyAvailability(EVENT, 'me', map()), { wrapper })
+    act(() => result.current.change(map([slotA, 'yes'])))
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+    await flush()
+    expect(calls).toHaveLength(1)
+  })
+
   it('mirrors the server rows until the first paint, then keeps the edits', async () => {
     const { result, rerender } = renderHook(
       ({ initial }: { initial: Map<string, PaintLevel> }) =>
