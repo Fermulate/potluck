@@ -24,6 +24,9 @@ import {
   transferOwnership,
   updateGroup,
 } from './groups'
+import { QueryClient } from '@tanstack/react-query'
+import { moneyKeys } from './money'
+import { plansKeys } from './plans'
 import { argsOf, fakeSupabase } from './testing/fake-supabase'
 
 const boom = { message: 'not_allowed' }
@@ -410,5 +413,16 @@ describe('query options', () => {
     expect(await run(invites)).toEqual([])
     expect(await run(preview)).toMatchObject({ status: 'valid', first_names: ['A'] })
     expect(await run(friends)).toEqual([])
+  })
+})
+
+describe('group picker keys', () => {
+  it('sit under groupKeys.all, so every group change refreshes both pickers', async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(moneyKeys.myGroups(), [])
+    queryClient.setQueryData(plansKeys.myGroups(), [])
+    await queryClient.invalidateQueries({ queryKey: groupKeys.all })
+    expect(queryClient.getQueryState(moneyKeys.myGroups())?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(plansKeys.myGroups())?.isInvalidated).toBe(true)
   })
 })

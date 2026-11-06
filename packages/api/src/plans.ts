@@ -93,7 +93,8 @@ export const plansKeys = {
   timeline: (from: string, to: string) => ['potluck', 'plans', 'timeline', from, to] as const,
   timelineAll: () => ['potluck', 'plans', 'timeline'] as const,
   past: () => ['potluck', 'plans', 'past'] as const,
-  myGroups: () => ['potluck', 'plans', 'my-groups'] as const,
+  /** The group picker on New plan. Under `groupKeys.all`, like the money picker. */
+  myGroups: () => ['potluck', 'groups', 'picker', 'plans'] as const,
   homeBalances: (userId: string) => ['potluck', 'plans', 'home-balances', userId] as const,
   groupEvents: (groupId: string) => ['potluck', 'plans', 'group-events', groupId] as const,
   members: (groupId: string) => ['potluck', 'plans', 'members', groupId] as const,
