@@ -49,6 +49,26 @@ describe('expensesToCsv', () => {
     ])
   })
 
+  it('neutralizes anything a spreadsheet would run as a formula, but not plain numbers', () => {
+    const notesCell = (notes: string) => {
+      const csv = expensesToCsv([expense({ notes })], members, 'USD')
+      return csv.slice(csv.indexOf('\r\n') + 2).replace(/^(?:[^,]*,){11}/, '')
+    }
+    // Leading minus followed by a digit used to slip through as "a negative number".
+    expect(notesCell('-1+1|cmd')).toBe(`'-1+1|cmd\r\n`)
+    expect(notesCell(`-2+3+cmd|' /C calc'!A0`)).toBe(`'-2+3+cmd|' /C calc'!A0\r\n`)
+    expect(notesCell('=1+1')).toBe(`'=1+1\r\n`)
+    expect(notesCell('+1+1')).toBe(`'+1+1\r\n`)
+    expect(notesCell('@SUM(A1)')).toBe(`'@SUM(A1)\r\n`)
+    expect(notesCell('\t=1+1')).toBe(`'\t=1+1\r\n`)
+    expect(notesCell('\r=1+1')).toBe(`"'\r=1+1"\r\n`)
+    // Real numbers stay numbers.
+    expect(notesCell('-5')).toBe('-5\r\n')
+    expect(notesCell('-12.50')).toBe('-12.50\r\n')
+    expect(notesCell('42')).toBe('42\r\n')
+    expect(notesCell('Split 3 ways')).toBe('Split 3 ways\r\n')
+  })
+
   it('formats amounts by the currency minor unit', () => {
     expect(decimal(1500, 'JPY')).toBe('1500')
     expect(decimal(1234, 'USD')).toBe('12.34')

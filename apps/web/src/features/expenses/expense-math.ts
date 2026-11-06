@@ -26,10 +26,15 @@ export function decimal(cents: number, currency: string): string {
   return `${sign}${Math.floor(abs / scale)}.${String(abs % scale).padStart(digits, '0')}`
 }
 
+/** Leading characters that make Excel, Sheets or LibreOffice treat a cell as a formula. */
+const FORMULA_START = /^[=+\-@\t\r]/
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
+
 function cell(value: string | number | null | undefined): string {
   const text = value == null ? '' : String(value)
-  // Quote anything with separators, quotes or newlines; neutralize spreadsheet formulas.
-  const safe = /^[=+\-@]/.test(text) && !/^-?\d/.test(text) ? `'${text}` : text
+  // Neutralize spreadsheet formulas (a plain negative number is fine); quote anything with
+  // separators, quotes or newlines.
+  const safe = FORMULA_START.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
 }
 
