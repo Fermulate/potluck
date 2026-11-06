@@ -246,7 +246,7 @@ rollback;
 
 For every policy, test both sides: who can read or write, and who cannot. For every RPC, test the rejections, not only the happy path.
 
-`plan(N)` is a hand count; `finish()` fails with "planned N but ran M" when it is off. Two files share the prefix `14_`; the next new file is `17_`. Run one file with `npx supabase test db supabase/tests/000_setup.test.sql supabase/tests/<file>.test.sql`.
+`plan(N)` is a hand count; `finish()` fails with "planned N but ran M" when it is off. Two files share the prefix `14_`; a new file takes the next free number after the highest one (`ls supabase/tests`). Run one file with `npx supabase test db supabase/tests/000_setup.test.sql supabase/tests/<file>.test.sql`.
 
 ## Adding strings
 

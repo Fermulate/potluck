@@ -8,7 +8,8 @@ description: Write or extend a Potluck pgTAP test in supabase/tests for RLS poli
 ## File
 
 - Extend the file that covers the area (map in `docs/testing.md`, "Database tests"), or add the next
-  number (`17_<topic>.test.sql`; files run in name order).
+  free number after the highest file in `supabase/tests` (`NN_<topic>.test.sql`; files run in name
+  order).
 - One transaction that rolls back:
 
 ```sql

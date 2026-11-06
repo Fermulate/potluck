@@ -8,7 +8,8 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - `migrations/`: applied in name order. Many functions are redefined later; the live schema is
   `schema/current.sql` (generated, never edit; `pnpm gen:schema`).
 - `tests/*.test.sql`: pgTAP, run in name order, one rolled-back transaction each. `000_setup` installs
-  the `tests.*` helpers; `01_schema` pins the schema shape (see its header). Next new file: `17_`.
+  the `tests.*` helpers; `01_schema` pins the schema shape (see its header). A new file takes the
+  next free number after the highest one in `tests/` (`ls supabase/tests`).
 - `functions/<name>/index.ts`: Deno edge functions. Logic worth testing lives in a sibling module with
   no Deno imports, tested by `pnpm test:functions` (Node's test runner, `*.test.ts`).
   `verify_jwt` per function is in `config.toml`; auth schemes are in `docs/architecture.md`.

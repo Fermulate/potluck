@@ -119,6 +119,13 @@ describe('invertRate', () => {
     expect(invertRate('0.000000000003')).toBe('333333333333.333333333333')
   })
 
+  it('rounds the quotient at the Postgres division scale before rounding to 12 places', () => {
+    // Postgres computes a numeric quotient to at least 16 significant digits (select_div_scale in
+    // numeric.c), so 1 / 0.111518261468 is 8.9671412272415000 when round(..., 12) rounds it half
+    // up. Rounding the exact quotient once would give 8.967141227241.
+    expect(invertRate('0.111518261468')).toBe('8.967141227242')
+  })
+
   it('keeps digits a JS number would drop', () => {
     expect(String(Number((1 / 0.0000576).toFixed(12)))).toBe('17361.111111111113')
     expect(invertRate(0.0000576)).toBe('17361.111111111111')
