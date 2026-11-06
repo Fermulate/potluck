@@ -2,7 +2,7 @@
 -- edits, payments with people who left, owners left with closed accounts,
 -- rescheduling reminders and FX precision.
 begin;
-select plan(25);
+select plan(32);
 
 select tests.create_user('own');
 select tests.create_user('mem');
@@ -52,6 +52,70 @@ select is(
   (select count(*)::int from public.group_members where group_id = tests.id('g') and user_id in (tests.uid('blk'), tests.uid('rev'))),
   0,
   'blocked people never got a membership'
+);
+
+-- Splits-only edits -----------------------------------------------------------------------------
+
+select tests.remember('m', tests.group_with('own', array['mem', 'pal'], '{}', 'Money'));
+select tests.login('own');
+select tests.remember('dinner', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('m'), 'description', 'Dinner', 'amount_cents', 3000, 'splits', tests.people('own', 'mem')))));
+set constraints all immediate;
+set constraints all deferred;
+
+select tests.login('own');
+select lives_ok(
+  $$ select update_expense(tests.id('dinner'), jsonb_build_object('splits', tests.people('own', 'mem', 'pal'))) $$,
+  'splits-only edit saves'
+);
+set constraints all immediate;
+set constraints all deferred;
+reset role;
+select is(
+  (select count(*)::int from public.activity where subject_id = tests.id('dinner') and verb = 'expense.updated'),
+  1,
+  'splits-only edit is in the activity feed'
+);
+select results_eq(
+  $$ select user_id from public.notifications
+     where type = 'expense.updated' and data ->> 'expense_id' = tests.id('dinner')::text
+     order by user_id $$,
+  $$ select u from unnest(array[tests.uid('mem'), tests.uid('pal')]) u order by u $$,
+  'splits-only edit notifies everyone in the old and new split but the editor'
+);
+select is(
+  (select data ->> 'description' from public.notifications
+   where type = 'expense.updated' and data ->> 'expense_id' = tests.id('dinner')::text and user_id = tests.uid('pal')),
+  'Dinner',
+  'with the usual payload'
+);
+
+select tests.login('own');
+select update_expense(tests.id('dinner'), jsonb_build_object('splits', tests.people('own', 'mem', 'pal')));
+set constraints all immediate;
+set constraints all deferred;
+reset role;
+select is(
+  (select count(*)::int from public.activity where subject_id = tests.id('dinner') and verb = 'expense.updated'),
+  1,
+  'resaving the same split logs nothing'
+);
+
+select tests.login('own');
+select update_expense(tests.id('dinner'), jsonb_build_object('description', 'Late dinner', 'splits', tests.people('own', 'pal')));
+set constraints all immediate;
+set constraints all deferred;
+reset role;
+select is(
+  (select count(*)::int from public.activity where subject_id = tests.id('dinner') and verb = 'expense.updated'),
+  2,
+  'an edit that also changes details is logged once'
+);
+select is(
+  (select count(*)::int from public.notifications
+   where type = 'expense.updated' and data ->> 'expense_id' = tests.id('dinner')::text and user_id = tests.uid('pal')),
+  2,
+  'and notified once'
 );
 
 -- People who left -------------------------------------------------------------------------------

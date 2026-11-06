@@ -13,6 +13,8 @@
 --   * Nothing moves a former member's balance: editing or deleting an expense
 --     they are part of (as payer or with a share) is refused, and so is
 --     deleting a payment with someone who has left (member_not_in_group).
+--   * An edit that only changes who is in the split, or their shares, is
+--     logged and notified as expense.updated like any other edit.
 
 -- Blocks --------------------------------------------------------------------------------------
 
@@ -461,6 +463,8 @@ declare
   computed jsonb;
   result public.expenses;
   recurring uuid;
+  old_shares jsonb;
+  new_shares jsonb;
   payer_left boolean := false;
   sharer_left boolean := false;
 begin
@@ -501,6 +505,9 @@ begin
     if p ? 'group_id' and (p ->> 'group_id') is distinct from gid::text then
       raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
     end if;
+
+    select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into old_shares
+    from public.expense_splits s where s.expense_id = prev.id;
 
     payer_left := not exists (
       select 1 from public.group_members m where m.group_id = gid and m.user_id = prev.paid_by
@@ -613,6 +620,9 @@ begin
     ) then
       raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
     end if;
+
+    select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into new_shares
+    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
   end if;
 
   -- A former member's balance is settled at zero and must stay there: the
@@ -674,6 +684,52 @@ begin
     insert into public.expense_splits (expense_id, user_id, share_cents, weight)
     select result.id, s.user_id, s.share_cents, s.weight
     from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
+  end if;
+
+  -- The expenses triggers only see the expense row. When the edit changed who
+  -- owes what and nothing they compare, log and notify here instead, with the
+  -- same verb and payload (people dropped from the split hear about it too).
+  if prev.id is not null and rewrite_splits and new_shares <> old_shares then
+    if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
+        result.split_type, result.category, result.notes, result.spent_at, result.receipt_path,
+        result.event_id)
+       is not distinct from
+       (prev.description, prev.amount_cents, prev.currency, prev.fx_rate, prev.paid_by,
+        prev.split_type, prev.category, prev.notes, prev.spent_at, prev.receipt_path,
+        prev.event_id) then
+      perform private.log_activity(gid, uid, 'expense.updated', result.id,
+        jsonb_build_object(
+          'description', result.description,
+          'amount_cents', result.amount_cents,
+          'currency', result.currency,
+          'paid_by', result.paid_by
+        ));
+    end if;
+
+    if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
+        result.split_type, result.spent_at)
+       is not distinct from
+       (prev.description, prev.amount_cents, prev.currency, prev.fx_rate, prev.paid_by,
+        prev.split_type, prev.spent_at) then
+      perform private.notify(
+        array(
+          select k::uuid from jsonb_object_keys(old_shares) as k
+          union
+          select k::uuid from jsonb_object_keys(new_shares) as k
+          union
+          select result.paid_by
+        ),
+        'expense.updated',
+        jsonb_build_object(
+          'expense_id', result.id,
+          'group_id', result.group_id,
+          'description', result.description,
+          'amount_cents', result.amount_cents,
+          'currency', result.currency
+        ),
+        uid
+      );
+    end if;
   end if;
 
   return result;
