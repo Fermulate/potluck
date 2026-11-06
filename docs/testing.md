@@ -31,7 +31,17 @@ What each package covers:
 - **i18n**: `t()` lookups, plurals and placeholders, `formatMoney`, `formatDate` in an explicit zone. `dictionary.test.ts` checks every string: no em or en dashes, no blanks, well formed placeholders, plural pairs, and a message for every split error, schema error, activity verb and notification type.
 - **tokens**: brand hues, WCAG contrast ratios, focus ring visibility and the heat scale steps.
 - **ui**: components in jsdom with Testing Library (`button`, `field`, `money-input`, `sheet`, `segmented-control`, ...).
-- **web**: screens and hooks in jsdom (`vite.config.ts` sets `environment: 'jsdom'`).
+- **web**: screens and hooks in jsdom (`vite.config.ts` sets `environment: 'jsdom'`). `src/lib/server-codes.test.ts` reads the migrations and fails when an error code the database raises has no wording or is missing from the error list in [architecture.md](architecture.md#errors), or when a new migration raises `P0002`.
+
+### Supabase fakes
+
+| Fake                                              | Use it for                                                                                                                                                 |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/api/src/testing/fake-supabase.ts`       | api tests: an in-memory recorder. Seed `tables`, queue answers with `.respond('rpc:name', ...)`, assert with `queries(table)` and `argsOf(call, method)`   |
+| `apps/web/src/test/supabase.ts`                   | screen tests that fetch: `vi.mock('@/lib/supabase', () => import('@/test/supabase'))`. Wraps the api fake and adds `emitChange` to replay realtime changes |
+| `apps/web/src/features/expenses/fake-supabase.ts` | components fed from a seeded query cache, with writes mocked at the `@potluck/api` function boundary                                                       |
+
+Fixtures: `apps/web/src/test/fixtures.ts`, `src/test/plan-fixtures.ts` and `src/features/expenses/test-utils.ts`. The hand-built `Expense` rows there must gain any new column (`fx_rate` is decimal text, as the api reads it).
 
 House rules:
 
@@ -77,7 +87,7 @@ Each file runs in its own transaction and rolls back, so tests do not leak into 
 
 | File                               | Covers                                                                                                                                                                                                                                                                                                                         |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `01_schema.test.sql`               | tables, RLS on everywhere, RPC signatures and privileges, indexes, seeded config, buckets, realtime, cron                                                                                                                                                                                                                      |
+| `01_schema.test.sql`               | tables, RLS on everywhere, RPC signatures and privileges, the anon allowlist, no function raising `P0002`, indexes, seeded config, buckets, realtime, cron. Most schema changes update it; its header lists when                                                                                                               |
 | `02_profiles_social.test.sql`      | profiles, friendships, blocks, reports                                                                                                                                                                                                                                                                                         |
 | `03_groups_rls.test.sql`           | group, member and invite policies for owner, admin, member, outsider and anon                                                                                                                                                                                                                                                  |
 | `04_group_rpcs.test.sql`           | create group, roles, remove, leave, transfer, direct groups                                                                                                                                                                                                                                                                    |
@@ -111,7 +121,7 @@ pnpm --filter @potluck/web exec playwright test e2e/expenses.spec.ts --project=d
 pnpm --filter @potluck/web exec playwright show-report               # after a failure
 ```
 
-Locally, a server already listening on :4173 is reused. If you change app code while one is running, rebuild with `VITE_APP_URL=http://localhost:4173 pnpm --filter @potluck/web build` or stop it first. `E2E_WORKERS` sets the local worker count (default 2).
+Locally, a server already listening on :4173 is reused, even if another checkout or worktree started it, so the tests may run another branch's build. If you change app code while one is running, rebuild with `VITE_APP_URL=http://localhost:4173 pnpm --filter @potluck/web build` or stop it first. `E2E_PORT=4174` runs on another port beside it. `E2E_WORKERS` sets the local worker count (default 2).
 
 Projects (`apps/web/playwright.config.ts`):
 
@@ -125,7 +135,7 @@ Every context runs in UTC with `en-US`, and service workers are blocked so the P
 
 Where the test data comes from:
 
-- `e2e/global-setup.ts` reads the API URL and publishable key from `.env.local` and the service role key from `supabase status -o env` at run time (or `E2E_SERVICE_ROLE_KEY` if set). No key is written to the repository. It also makes sure an EUR to USD rate exists for today.
+- `e2e/global-setup.ts` reads the API URL and publishable key from `.env.local` and the service role key from `supabase status -o env` at run time (or `E2E_SERVICE_ROLE_KEY` if set). No key is written to the repository. It also sets today's EUR to USD rate to 1.1 in the local database, which every checkout shares, so manual numbers can change after an e2e run.
 - `e2e/support/fixtures.ts` gives each test `newUser()`, which creates a fresh confirmed and onboarded user through the auth admin API, and `openAs(user)`, which opens a new browser context already signed in (the session is placed in local storage, no login form). `openAs(null)` is a signed out visitor.
 - `e2e/support/api.ts` sets up groups and expenses through `@potluck/api`, as those users.
 
@@ -149,9 +159,16 @@ Keep e2e to journeys. Anything that can be tested lower in the pyramid should be
 ## Before you push
 
 ```sh
-pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build
-pnpm db:test    # if you touched supabase/
-pnpm e2e        # if you changed a screen or a journey
+pnpm verify      # everything in the CI check job
+pnpm verify:db   # everything in the CI db job; run pnpm db:reset first
+pnpm e2e         # if you changed a screen or a journey (or one spec, see above)
 ```
 
-These are the same checks CI runs.
+CI runs the same scripts (`scripts/verify.mjs`), so a green run locally is a green check job:
+
+| Script           | Steps, in order                                                                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm verify`    | `prettier --check .`, `eslint`, route tree, agent map and skills copy are up to date, `typecheck`, `test:coverage` (thresholds), `test:functions`, production `build` with placeholder `VITE_*` values |
+| `pnpm verify:db` | `supabase db lint --fail-on error`, `supabase test db`, `supabase/schema/current.sql` and `packages/api/src/database.types.ts` match a fresh generation from the local database                        |
+
+`--concurrency=1` passes through to turbo on a small machine, `--only=lint,typecheck` runs a subset and `--list` prints the steps. The database checks run against whatever the shared local stack was last reset to (see [development.md](development.md#shared-local-stack)).
