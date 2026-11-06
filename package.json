@@ -18,6 +18,7 @@
     "db:types": "supabase gen types typescript --local > packages/api/src/database.types.ts && prettier --write packages/api/src/database.types.ts",
     "db:test": "supabase test db",
     "test:coverage": "turbo run test:coverage",
+    "test:functions": "node --test \"supabase/functions/**/*.test.ts\"",
     "e2e": "turbo run e2e"
   },
   "devDependencies": {

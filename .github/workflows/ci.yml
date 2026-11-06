@@ -29,6 +29,8 @@ jobs:
       - run: pnpm exec prettier --check .
       - name: Unit tests with coverage thresholds
         run: pnpm test:coverage
+      - name: Edge function helper tests
+        run: pnpm test:functions
       - name: Coverage summary
         if: always()
         run: |
