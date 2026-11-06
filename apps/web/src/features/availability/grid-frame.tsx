@@ -67,7 +67,7 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
                 </span>
                 {shifted && (
                   <span aria-hidden className="text-[0.625rem] font-bold text-mute">
-                    {shiftShort(day.shift) ?? ' '}
+                    {shiftShort(day.shift) ?? '\u00a0'}
                   </span>
                 )}
               </span>
