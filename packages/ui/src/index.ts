@@ -1,4 +1,4 @@
-export { Amount, formatMoney, minorUnitScale } from './amount'
+export { Amount, formatMoney } from './amount'
 export type { AmountProps, AmountSign, AmountSurface, AmountTone } from './amount'
 export { Avatar, AvatarStack, initials } from './avatar'
 export type { AvatarProps, AvatarSize, AvatarStackPerson, AvatarStackProps } from './avatar'
@@ -26,8 +26,9 @@ export type { HelpLinkProps, HelpTipProps } from './help'
 export { useDelayedFlag, useIsDesktop, useMediaQuery, usePrefersReducedMotion } from './hooks'
 export { ListRow } from './list-row'
 export type { ListRowProps } from './list-row'
-export { MoneyInput, parseMoneyInput } from './money-input'
-export type { MoneyInputProps } from './money-input'
+export { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from './decimal-input'
+export { formatMoneyInput, MoneyInput, parseMoneyInput, useMoneyText } from './money-input'
+export type { MoneyInputProps, MoneyTextOptions } from './money-input'
 export { AddButton, BottomTabBar, SideRail } from './nav'
 export type {
   AddButtonProps,
