@@ -4,6 +4,7 @@ import { toast } from '@potluck/ui'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
+import { rpcKeepalive } from '@/lib/rpc-keepalive'
 import { supabase } from '@/lib/supabase'
 import { slotKey, type PaintLevel } from '@/features/availability/grid'
 import { planErrorCode, planErrorMessage } from './format'
@@ -81,14 +82,19 @@ export function mySlots(rows: readonly PlanAvailabilityRow[], userId: string) {
 const RETRIES = 3
 const RETRY_DELAY = 1_000
 
+function slotRows(value: ReadonlyMap<string, PaintLevel>) {
+  return [...value].map(([slot_start, level]) => ({ slot_start, level }))
+}
+
 /**
  * Local, optimistic copy of the viewer's availability. Until the first paint it mirrors the
  * server rows; every change then shows immediately (the heatmap reads the same cache) and is
  * saved after a short pause. Saves run one at a time so the server always ends on the latest
  * map; a save that fails for a passing reason is retried with backoff, then marked failed,
  * while one the server rejects outright (poll closed, not a member, bad slots) is dropped and
- * the server state refetched. A pending save is flushed when the owner unmounts, the tab is
- * hidden or the page is left, so mount this where it outlives the painter.
+ * the server state refetched. A pending save is flushed when the owner unmounts or the tab is
+ * hidden, so mount this where it outlives the painter; when the page is left, the newest unsaved
+ * map goes out on a keepalive request, since the client's own fetch dies with the page.
  */
 export function useMyAvailability(
   eventId: string,
@@ -102,6 +108,7 @@ export function useMyAvailability(
   const [rejection, setRejection] = useState<string | null>(null)
   const pending = useRef<Map<string, PaintLevel> | null>(null)
   const inFlight = useRef<Promise<boolean> | null>(null)
+  const sending = useRef<Map<string, PaintLevel> | null>(null)
   const attempts = useRef(0)
   const timer = useRef<number | undefined>(undefined)
 
@@ -116,11 +123,8 @@ export function useMyAvailability(
     setState('saving')
     inFlight.current = (async () => {
       try {
-        await setAvailability(
-          supabase,
-          eventId,
-          [...next].map(([slot_start, level]) => ({ slot_start, level })),
-        )
+        sending.current = next
+        await setAvailability(supabase, eventId, slotRows(next))
         attempts.current = 0
         if (!pending.current) {
           writeCache(queryClient, eventId, userId, next)
@@ -161,6 +165,7 @@ export function useMyAvailability(
         return false
       } finally {
         inFlight.current = null
+        sending.current = null
       }
     })()
     const saved = await inFlight.current
@@ -190,8 +195,16 @@ export function useMyAvailability(
       if (document.visibilityState === 'hidden') void save()
     }
     // Safari and pages headed for the back/forward cache can skip visibilitychange on the way
-    // out; pagehide is the last reliable moment to send a paint still waiting on its pause.
-    const onPageHide = () => void save()
+    // out, and a fetch still running at unload is dropped, so the newest map the server has not
+    // confirmed (waiting on its pause, or on the wire) is sent again on a request that outlives
+    // the page. The normal path is left as it is, so a page restored from the cache carries on.
+    const onPageHide = () => {
+      const next = pending.current ?? sending.current
+      if (!next) return
+      void rpcKeepalive('set_availability', { event_id: eventId, slots: slotRows(next) }).catch(
+        () => undefined,
+      )
+    }
     document.addEventListener('visibilitychange', onHide)
     window.addEventListener('pagehide', onPageHide)
     return () => {
@@ -199,7 +212,7 @@ export function useMyAvailability(
       window.removeEventListener('pagehide', onPageHide)
       void save()
     }
-  }, [save])
+  }, [save, eventId])
 
   return { value, change, state, rejection, retry: save }
 }

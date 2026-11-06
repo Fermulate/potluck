@@ -224,3 +224,4 @@ export const supabase = new Proxy(
 ) as typeof fake.client
 
 export const supabaseUrl = 'https://db.test'
+export const supabaseKey = 'test-key'
