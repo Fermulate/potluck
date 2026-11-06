@@ -68,6 +68,16 @@ function renderPage() {
   )
 }
 
+/**
+ * The sections only mount (and start their own reads) once the profile is in, so wait for that
+ * first; each later wait then only covers its own section's data.
+ */
+async function renderLoaded() {
+  const view = renderPage()
+  await screen.findByRole('textbox', { name: t('settings.profile.name') })
+  return view
+}
+
 describe('MePage', () => {
   beforeEach(() => {
     rejectUpdates = false
@@ -155,7 +165,7 @@ describe('MePage', () => {
 
   it('links to the inbox with the unread count and explains missing push support', async () => {
     seed({ unread: 3 })
-    renderPage()
+    await renderLoaded()
     expect(await screen.findByText(t('notifications.unread', { count: 3 }))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open inbox/ })).toHaveAttribute(
       'href',
@@ -168,7 +178,7 @@ describe('MePage', () => {
   it('shows the calendar feed, copies it and resets the link', async () => {
     const writeText = vi.fn(async () => undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    renderPage()
+    await renderLoaded()
     const feed = await screen.findByRole('textbox', { name: t('settings.calendar.feed') })
     expect(feed).toHaveValue('https://db.test/functions/v1/ics-feed?token=tok-1')
     expect(screen.getByRole('link', { name: t('settings.calendar.subscribe') })).toHaveAttribute(
@@ -192,7 +202,7 @@ describe('MePage', () => {
 
   it('hides the coming soon badge once calendar import is on', async () => {
     seed({ calendarImport: true })
-    renderPage()
+    await renderLoaded()
     await screen.findByRole('textbox', { name: t('settings.calendar.feed') })
     expect(screen.queryByText(t('settings.calendar.comingSoon'))).not.toBeInTheDocument()
   })
