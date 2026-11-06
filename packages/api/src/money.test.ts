@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  activityInfiniteQueryOptions,
   addExpenseComment,
   createExpense,
   deleteExpense,
@@ -307,19 +308,59 @@ describe('fetchActivity', () => {
 
     expect(await fetchActivity(fake.client)).toEqual([{ id: 'a1' }])
     const [query] = fake.queries('activity')
-    expect(argsOf(query!, 'order')).toEqual([['created_at', { ascending: false }]])
+    expect(argsOf(query!, 'order')).toEqual([
+      ['created_at', { ascending: false }],
+      ['id', { ascending: false }],
+    ])
     expect(argsOf(query!, 'limit')).toEqual([[30]])
-    expect(argsOf(query!, 'lt')).toEqual([])
+    expect(argsOf(query!, 'or')).toEqual([])
   })
 
-  it('pages with before and a custom limit', async () => {
+  it('pages after a (created_at, id) cursor with a custom limit', async () => {
     const fake = fakeSupabase().respond('from:activity', { data: [] })
 
-    await fetchActivity(fake.client, { before: '2026-01-01T00:00:00Z', limit: 10 })
+    await fetchActivity(fake.client, {
+      before: { createdAt: '2026-01-01T00:00:00.5+00:00', id: 'a9' },
+      limit: 10,
+    })
 
     const [query] = fake.queries('activity')
     expect(argsOf(query!, 'limit')).toEqual([[10]])
-    expect(argsOf(query!, 'lt')).toEqual([['created_at', '2026-01-01T00:00:00Z']])
+    expect(argsOf(query!, 'or')).toEqual([
+      [
+        'created_at.lt."2026-01-01T00:00:00.5+00:00",and(created_at.eq."2026-01-01T00:00:00.5+00:00",id.lt."a9")',
+      ],
+    ])
+  })
+
+  it('walks every row once, even when many share a timestamp across a page break', async () => {
+    // 45 rows written in the same instant (a bulk import), then 25 older ones.
+    const rows = [
+      ...Array.from({ length: 45 }, (_, i) => ({
+        id: `b${String(i).padStart(2, '0')}`,
+        created_at: '2026-02-01T10:00:00+00:00',
+      })),
+      ...Array.from({ length: 25 }, (_, i) => ({
+        id: `a${String(i).padStart(2, '0')}`,
+        created_at: `2026-01-${String(i + 1).padStart(2, '0')}T10:00:00+00:00`,
+      })),
+    ]
+    const fake = fakeSupabase({ tables: { activity: rows } })
+    const { initialPageParam, getNextPageParam } = activityInfiniteQueryOptions(fake.client)
+
+    const seen: string[] = []
+    let cursor = initialPageParam
+    for (let i = 0; i < 10; i++) {
+      const page = await fetchActivity(fake.client, { before: cursor })
+      seen.push(...page.map((r) => r.id))
+      cursor = getNextPageParam(page, [page], cursor, [cursor]) ?? undefined
+      if (!cursor) break
+    }
+
+    expect(seen).toHaveLength(70)
+    expect(new Set(seen).size).toBe(70)
+    expect(seen.slice(0, 2)).toEqual(['b44', 'b43'])
+    expect(seen.at(-1)).toBe('a00')
   })
 })
 
