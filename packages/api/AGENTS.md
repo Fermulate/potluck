@@ -5,7 +5,8 @@ Root rules: [../../AGENTS.md](../../AGENTS.md).
 
 - No DOM, no `react-dom`, no browser globals. React is a peer dependency (query hooks only).
 - One file per domain: `groups.ts`, `money.ts`, `payments.ts` (record, edit, restore, bulk settle,
-  reminders, payment methods), `plans.ts`, `me.ts`, `notification-prefs.ts`, re-exported from `src/index.ts`.
+  reminders, payment methods), `plans.ts`, `me.ts`, `notification-prefs.ts`, `people.ts`
+  (placeholders, friend links, blocks, reports), re-exported from `src/index.ts`.
   Each has a `*Keys` object for query keys (invalidate by prefix); `moneyQueries` and `planQueries`
   hold the shared `queryOptions`.
 - `src/database.types.ts` is generated (`pnpm db:types`, needs the local DB reset to your migrations).

@@ -63,6 +63,21 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - After the migration: `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then update `01_schema.test.sql`
   and `docs/architecture.md`.
 
+## People not on Potluck yet (placeholders)
+
+- A placeholder is a `profiles` row with `is_placeholder` and no auth user, a plain member of one
+  group ([ADR 19](../docs/adr/0019-placeholder-members-and-claiming.md)). `profiles` has no foreign
+  key to `auth.users` any more; `profiles_need_account` and `on_auth_user_deleted` keep that rule.
+- Claiming (`private.claim_placeholder`) rewrites every column with a foreign key to `profiles(id)`,
+  found in the catalog. A new column that stores a person: make it a foreign key to `profiles`, or
+  add it (jsonb, arrays) to `claim_placeholder`; a table keyed on the user alone (prefs, tokens) must
+  be cleared there instead.
+- A trigger on a table that holds user ids sees a claim as an update: return early when
+  `private.claiming()` is true if it logs, notifies, bumps `updated_at` or guards archived groups.
+- Placeholders get no notifications but `member.added` (their invite email, sent to
+  `placeholders.email`); `notifications_skip_placeholders` drops the rest. Leave them out of
+  anything that asks someone to act (availability, RSVPs, heirs). Tests: `27_placeholder_members`.
+
 ## Notifications
 
 - A category with `notification_categories.required` (today `security`: `account.mfa_removed`) cannot be
