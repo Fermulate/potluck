@@ -252,7 +252,8 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 # Security notices: a short email to the account whenever its sign in changes, so someone who
-# did not do it finds out. Supabase's default bodies; they apply to production too.
+# did not do it finds out. Supabase's default bodies. Production overrides the subjects for now
+# (see [remotes.production.auth.email.notification.*] below).
 [auth.email.notification.password_changed]
 enabled = true
 subject = "Your Potluck password was changed"
@@ -477,6 +478,24 @@ minimum_password_length = 8
 [remotes.production.auth.email]
 enable_confirmations = true
 max_frequency = "60s"
+
+# The free plan's built-in mailer refuses custom subjects, so production keeps Supabase's
+# default subjects until a custom SMTP provider is set (launch checklist, email).
+[remotes.production.auth.email.notification.password_changed]
+enabled = true
+subject = "Your password was changed"
+
+[remotes.production.auth.email.notification.email_changed]
+enabled = true
+subject = "Your email address was changed"
+
+[remotes.production.auth.email.notification.mfa_factor_enrolled]
+enabled = true
+subject = "A new verification method was added to your account"
+
+[remotes.production.auth.email.notification.mfa_factor_unenrolled]
+enabled = true
+subject = "A verification method was removed from your account"
 
 [remotes.production.auth.mfa.totp]
 enroll_enabled = true

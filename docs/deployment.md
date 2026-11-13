@@ -66,6 +66,7 @@ Migrations go first so the database is never behind the client. Because migratio
 
 - `auth.site_url` is the custom domain. `additional_redirect_urls`: the custom domain, the old workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
 - `minimum_password_length = 8`, email confirmations on, one email per 60 s per address.
+- Security notice email subjects (password, email address and verification method changes) are Supabase's defaults, because the built-in sender refuses custom ones. They go once a custom SMTP provider is set ([launch checklist](launch-checklist.md#3-email)).
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.
 
