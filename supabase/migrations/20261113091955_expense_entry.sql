@@ -356,7 +356,10 @@ language sql immutable set search_path = '' as $$
       ('paid_by', to_jsonb(o.paid_by), to_jsonb(n.paid_by)),
       ('split_type', to_jsonb(o.split_type), to_jsonb(n.split_type)),
       ('receipt', to_jsonb(o.receipt_path is not null), to_jsonb(n.receipt_path is not null)),
-      ('event_id', to_jsonb(o.event_id), to_jsonb(n.event_id))
+      ('event_id', to_jsonb(o.event_id), to_jsonb(n.event_id)),
+      ('tax_cents', to_jsonb(o.tax_cents), to_jsonb(n.tax_cents)),
+      ('tip_cents', to_jsonb(o.tip_cents), to_jsonb(n.tip_cents)),
+      ('discount_cents', to_jsonb(o.discount_cents), to_jsonb(n.discount_cents))
   ) as c (k, f, t)
   where c.f is distinct from c.t;
 $$;
@@ -399,6 +402,8 @@ declare
   result public.expenses;
   recurring uuid;
   old_shares jsonb;
+  old_items jsonb;
+  new_items jsonb;
   new_shares jsonb;
   old_payers jsonb := '{}'::jsonb;
   new_payers jsonb;
@@ -450,6 +455,11 @@ begin
     if p ? 'group_id' and (p ->> 'group_id') is distinct from gid::text then
       raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
     end if;
+
+    select jsonb_agg(jsonb_build_object('description', i.description, 'amount_cents', i.amount_cents,
+             'user_ids', to_jsonb(i.user_ids)) order by i.position)
+    into old_items
+    from public.expense_items i where i.expense_id = prev.id;
 
     select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into old_shares
     from public.expense_splits s where s.expense_id = prev.id;
@@ -754,7 +764,7 @@ begin
     insert into public.expense_items (expense_id, position, description, amount_cents, user_ids)
     select result.id, (e.ord - 1)::smallint, btrim(coalesce(e.elem ->> 'description', '')),
            (e.elem ->> 'amount_cents')::bigint,
-           array(select distinct x::uuid from jsonb_array_elements_text(e.elem -> 'user_ids') x)
+           array(select distinct x::uuid from jsonb_array_elements_text(e.elem -> 'user_ids') x order by 1)
     from jsonb_array_elements(p -> 'items') with ordinality as e (elem, ord);
   elsif prev.id is not null and (rewrite_splits or v_split_type <> 'itemized') then
     delete from public.expense_items i where i.expense_id = result.id;
@@ -781,6 +791,14 @@ begin
       changes := changes || jsonb_build_object('split', jsonb_build_object(
         'from', jsonb_build_object('type', prev.split_type, 'shares', old_shares),
         'to', jsonb_build_object('type', result.split_type, 'shares', new_shares)));
+    end if;
+    -- The bill's lines as entered: renamed, repriced, added or dropped items.
+    select jsonb_agg(jsonb_build_object('description', i.description, 'amount_cents', i.amount_cents,
+             'user_ids', to_jsonb(i.user_ids)) order by i.position)
+    into new_items
+    from public.expense_items i where i.expense_id = result.id;
+    if new_items is distinct from old_items then
+      changes := changes || jsonb_build_object('items', jsonb_build_object('from', old_items, 'to', new_items));
     end if;
     if changes <> '{}'::jsonb then
       perform private.log_activity(gid, uid, 'expense.updated', result.id,

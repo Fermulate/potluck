@@ -3,7 +3,7 @@
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
 begin;
-select plan(80);
+select plan(82);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -330,6 +330,31 @@ select is(
   array[pg_temp.share('bill2', 'ava'), pg_temp.share('bill2', 'ben'), pg_temp.share('bill2', 'cleo')],
   array[535, 535, 357]::bigint[],
   'item rounding with tax and discount matches core'
+);
+-- Tax and tip move, the total does not: the history still says so.
+select update_expense_v2(tests.id('bill2'), jsonb_build_object(
+  'amount_cents', 1427, 'split_type', 'itemized',
+  'items', jsonb_build_array(
+    jsonb_build_object('amount_cents', 1000, 'user_ids', jsonb_build_array(tests.uid('ben'), tests.uid('ava'))),
+    jsonb_build_object('amount_cents', 333, 'user_ids', jsonb_build_array(tests.uid('cleo')))),
+  'tax_cents', 51, 'tip_cents', 50, 'discount_cents', 7));
+select is(
+  (select array_agg(k order by k) from public.activity a, jsonb_object_keys(a.data -> 'changes') k
+   where a.subject_id = tests.id('bill2') and a.verb = 'expense.updated'),
+  array['tax_cents', 'tip_cents'],
+  'a tax and tip change with the same total is logged, and nothing else'
+);
+select update_expense_v2(tests.id('bill2'), jsonb_build_object(
+  'split_type', 'itemized',
+  'items', jsonb_build_array(
+    jsonb_build_object('description', 'Bacalhau', 'amount_cents', 1000, 'user_ids', jsonb_build_array(tests.uid('ava'), tests.uid('ben'))),
+    jsonb_build_object('amount_cents', 333, 'user_ids', jsonb_build_array(tests.uid('cleo')))),
+  'tax_cents', 51, 'tip_cents', 50, 'discount_cents', 7));
+select is(
+  (select a.data -> 'changes' -> 'items' -> 'to' -> 0 ->> 'description' from public.activity a
+   where a.subject_id = tests.id('bill2') and a.verb = 'expense.updated' and a.data -> 'changes' ? 'items'),
+  'Bacalhau',
+  'renaming an item is logged with the old and new items'
 );
 select throws_ok(
   $$ select create_expense_v2(jsonb_build_object(

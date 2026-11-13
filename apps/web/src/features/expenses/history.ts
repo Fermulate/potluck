@@ -27,6 +27,10 @@ const ORDER = [
   'paid_by',
   'split',
   'split_type',
+  'items',
+  'tax_cents',
+  'tip_cents',
+  'discount_cents',
   'spent_at',
   'category',
   'notes',
@@ -153,6 +157,39 @@ export function describeChanges(
         }
         lines.push(
           t('expenses.history.change.split', { from: label(change.from), to: label(change.to) }),
+        )
+        break
+      }
+      case 'items': {
+        // "Tacos $10.00, Beer $5.00": each line of the bill as entered.
+        const bill = (value: unknown, currency: string) => {
+          if (!Array.isArray(value) || value.length === 0) return none
+          return value
+            .map((item: unknown, i) => {
+              const line = (item ?? {}) as { description?: unknown; amount_cents?: unknown }
+              const name =
+                str(line.description) || t('expenses.itemizedEditor.untitled', { number: i + 1 })
+              return `${name} ${money(line.amount_cents, currency)}`
+            })
+            .join(', ')
+        }
+        lines.push(
+          t('expenses.history.change.items', {
+            from: bill(change.from, oldCurrency),
+            to: bill(change.to, newCurrency),
+          }),
+        )
+        break
+      }
+      case 'tax_cents':
+      case 'tip_cents':
+      case 'discount_cents': {
+        const key = field === 'tax_cents' ? 'tax' : field === 'tip_cents' ? 'tip' : 'discount'
+        lines.push(
+          t(`expenses.history.change.${key}`, {
+            from: money(change.from ?? 0, oldCurrency),
+            to: money(change.to ?? 0, newCurrency),
+          }),
         )
         break
       }

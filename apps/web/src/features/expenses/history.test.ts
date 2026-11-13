@@ -70,6 +70,31 @@ describe('describeChanges', () => {
     ).toEqual(['No longer a refund', 'Receipt removed'])
   })
 
+  it('names tax, tip, discount and item changes on a by-item bill', () => {
+    expect(
+      describe_({
+        currency: 'USD',
+        changes: {
+          tax_cents: { from: 101, to: 51 },
+          tip_cents: { from: null, to: 50 },
+          discount_cents: { from: 7, to: null },
+          items: {
+            from: [{ description: '', amount_cents: 1000 }],
+            to: [
+              { description: 'Bacalhau', amount_cents: 1000 },
+              { description: 'Wine', amount_cents: 500 },
+            ],
+          },
+        },
+      }),
+    ).toEqual([
+      'Items: Item 1 $10.00 to Bacalhau $10.00, Wine $5.00',
+      'Tax: $1.01 to $0.51',
+      'Tip: $0.00 to $0.50',
+      'Discount: $0.07 to $0.00',
+    ])
+  })
+
   it('says nothing for entries logged before changes were kept', () => {
     expect(describe_({ amount_cents: 100, currency: 'USD' })).toEqual([])
   })
