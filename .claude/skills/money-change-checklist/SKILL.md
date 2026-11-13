@@ -10,7 +10,7 @@ Rules: [ADR 3](../../../docs/adr/0003-integer-minor-units-and-shared-rounding.md
 
 ## Before you write code
 
-- [ ] Find both implementations. Core and SQL pairs are listed in `packages/core/AGENTS.md`
+- [ ] Find both implementations. Core and SQL pairs are listed in `docs/architecture.md` ("Core and SQL twins")
       (`allocate` / `private.compute_splits`, `computeBalances` / `group_balances`,
       `simplifyDebts` / `simplified_debts`, `convert` / `private.convert_minor`, ...).
 - [ ] Read the live SQL in `supabase/schema/current.sql`, not an old migration.

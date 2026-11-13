@@ -284,3 +284,14 @@ export const Route = createFileRoute('/_app/groups/$groupId/recurring')({
 ```
 
 Deep links work in production because the Worker serves `index.html` for unknown paths.
+
+## Web feature notes
+
+Notes for changing particular screens in `apps/web`. The general rules are in `apps/web/AGENTS.md`.
+
+- Plan pages add guests from `/a/$code` (guest links, signed out) to `members` with `guest: true`.
+- Money: `fx_rate` arrives as decimal text; pass it to `convert()` unchanged. An expense can have several payers and be a refund ([ADR 12](adr/0012-several-payers-refunds-and-stored-items.md)): read who paid with `payersOf()` and feed core with `toBalanceExpense()` (`features/expenses/expense-math.ts`), never `paid_by` alone. What an expense means for the viewer (`viewerLine`) comes from core `expenseEffect` in the group currency, so a row can never disagree with the balance.
+- Repeating expenses (`features/recurring/`, [ADR 14](adr/0014-editable-recurring-templates.md)): a template opens in the expense form (`ExpenseForm mode="recurring"`, route `/recurring/$recurringId`) through `templateAsExpense()`, so payers, adjustments and items work as for an expense. Skip, pause and stop live in `useTemplateActions`; the expense page shows `RepeatCard`.
+- Language: `src/lib/language.ts` starts the app in the remembered (or browser) language before the first render; the root keys its outlet by language, so a switch redraws every screen. The profile's `locale` wins once it loads (`features/account/use-profile-language.ts`). Amounts and dates follow it: give components that take a `locale` `intlLocale()`, never `DEFAULT_LOCALE` (landing only).
+- Two-step sign in: signed-in routes check `needsSecondFactor(session)` (`src/lib/auth.ts`) and send the person to `/two-factor`; the database refuses that session anyway ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)). Sign in and security sections live in `src/features/account/`, mounted on Me with one line each.
+- Payments live in `src/features/settle`: the settle form (`PaymentForm`, also used to edit at `/payments/$paymentId/edit`), the payment page `/payments/$paymentId` (restore, comments through `CommentThread` from `features/expenses/comments.tsx`), pay links, reminders and "Settle everything". Cross-group settle is on the Friends page. Pay links never move money ([ADR 15](adr/0015-payment-links-and-cross-group-settle.md)).
