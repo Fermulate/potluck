@@ -39,7 +39,17 @@ test('share a guest link, a guest adds their times without an account, the plan 
 
   // The host makes a link for up to 5 guests, open for 7 days, and copies it.
   const page = await openAs(host)
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  // WebKit has no clipboard permissions to grant, so keep what the page copies instead.
+  await page.addInitScript(() => {
+    const keep = (text: string) => {
+      ;(window as unknown as { copied?: string }).copied = text
+      return Promise.resolve()
+    }
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: keep },
+      configurable: true,
+    })
+  })
   await page.goto(`/plans/${plan.id}`)
   await page.getByRole('button', { name: t('guests.panel.share') }).click()
   const sheet = page.getByRole('dialog', { name: t('guests.create.title') })
@@ -52,7 +62,7 @@ test('share a guest link, a guest adds their times without an account, the plan 
   await expect(links.getByText(t('guests.panel.usage', { used: 0, max: 5 }))).toBeVisible()
   await links.getByRole('button', { name: t('guests.panel.copy') }).click()
   await expect(page.getByText(t('guests.panel.copied')).first()).toBeVisible()
-  const url = await page.evaluate(() => navigator.clipboard.readText())
+  const url = await page.evaluate(() => (window as unknown as { copied?: string }).copied ?? '')
   const code = url.split('/a/')[1]!
   expect(code).toMatch(/^[\w-]{16}$/)
 
