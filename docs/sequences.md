@@ -445,7 +445,7 @@ sequenceDiagram
       E->>R: retry with backoff (Retry-After), up to 4 tries
     end
     E->>DB: rpc email_outbox_report(batch, delivered)<br/>sent, or pending again with backoff (failed after 5)
-    Note over DB: no report in 10 minutes: the next run sends<br/>the same batch id again, the provider drops a copy
+    Note over DB: no report in 10 minutes: the next run sends<br/>the same rows under the same batch id (the provider drops<br/>a copy), or any changed set under a new one
   end
   alt mail client one-click
     R-->>UF: POST /functions/v1/unsubscribe?token=...
@@ -459,7 +459,7 @@ sequenceDiagram
   DB->>DB: check HMAC, snapshot the settings it changes,<br/>set notification_prefs.email = false
 ```
 
-On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in, who has not turned the summary off, gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
+On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in, whose summary card switch is on, gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
 
 ## Delete an account
 
