@@ -1,7 +1,9 @@
 export {
   BACKUP_FORMAT,
   BACKUP_VERSION,
+  backupLedger,
   backupSchema,
+  utcDay,
   type Backup,
   type BackupExpense,
   type BackupGroup,

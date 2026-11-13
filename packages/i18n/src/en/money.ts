@@ -294,6 +294,8 @@ export const expenses = {
     recurring_not_found: 'That repeating expense was stopped.',
     already_recurring: 'This expense already repeats.',
     invalid_next_run: 'Pick today or a later date for the next one.',
+    invalid_import: 'This file could not be imported. Check it and try again.',
+    import_too_large: 'One import takes at most 5000 rows. Split the file and import it in parts.',
   },
   /** Several people paid (or, for a refund, got the money). */
   payers: {
@@ -638,6 +640,9 @@ export const activity = {
       skipped: 'You skipped the next "{description}"',
       paused: '"{description}" is paused: {name} left the group',
     },
+    expenses: {
+      imported: 'You imported {summary}',
+    },
   },
   /** Someone else's action done to the viewer ("{name}" would be "you"). */
   toYou: {
@@ -699,5 +704,8 @@ export const activity = {
     updated: '{actor} changed the repeating "{description}"',
     skipped: '{actor} skipped the next "{description}"',
     paused: '"{description}" is paused: {name} left the group',
+  },
+  expenses: {
+    imported: '{actor} imported {summary}',
   },
 } as const

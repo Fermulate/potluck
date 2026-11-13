@@ -7,6 +7,7 @@ import { notifications, settings, account, unsubscribe, security } from './en/me
 import { help } from './en/help'
 import { search, filters, insights, deletedItems, activityFilter } from './en/insights'
 import { people } from './en/people'
+import { transfer } from './en/transfer'
 
 /**
  * English strings. Nested by screen or domain; look them up with dotted keys via `t()`.
@@ -56,6 +57,7 @@ export const en = {
   deletedItems,
   activityFilter,
   people,
+  transfer,
   empty,
   errors,
 } as const

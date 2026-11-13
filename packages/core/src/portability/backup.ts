@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { LedgerGroup } from './ledger'
 
 /**
  * The JSON backup (`export_my_data()`), version 1. docs/backup-format.md describes every field;
@@ -158,3 +159,56 @@ export type Backup = z.infer<typeof backupSchema>
 export type BackupGroup = Backup['groups'][number]
 export type BackupExpense = BackupGroup['expenses'][number]
 export type BackupPayment = BackupGroup['payments'][number]
+
+/** The live expenses and payments of a backup, ready for `ledgerCsv`, and a name for everyone. */
+export function backupLedger(backup: Backup): {
+  groups: LedgerGroup[]
+  nameOf: (id: string) => string
+} {
+  const names = new Map(backup.people.map((p) => [p.id, p.display_name]))
+  const groups = backup.groups.map((g): LedgerGroup => ({
+    name: g.name,
+    currency: g.currency,
+    expenses: g.expenses
+      .filter((e) => !e.deleted_at)
+      .map((e) => ({
+        description: e.description,
+        category: e.category,
+        notes: e.notes,
+        spentAt: e.spent_at,
+        createdAt: e.created_at,
+        amountCents: e.amount_cents,
+        currency: e.currency,
+        fxRate: e.fx_rate,
+        isRefund: e.is_refund,
+        payers: e.payers.map((p) => ({ userId: p.user_id, paidCents: p.paid_cents })),
+        splits: e.splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
+        items: e.items.map((i) => ({
+          description: i.description,
+          amountCents: i.amount_cents,
+          userIds: i.user_ids,
+        })),
+        taxCents: e.tax_cents,
+        tipCents: e.tip_cents,
+        discountCents: e.discount_cents,
+      })),
+    payments: g.payments
+      .filter((p) => !p.deleted_at)
+      .map((p) => ({
+        fromUser: p.from_user,
+        toUser: p.to_user,
+        amountCents: p.amount_cents,
+        currency: p.currency,
+        fxRate: p.fx_rate,
+        note: p.note,
+        day: utcDay(p.settled_at),
+        settledAt: p.settled_at,
+      })),
+  }))
+  return { groups, nameOf: (id) => names.get(id) ?? id }
+}
+
+/** YYYY-MM-DD in UTC for a timestamp: the day a payment's rate was taken. */
+export function utcDay(timestamp: string): string {
+  return new Date(timestamp).toISOString().slice(0, 10)
+}

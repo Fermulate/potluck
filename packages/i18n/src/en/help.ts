@@ -44,6 +44,8 @@ export const help = {
     restore: 'About restoring',
     placeholders: 'About people not on Potluck yet',
     friends: 'How friends work',
+    yourData: 'What the export and backup hold',
+    importExpenses: 'How importing works',
   },
   tips: {
     simplifiedDebts:
