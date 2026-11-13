@@ -85,13 +85,13 @@ npx supabase secrets set --project-ref <ref> \
   APP_URL=https://potluck.fermulate.com
 ```
 
-| Secret              | Read by              | Notes                                                                                          |
-| ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
-| `VAPID_PUBLIC_KEY`  | `notify`             | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                             |
-| `VAPID_PRIVATE_KEY` | `notify`             | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`                    |
-| `VAPID_SUBJECT`     | `notify`             | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`                   |
-| `EDGE_SECRET`       | `notify`, `fx-sync`  | shared with the database. Must equal the Vault `edge_secret`                                   |
-| `APP_URL`           | `notify`, `ics-feed` | base for links in push messages and calendar events. Defaults to https://potluck.fermulate.com |
+| Secret              | Read by                               | Notes                                                                                          |
+| ------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`  | `notify`                              | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                             |
+| `VAPID_PRIVATE_KEY` | `notify`                              | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`                    |
+| `VAPID_SUBJECT`     | `notify`                              | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`                   |
+| `EDGE_SECRET`       | `notify`, `fx-sync`, `receipts-sweep` | shared with the database. Must equal the Vault `edge_secret`                                   |
+| `APP_URL`           | `notify`, `ics-feed`                  | base for links in push messages and calendar events. Defaults to https://potluck.fermulate.com |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform. Generate VAPID keys with `npx web-push generate-vapid-keys`.
 
