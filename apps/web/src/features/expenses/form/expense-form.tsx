@@ -17,7 +17,6 @@ import {
   type RecurringUpdate,
 } from '@potluck/api'
 import {
-  CATEGORIES,
   RECURRENCES,
   can,
   firstName,

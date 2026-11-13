@@ -60,6 +60,17 @@ CREATE TYPE "public"."group_role" AS ENUM (
 ALTER TYPE "public"."group_role" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."group_type" AS ENUM (
+    'home',
+    'trip',
+    'couple',
+    'other'
+);
+
+
+ALTER TYPE "public"."group_type" OWNER TO "postgres";
+
+
 CREATE TYPE "public"."push_platform" AS ENUM (
     'web',
     'ios',
@@ -217,7 +228,9 @@ CREATE OR REPLACE FUNCTION "private"."can_manage_event"("eid" "uuid") RETURNS bo
     select 1
     from public.events e
     join public.group_members m on m.group_id = e.group_id and m.user_id = (select auth.uid())
+    join public.groups g on g.id = e.group_id
     where e.id = eid
+      and g.deleted_at is null
       and (m.role in ('owner', 'admin') or e.created_by = m.user_id)
   );
 $$;
@@ -937,6 +950,25 @@ CREATE OR REPLACE FUNCTION "private"."convert_minor"("amount" bigint, "rate" num
 
 
 ALTER FUNCTION "private"."convert_minor"("amount" bigint, "rate" numeric, "from_currency" "text", "to_currency" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."drop_deleted_group_notification"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if exists (
+    select 1 from public.groups g
+    where g.id = private.try_uuid(new.data ->> 'group_id') and g.deleted_at is not null
+  ) then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."drop_deleted_group_notification"() OWNER TO "postgres";
 
 SET default_tablespace = '';
 
@@ -1983,7 +2015,8 @@ CREATE OR REPLACE FUNCTION "private"."group_role"("gid" "uuid") RETURNS "public"
     SET "search_path" TO ''
     AS $$
   select m.role from public.group_members m
-  where m.group_id = gid and m.user_id = (select auth.uid());
+  join public.groups g on g.id = m.group_id
+  where m.group_id = gid and m.user_id = (select auth.uid()) and g.deleted_at is null;
 $$;
 
 
@@ -1999,10 +2032,10 @@ begin
     perform private.log_activity(new.id, coalesce(auth.uid(), new.created_by), 'group.created', new.id,
       jsonb_build_object('name', new.name));
   elsif (new.name, new.emoji, new.color, new.cover_path, new.currency, new.simplify_debts,
-         new.members_can_invite, new.archived_at)
+         new.members_can_invite, new.archived_at, new.type, new.starts_on, new.ends_on)
         is distinct from
         (old.name, old.emoji, old.color, old.cover_path, old.currency, old.simplify_debts,
-         old.members_can_invite, old.archived_at) then
+         old.members_can_invite, old.archived_at, old.type, old.starts_on, old.ends_on) then
     perform private.log_activity(new.id, auth.uid(), 'group.updated', new.id,
       jsonb_build_object('name', new.name, 'archived', new.archived_at is not null));
   end if;
@@ -2042,9 +2075,12 @@ CREATE OR REPLACE FUNCTION "private"."guard_group_delete"() RETURNS "trigger"
     AS $$
 begin
   if current_setting('potluck.closing_account', true) is distinct from 'on'
-     and exists (
-       select 1 from public.group_balances b
-       where b.group_id = old.id and b.net_cents <> 0
+     and (
+       exists (
+         select 1 from public.group_balances b
+         where b.group_id = old.id and b.net_cents <> 0
+       )
+       or (not old.simplify_debts and exists (select 1 from private.pairwise_debts(old.id)))
      ) then
     raise exception using
       message = 'group_has_balances',
@@ -2373,9 +2409,11 @@ CREATE OR REPLACE FUNCTION "private"."is_group_admin"("gid" "uuid") RETURNS bool
     AS $$
   select exists (
     select 1 from public.group_members m
+    join public.groups g on g.id = m.group_id
     where m.group_id = gid
       and m.user_id = (select auth.uid())
       and m.role in ('owner', 'admin')
+      and g.deleted_at is null
   );
 $$;
 
@@ -2389,7 +2427,8 @@ CREATE OR REPLACE FUNCTION "private"."is_group_member"("gid" "uuid") RETURNS boo
     AS $$
   select exists (
     select 1 from public.group_members m
-    where m.group_id = gid and m.user_id = (select auth.uid())
+    join public.groups g on g.id = m.group_id
+    where m.group_id = gid and m.user_id = (select auth.uid()) and g.deleted_at is null
   );
 $$;
 
@@ -2771,7 +2810,7 @@ CREATE OR REPLACE FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "da
          and uid in (s.from_user, s.to_user))::int as payments
     from public.group_members m
     join public.groups g on g.id = m.group_id
-    where m.user_id = uid
+    where m.user_id = uid and g.deleted_at is null
   )
   select jsonb_build_object(
     'month', (select to_char(bounds.starts, 'YYYY-MM-DD') from bounds),
@@ -2815,6 +2854,20 @@ $$;
 ALTER FUNCTION "private"."my_contact_ids"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."my_deleted_group_ids"() RETURNS SETOF "uuid"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select m.group_id
+  from public.group_members m
+  join public.groups g on g.id = m.group_id
+  where m.user_id = (select auth.uid()) and g.deleted_at is not null;
+$$;
+
+
+ALTER FUNCTION "private"."my_deleted_group_ids"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."my_event_ids"() RETURNS SETOF "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -2822,7 +2875,8 @@ CREATE OR REPLACE FUNCTION "private"."my_event_ids"() RETURNS SETOF "uuid"
   select e.id
   from public.events e
   join public.group_members m on m.group_id = e.group_id
-  where m.user_id = (select auth.uid());
+  join public.groups g on g.id = e.group_id
+  where m.user_id = (select auth.uid()) and g.deleted_at is null;
 $$;
 
 
@@ -2847,7 +2901,10 @@ CREATE OR REPLACE FUNCTION "private"."my_group_ids"() RETURNS SETOF "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-  select m.group_id from public.group_members m where m.user_id = (select auth.uid());
+  select m.group_id
+  from public.group_members m
+  join public.groups g on g.id = m.group_id
+  where m.user_id = (select auth.uid()) and g.deleted_at is null;
 $$;
 
 
@@ -3379,6 +3436,35 @@ $$;
 ALTER FUNCTION "private"."profile_needs_account"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."purge_deleted_groups"("keep" interval DEFAULT '30 days'::interval) RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  gid uuid;
+  purged int := 0;
+begin
+  for gid in
+    select g.id from public.groups g
+    where g.deleted_at is not null and g.deleted_at <= now() - keep
+    order by g.id
+  loop
+    begin
+      delete from public.groups g where g.id = gid;
+      purged := purged + 1;
+    exception
+      when others then
+        raise warning 'deleted group % kept: %', gid, sqlerrm;
+    end;
+  end loop;
+  return purged;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."purge_deleted_groups"("keep" interval) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."push_notification"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3723,19 +3809,40 @@ $$;
 ALTER FUNCTION "private"."require_group_open"("gid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."require_live_group"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if exists (select 1 from public.groups g where g.id = new.group_id and g.deleted_at is not null) then
+    raise exception using message = 'group_deleted', detail = 'This group was deleted', errcode = 'PT404';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."require_live_group"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."require_member"("gid" "uuid") RETURNS "public"."group_role"
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
 declare
   r public.group_role;
+  gone timestamptz;
 begin
-  select m.role into r
+  select m.role, g.deleted_at into r, gone
   from public.group_members m
+  join public.groups g on g.id = m.group_id
   where m.group_id = gid and m.user_id = (select private.require_user());
 
   if r is null then
     raise exception using message = 'not_a_member', detail = 'You are not a member of this group', errcode = '42501';
+  end if;
+  if gone is not null then
+    raise exception using message = 'group_deleted', detail = 'This group was deleted', errcode = 'PT404';
   end if;
   return r;
 end;
@@ -5550,11 +5657,18 @@ CREATE TABLE IF NOT EXISTS "public"."groups" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "archived_at" timestamp with time zone,
     "default_split" "jsonb",
+    "type" "public"."group_type" DEFAULT 'other'::"public"."group_type" NOT NULL,
+    "starts_on" "date",
+    "ends_on" "date",
+    "deleted_at" timestamp with time zone,
+    "deleted_by" "uuid",
     CONSTRAINT "groups_color_check" CHECK (("char_length"("color") <= 32)),
+    CONSTRAINT "groups_cover_path_check" CHECK ((("cover_path" IS NULL) OR (("cover_path" ~ (('^'::"text" || ("id")::"text") || '/[^/]+$'::"text")) AND (POSITION(('..'::"text") IN ("cover_path")) = 0)))),
     CONSTRAINT "groups_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
     CONSTRAINT "groups_default_split_check" CHECK ((("default_split" IS NULL) OR ("jsonb_typeof"("default_split") = 'object'::"text"))),
     CONSTRAINT "groups_emoji_check" CHECK (("char_length"("emoji") <= 16)),
-    CONSTRAINT "groups_name_check" CHECK ((("char_length"("btrim"("name")) >= 1) AND ("char_length"("btrim"("name")) <= 80)))
+    CONSTRAINT "groups_name_check" CHECK ((("char_length"("btrim"("name")) >= 1) AND ("char_length"("btrim"("name")) <= 80))),
+    CONSTRAINT "groups_trip_dates_check" CHECK ((("starts_on" IS NULL) OR ("ends_on" IS NULL) OR ("ends_on" >= "starts_on")))
 );
 
 
@@ -5566,6 +5680,14 @@ COMMENT ON COLUMN "public"."groups"."is_direct" IS 'Hidden two-person group used
 
 
 COMMENT ON COLUMN "public"."groups"."default_split" IS 'Where new expenses start: {split_type, splits: [{user_id, weight}]}. Set with set_default_split.';
+
+
+
+COMMENT ON COLUMN "public"."groups"."type" IS 'home, trip, couple or other. Mostly a label; trips carry dates.';
+
+
+
+COMMENT ON COLUMN "public"."groups"."deleted_at" IS 'Set by delete_group. Hidden from everyone until restore_group, purged after 30 days.';
 
 
 
@@ -5605,6 +5727,53 @@ $_$;
 
 
 ALTER FUNCTION "public"."create_group"("name" "text", "emoji" "text", "color" "text", "currency" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_group_v2"("name" "text", "emoji" "text" DEFAULT NULL::"text", "color" "text" DEFAULT NULL::"text", "currency" "text" DEFAULT NULL::"text", "type" "public"."group_type" DEFAULT 'other'::"public"."group_type", "starts_on" "date" DEFAULT NULL::"date", "ends_on" "date" DEFAULT NULL::"date") RETURNS "public"."groups"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  cur text;
+  kind public.group_type := coalesce(create_group_v2.type, 'other');
+  g public.groups;
+begin
+  if create_group_v2.name is null or char_length(btrim(create_group_v2.name)) = 0 then
+    raise exception using message = 'group_name_required', detail = 'Give the group a name', errcode = '22023';
+  end if;
+  if kind = 'trip' and create_group_v2.starts_on is not null and create_group_v2.ends_on is not null
+     and create_group_v2.ends_on < create_group_v2.starts_on then
+    raise exception using message = 'trip_dates_invalid', detail = 'A trip cannot end before it starts', errcode = '22023';
+  end if;
+
+  cur := upper(coalesce(
+    nullif(btrim(create_group_v2.currency), ''),
+    (select p.default_currency from public.profiles p where p.id = uid),
+    'USD'
+  ));
+  if cur !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+
+  insert into public.groups (name, emoji, color, currency, created_by, type, starts_on, ends_on)
+  values (
+    btrim(create_group_v2.name), create_group_v2.emoji, create_group_v2.color, cur, uid, kind,
+    case when kind = 'trip' then create_group_v2.starts_on end,
+    case when kind = 'trip' then create_group_v2.ends_on end
+  )
+  returning * into g;
+
+  insert into public.group_members (group_id, user_id, role)
+  values (g.id, uid, 'owner');
+
+  return g;
+end;
+$_$;
+
+
+ALTER FUNCTION "public"."create_group_v2"("name" "text", "emoji" "text", "color" "text", "currency" "text", "type" "public"."group_type", "starts_on" "date", "ends_on" "date") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."event_guest_links" (
@@ -5839,21 +6008,43 @@ CREATE OR REPLACE FUNCTION "public"."delete_group"("group_id" "uuid") RETURNS "v
 #variable_conflict use_column
 declare
   my_role public.group_role := private.require_member(delete_group.group_id);
+  uid uuid := auth.uid();
+  stamp timestamptz := now();
+  g public.groups;
 begin
   if my_role <> 'owner' then
     raise exception using message = 'not_allowed', detail = 'Only the owner can delete the group', errcode = '42501';
   end if;
-  perform 1 from public.groups g where g.id = delete_group.group_id for update;
+  select * into g from public.groups x where x.id = delete_group.group_id for update;
+  if g.is_direct then
+    raise exception using
+      message = 'direct_group_not_deletable',
+      detail = 'A one-on-one tab cannot be deleted',
+      errcode = '23514';
+  end if;
   if exists (
     select 1 from public.group_balances b
     where b.group_id = delete_group.group_id and b.net_cents <> 0
-  ) then
+  ) or exists (select 1 from private.group_debts(delete_group.group_id)) then
     raise exception using
       message = 'group_has_balances',
       detail = 'Settle every balance before deleting this group',
       errcode = '23514';
   end if;
-  delete from public.groups g where g.id = delete_group.group_id;
+
+  update public.groups x set deleted_at = stamp, deleted_by = uid where x.id = delete_group.group_id;
+  update public.group_invites i set revoked_at = stamp
+  where i.group_id = delete_group.group_id and i.revoked_at is null;
+  update public.event_guest_links l set revoked_at = stamp
+  where l.group_id = delete_group.group_id and l.revoked_at is null;
+  perform private.log_activity(delete_group.group_id, uid, 'group.deleted', delete_group.group_id,
+    jsonb_build_object('name', g.name));
+  perform private.notify(
+    array(select m.user_id from public.group_members m where m.group_id = delete_group.group_id),
+    'group.deleted',
+    jsonb_build_object('deleted_group_id', g.id, 'group_name', g.name, 'emoji', g.emoji),
+    uid
+  );
 end;
 $$;
 
@@ -6239,7 +6430,7 @@ begin
   from public.group_members m where m.user_id = uid;
   select coalesce(jsonb_agg(private.export_group(g.id) order by g.created_at, g.id), '[]'::jsonb)
     into v_groups
-  from public.groups g where g.id = any (gids);
+  from public.groups g where g.id = any (gids) and g.deleted_at is null;
 
   return jsonb_build_object(
     'format', 'potluck-backup',
@@ -6433,6 +6624,7 @@ begin
     select x.id, x.currency, x.archived_at
     from public.groups x
     join public.group_members m on m.group_id = x.id and m.user_id = uid
+    where x.deleted_at is null
     order by x.id
   loop
     return query
@@ -7443,6 +7635,24 @@ $$;
 ALTER FUNCTION "public"."my_blocks"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."my_deleted_groups"() RETURNS TABLE("id" "uuid", "name" "text", "emoji" "text", "color" "text", "type" "public"."group_type", "cover_path" "text", "deleted_at" timestamp with time zone, "deleted_by" "uuid", "purge_after" timestamp with time zone, "member_count" integer)
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select
+    g.id, g.name, g.emoji, g.color, g.type, g.cover_path, g.deleted_at, g.deleted_by,
+    g.deleted_at + interval '30 days',
+    (select count(*)::int from public.group_members x where x.group_id = g.id)
+  from public.groups g
+  join public.group_members m on m.group_id = g.id and m.user_id = (select private.require_user())
+  where g.deleted_at is not null and g.deleted_at > now() - interval '30 days'
+  order by g.deleted_at desc, g.id;
+$$;
+
+
+ALTER FUNCTION "public"."my_deleted_groups"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."my_friend_link"("rotate" boolean DEFAULT false) RETURNS "text"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -7540,12 +7750,14 @@ begin
   join public.group_members m on m.group_id = e.group_id and m.user_id = uid
   join public.groups g on g.id = e.group_id
   left join public.event_rsvps r on r.event_id = e.id and r.user_id = uid
-  where
-    (e.status = 'scheduled' and e.starts_at < range_to and coalesce(e.ends_at, e.starts_at) >= range_from)
-    or (
-      e.status = 'polling'
-      and e.window_end >= (range_from at time zone e.timezone)::date
-      and e.window_start <= (range_to at time zone e.timezone)::date
+  where g.deleted_at is null
+    and (
+      (e.status = 'scheduled' and e.starts_at < range_to and coalesce(e.ends_at, e.starts_at) >= range_from)
+      or (
+        e.status = 'polling'
+        and e.window_end >= (range_from at time zone e.timezone)::date
+        and e.window_start <= (range_to at time zone e.timezone)::date
+      )
     )
   order by coalesce(e.starts_at, (e.window_start::timestamp at time zone e.timezone)), e.id;
 end;
@@ -7974,6 +8186,50 @@ $$;
 ALTER FUNCTION "public"."restore_expense"("id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."restore_group"("group_id" "uuid") RETURNS "public"."groups"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  g public.groups;
+begin
+  select * into g from public.groups x where x.id = restore_group.group_id for update;
+  if g.id is null then
+    raise exception using message = 'group_not_found', detail = 'This group is gone for good', errcode = 'PT404';
+  end if;
+  if not exists (
+    select 1 from public.group_members m where m.group_id = g.id and m.user_id = uid
+  ) then
+    raise exception using message = 'not_a_member', detail = 'You are not a member of this group', errcode = '42501';
+  end if;
+  if g.deleted_at is null then
+    return g;
+  end if;
+
+  update public.group_invites i set revoked_at = null
+  where i.group_id = g.id and i.revoked_at = g.deleted_at;
+  update public.event_guest_links l set revoked_at = null
+  where l.group_id = g.id and l.revoked_at = g.deleted_at;
+  update public.groups x set deleted_at = null, deleted_by = null
+  where x.id = g.id
+  returning * into g;
+  perform private.log_activity(g.id, uid, 'group.restored', g.id, jsonb_build_object('name', g.name));
+  perform private.notify(
+    array(select m.user_id from public.group_members m where m.group_id = g.id),
+    'group.restored',
+    jsonb_build_object('group_id', g.id, 'group_name', g.name),
+    uid
+  );
+  return g;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."restore_group"("group_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."restore_settlement"("id" "uuid") RETURNS "public"."settlements"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -8050,6 +8306,85 @@ $$;
 
 
 ALTER FUNCTION "public"."revoke_guest_link"("link_id" "uuid") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."group_whiteboards" (
+    "group_id" "uuid" NOT NULL,
+    "body" "text" DEFAULT ''::"text" NOT NULL,
+    "version" integer DEFAULT 0 NOT NULL,
+    "updated_by" "uuid",
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "group_whiteboards_body_check" CHECK (("char_length"("body") <= 10000)),
+    CONSTRAINT "group_whiteboards_version_check" CHECK (("version" >= 0))
+);
+
+
+ALTER TABLE "public"."group_whiteboards" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."group_whiteboards" IS 'Shared notes, one row per group. Written only by save_group_whiteboard.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."save_group_whiteboard"("group_id" "uuid", "body" "text", "base_version" integer) RETURNS "public"."group_whiteboards"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  text_in text := coalesce(save_group_whiteboard.body, '');
+  w public.group_whiteboards;
+  recent uuid;
+begin
+  perform private.require_member(save_group_whiteboard.group_id);
+  perform private.require_group_open(save_group_whiteboard.group_id);
+  if char_length(text_in) > 10000 then
+    raise exception using message = 'whiteboard_too_long', detail = 'Notes are limited to 10000 characters', errcode = '22023';
+  end if;
+
+  insert into public.group_whiteboards (group_id) values (save_group_whiteboard.group_id)
+  on conflict (group_id) do nothing;
+  select * into w from public.group_whiteboards x
+  where x.group_id = save_group_whiteboard.group_id
+  for update;
+
+  if w.version <> coalesce(save_group_whiteboard.base_version, -1) then
+    raise exception using
+      message = 'whiteboard_conflict',
+      detail = 'Someone else saved the notes first',
+      errcode = '23514';
+  end if;
+  if w.body = text_in then
+    return w;
+  end if;
+
+  update public.group_whiteboards x
+  set body = text_in, version = x.version + 1, updated_by = uid, updated_at = now()
+  where x.group_id = w.group_id
+  returning * into w;
+
+  -- One line per sitting: the same person's edits within ten minutes update that line.
+  select a.id into recent from public.activity a
+  where a.group_id = w.group_id and a.verb = 'group.notes_updated' and a.actor_id = uid
+    and a.created_at > now() - interval '10 minutes'
+  order by a.created_at desc
+  limit 1;
+  if recent is not null then
+    update public.activity a
+    set created_at = now(),
+        data = jsonb_build_object('version', w.version, 'excerpt', left(w.body, 140))
+    where a.id = recent;
+  else
+    perform private.log_activity(w.group_id, uid, 'group.notes_updated', w.group_id,
+      jsonb_build_object('version', w.version, 'excerpt', left(w.body, 140)));
+  end if;
+  return w;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."save_group_whiteboard"("group_id" "uuid", "body" "text", "base_version" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) RETURNS "public"."events"
@@ -8828,7 +9163,8 @@ begin
   from public.group_members mine
   join public.group_members theirs
     on theirs.group_id = mine.group_id and theirs.user_id = settle_with_friend.friend_id
-  where mine.user_id = uid;
+  join public.groups g on g.id = mine.group_id
+  where mine.user_id = uid and g.deleted_at is null;
 
   -- Lock order: every group row, in id order, before reading any balance.
   foreach gid in array gids loop
@@ -8837,7 +9173,8 @@ begin
 
   foreach gid in array gids loop
     continue when picked is not null and not (picked ? gid::text);
-    select g.currency into cur from public.groups g where g.id = gid and g.archived_at is null;
+    select g.currency into cur from public.groups g
+    where g.id = gid and g.archived_at is null and g.deleted_at is null;
     -- Archived groups are read only; a member may have left before the lock.
     continue when cur is null;
     continue when (
@@ -10774,6 +11111,11 @@ ALTER TABLE ONLY "public"."group_members"
 
 
 
+ALTER TABLE ONLY "public"."group_whiteboards"
+    ADD CONSTRAINT "group_whiteboards_pkey" PRIMARY KEY ("group_id");
+
+
+
 ALTER TABLE ONLY "public"."groups"
     ADD CONSTRAINT "groups_pkey" PRIMARY KEY ("id");
 
@@ -11052,7 +11394,19 @@ CREATE INDEX "group_members_user_id_idx" ON "public"."group_members" USING "btre
 
 
 
+CREATE INDEX "group_whiteboards_updated_by_idx" ON "public"."group_whiteboards" USING "btree" ("updated_by");
+
+
+
 CREATE INDEX "groups_created_by_idx" ON "public"."groups" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "groups_deleted_at_idx" ON "public"."groups" USING "btree" ("deleted_at") WHERE ("deleted_at" IS NOT NULL);
+
+
+
+CREATE INDEX "groups_deleted_by_idx" ON "public"."groups" USING "btree" ("deleted_by");
 
 
 
@@ -11236,6 +11590,10 @@ CREATE CONSTRAINT TRIGGER "expenses_payers_sum_check" AFTER INSERT OR UPDATE OF 
 
 
 
+CREATE OR REPLACE TRIGGER "expenses_require_live_group" BEFORE INSERT ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."require_live_group"();
+
+
+
 CREATE OR REPLACE TRIGGER "expenses_set_updated_at" BEFORE UPDATE ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
 
 
@@ -11280,6 +11638,10 @@ CREATE OR REPLACE TRIGGER "group_members_placeholder_guard" BEFORE INSERT OR UPD
 
 
 
+CREATE OR REPLACE TRIGGER "group_members_require_live_group" BEFORE INSERT ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."require_live_group"();
+
+
+
 CREATE OR REPLACE TRIGGER "group_members_track_former" AFTER INSERT OR DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."track_former_members"();
 
 
@@ -11305,6 +11667,10 @@ CREATE OR REPLACE TRIGGER "groups_set_updated_at" BEFORE UPDATE ON "public"."gro
 
 
 CREATE OR REPLACE TRIGGER "notification_prefs_set_updated_at" BEFORE UPDATE ON "public"."notification_prefs" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "notifications_drop_deleted_group" BEFORE INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "private"."drop_deleted_group_notification"();
 
 
 
@@ -11385,6 +11751,10 @@ CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlem
 
 
 CREATE OR REPLACE TRIGGER "settlements_notify_change" AFTER UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "settlements_require_live_group" BEFORE INSERT ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."require_live_group"();
 
 
 
@@ -11708,8 +12078,23 @@ ALTER TABLE ONLY "public"."group_members"
 
 
 
+ALTER TABLE ONLY "public"."group_whiteboards"
+    ADD CONSTRAINT "group_whiteboards_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."group_whiteboards"
+    ADD CONSTRAINT "group_whiteboards_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."groups"
     ADD CONSTRAINT "groups_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."groups"
+    ADD CONSTRAINT "groups_deleted_by_fkey" FOREIGN KEY ("deleted_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
 
 
@@ -11839,6 +12224,10 @@ ALTER TABLE "public"."activity" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "activity: members read" ON "public"."activity" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+CREATE POLICY "activity: members read a deleted group's delete" ON "public"."activity" FOR SELECT TO "authenticated" USING ((("verb" = 'group.deleted'::"text") AND ("group_id" = ANY (ARRAY( SELECT "private"."my_deleted_group_ids"() AS "my_deleted_group_ids")))));
 
 
 
@@ -12113,6 +12502,17 @@ CREATE POLICY "group_members: two-step sign in done" ON "public"."group_members"
 
 
 
+ALTER TABLE "public"."group_whiteboards" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "group_whiteboards: members read" ON "public"."group_whiteboards" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+CREATE POLICY "group_whiteboards: two-step sign in done" ON "public"."group_whiteboards" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."groups" ENABLE ROW LEVEL SECURITY;
 
 
@@ -12322,6 +12722,10 @@ GRANT ALL ON FUNCTION "private"."minor_units"("currency" "text") TO "service_rol
 
 GRANT ALL ON FUNCTION "private"."convert_minor"("amount" bigint, "rate" numeric, "from_currency" "text", "to_currency" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."convert_minor"("amount" bigint, "rate" numeric, "from_currency" "text", "to_currency" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."drop_deleted_group_notification"() FROM PUBLIC;
 
 
 
@@ -12609,6 +13013,12 @@ GRANT ALL ON FUNCTION "private"."my_contact_ids"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."my_deleted_group_ids"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."my_deleted_group_ids"() TO "authenticated";
+GRANT ALL ON FUNCTION "private"."my_deleted_group_ids"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "private"."my_event_ids"() TO "authenticated";
 GRANT ALL ON FUNCTION "private"."my_event_ids"() TO "service_role";
 
@@ -12666,6 +13076,10 @@ REVOKE ALL ON FUNCTION "private"."placeholder_name"("raw" "text") FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."profile_needs_account"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."purge_deleted_groups"("keep" interval) FROM PUBLIC;
 
 
 
@@ -12732,6 +13146,10 @@ REVOKE ALL ON FUNCTION "private"."require_can_add_people"("gid" "uuid") FROM PUB
 
 
 REVOKE ALL ON FUNCTION "private"."require_group_open"("gid" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."require_live_group"() FROM PUBLIC;
 
 
 
@@ -12970,9 +13388,27 @@ GRANT UPDATE("archived_at") ON TABLE "public"."groups" TO "authenticated";
 
 
 
+GRANT UPDATE("type") ON TABLE "public"."groups" TO "authenticated";
+
+
+
+GRANT UPDATE("starts_on") ON TABLE "public"."groups" TO "authenticated";
+
+
+
+GRANT UPDATE("ends_on") ON TABLE "public"."groups" TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."create_group"("name" "text", "emoji" "text", "color" "text", "currency" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."create_group"("name" "text", "emoji" "text", "color" "text", "currency" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_group"("name" "text", "emoji" "text", "color" "text", "currency" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."create_group_v2"("name" "text", "emoji" "text", "color" "text", "currency" "text", "type" "public"."group_type", "starts_on" "date", "ends_on" "date") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_group_v2"("name" "text", "emoji" "text", "color" "text", "currency" "text", "type" "public"."group_type", "starts_on" "date", "ends_on" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_group_v2"("name" "text", "emoji" "text", "color" "text", "currency" "text", "type" "public"."group_type", "starts_on" "date", "ends_on" "date") TO "service_role";
 
 
 
@@ -13153,6 +13589,12 @@ GRANT ALL ON FUNCTION "public"."my_blocks"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."my_deleted_groups"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_deleted_groups"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_deleted_groups"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) TO "service_role";
@@ -13269,6 +13711,12 @@ GRANT ALL ON FUNCTION "public"."restore_expense"("id" "uuid") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."restore_group"("group_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."restore_group"("group_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restore_group"("group_id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "service_role";
@@ -13278,6 +13726,36 @@ GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "service_rol
 REVOKE ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."group_whiteboards" TO "service_role";
+
+
+
+GRANT SELECT("group_id") ON TABLE "public"."group_whiteboards" TO "authenticated";
+
+
+
+GRANT SELECT("body") ON TABLE "public"."group_whiteboards" TO "authenticated";
+
+
+
+GRANT SELECT("version") ON TABLE "public"."group_whiteboards" TO "authenticated";
+
+
+
+GRANT SELECT("updated_by") ON TABLE "public"."group_whiteboards" TO "authenticated";
+
+
+
+GRANT SELECT("updated_at") ON TABLE "public"."group_whiteboards" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."save_group_whiteboard"("group_id" "uuid", "body" "text", "base_version" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."save_group_whiteboard"("group_id" "uuid", "body" "text", "base_version" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."save_group_whiteboard"("group_id" "uuid", "body" "text", "base_version" integer) TO "service_role";
 
 
 
@@ -13753,6 +14231,7 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."events";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."expense_splits";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."expenses";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."group_members";
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."group_whiteboards";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."notifications";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 
@@ -13765,6 +14244,7 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- cron fx-sync '30 16 * * *': select private.invoke_edge_function('fx-sync')
 -- cron materialize-recurring-expenses '10 0 * * *': select private.materialize_recurring_expenses()
 -- cron monthly-summary '0 15 1 * *': select private.send_monthly_summaries()
+-- cron purge-deleted-groups '20 3 * * *': select private.purge_deleted_groups()
 -- cron purge-import-batches '*/15 * * * *': delete from private.import_batches where created_at < now() - interval '1 hour'
 -- cron purge-invite-sends '20 3 * * *': delete from private.invite_sends where sent_at < now() - interval '7 days'
 -- cron recurring-heads-up '5,35 * * * *': select private.send_recurring_heads_ups()

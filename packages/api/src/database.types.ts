@@ -1157,6 +1157,46 @@ export type Database = {
           },
         ]
       }
+      group_whiteboards: {
+        Row: {
+          body: string
+          group_id: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        ComputedFields: never
+        Insert: {
+          body?: string
+          group_id: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          body?: string
+          group_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'group_whiteboards_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: true
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'group_whiteboards_updated_by_fkey'
+            columns: ['updated_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       groups: {
         Row: {
           archived_at: string | null
@@ -1166,12 +1206,17 @@ export type Database = {
           created_by: string | null
           currency: string
           default_split: Json | null
+          deleted_at: string | null
+          deleted_by: string | null
           emoji: string | null
+          ends_on: string | null
           id: string
           is_direct: boolean
           members_can_invite: boolean
           name: string
           simplify_debts: boolean
+          starts_on: string | null
+          type: Database['public']['Enums']['group_type']
           updated_at: string
         }
         ComputedFields: never
@@ -1183,12 +1228,17 @@ export type Database = {
           created_by?: string | null
           currency?: string
           default_split?: Json | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           emoji?: string | null
+          ends_on?: string | null
           id?: string
           is_direct?: boolean
           members_can_invite?: boolean
           name: string
           simplify_debts?: boolean
+          starts_on?: string | null
+          type?: Database['public']['Enums']['group_type']
           updated_at?: string
         }
         Update: {
@@ -1199,18 +1249,30 @@ export type Database = {
           created_by?: string | null
           currency?: string
           default_split?: Json | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           emoji?: string | null
+          ends_on?: string | null
           id?: string
           is_direct?: boolean
           members_can_invite?: boolean
           name?: string
           simplify_debts?: boolean
+          starts_on?: string | null
+          type?: Database['public']['Enums']['group_type']
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: 'groups_created_by_fkey'
             columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'groups_deleted_by_fkey'
+            columns: ['deleted_by']
             isOneToOne: false
             referencedRelation: 'profiles'
             referencedColumns: ['id']
@@ -1871,12 +1933,55 @@ export type Database = {
           created_by: string | null
           currency: string
           default_split: Json | null
+          deleted_at: string | null
+          deleted_by: string | null
           emoji: string | null
+          ends_on: string | null
           id: string
           is_direct: boolean
           members_can_invite: boolean
           name: string
           simplify_debts: boolean
+          starts_on: string | null
+          type: Database['public']['Enums']['group_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'groups'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_group_v2: {
+        Args: {
+          color?: string
+          currency?: string
+          emoji?: string
+          ends_on?: string
+          name: string
+          starts_on?: string
+          type?: Database['public']['Enums']['group_type']
+        }
+        Returns: {
+          archived_at: string | null
+          color: string | null
+          cover_path: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          default_split: Json | null
+          deleted_at: string | null
+          deleted_by: string | null
+          emoji: string | null
+          ends_on: string | null
+          id: string
+          is_direct: boolean
+          members_can_invite: boolean
+          name: string
+          simplify_debts: boolean
+          starts_on: string | null
+          type: Database['public']['Enums']['group_type']
           updated_at: string
         }
         SetofOptions: {
@@ -2168,6 +2273,21 @@ export type Database = {
           user_id: string
         }[]
       }
+      my_deleted_groups: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          color: string
+          cover_path: string
+          deleted_at: string
+          deleted_by: string
+          emoji: string
+          id: string
+          member_count: number
+          name: string
+          purge_after: string
+          type: Database['public']['Enums']['group_type']
+        }[]
+      }
       my_friend_link: { Args: { rotate?: boolean }; Returns: string }
       my_notification_prefs: {
         Args: Record<PropertyKey, never>
@@ -2264,6 +2384,36 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      restore_group: {
+        Args: { group_id: string }
+        Returns: {
+          archived_at: string | null
+          color: string | null
+          cover_path: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          default_split: Json | null
+          deleted_at: string | null
+          deleted_by: string | null
+          emoji: string | null
+          ends_on: string | null
+          id: string
+          is_direct: boolean
+          members_can_invite: boolean
+          name: string
+          simplify_debts: boolean
+          starts_on: string | null
+          type: Database['public']['Enums']['group_type']
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'groups'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       restore_settlement: {
         Args: { id: string }
         Returns: {
@@ -2303,6 +2453,22 @@ export type Database = {
         SetofOptions: {
           from: '*'
           to: 'event_guest_links'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      save_group_whiteboard: {
+        Args: { base_version: number; body: string; group_id: string }
+        Returns: {
+          body: string
+          group_id: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'group_whiteboards'
           isOneToOne: true
           isSetofReturn: false
         }
@@ -2690,6 +2856,7 @@ export type Database = {
       availability_level: 'yes' | 'maybe'
       event_status: 'polling' | 'scheduled' | 'cancelled' | 'done'
       group_role: 'owner' | 'admin' | 'member'
+      group_type: 'home' | 'trip' | 'couple' | 'other'
       push_platform: 'web' | 'ios' | 'android'
       recurrence: 'weekly' | 'biweekly' | 'monthly' | 'yearly'
       rsvp_status: 'going' | 'maybe' | 'declined'
@@ -2811,6 +2978,7 @@ export const Constants = {
       availability_level: ['yes', 'maybe'],
       event_status: ['polling', 'scheduled', 'cancelled', 'done'],
       group_role: ['owner', 'admin', 'member'],
+      group_type: ['home', 'trip', 'couple', 'other'],
       push_platform: ['web', 'ios', 'android'],
       recurrence: ['weekly', 'biweekly', 'monthly', 'yearly'],
       rsvp_status: ['going', 'maybe', 'declined'],
