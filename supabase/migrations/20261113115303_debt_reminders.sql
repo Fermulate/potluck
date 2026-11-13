@@ -1,6 +1,6 @@
 -- "Remind" on a debt: the person owed nudges the person who owes them. At most once a day (UTC)
 -- per group and pair; the reminder is an in-app notification `debt.reminder`, which the push
--- trigger also sends to their devices.
+-- trigger also sends to their devices. An optional short note goes along ("Rent is due Friday").
 
 create table public.debt_reminders (
   id uuid primary key default gen_random_uuid(),
@@ -11,6 +11,7 @@ create table public.debt_reminders (
   to_user uuid not null references public.profiles (id) on delete cascade,
   amount_cents bigint not null check (amount_cents > 0),
   currency char(3) not null,
+  note text check (char_length(note) <= 280),
   sent_on date not null default (now() at time zone 'UTC')::date,
   created_at timestamptz not null default now(),
   constraint debt_reminders_once_a_day unique (group_id, from_user, to_user, sent_on),
@@ -34,13 +35,13 @@ using (
 );
 
 revoke all on public.debt_reminders from anon, authenticated;
-grant select (id, group_id, from_user, to_user, amount_cents, currency, sent_on, created_at)
+grant select (id, group_id, from_user, to_user, amount_cents, currency, note, sent_on, created_at)
   on public.debt_reminders to authenticated;
 grant all on public.debt_reminders to service_role;
 
 -- remind_debt ---------------------------------------------------------------------------------------
 
-create or replace function public.remind_debt(group_id uuid, user_id uuid)
+create or replace function public.remind_debt(group_id uuid, user_id uuid, note text default null)
 returns public.debt_reminders
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -48,12 +49,16 @@ declare
   uid uuid := private.require_user();
   g public.groups;
   owed bigint;
+  v_note text := nullif(btrim(remind_debt.note), '');
   result public.debt_reminders;
 begin
   perform private.require_member(remind_debt.group_id);
   perform private.require_group_open(remind_debt.group_id);
   select * into g from public.groups x where x.id = remind_debt.group_id;
 
+  if char_length(v_note) > 280 then
+    raise exception using message = 'note_too_long', detail = 'Keep the note short', errcode = '22023';
+  end if;
   if remind_debt.user_id is null or remind_debt.user_id = uid then
     raise exception using message = 'invalid_parties', detail = 'Pick someone who owes you', errcode = '22023';
   end if;
@@ -71,8 +76,8 @@ begin
     raise exception using message = 'nothing_owed', detail = 'They do not owe you anything here', errcode = '23514';
   end if;
 
-  insert into public.debt_reminders (group_id, from_user, to_user, amount_cents, currency)
-  values (g.id, uid, remind_debt.user_id, owed, g.currency)
+  insert into public.debt_reminders (group_id, from_user, to_user, amount_cents, currency, note)
+  values (g.id, uid, remind_debt.user_id, owed, g.currency, v_note)
   on conflict on constraint debt_reminders_once_a_day do nothing
   returning * into result;
   if result.id is null then
@@ -86,7 +91,8 @@ begin
       'group_id', g.id,
       'from_user', uid,
       'amount_cents', owed,
-      'currency', g.currency
+      'currency', g.currency,
+      'note', v_note
     ),
     uid
   );
@@ -94,5 +100,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.remind_debt(uuid, uuid) from public, anon;
-grant execute on function public.remind_debt(uuid, uuid) to authenticated, service_role;
+revoke execute on function public.remind_debt(uuid, uuid, text) from public, anon;
+grant execute on function public.remind_debt(uuid, uuid, text) to authenticated, service_role;

@@ -2,7 +2,7 @@
 -- payments, payment_methods, pairwise and group debts, settle_all, friend_balances,
 -- settle_with_friend, remind_debt and the settlement change notifications.
 begin;
-select plan(92);
+select plan(106);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values
@@ -396,6 +396,81 @@ select results_eq(
   'pairwise: foreign expenses convert once into the group currency'
 );
 
+-- Several payers and refunds: the same cases as payers-refunds.test.ts.
+create function pg_temp.payer(handle text, cents bigint) returns jsonb language sql as $$
+  select jsonb_build_object('user_id', tests.uid(handle), 'paid_cents', cents)
+$$;
+create function pg_temp.exact(handle text, cents bigint) returns jsonb language sql as $$
+  select jsonb_build_object('user_id', tests.uid(handle), 'share_cents', cents)
+$$;
+
+select tests.remember('m1', pg_temp.fresh(array['a', 'b', 'c'], false));
+select tests.login('a');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('m1'), 'description', 'Dinner',
+  'amount_cents', 9000, 'payers', jsonb_build_array(pg_temp.payer('a', 6000), pg_temp.payer('b', 3000)),
+  'splits', tests.people('a', 'b', 'c')));
+reset role;
+select results_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('m1')),
+  format($$ values (%L::uuid, %L::uuid, 3000::bigint) $$, tests.uid('c'), tests.uid('a')),
+  'several payers: only the people behind pay the people ahead'
+);
+
+select tests.remember('m2', pg_temp.fresh(array['a', 'b', 'c'], false));
+select tests.login('a');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('m2'), 'description', 'Tickets',
+  'amount_cents', 1000, 'payers', jsonb_build_array(pg_temp.payer('a', 500), pg_temp.payer('b', 500)),
+  'split_type', 'exact', 'splits', jsonb_build_array(pg_temp.exact('c', 500), pg_temp.exact('o', 500))));
+reset role;
+select set_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('m2')),
+  format($$ values (%1$L::uuid, %3$L::uuid, 250::bigint), (%1$L::uuid, %4$L::uuid, 250::bigint),
+    (%2$L::uuid, %3$L::uuid, 250::bigint), (%2$L::uuid, %4$L::uuid, 250::bigint) $$,
+    tests.uid('c'), tests.uid('o'), tests.uid('a'), tests.uid('b')),
+  'several payers: a debtor is spread over the creditors by what they are owed'
+);
+
+select tests.remember('m3', pg_temp.fresh(array['a', 'b', 'c'], false));
+update public.fx_rates set rate = 1.1 where base = 'EUR' and day = current_date;
+select tests.login('a');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('m3'), 'description', 'Abroad',
+  'amount_cents', 1000, 'currency', 'EUR',
+  'payers', jsonb_build_array(pg_temp.payer('a', 333), pg_temp.payer('b', 667)),
+  'split_type', 'exact', 'splits', jsonb_build_array(pg_temp.exact('a', 334), pg_temp.exact('b', 333), pg_temp.exact('c', 333))));
+reset role;
+update public.fx_rates set rate = 1.5 where base = 'EUR' and day = current_date;
+select results_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('m3')),
+  format($$ values (%L::uuid, %L::uuid, 366::bigint), (%L::uuid, %L::uuid, 2::bigint) $$,
+    tests.uid('c'), tests.uid('b'), tests.uid('a'), tests.uid('b')),
+  'several payers: the converted total is spread over payers and split by largest remainder'
+);
+select tests.remember('m4', pg_temp.fresh(array['a', 'b'], false));
+select tests.login('a');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('m4'), 'description', 'Dinner',
+  'amount_cents', 10000, 'payers', jsonb_build_array(pg_temp.payer('a', 10000)), 'splits', tests.people('a', 'b')));
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('m4'), 'description', 'Refund',
+  'amount_cents', 4000, 'is_refund', true, 'payers', jsonb_build_array(pg_temp.payer('a', 4000)),
+  'splits', tests.people('a', 'b')));
+reset role;
+select results_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('m4')),
+  format($$ values (%L::uuid, %L::uuid, 3000::bigint) $$, tests.uid('b'), tests.uid('a')),
+  'a refund reduces what someone owes for the original expense'
+);
+
+-- Payment days are the caller's own calendar day.
+update public.profiles set timezone = 'Pacific/Auckland' where id = tests.uid('c');
+select tests.login('c');
+select tests.remember('s_nz', (select id from public.settle_up_v2(tests.id('m1'), tests.uid('c'), tests.uid('a'), 100, null, null, current_date - 1)));
+select is(
+  (select (settled_at at time zone 'Pacific/Auckland')::text from public.settlements where id = tests.id('s_nz')),
+  ((current_date - 1) + time '12:00')::text,
+  'a picked day is stored at noon of that day in the caller''s zone'
+);
+reset role;
+update public.profiles set timezone = 'UTC' where id = tests.uid('c');
+
 -- settle_all ------------------------------------------------------------------------------------------------
 
 select tests.remember('ga', pg_temp.fresh(array['a', 'b', 'c'], false));
@@ -482,6 +557,40 @@ select throws_ok(
   '42501', null, 'anon cannot call settle_with_friend'
 );
 
+-- Picking groups and paying part of what is owed.
+reset role;
+select tests.remember('f5', pg_temp.fresh(array['fa', 'fb'], true));
+select tests.remember('f6', pg_temp.fresh(array['fa', 'fb'], true));
+select tests.login('fa');
+select public.create_expense(jsonb_build_object('group_id', tests.id('f5'), 'description', 'Five', 'amount_cents', 1000, 'splits', tests.people('fa', 'fb')));
+select public.create_expense(jsonb_build_object('group_id', tests.id('f6'), 'description', 'Six', 'amount_cents', 600, 'splits', tests.people('fa', 'fb')));
+select tests.login('fb');
+select is(
+  (select array_agg(amount_cents) from public.settle_with_friend(tests.uid('fa'), null, null,
+    jsonb_build_object(tests.id('f5'), 200))),
+  array[200]::bigint[],
+  'settling with a friend can pay part of one picked group'
+);
+select results_eq(
+  format($$ select pg_temp.net(%L, 'fb'), pg_temp.net(%L, 'fb') $$, tests.id('f5'), tests.id('f6')),
+  $$ values (-300::bigint, -300::bigint) $$,
+  'only the picked group moves, by the amount picked'
+);
+select throws_ok(
+  format($$ select * from public.settle_with_friend(%L, null, null, %L) $$, tests.uid('fa'),
+    jsonb_build_object(tests.id('f6'), 301)),
+  '22023', 'invalid_amount', 'no more than is owed in a group'
+);
+select throws_ok(
+  format($$ select * from public.settle_with_friend(%L, null, null, %L) $$, tests.uid('fa'),
+    jsonb_build_object(tests.id('f4'), 100)),
+  '23514', 'nothing_owed', 'an archived or settled group cannot be picked'
+);
+select throws_ok(
+  format($$ select * from public.settle_with_friend(%L, null, null, '{}') $$, tests.uid('fa')),
+  '22023', 'invalid_payload', 'picking needs at least one group'
+);
+
 -- remind_debt ---------------------------------------------------------------------------------------------------
 
 reset role;
@@ -510,10 +619,33 @@ select throws_ok(
   format($$ select public.remind_debt(%L, %L) $$, tests.id('gr'), tests.uid('x')),
   '23514', 'member_not_in_group', 'you cannot remind someone outside the group'
 );
+select public.create_expense(jsonb_build_object('group_id', tests.id('gr'), 'description', 'Rent', 'amount_cents', 2000, 'splits', tests.people('a', 'c')));
+select is(
+  (select note from public.remind_debt(tests.id('gr'), tests.uid('c'), '  Rent is due Friday  ')),
+  'Rent is due Friday',
+  'a reminder can carry a short note'
+);
+select is(
+  (select count(*)::int from public.notifications
+   where user_id = tests.uid('c') and type = 'debt.reminder' and data ->> 'note' = 'Rent is due Friday'),
+  0,
+  'the debtor''s notification is not readable by the sender'
+);
+reset role;
+select is(
+  (select data ->> 'note' from public.notifications where user_id = tests.uid('c') and type = 'debt.reminder'),
+  'Rent is due Friday',
+  'and the note reaches the debtor'
+);
+select tests.login('a');
+select throws_ok(
+  format($$ select public.remind_debt(%L, %L, %L) $$, tests.id('gr'), tests.uid('c'), repeat('x', 281)),
+  '22023', 'note_too_long', 'reminder notes stay short'
+);
 select tests.login('b');
-select is((select count(*)::int from public.debt_reminders where group_id = tests.id('gr')), 1, 'the debtor sees the reminder');
+select is((select count(*)::int from public.debt_reminders where group_id = tests.id('gr') and to_user = tests.uid('b')), 1, 'the debtor sees the reminder');
 select tests.login('c');
-select is((select count(*)::int from public.debt_reminders where group_id = tests.id('gr')), 0, 'others in the group do not');
+select is((select count(*)::int from public.debt_reminders where group_id = tests.id('gr') and to_user = tests.uid('b')), 0, 'others in the group do not');
 select throws_ok(
   format($$ insert into public.debt_reminders (group_id, from_user, to_user, amount_cents, currency) values (%L, %L, %L, 1, 'USD') $$,
     tests.id('gr'), tests.uid('c'), tests.uid('b')),

@@ -2,8 +2,9 @@
 -- two other members, on any day; edit a payment; restore a deleted one.
 --
 -- settle_up (v1) stays for older clients (ADR 8): it only records "I paid X" today.
--- A payment dated in the past keeps that day's exchange rate and is stored at noon UTC of that
--- day, so it sorts on the day it was paid. Today's payments keep now() as before.
+-- A payment with a picked day is that day in the caller's own time zone (their profile's): it is
+-- stored at noon there, so it sorts on the day they picked whatever UTC says, and it keeps that
+-- day's exchange rate. No day means now, as before.
 --
 -- settlements_activity: body as in 20261105071528_activity_triggers.sql plus the
 -- settlement.restored and settlement.updated verbs.
@@ -16,14 +17,30 @@ language sql stable set search_path = '' as $$
   select (now() at time zone 'UTC')::date;
 $$;
 
--- When a payment made on `paid_on` is stored. Today (or no date) is now(); another day is noon
--- UTC of that day so it lands on the same calendar day in every time zone from UTC-11 to UTC+11.
+-- The caller's time zone from their profile, UTC when unknown.
+create or replace function private.my_time_zone() returns text
+language sql stable security definer set search_path = '' as $$
+  select coalesce(
+    (select p.timezone from public.profiles p
+     where p.id = (select auth.uid()) and private.is_time_zone(p.timezone)),
+    'UTC'
+  );
+$$;
+
+-- When a payment made on `paid_on` (a calendar day in the caller's zone) is stored: noon of that
+-- day there. No day is now().
 create or replace function private.payment_time(paid_on date) returns timestamptz
 language sql stable set search_path = '' as $$
   select case
-    when paid_on is null or paid_on = private.utc_today() then now()
-    else (paid_on + time '12:00') at time zone 'UTC'
+    when paid_on is null then now()
+    else (paid_on + time '12:00') at time zone private.my_time_zone()
   end;
+$$;
+
+-- The calendar day a stored payment falls on for the caller.
+create or replace function private.payment_day(settled_at timestamptz) returns date
+language sql stable set search_path = '' as $$
+  select (settled_at at time zone private.my_time_zone())::date;
 $$;
 
 -- The checks every payment write shares. Raises the first problem found.
@@ -210,7 +227,7 @@ begin
   v_note := case when p ? 'note' then private.payment_note(p ->> 'note') else prev.note end;
 
   -- Keep the stored time unless the day really changes.
-  prev_day := (prev.settled_at at time zone 'UTC')::date;
+  prev_day := private.payment_day(prev.settled_at);
   if v_on is null or v_on = prev_day then
     v_on := prev_day;
     v_at := prev.settled_at;

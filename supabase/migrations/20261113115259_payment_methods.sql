@@ -1,6 +1,6 @@
 -- Payment methods: the handles a person can be paid at (PayPal.me, Venmo, Cash App, ...). The
 -- settle up screen turns the recipient's handles into pay links with the amount filled in.
--- Potluck never moves money and never learns whether a payment went through (ADR 11).
+-- Potluck never moves money and never learns whether a payment went through (ADR 15).
 --
 -- Visible to the owner and to people who share a group with them (and have not blocked each
 -- other). Handle formats are checked here and in packages/core (paymentMethods) with the same

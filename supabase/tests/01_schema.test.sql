@@ -69,9 +69,9 @@ select has_function('public', 'settle_up_v2', array['uuid', 'uuid', 'uuid', 'big
 select has_function('public', 'update_settlement', array['uuid', 'jsonb'], 'update_settlement');
 select has_function('public', 'restore_settlement', array['uuid'], 'restore_settlement');
 select has_function('public', 'settle_all', array['uuid', 'date', 'text'], 'settle_all');
-select has_function('public', 'settle_with_friend', array['uuid', 'date', 'text'], 'settle_with_friend');
+select has_function('public', 'settle_with_friend', array['uuid', 'date', 'text', 'jsonb'], 'settle_with_friend');
 select has_function('public', 'friend_balances', array[]::text[], 'friend_balances');
-select has_function('public', 'remind_debt', array['uuid', 'uuid'], 'remind_debt');
+select has_function('public', 'remind_debt', array['uuid', 'uuid', 'text'], 'remind_debt');
 select has_function('public', 'set_availability', array['uuid', 'jsonb'], 'set_availability');
 select has_function('public', 'request_availability', array['uuid', 'uuid[]'], 'request_availability');
 select has_function('public', 'best_slots', array['uuid', 'integer'], 'best_slots');

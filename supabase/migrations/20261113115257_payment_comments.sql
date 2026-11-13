@@ -1,7 +1,7 @@
 -- Comments on payments. A comment now belongs to exactly one of an expense, a plan or a payment.
 --
 -- comments_set_group: body as in 20261105071441_feed_and_platform.sql plus settlement_id.
--- comments_notify: body as in 20261105071531_notification_triggers.sql plus payments (the payer,
+-- comments_notify: body as in 20261113091955_expense_entry.sql plus payments (the payer,
 --   the person paid and whoever recorded it hear about it).
 -- comments_activity: body as in 20261105071528_activity_triggers.sql plus settlement_id.
 -- guard_open_group_write: body as in 20261106000000_review_fixes.sql plus the payment's group.
@@ -40,6 +40,8 @@ begin
     select array_agg(distinct u) into recipients
     from (
       select s.user_id as u from public.expense_splits s where s.expense_id = new.expense_id
+      union
+      select y.user_id from public.expense_payers y where y.expense_id = new.expense_id
       union
       select e.paid_by from public.expenses e where e.id = new.expense_id
       union
