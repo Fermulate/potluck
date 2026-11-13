@@ -4,6 +4,7 @@ import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { expense } from '@/features/expenses/test-utils'
 import { group, groupTables, member, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { db, payloadOf, resetDb, rowsOf } from '@/test/supabase'
@@ -21,8 +22,10 @@ const square = [
   member('u-cleo', 'Cleo Park'),
 ]
 
-function renderSettings(seeded: GroupDetail = group()) {
-  resetDb({ tables: groupTables(seeded) })
+function renderSettings(seeded: GroupDetail = group(), tables: Record<string, unknown[]> = {}) {
+  resetDb({ tables: { ...groupTables(seeded), ...tables } }).respond('rpc:simplified_debts', {
+    data: [],
+  })
   return renderWithProviders(
     <>
       <GroupSettingsPage groupId="g-hike" />
@@ -30,6 +33,13 @@ function renderSettings(seeded: GroupDetail = group()) {
     </>,
     { path: '/groups/g-hike/settings' },
   )
+}
+
+/** The delete button once the group's debts have loaded and it can be pressed. */
+async function deleteButton() {
+  const button = await screen.findByRole('button', { name: t('groups.settings.delete') })
+  await waitFor(() => expect(button).toBeEnabled())
+  return button
 }
 
 function groupUpdates() {
@@ -40,7 +50,11 @@ function groupUpdates() {
 }
 
 describe('GroupSettingsPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    URL.createObjectURL = vi.fn(() => 'blob:preview')
+    URL.revokeObjectURL = vi.fn()
+  })
 
   it('saves only the details that changed', async () => {
     renderSettings()
@@ -124,9 +138,20 @@ describe('GroupSettingsPage', () => {
     expect(screen.getByText(t('groups.settings.deleteBlocked'))).toBeInTheDocument()
   })
 
+  it('keeps delete closed while debts run in a circle, even with every balance at zero', async () => {
+    // Simplifying is off and one person paid for three: the others owe them, whatever the nets say.
+    renderSettings(group({ members: square, simplify_debts: false }), {
+      expenses: [expense({ group_id: 'g-hike' })],
+      settlements: [],
+    })
+    await waitFor(() => expect(db().queries('expenses')).not.toHaveLength(0))
+    expect(await screen.findByRole('button', { name: t('groups.settings.delete') })).toBeDisabled()
+    expect(screen.getByText(t('groups.settings.deleteBlocked'))).toBeInTheDocument()
+  })
+
   it('deletes a settled group after confirming and returns to the list', async () => {
     const { router } = renderSettings(group({ members: square }))
-    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.delete') }))
+    fireEvent.click(await deleteButton())
     const dialog = await screen.findByRole('dialog', { name: t('groups.settings.delete') })
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
 
@@ -137,7 +162,7 @@ describe('GroupSettingsPage', () => {
   it('undoes a delete from the toast', async () => {
     render(<Toaster label="Shell notifications" />)
     const { router } = renderSettings(group({ members: square }))
-    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.delete') }))
+    fireEvent.click(await deleteButton())
     const dialog = await screen.findByRole('dialog', { name: t('groups.settings.delete') })
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
     // The page goes back to the list; the toast lives on in the app shell.
@@ -154,7 +179,7 @@ describe('GroupSettingsPage', () => {
     render(<Toaster label="Shell notifications" />)
     const { router } = renderSettings(group({ members: square }))
     db().respond('rpc:restore_group', { error: { message: 'group_not_found', code: 'PT404' } })
-    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.delete') }))
+    fireEvent.click(await deleteButton())
     const dialog = await screen.findByRole('dialog', { name: t('groups.settings.delete') })
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
     // The page goes back to the list; the toast lives on in the app shell.
@@ -246,6 +271,23 @@ describe('GroupSettingsPage', () => {
     ).toEqual([])
   })
 
+  it('takes the uploaded file back and says why when the group refuses the cover', async () => {
+    renderSettings()
+    const input = await screen.findByLabelText(t('groups.cover.add'))
+    db().respond('from:groups', { error: { message: 'group_archived', code: '23514' } })
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+    })
+    expect(await screen.findByText(t('errors.codes.group_archived'))).toBeInTheDocument()
+    const [upload, remove] = db()
+      .storageCalls('group-covers')
+      .filter((c) => c.method !== 'getPublicUrl')
+    expect(upload!.method).toBe('upload')
+    expect(remove!.method).toBe('remove')
+    expect(remove!.args[0]).toEqual([upload!.args[0]])
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview')
+  })
+
   it('says when an upload fails', async () => {
     URL.createObjectURL = vi.fn(() => 'blob:preview')
     renderSettings()
@@ -260,7 +302,7 @@ describe('GroupSettingsPage', () => {
   it('explains when the server still sees an open balance and keeps the group', async () => {
     const { router } = renderSettings(group({ members: square }))
     db().respond('rpc:delete_group', { error: { message: 'group_has_balances', code: '23514' } })
-    fireEvent.click(await screen.findByRole('button', { name: t('groups.settings.delete') }))
+    fireEvent.click(await deleteButton())
     const dialog = await screen.findByRole('dialog', { name: t('groups.settings.delete') })
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.settings.delete') }))
 

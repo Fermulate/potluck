@@ -34,6 +34,20 @@ describe('suggestCategory', () => {
     expect(suggestCategory('Netflix')?.category).toBe('entertainment')
   })
 
+  it('reads store names written with or without their apostrophe', () => {
+    expect(suggestCategory("Trader Joe's")?.category).toBe('groceries')
+    expect(suggestCategory('trader joes run')?.category).toBe('groceries')
+    expect(suggestCategory("Sainsbury's")?.category).toBe('groceries')
+    expect(suggestCategory('Sainsburys')?.category).toBe('groceries')
+  })
+
+  it('does not read everyday English words as a foreign keyword or a brand', () => {
+    expect(suggestCategory('Online courses')?.category).toBe('education')
+    expect(top('Grab lunch with Sam')).not.toBe('transport')
+    expect(suggestCategory('Faire les courses')?.category).toBe('groceries')
+    expect(suggestCategory('GrabCar to the hotel')?.category).toBe('taxi')
+  })
+
   it('prefers a longer phrase over one of its words', () => {
     expect(suggestCategory('Uber Eats')?.category).toBe('takeout')
     expect(suggestCategory('gas bill')?.category).toBe('heating')

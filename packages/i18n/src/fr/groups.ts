@@ -100,6 +100,7 @@ export const groups = {
     keepMine: 'Garder la mienne',
     history: 'Historique des modifications',
     historyEmpty: "Aucune modification pour l'instant. À toi de commencer.",
+    leaveUnsaved: 'Tes notes ne sont pas encore enregistrées. Partir quand même ?',
     archived: 'Ce groupe est archivé, ses notes sont donc en lecture seule.',
   },
   starters: {

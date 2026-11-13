@@ -99,6 +99,7 @@ export const groups = {
     keepMine: 'Manter a minha',
     history: 'Histórico de edições',
     historyEmpty: 'Nenhuma edição ainda. Comece você.',
+    leaveUnsaved: 'Suas notas ainda não foram salvas. Sair mesmo assim?',
     archived: 'Este grupo está arquivado, então as notas são só para leitura.',
   },
   starters: {

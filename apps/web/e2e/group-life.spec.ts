@@ -1,5 +1,6 @@
 import { acceptInvite, createExpense, createInvite } from '@potluck/api'
-import { t } from '@potluck/i18n'
+import { firstName } from '@potluck/core'
+import { formatDate, t } from '@potluck/i18n'
 import { addEqualExpense, groupWith } from './support/api'
 import { expect, test, unique } from './support/fixtures'
 
@@ -30,7 +31,12 @@ test('a trip with dates and a cover that members and the join page show', async 
   await sheet.getByLabel(t('groups.trip.ends')).fill('2026-06-10')
   await sheet.getByRole('button', { name: t('groups.create.submit') }).click()
   await expect(page).toHaveURL(/\/groups\/[^/]+\/members$/)
-  await expect(page.getByText('Jun 3 to Jun 10').first()).toBeVisible()
+  const day = (d: string) => formatDate(d, { timeZone: 'UTC', style: 'dayMonth' })
+  await expect(
+    page
+      .getByText(t('groups.trip.range', { start: day('2026-06-03'), end: day('2026-06-10') }))
+      .first(),
+  ).toBeVisible()
   const groupId = /\/groups\/([^/]+)\//.exec(page.url())![1]!
 
   // The owner adds a cover in settings.
@@ -48,7 +54,8 @@ test('a trip with dates and a cover that members and the join page show', async 
   const theirs = await openAs(friend)
   await theirs.goto(`/groups/${groupId}`)
   await expect(theirs.getByRole('heading', { name })).toBeVisible()
-  await expect(theirs.locator('header img')).toHaveAttribute('src', /group-covers\//)
+  // Decorative beside the group name (empty alt), so it is the page's one presentational image.
+  await expect(theirs.getByRole('presentation').first()).toHaveAttribute('src', /group-covers\//)
 
   // So does the join page, signed out, and the invite can be shown as a QR code.
   const guest = await openAs(null)
@@ -91,7 +98,9 @@ test('notes edited by one member show up live for another and in the activity', 
   await expect(theirBox).toHaveValue(text)
 
   await theirs.goto('/activity')
-  await expect(theirs.getByText(/edited the notes/).first()).toBeVisible()
+  await expect(
+    theirs.getByText(t('activity.group.notes_updated', { actor: firstName(owner.name) })).first(),
+  ).toBeVisible()
 })
 
 test('a deleted group waits under recently deleted and any member brings it back', async ({

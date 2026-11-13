@@ -50,7 +50,7 @@ function DeletedLine({ group }: { group: DeletedGroup }) {
       <span className={cn(left <= 3 && 'font-semibold text-tomato-ink')}>
         {left <= 1 ? t('groups.deleted.lastDay') : t('groups.deleted.daysLeft', { count: left })}
       </span>
-      {', '}
+      {t('common.separator')}
       {by}
     </>
   )

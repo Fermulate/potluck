@@ -99,6 +99,7 @@ export const groups = {
     keepMine: 'Keep mine',
     history: 'Edit history',
     historyEmpty: 'No edits yet. Be the first.',
+    leaveUnsaved: 'Your notes have not saved yet. Leave anyway?',
     archived: 'This group is archived, so its notes are read only.',
   },
   /** Home groups: the bills most homes split every month. */

@@ -13,6 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Archive, ArchiveRestore, LogOut, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { useDebts } from '@/features/balances/use-debts'
 import { GroupDataSection } from '@/features/export-import/group-data-section'
 import { Help } from '@/features/help/help'
 import { CurrencyField } from '@/features/me/profile-fields'
@@ -163,7 +164,8 @@ function SettingsBody({ group }: { group: GroupDetail }) {
   const [pending, setPending] = useState<Pending>(null)
   const editable = can(group.my_role, 'group.edit')
   const deletable = can(group.my_role, 'group.delete')
-  const allSquare = group.members.every((m) => m.net_cents === 0)
+  const debts = useDebts(group.id, group)
+  const allSquare = group.members.every((m) => m.net_cents === 0) && debts?.length === 0
   const me = group.members.find((m) => m.id === viewerId)
 
   async function removeGroup() {

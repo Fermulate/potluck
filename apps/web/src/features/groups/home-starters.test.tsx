@@ -6,6 +6,7 @@ import { group, groupTables, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { resetDb } from '@/test/supabase'
 import { HomeStarters } from './home-starters'
+import { useGroup } from './use-groups'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
 vi.mock('@/lib/auth', async (importOriginal) => ({
@@ -13,18 +14,22 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   useUserId: () => VIEWER,
 }))
 
+/** Shows the group's name once the same query the starters read has its answer. */
+function Loaded() {
+  const { data } = useGroup('g-hike')
+  return data ? <p>{data.name}</p> : null
+}
+
 function renderStarters(type: 'home' | 'trip', archived_at: string | null = null) {
   resetDb({ tables: groupTables(group({ type, archived_at })) })
   return renderWithProviders(
     <>
-      <p>loaded</p>
+      <Loaded />
       <HomeStarters groupId="g-hike" />
     </>,
     { path: '/groups/g-hike' },
   )
 }
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 describe('HomeStarters', () => {
   it('offers a home its monthly rent and utilities as repeating expenses', async () => {
@@ -44,13 +49,11 @@ describe('HomeStarters', () => {
 
   it('stays out of the way for other groups and archived homes', async () => {
     const { unmount } = renderStarters('trip')
-    await screen.findByText('loaded')
-    await settle()
+    await screen.findByText('Hike crew')
     expect(screen.queryByRole('heading', { name: t('groups.starters.title') })).toBeNull()
     unmount()
     renderStarters('home', '2026-10-01T00:00:00Z')
-    await screen.findByText('loaded')
-    await settle()
+    await screen.findByText('Hike crew')
     expect(screen.queryByRole('heading', { name: t('groups.starters.title') })).toBeNull()
   })
 })

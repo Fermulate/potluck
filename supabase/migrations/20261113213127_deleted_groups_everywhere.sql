@@ -16,7 +16,7 @@
 --    in 20261113213126 plus those.
 -- 5. Members keep reading the group.deleted line of a deleted group's activity, so the feed
 --    says what happened (private.my_deleted_group_ids, one more select policy).
--- 6. groups.cover_path is exactly `<group id>/<one file name>`.
+-- 6. groups.cover_path is exactly `<group id>/<one file name>`; stored paths that are not are cleared.
 -- 7. Debts in a circle: with simplify off every net can be zero while people still owe each other.
 --    delete_group and private.guard_group_delete also refuse while private.group_debts (what the
 --    balances tab shows) has rows; friend_balances and settle_with_friend skip deleted groups
@@ -286,6 +286,12 @@ create policy "activity: members read a deleted group's delete" on public.activi
   using (verb = 'group.deleted' and group_id = any (array(select private.my_deleted_group_ids())));
 
 -- 6. Covers live under their group --------------------------------------------------------------
+
+alter table public.groups disable trigger groups_activity;
+update public.groups g set cover_path = null
+where g.cover_path is not null
+  and not (g.cover_path ~ ('^' || g.id::text || '/[^/]+$') and position('..' in g.cover_path) = 0);
+alter table public.groups enable trigger groups_activity;
 
 alter table public.groups
   add constraint groups_cover_path_check

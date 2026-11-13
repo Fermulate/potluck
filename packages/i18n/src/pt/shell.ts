@@ -77,6 +77,7 @@ export const common = {
   delete: 'Excluir',
   remove: 'Remover',
   undo: 'Desfazer',
+  separator: ', ',
   retry: 'Tentar de novo',
   confirm: 'Confirmar',
   continue: 'Continuar',

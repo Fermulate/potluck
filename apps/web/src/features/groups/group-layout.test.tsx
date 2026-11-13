@@ -188,8 +188,12 @@ describe('GroupLayout', () => {
   })
 
   it('shows the last day alone too, and no dates for other types', async () => {
-    renderLayout([group({ type: 'trip', ends_on: '2026-06-10' })])
+    const { unmount } = renderLayout([group({ type: 'trip', ends_on: '2026-06-10' })])
     expect(await screen.findByText('Until Jun 10')).toBeInTheDocument()
+    unmount()
+    renderLayout([group({ type: 'home', starts_on: '2026-06-03', ends_on: '2026-06-10' })])
+    expect(await screen.findByRole('heading', { name: 'Hike crew' })).toBeInTheDocument()
+    expect(screen.queryByText(/Jun 3|Jun 10/)).not.toBeInTheDocument()
   })
 
   it('says a deleted group was deleted and lets any member restore it', async () => {

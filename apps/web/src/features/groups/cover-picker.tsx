@@ -78,20 +78,24 @@ export function CoverPicker({ group }: { group: GroupDetail }) {
       toast.error(t('groups.cover.tooBig'))
       return
     }
-    setPreview(URL.createObjectURL(file))
+    const previewUrl = URL.createObjectURL(file)
+    setPreview(previewUrl)
     setBusy(true)
+    let uploaded: string | null = null
     try {
       const { body, type } = await prepare(file)
       if (body.byteLength > MAX_BYTES) {
         toast.error(t('groups.cover.tooBig'))
         return
       }
-      const path = await uploadCover(supabase, group.id, body, type)
-      await setPath(path)
+      uploaded = await uploadCover(supabase, group.id, body, type)
+      await setPath(uploaded)
       toast.success(t('groups.cover.saved'))
-    } catch {
-      toast.error(t('groups.cover.failed'))
+    } catch (error) {
+      if (uploaded) await removeCoverFile(supabase, uploaded).catch(() => undefined)
+      toast.error(uploaded ? errorMessage(error) : t('groups.cover.failed'))
     } finally {
+      URL.revokeObjectURL(previewUrl)
       setPreview(null)
       setBusy(false)
       if (input.current) input.current.value = ''

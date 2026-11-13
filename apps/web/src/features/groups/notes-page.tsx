@@ -7,16 +7,18 @@ import {
   type WhiteboardRow,
 } from '@potluck/api'
 import { can, firstName } from '@potluck/core'
-import { formatRelative, t } from '@potluck/i18n'
+import { formatRelative, intlLocale, t } from '@potluck/i18n'
 import { Avatar, Button, cn, Skeleton, toast } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useBlocker } from '@tanstack/react-router'
 import { ChevronDown, History } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Help } from '@/features/help/help'
 import { useUserId } from '@/lib/auth'
 import { errorCode, errorMessage } from '@/lib/errors'
 import { avatarSrc, useViewerTimezone } from '@/lib/queries'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
+import { rpcKeepalive } from '@/lib/rpc-keepalive'
 import { supabase } from '@/lib/supabase'
 import { useGroup } from './use-groups'
 
@@ -134,6 +136,53 @@ function NotesEditor({ group, board }: { group: GroupDetail; board: WhiteboardRo
     return () => window.clearTimeout(timer)
   }, [text, saved, conflict, editable, isPending, mutate, failed])
 
+  const unsaved = useRef<{ body: string; base: number } | null>(null)
+  useEffect(() => {
+    unsaved.current =
+      editable && !conflict && text !== saved.body ? { body: text, base: saved.version } : null
+  })
+  useEffect(() => {
+    const groupId = group.id
+    const leave = (closing: boolean) => {
+      const next = unsaved.current
+      if (!next) return
+      unsaved.current = null
+      const args = { group_id: groupId, body: next.body, base_version: next.base }
+      if (closing && rpcKeepalive('save_group_whiteboard', args)) return
+      void saveWhiteboard(supabase, groupId, next.body, next.base).then(
+        () => queryClient.invalidateQueries({ queryKey: groupKeys.whiteboard(groupId) }),
+        () => undefined,
+      )
+    }
+    const onPageHide = () => leave(true)
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      leave(false)
+    }
+  }, [group.id, queryClient])
+
+  const held = editable && (conflict || (failed !== null && text !== saved.body))
+  useBlocker({
+    shouldBlockFn: () => !window.confirm(t('groups.notes.leaveUnsaved')),
+    enableBeforeUnload: held,
+    disabled: !held,
+  })
+
+  async function keepMine() {
+    try {
+      const latest = await queryClient.fetchQuery({
+        ...whiteboardQueryOptions(supabase, group.id),
+        staleTime: 0,
+      })
+      setSaved((s) => ({ ...s, version: latest.version }))
+      setSeenVersion(latest.version)
+      setConflict(false)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+  }
+
   const status = conflict
     ? null
     : isPending
@@ -190,14 +239,7 @@ function NotesEditor({ group, board }: { group: GroupDetail; board: WhiteboardRo
             >
               {t('groups.notes.useTheirs')}
             </Button>
-            <Button
-              size="sm"
-              variant="ink"
-              onClick={() => {
-                setSaved((s) => ({ ...s, version: board.version }))
-                setConflict(false)
-              }}
-            >
+            <Button size="sm" variant="ink" onClick={() => void keepMine()}>
               {t('groups.notes.keepMine')}
             </Button>
           </div>
@@ -250,8 +292,8 @@ function NotesEditor({ group, board }: { group: GroupDetail; board: WhiteboardRo
           {text.length > MAX * 0.9 && (
             <span className="tabular-nums">
               {t('groups.notes.count', {
-                count: text.length.toLocaleString(),
-                max: MAX.toLocaleString(),
+                count: text.length.toLocaleString(intlLocale()),
+                max: MAX.toLocaleString(intlLocale()),
               })}
             </span>
           )}
@@ -311,7 +353,7 @@ function NotesHistory({ group }: { group: GroupDetail }) {
                       <p className="text-sm font-semibold">
                         {nameOf(edit.actor_id)}
                         <span className="font-normal text-mute">
-                          {', '}
+                          {t('common.separator')}
                           {formatRelative(edit.created_at, { timeZone })}
                         </span>
                       </p>

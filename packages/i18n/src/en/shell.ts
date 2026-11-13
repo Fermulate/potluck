@@ -74,6 +74,8 @@ export const common = {
   delete: 'Delete',
   remove: 'Remove',
   undo: 'Undo',
+  /** Between two parts of one line, like a name and a time. */
+  separator: ', ',
   retry: 'Try again',
   confirm: 'Confirm',
   continue: 'Continue',

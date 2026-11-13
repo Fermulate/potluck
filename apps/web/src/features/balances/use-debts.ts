@@ -9,7 +9,10 @@ import { toBalanceExpense } from '@/features/expenses/expense-math'
  * Who owes whom in the group currency: the server's simplified set when the group simplifies
  * debts, otherwise every pair netted on its own. Undefined while loading.
  */
-export function useDebts(groupId: string, group: MoneyGroup | undefined): Debt[] | undefined {
+export function useDebts(
+  groupId: string,
+  group: Pick<MoneyGroup, 'currency' | 'simplify_debts'> | undefined,
+): Debt[] | undefined {
   const simplify = group?.simplify_debts ?? true
   const simplified = useQuery({
     ...moneyQueries.simplified(supabase, groupId),

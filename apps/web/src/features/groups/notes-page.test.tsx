@@ -38,7 +38,10 @@ const box = () => screen.getByRole('textbox', { name: t('groups.notes.label') })
 
 describe('GroupNotesPage', () => {
   beforeEach(() => vi.useRealTimers())
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
 
   it('shows the notes, who wrote them, and listens for edits', async () => {
     renderNotes()
@@ -75,6 +78,50 @@ describe('GroupNotesPage', () => {
     await waitFor(() => expect(db().rpcArgs('save_group_whiteboard')).toHaveLength(1), {
       timeout: 400,
     })
+  })
+
+  it('saves what was typed when the person leaves before the pause', async () => {
+    const { router } = renderNotes()
+    await waitFor(() => expect(box()).toHaveValue('Wifi: potluck123'))
+    db().respond('rpc:save_group_whiteboard', { data: board('Bins on Tuesday', 4, VIEWER) })
+    fireEvent.change(box(), { target: { value: 'Bins on Tuesday' } })
+    await act(() => router.navigate({ to: '/groups' }))
+
+    expect(screen.getByText('elsewhere')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(db().rpcArgs('save_group_whiteboard')).toEqual([
+        { group_id: 'g-hike', body: 'Bins on Tuesday', base_version: 3 },
+      ]),
+    )
+  })
+
+  it('saves what was typed when the page is closed', async () => {
+    renderNotes()
+    await waitFor(() => expect(box()).toHaveValue('Wifi: potluck123'))
+    db().respond('rpc:save_group_whiteboard', { data: board('Spare key: Cleo', 4, VIEWER) })
+    fireEvent.change(box(), { target: { value: 'Spare key: Cleo' } })
+    window.dispatchEvent(new Event('pagehide'))
+
+    await waitFor(() => expect(db().rpcArgs('save_group_whiteboard')).toHaveLength(1), {
+      timeout: 400,
+    })
+  })
+
+  it('asks before leaving text a conflict is holding back', async () => {
+    const { router } = renderNotes()
+    await waitFor(() => expect(box()).toHaveValue('Wifi: potluck123'))
+    db().respond('rpc:save_group_whiteboard', {
+      error: { message: 'whiteboard_conflict', code: '23514' },
+    })
+    db().respond('from:group_whiteboards', { data: board('Their text', 4, 'u-ben') })
+    fireEvent.change(box(), { target: { value: 'My text' } })
+    await screen.findByText(t('groups.notes.conflict', { name: 'Ben' }))
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    act(() => void router.navigate({ to: '/groups' }))
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith(t('groups.notes.leaveUnsaved')))
+    expect(router.state.location.pathname).toBe('/groups/g-hike/notes')
+    expect(box()).toHaveValue('My text')
   })
 
   it('takes in an edit from someone else when nothing is typed over it', async () => {
@@ -122,6 +169,34 @@ describe('GroupNotesPage', () => {
       body: 'Mine wins',
       base_version: 4,
     })
+  })
+
+  it('keeps mine on top of the newest version even before the refetch has landed', async () => {
+    renderNotes()
+    await waitFor(() => expect(box()).toHaveValue('Wifi: potluck123'))
+    db().respond(
+      'rpc:save_group_whiteboard',
+      { error: { message: 'whiteboard_conflict', code: '23514' } },
+      { data: board('Mine wins', 5, VIEWER) },
+    )
+    // The refetch right after the conflict still reads the old row; the next one has Ben's.
+    db().respond(
+      'from:group_whiteboards',
+      { data: board('Wifi: potluck123', 3) },
+      { data: board('Their text', 4, 'u-ben') },
+    )
+    fireEvent.change(box(), { target: { value: 'Mine wins' } })
+    const keep = await screen.findByRole('button', { name: t('groups.notes.keepMine') })
+    await waitFor(() => expect(db().queries('group_whiteboards')).toHaveLength(2))
+    fireEvent.click(keep)
+
+    await waitFor(() => expect(db().rpcArgs('save_group_whiteboard')).toHaveLength(2))
+    expect(db().rpcArgs('save_group_whiteboard')[1]).toEqual({
+      group_id: 'g-hike',
+      body: 'Mine wins',
+      base_version: 4,
+    })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows other save errors as a toast', async () => {
