@@ -45,6 +45,28 @@ describe('ZoomableImage', () => {
     expect(img.style.transform).toContain('scale(1)')
   })
 
+  it('zooms and moves with the keyboard, leaving arrows to the page when not zoomed', () => {
+    const onPage = vi.fn()
+    document.addEventListener('keydown', onPage)
+    render(<ZoomableImage src="blob:x" alt="Receipt" />)
+    const { img, frame } = frameOf()
+    fireEvent.keyDown(frame, { key: 'ArrowLeft' })
+    expect(onPage).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(frame, { key: '+' })
+    expect(img.style.transform).toContain('scale(1.5)')
+    fireEvent.keyDown(frame, { key: 'ArrowLeft' })
+    expect(img.style.transform).toContain('translate(48px, 0px)')
+    fireEvent.keyDown(frame, { key: 'ArrowDown' })
+    expect(img.style.transform).toContain('translate(48px, -48px)')
+    expect(onPage).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(frame, { key: '-' })
+    fireEvent.keyDown(frame, { key: '=' })
+    fireEvent.keyDown(frame, { key: '0' })
+    expect(img.style.transform).toContain('scale(1)')
+    fireEvent.keyDown(frame, { key: 'a' })
+    document.removeEventListener('keydown', onPage)
+  })
+
   it('double clicks to zoom in and out', () => {
     render(<ZoomableImage src="blob:x" alt="Receipt" />)
     const { img, frame } = frameOf()

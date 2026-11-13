@@ -112,11 +112,16 @@ function Thumb({
         target="_blank"
         rel="noreferrer"
         aria-label={t('expenses.attachments.open', { name })}
-        className="flex h-full min-h-24 items-center gap-3 rounded-card border border-line bg-card p-4 font-semibold hover:border-line-strong"
+        className={cn(
+          'flex items-center gap-2 rounded-card border border-line bg-card font-semibold whitespace-nowrap hover:border-line-strong',
+          large ? 'min-h-24 p-4' : 'aspect-square flex-col justify-center p-2',
+        )}
       >
         <FileText aria-hidden className="size-6 shrink-0 text-mute" />
-        <span className="min-w-0 flex-1 break-words">{name}</span>
-        <ExternalLink aria-hidden className="size-4 shrink-0 text-mute" />
+        <span className="inline-flex items-center gap-1">
+          {name}
+          <ExternalLink aria-hidden className="size-3.5 shrink-0 text-mute" />
+        </span>
       </a>
     ) : (
       <Skeleton className="h-24" />
@@ -222,7 +227,8 @@ function Viewer({
           src={url}
           alt={t('expenses.attachments.alt', { number: index + 1, description })}
           onSwipe={count > 1 ? onMove : undefined}
-          className="h-[calc(100dvh-11rem)] min-h-[50dvh] w-full rounded-card bg-sunken"
+          className="h-[calc(100dvh-11rem)] min-h-[50dvh] w-full"
+          frameClassName="rounded-card bg-sunken"
         />
       ) : (
         <Skeleton className="h-[60dvh] w-full" />

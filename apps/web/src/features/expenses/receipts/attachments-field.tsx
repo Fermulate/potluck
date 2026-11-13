@@ -164,7 +164,9 @@ function Tile({
           className="flex size-20 flex-col items-center justify-center gap-1 rounded-[0.875rem] border border-line bg-sunken text-xs font-semibold text-mute"
         >
           <FileText aria-hidden className="size-5" />
-          <span aria-hidden>{name}</span>
+          <span aria-hidden className="whitespace-nowrap">
+            {name}
+          </span>
         </span>
       )}
       <IconButton

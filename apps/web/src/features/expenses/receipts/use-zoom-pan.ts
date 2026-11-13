@@ -2,6 +2,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -16,6 +17,8 @@ export const MAX_ZOOM = 4
 const TAP_ZOOM = 2.5
 const SWIPE = 60
 const DOUBLE_TAP_MS = 300
+/** How far an arrow key moves a zoomed photo. */
+const KEY_STEP = 48
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
@@ -146,6 +149,31 @@ export function useZoomPan({ onSwipe }: { onSwipe?: (step: 1 | -1) => void } = {
 
   const step = (factor: number) => settle(zoomAt(view, view.scale * factor, 0, 0))
 
+  // Keyboard: + and - zoom, 0 resets, arrows move a zoomed photo. Unzoomed, arrows are left to
+  // the page (the viewer uses them to go to the next photo).
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
+    const moves: Record<string, [number, number]> = {
+      ArrowLeft: [KEY_STEP, 0],
+      ArrowRight: [-KEY_STEP, 0],
+      ArrowUp: [0, KEY_STEP],
+      ArrowDown: [0, -KEY_STEP],
+    }
+    const move = moves[e.key]
+    if (move && view.scale > 1) {
+      settle({ ...view, x: view.x + move[0], y: view.y + move[1] })
+    } else if (e.key === '+' || e.key === '=') {
+      step(1.5)
+    } else if (e.key === '-') {
+      step(1 / 1.5)
+    } else if (e.key === '0') {
+      setView({ scale: 1, x: 0, y: 0 })
+    } else {
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
   const style: CSSProperties = {
     transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
     transition: dragging ? 'none' : 'transform 180ms ease-out',
@@ -164,6 +192,7 @@ export function useZoomPan({ onSwipe }: { onSwipe?: (step: 1 | -1) => void } = {
       onPointerUp,
       onPointerCancel: onPointerUp,
       onDoubleClick,
+      onKeyDown,
       style: { touchAction: 'none' } as CSSProperties,
     },
     zoomIn: () => step(1.5),

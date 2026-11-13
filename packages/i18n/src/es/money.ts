@@ -422,6 +422,7 @@ export const expenses = {
       'Guardado, pero los archivos no se adjuntaron. Edita el gasto para añadirlos otra vez.',
     zoomIn: 'Acercar',
     zoomOut: 'Alejar',
+    zoomKeys: 'Acerca con + y -, muévete con las flechas, 0 para volver al inicio.',
   },
   scan: {
     button: 'Escanear un recibo',

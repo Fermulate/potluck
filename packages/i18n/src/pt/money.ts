@@ -422,6 +422,7 @@ export const expenses = {
       'Salvo, mas os arquivos não foram anexados. Edite a despesa para adicioná-los de novo.',
     zoomIn: 'Aproximar',
     zoomOut: 'Afastar',
+    zoomKeys: 'Aproxime com + e -, mova com as setas, 0 para voltar ao início.',
   },
   scan: {
     button: 'Escanear um recibo',

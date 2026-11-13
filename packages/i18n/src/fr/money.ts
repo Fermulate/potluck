@@ -429,6 +429,7 @@ export const expenses = {
       "C'est enregistré, mais les fichiers ne sont pas passés. Modifie la dépense pour les rajouter.",
     zoomIn: 'Agrandir',
     zoomOut: 'Réduire',
+    zoomKeys: 'Zoome avec + et -, déplace avec les flèches, 0 pour revenir au début.',
   },
   scan: {
     button: 'Scanner un reçu',

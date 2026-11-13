@@ -429,6 +429,7 @@ export const expenses = {
       'Gespeichert, aber die Dateien wurden nicht angehängt. Bearbeite die Ausgabe, um sie erneut hinzuzufügen.',
     zoomIn: 'Vergrößern',
     zoomOut: 'Verkleinern',
+    zoomKeys: 'Mit + und - zoomen, mit den Pfeiltasten verschieben, 0 setzt zurück.',
   },
   scan: {
     button: 'Beleg scannen',

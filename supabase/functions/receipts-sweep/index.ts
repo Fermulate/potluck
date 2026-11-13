@@ -7,6 +7,8 @@ import { hasEdgeSecret, json } from '../_shared/http.ts'
 import { sweepOrphans } from './sweep.ts'
 
 Deno.serve(async (req) => {
+  // pg_net posts; nothing else should ever reach this.
+  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
   if (!hasEdgeSecret(req)) return json({ error: 'forbidden' }, 403)
   const admin = adminClient()
   try {

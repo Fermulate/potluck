@@ -429,6 +429,7 @@ export const expenses = {
     partial: 'Saved, but the files did not attach. Edit the expense to add them again.',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
+    zoomKeys: 'Zoom with + and -, move with the arrow keys, 0 to start over.',
   },
   /** Reading a receipt photo on the device to fill in the form. */
   scan: {
