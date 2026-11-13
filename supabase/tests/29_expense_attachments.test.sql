@@ -3,7 +3,7 @@
 -- two-step sign in read none of them; set_expense_attachments and the receipt_path mirror for
 -- older clients.
 begin;
-select plan(49);
+select plan(51);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -83,14 +83,8 @@ select is(
 select is(
   (select count(*)::int from public.activity
    where subject_id = tests.id('e') and verb = 'expense.updated'),
-  1,
-  'one edit is logged'
-);
-select is(
-  (select data -> 'changes' -> 'attachments' from public.activity
-   where subject_id = tests.id('e') and verb = 'expense.updated'),
-  '{"from": 1, "to": 3}'::jsonb,
-  'the edit says how many there were and are'
+  0,
+  'files sent right after creating the expense are part of creating it: one history entry'
 );
 
 select tests.login('ava');
@@ -102,8 +96,8 @@ select lives_ok(
 reset role;
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('e') and verb = 'expense.updated'),
-  1,
-  'changes nothing and logs nothing'
+  0,
+  'the same list changes nothing and logs nothing'
 );
 
 -- Paths are plain strings or {path} objects.
@@ -129,6 +123,13 @@ select lives_ok(
   format($$ select public.set_expense_attachments(%L, %L) $$, tests.id('e'),
     pg_temp.files('one.jpg', 'four.webp', 'two.png')),
   'an admin can'
+);
+reset role;
+select is(
+  (select data -> 'changes' -> 'attachments' from public.activity
+   where subject_id = tests.id('e') and verb = 'expense.updated' and actor_id = tests.uid('cleo')),
+  '{"from": 2, "to": 3}'::jsonb,
+  'someone else changing the files is an edit that says how many there were and are'
 );
 select tests.login('outsider');
 select throws_ok(
@@ -316,6 +317,23 @@ select is(
 );
 
 select has_index('public', 'expense_attachments', 'expense_attachments_group_idx', 'group_id is indexed');
+
+-- The orphan sweep: files older than a day that nothing points at, for the service role only.
+reset role;
+insert into storage.objects (bucket_id, name, owner_id, created_at) values
+  ('receipts', tests.id('g') || '/abandoned.jpg', tests.uid('ben'), now() - interval '2 days'),
+  ('receipts', tests.id('g') || '/fresh.jpg', tests.uid('ben'), now());
+update storage.objects set created_at = now() - interval '2 days'
+where bucket_id = 'receipts' and name = pg_temp.file('one.jpg');
+set local role service_role;
+select is(
+  (select array_agg(split_part(p, '/', 2) order by p) from public.orphan_receipts() as p),
+  array['abandoned.jpg'],
+  'old files nothing points at are swept; attached, receipt and new files are not'
+);
+reset role;
+select tests.login('ava');
+select throws_ok($$ select public.orphan_receipts() $$, '42501', null, 'members cannot list orphans');
 
 select * from finish();
 rollback;

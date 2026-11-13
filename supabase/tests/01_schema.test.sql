@@ -12,6 +12,7 @@
 begin;
 select plan(126);
 select plan(98);
+select plan(100);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -78,6 +79,7 @@ select has_function('public', 'import_expenses', array['uuid', 'jsonb', 'text', 
 select has_function('public', 'import_stage', array['uuid', 'uuid', 'jsonb'], 'import_stage(batch_id, group_id, rows)');
 select has_function('public', 'export_my_data', array[]::text[], 'export_my_data');
 select has_function('public', 'set_expense_attachments', array['uuid', 'jsonb'], 'set_expense_attachments');
+select has_function('public', 'orphan_receipts', array['integer'], 'orphan_receipts');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
@@ -267,6 +269,8 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'purge-import-batches' and schedule = '*/15 * * * *'),
   'unfinished imports are cleared every quarter hour'
+  exists (select 1 from cron.job where jobname = 'receipts-sweep' and schedule = '40 3 * * *'),
+  'orphaned receipt files are swept daily'
 );
 
 -- Grants: clients never write money tables directly.

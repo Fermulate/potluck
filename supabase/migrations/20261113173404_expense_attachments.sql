@@ -261,6 +261,19 @@ begin
     -- the same, so realtime tells everyone looking at the expense. This function logs the edit.
     perform set_config('potluck.expense_logged', eid::text, true);
     update public.expenses e set receipt_path = new_list -> 0 ->> 'path' where e.id = eid;
+    -- Files sent right after the caller created the expense are part of creating it: its
+    -- history keeps the one "added it" entry.
+    if exists (
+      select 1 from public.activity a
+      where a.subject_id = eid and a.verb = 'expense.created' and a.actor_id = uid
+        and a.created_at > now() - interval '10 minutes'
+    ) and not exists (
+      select 1 from public.activity a where a.subject_id = eid and a.verb <> 'expense.created'
+    ) then
+      return query
+      select a.* from public.expense_attachments a where a.expense_id = eid order by a.position;
+      return;
+    end if;
     perform private.log_activity(gid, uid, 'expense.updated', eid, jsonb_build_object(
       'description', prev.description,
       'amount_cents', prev.amount_cents,
@@ -281,3 +294,28 @@ $$;
 
 revoke execute on function public.set_expense_attachments(uuid, jsonb) from public, anon;
 grant execute on function public.set_expense_attachments(uuid, jsonb) to authenticated, service_role;
+
+-- Orphan sweep -------------------------------------------------------------------------------------
+
+-- Service role only (the receipts-sweep edge function): files in the receipts bucket older than a
+-- day that no expense names as its receipt and no attachment row points at. They come from saves
+-- that never finished (a closed tab) and from files removed by someone the bucket would not let
+-- delete them. The function deletes them through the Storage API, which also removes the stored
+-- object (deleting rows from storage.objects would leave the object behind).
+create or replace function public.orphan_receipts(max_count integer default 500)
+returns setof text
+language sql stable security definer set search_path = '' as $$
+  select o.name from storage.objects o
+  where o.bucket_id = 'receipts'
+    and o.created_at < now() - interval '1 day'
+    and not exists (select 1 from public.expenses e where e.receipt_path = o.name)
+    and not exists (select 1 from public.expense_attachments a where a.path = o.name)
+  order by o.created_at
+  limit greatest(1, least(coalesce(max_count, 500), 1000));
+$$;
+
+revoke execute on function public.orphan_receipts(integer) from public, anon, authenticated;
+grant execute on function public.orphan_receipts(integer) to service_role;
+
+-- Daily, at a quiet hour. Without the Vault entries (local stack, CI) the hook does nothing.
+select cron.schedule('receipts-sweep', '40 3 * * *', $$select private.invoke_edge_function('receipts-sweep')$$);
