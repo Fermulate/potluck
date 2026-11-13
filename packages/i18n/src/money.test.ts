@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatMoney } from './index'
+import { formatMoney, formatRate } from './index'
 
 const NBSP = '\u00a0'
 
@@ -43,5 +43,14 @@ describe('formatMoney', () => {
 
   it('accepts lowercase currency codes', () => {
     expect(formatMoney(1500, 'jpy')).toBe('¥1,500')
+  })
+})
+
+describe('formatRate', () => {
+  it('shows a rate with the language decimal mark and every digit', () => {
+    expect(formatRate('1.09')).toBe('1.09')
+    expect(formatRate('1.09', { locale: 'fr-FR' })).toBe('1,09')
+    expect(formatRate('0.006700000001', { locale: 'de-DE' })).toBe('0,006700000001')
+    expect(formatRate(' 12 ', { locale: 'pt-BR' })).toBe('12')
   })
 })

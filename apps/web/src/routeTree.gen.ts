@@ -45,6 +45,7 @@ import { Route as AppExpensesExpenseIdEditRouteImport } from './routes/_app/expe
 import { Route as AppGroupsGroupIdIndexRouteImport } from './routes/_app/groups/$groupId/index'
 import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/groups/$groupId/balances'
 import { Route as AppGroupsGroupIdDeletedRouteImport } from './routes/_app/groups/$groupId/deleted'
+import { Route as AppGroupsGroupIdImportRouteImport } from './routes/_app/groups/$groupId/import'
 import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
 import { Route as AppGroupsGroupIdPlansRouteImport } from './routes/_app/groups/$groupId/plans'
 import { Route as AppGroupsGroupIdSettingsRouteImport } from './routes/_app/groups/$groupId/settings'
@@ -232,6 +233,11 @@ const AppGroupsGroupIdDeletedRoute = AppGroupsGroupIdDeletedRouteImport.update({
   path: '/deleted',
   getParentRoute: () => AppGroupsGroupIdRoute,
 } as any)
+const AppGroupsGroupIdImportRoute = AppGroupsGroupIdImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
 const AppGroupsGroupIdMembersRoute = AppGroupsGroupIdMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -295,6 +301,7 @@ export interface FileRoutesByFullPath {
   '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
+  '/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
+  '/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
@@ -380,6 +388,7 @@ export interface FileRoutesById {
   '/_app/expenses/$expenseId_/edit': typeof AppExpensesExpenseIdEditRoute
   '/_app/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
   '/_app/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
+  '/_app/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/_app/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
@@ -424,6 +433,7 @@ export interface FileRouteTypes {
     | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
     | '/groups/$groupId/deleted'
+    | '/groups/$groupId/import'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
     | '/groups/$groupId/deleted'
+    | '/groups/$groupId/import'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
@@ -508,6 +519,7 @@ export interface FileRouteTypes {
     | '/_app/expenses/$expenseId_/edit'
     | '/_app/groups/$groupId/balances'
     | '/_app/groups/$groupId/deleted'
+    | '/_app/groups/$groupId/import'
     | '/_app/groups/$groupId/members'
     | '/_app/groups/$groupId/plans'
     | '/_app/groups/$groupId/settings'
@@ -787,6 +799,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsGroupIdDeletedRouteImport
       parentRoute: typeof AppGroupsGroupIdRoute
     }
+    '/_app/groups/$groupId/import': {
+      id: '/_app/groups/$groupId/import'
+      path: '/import'
+      fullPath: '/groups/$groupId/import'
+      preLoaderRoute: typeof AppGroupsGroupIdImportRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
     '/_app/groups/$groupId/members': {
       id: '/_app/groups/$groupId/members'
       path: '/members'
@@ -828,6 +847,7 @@ declare module '@tanstack/react-router' {
 interface AppGroupsGroupIdRouteChildren {
   AppGroupsGroupIdBalancesRoute: typeof AppGroupsGroupIdBalancesRoute
   AppGroupsGroupIdDeletedRoute: typeof AppGroupsGroupIdDeletedRoute
+  AppGroupsGroupIdImportRoute: typeof AppGroupsGroupIdImportRoute
   AppGroupsGroupIdMembersRoute: typeof AppGroupsGroupIdMembersRoute
   AppGroupsGroupIdPlansRoute: typeof AppGroupsGroupIdPlansRoute
   AppGroupsGroupIdSettingsRoute: typeof AppGroupsGroupIdSettingsRoute
@@ -838,6 +858,7 @@ interface AppGroupsGroupIdRouteChildren {
 const AppGroupsGroupIdRouteChildren: AppGroupsGroupIdRouteChildren = {
   AppGroupsGroupIdBalancesRoute: AppGroupsGroupIdBalancesRoute,
   AppGroupsGroupIdDeletedRoute: AppGroupsGroupIdDeletedRoute,
+  AppGroupsGroupIdImportRoute: AppGroupsGroupIdImportRoute,
   AppGroupsGroupIdMembersRoute: AppGroupsGroupIdMembersRoute,
   AppGroupsGroupIdPlansRoute: AppGroupsGroupIdPlansRoute,
   AppGroupsGroupIdSettingsRoute: AppGroupsGroupIdSettingsRoute,

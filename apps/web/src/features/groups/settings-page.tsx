@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Archive, ArchiveRestore, LogOut, Trash2 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { GroupDataSection } from '@/features/export-import/group-data-section'
 import { Help } from '@/features/help/help'
 import { CurrencyField } from '@/features/me/profile-fields'
 import { useUserId } from '@/lib/auth'
@@ -213,6 +214,8 @@ function SettingsBody({ group }: { group: GroupDetail }) {
       </Section>
 
       <DefaultSplitSection groupId={group.id} />
+
+      <GroupDataSection groupId={group.id} archived={!!group.archived_at} />
 
       <Section title={t('groups.settings.danger')}>
         <Card padding="roomy" className="grid gap-5">

@@ -21,6 +21,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0015](0015-payment-links-and-cross-group-settle.md)       | Payment links and settling across groups                    |
 | [0016](0016-guest-availability-links.md)                   | Guest availability links without accounts                   |
 | [0017](0017-search-and-spending-totals-in-sql.md)          | Search and spending totals in SQL, over one ledger view     |
+| [0018](0018-export-backup-and-import.md)                   | Export, backup format and import mapping                    |
 | [0019](0019-placeholder-members-and-claiming.md)           | Placeholder members and claiming them                       |
 
 ## Writing a new one

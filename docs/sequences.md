@@ -27,6 +27,7 @@ Participants used throughout:
 - [Guest availability links](#guest-availability-links)
 - [Best slots and scheduling](#best-slots-and-scheduling)
 - [Recurring expenses](#recurring-expenses)
+- [Import a spreadsheet](#import-a-spreadsheet)
 - [Daily FX sync](#daily-fx-sync)
 - [Notification settings, email and the monthly summary](#notification-settings-email-and-the-monthly-summary)
 - [Delete an account](#delete-an-account)
@@ -600,6 +601,51 @@ sequenceDiagram
     end
   end
   Note over DB: routed by the Reminders setting:<br/>inbox always, push and email per person
+```
+
+## Import a spreadsheet
+
+A Splitwise export or a Potluck spreadsheet comes into one group, up to 5,000 rows per transaction ([ADR 18](adr/0018-export-backup-and-import.md)). Everything up to the button press happens in the browser; the server writes every row or none.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Web
+  participant K as Worker
+  participant DB as DB
+
+  U->>W: choose a CSV (group settings, Import)
+  alt large file
+    W->>K: text and column names
+    K-->>W: readImportFile: people, rows, totals, issues
+  else small file
+    W->>W: readImportFile
+  end
+  W->>W: guessMapping(people, members and people who left)
+  W->>DB: fx_rates history for each other currency, earlier imports (activity)
+  U->>W: confirm or change who is who, type missing rates, leave rows out
+  W->>W: planImport: rows with their rates, balances in the group currency,<br/>total line check, rows already in the group, payments paymentProblem refuses
+  U->>W: Import N rows
+  loop every 5,000 rows (one import each)
+    opt more than 2,000 rows
+      W->>DB: rpc import_stage(batch_id, group_id, 2,000 rows) until 2,000 or fewer are left
+    end
+    W->>DB: rpc import_expenses(group_id, rest, source, batch_id, fingerprint)
+    DB->>DB: lock group row (share), require_member, require_unarchived
+    DB->>DB: read every row into working tables, find the first failing row<br/>(save_expense's checks, check_payment for payments)
+    alt a row fails
+      DB-->>W: the error code, hint import_row:n (nothing written)
+      W-->>U: Row (file line): message, and what earlier imports wrote
+    else every row passes
+      DB->>DB: set potluck.importing = group id
+      DB->>DB: insert expenses, payers, splits, settlements (one statement each)
+      Note over DB: activity and notification rows for this group<br/>are dropped by the hold_during_import triggers
+      DB->>DB: log_activity expenses.imported {expenses, payments, source, fingerprint}
+      DB-->>W: {expenses, payments}
+    end
+  end
+  W->>W: invalidate the group's money, go to its expenses
 ```
 
 ## Daily FX sync

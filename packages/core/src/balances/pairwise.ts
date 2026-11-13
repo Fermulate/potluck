@@ -33,6 +33,25 @@ function expenseTransfers(effect: Readonly<Record<string, number>>): Transfer[] 
 }
 
 /**
+ * What one expense does between two people, from its effect on everyone (`expenseEffect`):
+ * positive when `other` comes out owing `person`, negative when `person` owes `other`. Uses the
+ * same spread as `pairwiseDebts`, so summing it over a group's expenses and payments gives that
+ * pair's debt there.
+ */
+export function pairEffect(
+  effect: Readonly<Record<string, number>>,
+  person: string,
+  other: string,
+): number {
+  let net = 0
+  for (const t of expenseTransfers(effect)) {
+    if (t.fromUser === other && t.toUser === person) net += t.amountCents
+    else if (t.fromUser === person && t.toUser === other) net -= t.amountCents
+  }
+  return net
+}
+
+/**
  * Who owes whom without simplification: inside every expense the people who came out behind
  * owe the people who came out ahead (with one payer: everyone owes the payer their part),
  * settlements pay those debts down, and each pair is netted to a single transfer.

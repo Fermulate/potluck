@@ -13,7 +13,7 @@ export {
 } from './dates'
 export { en, type Dictionary } from './en'
 export { greeting } from './greeting'
-export { DEFAULT_LOCALE, formatMoney, type MoneyFormatOptions } from './money'
+export { DEFAULT_LOCALE, formatMoney, formatRate, type MoneyFormatOptions } from './money'
 export {
   activateLocale,
   currentLocale,

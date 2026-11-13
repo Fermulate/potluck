@@ -147,6 +147,22 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       if (expenseId) link = { to: '/expenses/$expenseId', params: { expenseId } }
       break
     }
+    case 'expenses': {
+      // A whole file imported at once: "Ava imported 12 expenses and 3 payments".
+      emoji = '📥'
+      tone = 'saffron'
+      const expenses = num(d.expenses) ?? 0
+      const payments = num(d.payments) ?? 0
+      const parts = [
+        expenses > 0 ? t('transfer.summary.expenses', { count: expenses }) : '',
+        payments > 0 ? t('transfer.summary.payments', { count: payments }) : '',
+      ].filter(Boolean)
+      params.summary =
+        parts.length === 2
+          ? t('transfer.summary.both', { expenses: parts[0]!, payments: parts[1]! })
+          : (parts[0] ?? t('transfer.summary.expenses', { count: 0 }))
+      break
+    }
   }
 
   if (named && named === seatId) named = undefined

@@ -49,3 +49,15 @@ export function formatMoney(
   // `|| 0` folds -0 into 0, so a negated zero never formats as "-$0.00".
   return formatter(code, options).format((amountMinor || 0) / 10 ** minorUnits(code))
 }
+
+/**
+ * An exchange rate kept as decimal text, shown with the language's decimal mark (1,09 in French)
+ * and every digit it has: it is never rounded through a number.
+ */
+export function formatRate(rate: string, options: { locale?: string } = {}): string {
+  const mark =
+    new Intl.NumberFormat(options.locale ?? intlLocale())
+      .formatToParts(1.5)
+      .find((p) => p.type === 'decimal')?.value ?? '.'
+  return rate.trim().replace('.', mark)
+}

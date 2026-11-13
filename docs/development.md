@@ -259,6 +259,15 @@ Error codes from the database: `errorMessage(error, scope)` in `apps/web/src/lib
 
 A new namespace needs one line in `en.ts` to add it to the dictionary.
 
+## Export, backup and import
+
+[ADR 18](adr/0018-export-backup-and-import.md) has the decisions and [backup-format.md](backup-format.md) the JSON format. Notes for working on it (kept out of the AGENTS.md files, which have a size limit):
+
+- **SQL.** `import_expenses` repeats the checks `private.save_expense` makes, as set queries (for speed), and sends every payment through `private.check_payment`. A new expense rule goes in both places. While an import runs, `potluck.importing` holds the group id and triggers on `activity` and `notifications` drop the per row entries for that group: keep new per row side effects going through those tables, or check the setting yourself.
+- **Core.** `packages/core/src/portability/` holds CSV reading and writing, Potluck's spreadsheet export (`ledgerCsv`) and its reader, the Splitwise reader, `planImport` (file rows to `import_expenses` rows, with the rate each row gets) and the backup schema. The export's balance columns come from `expenseEffect`; keep the round trip tests passing. `nearestRate` picks the same stored rate the server holds a typed rate against.
+- **Web.** Everything lives in `apps/web/src/features/export-import`. Every spreadsheet goes through `groupCsv` / core `ledgerCsv` with `ledgerLabels()`, files are saved with `saveFile`, and import files are read by `readFile` (a worker for large files), then planned in core. Seats are members, so a name in a file can be matched to one (labelled "not on Potluck yet").
+- **Strings.** The copy is the `transfer` namespace. `transfer.csv` names the spreadsheet columns, which the import reads back in the current language and in English, so renaming one breaks reading older files in that language: translate it once and leave it.
+
 ## Adding a route
 
 Routes are files under `apps/web/src/routes/`, picked up by the TanStack Router Vite plugin, which regenerates `routeTree.gen.ts` while `pnpm dev` or `pnpm build` runs. Without Vite, `pnpm gen:routes` does the same (a new route fails `pnpm typecheck` until the tree is regenerated). Do not edit that file.

@@ -45,6 +45,8 @@ export const HELP_TOPICS = {
   restore: '/expenses/editing/#undo-and-restore',
   placeholders: '/groups/#people-not-on-potluck-yet',
   friends: '/friends/#add-a-friend',
+  yourData: '/account/#export-your-data',
+  importExpenses: '/groups/settings/#import-expenses',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

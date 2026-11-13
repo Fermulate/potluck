@@ -185,7 +185,7 @@ export function SideRail({
                   href: item.href,
                   'aria-current': active ? 'page' : undefined,
                   className: cn(
-                    'relative isolate flex h-11 items-center gap-3 rounded-pill px-3.5 text-[0.9375rem] font-semibold transition-colors duration-150 [&_svg]:size-5',
+                    'relative isolate flex min-h-11 items-center gap-3 rounded-pill px-3.5 py-1.5 text-[0.9375rem] font-semibold transition-colors duration-150 [&_svg]:size-5 [&_svg]:shrink-0',
                     active ? 'text-ink' : 'text-mute hover:bg-ink/[0.04] hover:text-ink',
                   ),
                   children: (
@@ -199,7 +199,7 @@ export function SideRail({
                         />
                       )}
                       {active ? (item.activeIcon ?? item.icon) : item.icon}
-                      <span className="flex-1">
+                      <span className="min-w-0 flex-1 leading-tight break-words hyphens-auto">
                         {item.label}
                         <BadgeText badge={item.badge} />
                       </span>
