@@ -85,6 +85,11 @@ describe('can', () => {
     expect(everyone((r) => can(r, 'group.edit'))).toEqual([true, true, false])
   })
 
+  it('lets anyone in the group restore it or edit its notes', () => {
+    expect(everyone((r) => can(r, 'group.restore'))).toEqual([true, true, true])
+    expect(everyone((r) => can(r, 'group.notes'))).toEqual([true, true, true])
+  })
+
   it('reserves deleting the group and transferring ownership for the owner', () => {
     expect(everyone((r) => can(r, 'group.delete'))).toEqual([true, false, false])
     expect(everyone((r) => can(r, 'group.transferOwnership'))).toEqual([true, false, false])

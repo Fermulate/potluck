@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATEGORY_IDS } from '../categories'
+import { ALL_CATEGORY_IDS } from '../categories'
 import { currencyCode, dateOnly, id, optionalText, positiveCents } from './common'
 
 export const SPLIT_TYPES = [
@@ -46,7 +46,7 @@ const expenseFields = {
   is_refund: z.boolean().default(false),
   split_type: splitTypeSchema,
   splits: z.array(expenseSplitSchema).min(1).max(100),
-  category: z.enum(CATEGORY_IDS).nullish().default(null),
+  category: z.enum(ALL_CATEGORY_IDS).nullish().default(null),
   notes: optionalText(2000),
   spent_at: dateOnly,
   event_id: id.nullish().default(null),
