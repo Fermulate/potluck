@@ -28,6 +28,7 @@ import {
   TextArea,
   cn,
   toast,
+  useMediaQuery,
 } from '@potluck/ui'
 import { Help } from '@/features/help/help'
 import { joinNames } from '@/features/plans/format'
@@ -165,20 +166,22 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
 
   const [amount, setAmount] = useState<number | null>(editing?.amount_cents ?? null)
   const [currency, setCurrency] = useState(editing?.currency ?? group.currency)
+  const [description, setDescription] = useState(editing?.description ?? '')
   // A new expense starts in the currency the viewer last used in this group. The route loader
-  // prefetches it; until it is there the form starts in the group currency and swaps once,
-  // unless a currency was already picked.
+  // prefetches it; until it is there the form starts in the group currency. It is applied only
+  // while the form is untouched: once an amount, a description or a currency has been entered,
+  // a late answer is ignored, so what someone typed never changes under them.
   const lastCurrency = useQuery({
     ...moneyQueries.lastCurrency(supabase, group.id, me),
     enabled: !editing,
   })
   const [currencyPicked, setCurrencyPicked] = useState(false)
-  const [lastApplied, setLastApplied] = useState(!!editing)
-  if (!lastApplied && lastCurrency.data !== undefined) {
-    setLastApplied(true)
-    if (lastCurrency.data && !currencyPicked) setCurrency(lastCurrency.data)
+  const [lastSettled, setLastSettled] = useState(!!editing)
+  const untouched = amount === null && description === '' && !currencyPicked
+  if (!lastSettled && (lastCurrency.data !== undefined || !untouched)) {
+    setLastSettled(true)
+    if (untouched && lastCurrency.data) setCurrency(lastCurrency.data)
   }
-  const [description, setDescription] = useState(editing?.description ?? '')
   const [category, setCategory] = useState<string | null>(editing?.category ?? null)
   const [payers, setPayers] = useState<PayersDraft>(() =>
     editing
@@ -336,6 +339,20 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
     onError: (error) => toast.error(moneyErrorMessage(error)),
   })
+
+  const wide = useMediaQuery('(min-width: 64rem)')
+  const quickSplit = (
+    <QuickSplit
+      members={group.members}
+      viewerId={me}
+      payers={payers}
+      draft={draft}
+      onPick={(nextPayers, nextDraft) => {
+        setPayers(nextPayers)
+        setDraft(nextDraft)
+      }}
+    />
+  )
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -517,18 +534,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             />
             <Help topic="refunds" className="mt-0.5" />
           </div>
-          {!locked && (
-            <QuickSplit
-              members={group.members}
-              viewerId={me}
-              payers={payers}
-              draft={draft}
-              onPick={(nextPayers, nextDraft) => {
-                setPayers(nextPayers)
-                setDraft(nextDraft)
-              }}
-            />
-          )}
+          {/* On a phone the shortcuts sit right under "Paid by", above the fold; on a wide
+              screen they join the split editor. */}
+          {!locked && !wide && quickSplit}
           {props.mode === 'create' && props.eventId && (
             <p className="inline-flex items-center gap-2 text-sm font-medium text-plum-ink">
               <CalendarHeart aria-hidden className="size-4" />
@@ -579,6 +587,12 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 <p className="text-sm text-mute">
                   {t('expenses.form.formerNote', { names: formerNames })}
                 </p>
+              )}
+              {wide && group.members.length === 2 && (
+                <div className="flex flex-col gap-2 pb-2">
+                  <h3 className="text-sm font-semibold text-mute">{t('expenses.quick.label')}</h3>
+                  {quickSplit}
+                </div>
               )}
               <SplitEditor
                 members={splitMembers}

@@ -178,6 +178,33 @@ describe('last currency', () => {
   })
 })
 
+describe('last currency, answered late', () => {
+  it('is ignored once something was typed', async () => {
+    const client = seededClient((c) =>
+      c.removeQueries({ queryKey: moneyKeys.lastCurrency(GROUP_ID, ME) }),
+    )
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+      client,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '25' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Snacks' },
+    })
+    // The remembered currency arrives after the typing (a slow response).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      client.setQueryData(moneyKeys.lastCurrency(GROUP_ID, ME), 'EUR')
+    })
+    expect(
+      screen.getByRole('button', { name: `${t('expenses.fields.currency')}, USD` }),
+    ).toBeVisible()
+    save()
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1]).toMatchObject({ amount_cents: 2500, currency: 'USD' })
+  })
+})
+
 describe('archived groups', () => {
   it('shows a read only notice instead of the form', async () => {
     renderInRouter(
