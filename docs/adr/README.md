@@ -22,6 +22,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0016](0016-guest-availability-links.md)                   | Guest availability links without accounts                   |
 | [0017](0017-search-and-spending-totals-in-sql.md)          | Search and spending totals in SQL, over one ledger view     |
 | [0019](0019-placeholder-members-and-claiming.md)           | Placeholder members and claiming them                       |
+| [0013](0013-export-backup-and-import.md)                   | Export, backup format and import mapping                    |
 
 ## Writing a new one
 

@@ -12,6 +12,7 @@ Start with [development.md](development.md) to get Potluck running, then read [a
 | [launch-checklist.md](launch-checklist.md)       | seeing what is live and what still needs credentials or a person                              |
 | [security.md](security.md)                       | you touch auth, RLS, storage or edge functions, or want to know what data we keep             |
 | [design.md](design.md)                           | building UI: palette, type, motion, accessibility                                             |
+| [backup-format.md](backup-format.md)             | reading or writing the JSON backup, the spreadsheet export or an import file                  |
 | [splitwise-parity.md](splitwise-parity.md)       | picking the next feature: what Splitwise has that Potluck lacks, cut into parallel batches    |
 | [dogfood/performance.md](dogfood/performance.md) | the performance pass: what was measured, what changed and what it bought                      |
 | [adr/](adr/README.md)                            | you wonder why something is the way it is                                                     |
