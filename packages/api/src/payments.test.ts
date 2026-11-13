@@ -162,6 +162,8 @@ describe('reads', () => {
         debt_reminders: [
           { id: 'r1', group_id: 'g1', from_user: 'a', to_user: 'b', sent_on: '2026-11-13' },
           { id: 'r2', group_id: 'g1', from_user: 'a', to_user: 'c', sent_on: '2026-11-12' },
+          { id: 'r3', group_id: 'g2', from_user: 'a', to_user: 'c', sent_on: '2026-11-13' },
+          { id: 'r4', group_id: 'g1', from_user: 'b', to_user: 'a', sent_on: '2026-11-13' },
         ],
       },
     })
@@ -169,9 +171,10 @@ describe('reads', () => {
       'paypal',
       'venmo',
     ])
-    expect(
-      (await fetchRemindersSent(fake.client, 'g1', 'a', '2026-11-13')).map((r) => r.id),
-    ).toEqual(['r1'])
+    expect((await fetchRemindersSent(fake.client, 'a', '2026-11-13')).map((r) => r.id)).toEqual([
+      'r1',
+      'r3',
+    ])
   })
 })
 
@@ -226,7 +229,8 @@ describe('paymentQueries', () => {
     expect(await run(paymentQueries.comments(fake.client, 's1'))).toEqual([])
     expect(await run(paymentQueries.friendBalances(fake.client))).toEqual([])
     expect(await run(paymentQueries.methods(fake.client, 'a'))).toEqual([])
-    expect(await run(paymentQueries.reminders(fake.client, 'g1', 'a', '2026-11-13'))).toEqual([])
-    expect(paymentKeys.reminders('g1')).toEqual(['potluck', 'money', 'group', 'g1', 'reminders'])
+    const reminders = paymentQueries.reminders(fake.client, 'a', '2026-11-13')
+    expect(await run(reminders)).toEqual([])
+    expect(reminders.queryKey).toEqual(['potluck', 'payments', 'reminders', 'a', '2026-11-13'])
   })
 })

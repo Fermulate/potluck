@@ -41,6 +41,11 @@ function currencySymbol(currency: string): string {
   }
 }
 
+/** A group's starting pick: its full amount. */
+function fullPick(row: FriendBalanceRow, on: boolean): Pick {
+  return { on, text: plainAmount(Math.abs(row.netCents), row.currency) }
+}
+
 /** Minor units typed for a group, or null when it is not a usable amount for that debt. */
 function pickedCents(row: FriendBalanceRow, pick: Pick): number | null {
   const cents = parseAmount(pick.text, row.currency)
@@ -69,13 +74,9 @@ export function SettleFriendSheet({
   const { data: groups = [] } = useMyGroups()
   const [day, setDay] = useState(today)
   const [picks, setPicks] = useState<Record<string, Pick>>(() =>
-    Object.fromEntries(
-      total.settleable.map((row) => [
-        row.groupId,
-        { on: true, text: plainAmount(Math.abs(row.netCents), row.currency) },
-      ]),
-    ),
+    Object.fromEntries(total.settleable.map((row) => [row.groupId, fullPick(row, true)])),
   )
+  const pickOf = (row: FriendBalanceRow): Pick => picks[row.groupId] ?? fullPick(row, false)
   const name = firstName(friend.display_name)
   const groupOf = (id: string) => groups.find((g) => g.id === id)
   const groupName = (id: string) => {
@@ -83,11 +84,11 @@ export function SettleFriendSheet({
     return g?.is_direct ? friend.display_name : (g?.name ?? '')
   }
 
-  const chosen = total.settleable.filter((row) => picks[row.groupId]?.on)
-  const invalid = chosen.some((row) => pickedCents(row, picks[row.groupId]!) === null)
+  const chosen = total.settleable.filter((row) => pickOf(row).on)
+  const invalid = chosen.some((row) => pickedCents(row, pickOf(row)) === null)
   const everything =
     chosen.length === total.settleable.length &&
-    chosen.every((row) => pickedCents(row, picks[row.groupId]!) === Math.abs(row.netCents))
+    chosen.every((row) => pickedCents(row, pickOf(row)) === Math.abs(row.netCents))
   const count = chosen.length
 
   const settle = useMutation({
@@ -97,9 +98,7 @@ export function SettleFriendSheet({
         // Everything in full needs no list, so groups that changed meanwhile settle as they are.
         amounts: everything
           ? undefined
-          : Object.fromEntries(
-              chosen.map((row) => [row.groupId, pickedCents(row, picks[row.groupId]!)!]),
-            ),
+          : Object.fromEntries(chosen.map((row) => [row.groupId, pickedCents(row, pickOf(row))!])),
       }),
     onSuccess: (rows) => {
       for (const id of new Set(rows.map((r) => r.group_id))) invalidateMoney(queryClient, id)
@@ -117,8 +116,11 @@ export function SettleFriendSheet({
     onError: (error) => toast.error(moneyErrorMessage(error)),
   })
 
-  const update = (groupId: string, patch: Partial<Pick>) =>
-    setPicks((all) => ({ ...all, [groupId]: { ...all[groupId]!, ...patch } }))
+  const update = (row: FriendBalanceRow, patch: Partial<Pick>) =>
+    setPicks((all) => ({
+      ...all,
+      [row.groupId]: { ...(all[row.groupId] ?? fullPick(row, false)), ...patch },
+    }))
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -145,14 +147,14 @@ export function SettleFriendSheet({
               const g = groupOf(row.groupId)
               const label = groupName(row.groupId)
               const full = formatMoney(Math.abs(row.netCents), row.currency)
-              const pick = picks[row.groupId]!
+              const pick = pickOf(row)
               const bad = pick.on && pickedCents(row, pick) === null
               return (
                 <li key={row.groupId} className="flex flex-col gap-2 px-3 py-3">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       checked={pick.on}
-                      onCheckedChange={(on) => update(row.groupId, { on: on === true })}
+                      onCheckedChange={(on) => update(row, { on: on === true })}
                       aria-label={t('friends.settle.include', { group: label })}
                     />
                     <GroupTile emoji={g?.emoji ?? null} color={g?.color ?? null} size="sm" />
@@ -171,7 +173,7 @@ export function SettleFriendSheet({
                     </span>
                     <Input
                       value={pick.text}
-                      onChange={(e) => update(row.groupId, { text: e.target.value })}
+                      onChange={(e) => update(row, { text: e.target.value })}
                       disabled={!pick.on}
                       inputMode="decimal"
                       aria-label={t('friends.settle.amountFor', {

@@ -29,7 +29,7 @@ export function RemindButton({
   const queryClient = useQueryClient()
   // The server counts reminders per UTC day.
   const day = dayKey(new Date(), 'UTC')
-  const sent = useQuery(paymentQueries.reminders(supabase, groupId, me, day))
+  const sent = useQuery(paymentQueries.reminders(supabase, me, day))
   const reminded = !!sent.data?.some((r) => r.to_user === userId)
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -49,8 +49,7 @@ export function RemindButton({
         toast.error(moneyErrorMessage(error))
       }
     },
-    onSettled: () =>
-      void queryClient.invalidateQueries({ queryKey: paymentKeys.reminders(groupId) }),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: paymentKeys.reminders() }),
   })
 
   const submit = (e: FormEvent) => {

@@ -1,5 +1,5 @@
 -- "Remind" on a debt: the person owed nudges the person who owes them. At most once a day (UTC)
--- per group and pair; the reminder is an in-app notification `debt.reminder`, which the push
+-- per pair, whichever group the debt is in; the reminder is an in-app notification `debt.reminder`, which the push
 -- trigger also sends to their devices. An optional short note goes along ("Rent is due Friday").
 
 create table public.debt_reminders (
@@ -14,14 +14,14 @@ create table public.debt_reminders (
   note text check (char_length(note) <= 280),
   sent_on date not null default (now() at time zone 'UTC')::date,
   created_at timestamptz not null default now(),
-  constraint debt_reminders_once_a_day unique (group_id, from_user, to_user, sent_on),
+  constraint debt_reminders_once_a_day unique (from_user, to_user, sent_on),
   constraint debt_reminders_check check (from_user <> to_user)
 );
 
 comment on table public.debt_reminders is
-  'One row per reminder sent; the unique key keeps it to once a day per group and pair.';
+  'One row per reminder sent; the unique key keeps it to once a day per pair.';
 
-create index debt_reminders_from_user_idx on public.debt_reminders (from_user);
+create index debt_reminders_group_id_idx on public.debt_reminders (group_id);
 create index debt_reminders_to_user_idx on public.debt_reminders (to_user);
 
 alter table public.debt_reminders enable row level security;

@@ -50,6 +50,22 @@ describe('describeActivity', () => {
     expect(view.link).toEqual({ to: '/payments/$paymentId', params: { paymentId: 'x1' } })
   })
 
+  it('names the payer, not whoever recorded the payment', () => {
+    const paid = (actor_id: string, from_user: string, to_user: string) =>
+      describeActivity(
+        item({
+          actor_id,
+          verb: 'settlement.created',
+          data: { from_user, to_user, amount_cents: 2000, currency: 'EUR' },
+        }),
+        ctx,
+      ).text
+    expect(paid(ME, 'ben', ME)).toBe('Ben paid you €20.00')
+    expect(paid('ben', ME, 'ben')).toBe('You paid Ben €20.00')
+    expect(paid(ME, 'ben', 'cleo')).toBe('Ben paid Cleo €20.00')
+    expect(paid('cleo', 'ben', ME)).toBe('Ben paid you €20.00')
+  })
+
   it('describes payment edits, restores and comments, linking to the payment', () => {
     const restored = describeActivity(
       item({ verb: 'settlement.restored', data: { from_user: 'ben', to_user: ME } }),
@@ -79,7 +95,12 @@ describe('describeActivity', () => {
       mine('expense.created', { description: 'Tacos', amount_cents: 4500, currency: 'USD' }),
     ).toBe('You added "Tacos" ($45.00)')
     expect(
-      mine('settlement.created', { to_user: 'ben', amount_cents: 2000, currency: 'EUR' }),
+      mine('settlement.created', {
+        from_user: ME,
+        to_user: 'ben',
+        amount_cents: 2000,
+        currency: 'EUR',
+      }),
     ).toBe('You paid Ben €20.00')
     expect(mine('comment.created', { expense_id: 'x1' })).toBe('You commented on an expense')
   })

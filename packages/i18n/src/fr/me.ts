@@ -59,18 +59,6 @@ export const notifications = {
         title: 'Paiement enregistré',
         body: '{actor} a enregistré ton paiement de {amount} à {payee}',
       },
-      updated: {
-        title: 'Paiement modifié',
-        body: '{actor} a modifié un paiement de {amount} dans {group}',
-      },
-      deleted: {
-        title: 'Paiement supprimé',
-        body: '{actor} a supprimé un paiement de {amount} dans {group}',
-      },
-      restored: {
-        title: 'Paiement restauré',
-        body: '{actor} a restauré un paiement de {amount} dans {group}',
-      },
     },
     member: {
       joined: {

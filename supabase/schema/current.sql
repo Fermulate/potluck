@@ -3478,47 +3478,6 @@ $$;
 ALTER FUNCTION "private"."settlements_notify"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "private"."settlements_notify_change"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO ''
-    AS $$
-declare
-  kind text;
-begin
-  if old.deleted_at is null and new.deleted_at is not null then
-    kind := 'settlement.deleted';
-  elsif old.deleted_at is not null and new.deleted_at is null then
-    kind := 'settlement.restored';
-  elsif new.deleted_at is null
-    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.settled_at)
-        is distinct from
-        (old.from_user, old.to_user, old.amount_cents, old.currency, old.settled_at) then
-    kind := 'settlement.updated';
-  else
-    return null;
-  end if;
-
-  perform private.notify(
-    array[old.from_user, old.to_user, new.from_user, new.to_user],
-    kind,
-    jsonb_build_object(
-      'settlement_id', new.id,
-      'group_id', new.group_id,
-      'from_user', new.from_user,
-      'to_user', new.to_user,
-      'amount_cents', new.amount_cents,
-      'currency', new.currency
-    ),
-    coalesce(auth.uid(), new.created_by)
-  );
-  return null;
-end;
-$$;
-
-
-ALTER FUNCTION "private"."settlements_notify_change"() OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "private"."shares_group_with"("other" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -4437,7 +4396,12 @@ begin
         case when d.from_user = uid then -d.amount_cents else d.amount_cents end,
         g.archived_at is not null
       from private.group_debts(g.id) d
-      where uid in (d.from_user, d.to_user);
+      where uid in (d.from_user, d.to_user)
+        and exists (
+          select 1 from public.group_members f
+          where f.group_id = g.id
+            and f.user_id = case when d.from_user = uid then d.to_user else d.from_user end
+        );
   end loop;
 end;
 $$;
@@ -4779,7 +4743,7 @@ CREATE TABLE IF NOT EXISTS "public"."debt_reminders" (
 ALTER TABLE "public"."debt_reminders" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."debt_reminders" IS 'One row per reminder sent; the unique key keeps it to once a day per group and pair.';
+COMMENT ON TABLE "public"."debt_reminders" IS 'One row per reminder sent; the unique key keeps it to once a day per pair.';
 
 
 
@@ -5319,7 +5283,7 @@ declare
   d record;
   paid public.settlements;
 begin
-  perform 1 from public.groups g where g.id = settle_all.group_id for share;
+  perform 1 from public.groups g where g.id = settle_all.group_id for no key update;
   perform private.require_member(settle_all.group_id);
   perform private.require_unarchived(settle_all.group_id);
   select g.currency into cur from public.groups g where g.id = settle_all.group_id;
@@ -5473,7 +5437,7 @@ begin
 
   -- Lock order: every group row, in id order, before reading any balance.
   foreach gid in array gids loop
-    perform 1 from public.groups g where g.id = gid for share;
+    perform 1 from public.groups g where g.id = gid for no key update;
   end loop;
 
   foreach gid in array gids loop
@@ -6432,7 +6396,7 @@ ALTER TABLE ONLY "public"."comments"
 
 
 ALTER TABLE ONLY "public"."debt_reminders"
-    ADD CONSTRAINT "debt_reminders_once_a_day" UNIQUE ("group_id", "from_user", "to_user", "sent_on");
+    ADD CONSTRAINT "debt_reminders_once_a_day" UNIQUE ("from_user", "to_user", "sent_on");
 
 
 
@@ -6613,7 +6577,7 @@ CREATE INDEX "comments_settlement_id_idx" ON "public"."comments" USING "btree" (
 
 
 
-CREATE INDEX "debt_reminders_from_user_idx" ON "public"."debt_reminders" USING "btree" ("from_user");
+CREATE INDEX "debt_reminders_group_id_idx" ON "public"."debt_reminders" USING "btree" ("group_id");
 
 
 
@@ -6934,10 +6898,6 @@ CREATE OR REPLACE TRIGGER "settlements_activity" AFTER INSERT OR UPDATE ON "publ
 
 
 CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify"();
-
-
-
-CREATE OR REPLACE TRIGGER "settlements_notify_change" AFTER UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify_change"();
 
 
 

@@ -60,7 +60,7 @@ export const paymentKeys = {
   /** Under the groups prefix: anything that refreshes the friends list refreshes these. */
   friendBalances: () => ['potluck', 'groups', 'friend-balances'] as const,
   methods: (userId: string) => [...paymentKeys.all, 'methods', userId] as const,
-  reminders: (groupId: string) => [...moneyKeys.group(groupId), 'reminders'] as const,
+  reminders: () => [...paymentKeys.all, 'reminders'] as const,
 }
 
 function unwrap<T>(result: { data: T | null; error: unknown }): T {
@@ -120,10 +120,9 @@ export async function fetchPaymentMethods(
   return rows.map((r) => ({ ...r, kind: r.kind as PaymentKind }))
 }
 
-/** Reminders the viewer sent in a group on `day` (`YYYY-MM-DD`, UTC). */
+/** Reminders the viewer sent on `day` (`YYYY-MM-DD`, UTC), in any group: one a day per pair. */
 export async function fetchRemindersSent(
   client: PotluckClient,
-  groupId: string,
   viewerId: string,
   day: string,
 ): Promise<DebtReminder[]> {
@@ -131,7 +130,6 @@ export async function fetchRemindersSent(
     await client
       .from('debt_reminders')
       .select('id, group_id, from_user, to_user, amount_cents, currency, note, sent_on, created_at')
-      .eq('group_id', groupId)
       .eq('from_user', viewerId)
       .eq('sent_on', day),
   )
@@ -295,9 +293,9 @@ export const paymentQueries = {
       queryFn: () => fetchPaymentMethods(client, userId),
       staleTime: 5 * 60 * 1000,
     }),
-  reminders: (client: PotluckClient, groupId: string, viewerId: string, day: string) =>
+  reminders: (client: PotluckClient, viewerId: string, day: string) =>
     queryOptions({
-      queryKey: [...paymentKeys.reminders(groupId), viewerId, day] as const,
-      queryFn: () => fetchRemindersSent(client, groupId, viewerId, day),
+      queryKey: [...paymentKeys.reminders(), viewerId, day] as const,
+      queryFn: () => fetchRemindersSent(client, viewerId, day),
     }),
 }

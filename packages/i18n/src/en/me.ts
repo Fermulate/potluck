@@ -45,12 +45,6 @@ export const notifications = {
       },
     },
     settlement: {
-      updated: { title: 'Payment changed', body: '{actor} changed a {amount} payment in {group}' },
-      deleted: { title: 'Payment deleted', body: '{actor} deleted a {amount} payment in {group}' },
-      restored: {
-        title: 'Payment restored',
-        body: '{actor} restored a {amount} payment in {group}',
-      },
       created: { title: 'You got paid', body: '{payer} paid you {amount}' },
       sent: { title: 'Payment recorded', body: '{payee} marked your {amount} payment as received' },
       recorded: {

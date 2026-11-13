@@ -33,7 +33,9 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : und
  */
 export function describeActivity(item: ActivityItem, ctx: Context): ActivityView {
   const d = item.data ?? {}
-  const actor = ctx.nameOf(item.actor_id)
+  const subjectId =
+    item.verb === 'settlement.created' ? (str(d.from_user) ?? item.actor_id) : item.actor_id
+  const actor = ctx.nameOf(subjectId)
   const amountCents = num(d.amount_cents)
   const currency = str(d.currency)
   const amount = amountCents !== undefined && currency ? formatMoney(amountCents, currency) : ''
@@ -120,7 +122,7 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
 
   // Other languages conjugate for "you", so the viewer as subject or object gets its own line.
   const own =
-    item.actor_id === ctx.viewerId
+    subjectId === ctx.viewerId
       ? `activity.self.${item.verb}`
       : named === ctx.viewerId
         ? `activity.toYou.${item.verb}`

@@ -138,17 +138,6 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
               }
       return { ...view, kind: 'payment', target: toPayment() }
     }
-    case 'settlement.updated':
-    case 'settlement.deleted':
-    case 'settlement.restored': {
-      const verb = n.type.slice('settlement.'.length) as 'updated' | 'deleted' | 'restored'
-      return {
-        title: t(`notifications.types.settlement.${verb}.title`),
-        body: t(`notifications.types.settlement.${verb}.body`, { actor, amount, group }),
-        kind: 'payment',
-        target: toPayment(),
-      }
-    }
     case 'debt.reminder':
       return {
         title: t('notifications.types.debt.reminder.title'),

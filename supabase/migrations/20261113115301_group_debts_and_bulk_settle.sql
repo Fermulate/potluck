@@ -13,6 +13,9 @@
 -- group. settle_with_friend: records one payment per shared open group, in the group currency,
 -- so every debt between the two goes to zero. Locks the groups in id order first.
 -- settle_all: records every debt involving the caller in one group.
+-- Both bulk settles read debts and then pay them, so they lock the group row `for no key update`:
+-- that waits for every other money write (which holds it `for share`) and for another bulk settle,
+-- and the debts are read after those commit, so the same debt is never paid twice.
 
 -- Adds `cents` to what `debtor` owes `creditor` in a map keyed "lo|hi" (positive: lo owes hi).
 create or replace function private.add_pair_debt(owed jsonb, debtor uuid, creditor uuid, cents numeric)
@@ -199,8 +202,9 @@ revoke execute on function private.group_debts(uuid) from public, anon, authenti
 
 -- friend_balances -----------------------------------------------------------------------------------
 
--- One row per group and person the viewer has a debt with in it. net_cents > 0: they owe the
--- viewer. In the group currency; archived groups are flagged because they cannot be settled.
+-- One row per group and person the viewer has a debt with in it, while both are still members
+-- (nothing may move the balance of someone who left). net_cents > 0: they owe the viewer. In the
+-- group currency; archived groups are flagged because they cannot be settled.
 create or replace function public.friend_balances()
 returns table (friend_id uuid, group_id uuid, currency text, net_cents bigint, archived boolean)
 language plpgsql stable security definer set search_path = '' as $$
@@ -223,7 +227,12 @@ begin
         case when d.from_user = uid then -d.amount_cents else d.amount_cents end,
         g.archived_at is not null
       from private.group_debts(g.id) d
-      where uid in (d.from_user, d.to_user);
+      where uid in (d.from_user, d.to_user)
+        and exists (
+          select 1 from public.group_members f
+          where f.group_id = g.id
+            and f.user_id = case when d.from_user = uid then d.to_user else d.from_user end
+        );
   end loop;
 end;
 $$;
@@ -272,7 +281,7 @@ begin
 
   -- Lock order: every group row, in id order, before reading any balance.
   foreach gid in array gids loop
-    perform 1 from public.groups g where g.id = gid for share;
+    perform 1 from public.groups g where g.id = gid for no key update;
   end loop;
 
   foreach gid in array gids loop
@@ -338,7 +347,7 @@ declare
   d record;
   paid public.settlements;
 begin
-  perform 1 from public.groups g where g.id = settle_all.group_id for share;
+  perform 1 from public.groups g where g.id = settle_all.group_id for no key update;
   perform private.require_member(settle_all.group_id);
   perform private.require_unarchived(settle_all.group_id);
   select g.currency into cur from public.groups g where g.id = settle_all.group_id;

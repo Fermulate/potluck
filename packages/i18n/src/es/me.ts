@@ -50,18 +50,6 @@ export const notifications = {
         title: 'Pago registrado',
         body: '{actor} registró tu pago de {amount} a {payee}',
       },
-      updated: {
-        title: 'Pago modificado',
-        body: '{actor} cambió un pago de {amount} en {group}',
-      },
-      deleted: {
-        title: 'Pago eliminado',
-        body: '{actor} eliminó un pago de {amount} en {group}',
-      },
-      restored: {
-        title: 'Pago restaurado',
-        body: '{actor} restauró un pago de {amount} en {group}',
-      },
     },
     member: {
       joined: { title: 'Cara nueva en {group}', body: '{actor} acaba de unirse. Dile hola.' },

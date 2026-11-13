@@ -56,12 +56,6 @@ export function message(
       }
     case 'settlement.created':
       return { title: c.payment, body: c.paymentBody, url: payment }
-    case 'settlement.updated':
-      return { title: c.paymentUpdated, body: c.paymentUpdatedBody, url: payment }
-    case 'settlement.deleted':
-      return { title: c.paymentDeleted, body: c.paymentDeletedBody, url: payment }
-    case 'settlement.restored':
-      return { title: c.paymentRestored, body: c.paymentRestoredBody, url: payment }
     case 'debt.reminder':
       return {
         title: c.nudge,

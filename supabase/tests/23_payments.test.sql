@@ -1,8 +1,8 @@
 -- Payments, second version: settle_up_v2, update_settlement, restore_settlement, comments on
 -- payments, payment_methods, pairwise and group debts, settle_all, friend_balances,
--- settle_with_friend, remind_debt and the settlement change notifications.
+-- settle_with_friend and remind_debt.
 begin;
-select plan(106);
+select plan(107);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values
@@ -120,7 +120,6 @@ select is(
   'a party can change the amount'
 );
 select is(pg_temp.net(tests.id('g'), 'b'), 3000::bigint, 'the balance follows the edit');
-select is(pg_temp.notes('b', 'settlement.updated'), 1, 'the other person hears about the edit');
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('s1') and verb = 'settlement.updated'),
   1,
@@ -167,7 +166,6 @@ select throws_ok(
 
 select tests.login('b');
 select lives_ok(format($$ select public.delete_settlement(%L) $$, tests.id('s1')), 'the payer deletes the payment');
-select is(pg_temp.notes('a', 'settlement.deleted'), 1, 'the other person hears about the delete');
 select is(pg_temp.net(tests.id('g'), 'b'), 500::bigint, 'deleting takes it off the balance');
 
 select tests.login('a');
@@ -183,7 +181,6 @@ select throws_ok(
 select tests.login('a');
 select ok((select deleted_at is null from public.restore_settlement(tests.id('s1'))), 'a party restores it');
 select is(pg_temp.net(tests.id('g'), 'b'), 3000::bigint, 'restoring puts the balance back');
-select is(pg_temp.notes('b', 'settlement.restored'), 1, 'the other person hears about the restore');
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('s1') and verb = 'settlement.restored'),
   1,
@@ -591,6 +588,28 @@ select throws_ok(
   '22023', 'invalid_payload', 'picking needs at least one group'
 );
 
+-- A friend who left keeps pairwise debts at a zero net (fa owes fb, fb owes fc); nobody may move them.
+reset role;
+select tests.remember('f7', pg_temp.fresh(array['fa', 'fb', 'fc'], false));
+select tests.login('fb');
+select public.create_expense(jsonb_build_object('group_id', tests.id('f7'), 'description', 'Seven', 'amount_cents', 1000, 'splits', tests.people('fa')));
+select tests.login('fc');
+select public.create_expense(jsonb_build_object('group_id', tests.id('f7'), 'description', 'Eight', 'amount_cents', 1000, 'splits', tests.people('fb')));
+select tests.login('fb');
+select lives_ok(format($$ select public.leave_group(%L) $$, tests.id('f7')), 'a member with a zero net leaves');
+select tests.login('fa');
+select is(
+  (select count(*)::int from public.friend_balances() where group_id = tests.id('f7')),
+  0,
+  'friend_balances leaves out debts with someone who left the group'
+);
+select tests.login('fc');
+select is(
+  (select count(*)::int from public.friend_balances() where group_id = tests.id('f7')),
+  0,
+  'from either side'
+);
+
 -- remind_debt ---------------------------------------------------------------------------------------------------
 
 reset role;
@@ -606,6 +625,14 @@ select is(pg_temp.notes('b', 'debt.reminder'), 1, 'the debtor gets a debt.remind
 select throws_ok(
   format($$ select public.remind_debt(%L, %L) $$, tests.id('gr'), tests.uid('b')),
   '23514', 'already_reminded', 'pressing Remind twice in a day says it was already sent'
+);
+reset role;
+select tests.remember('gr2', pg_temp.fresh(array['a', 'b'], true));
+select tests.login('a');
+select public.create_expense(jsonb_build_object('group_id', tests.id('gr2'), 'description', 'Snacks', 'amount_cents', 400, 'splits', tests.people('a', 'b')));
+select throws_ok(
+  format($$ select public.remind_debt(%L, %L) $$, tests.id('gr2'), tests.uid('b')),
+  '23514', 'already_reminded', 'one reminder a day per pair, whichever group the debt is in'
 );
 select throws_ok(
   format($$ select public.remind_debt(%L, %L) $$, tests.id('gr'), tests.uid('c')),

@@ -44,11 +44,11 @@ describe('RemindButton', () => {
     ])
   })
 
-  it('says a reminder already went out today without sending another', async () => {
+  it('says a reminder already went out today, from any shared group, without sending another', async () => {
     resetDb({
       tables: {
         debt_reminders: [
-          { id: 'r1', group_id: 'g-1', from_user: 'u-ava', to_user: 'u-ben', sent_on: utcToday() },
+          { id: 'r1', group_id: 'g-2', from_user: 'u-ava', to_user: 'u-ben', sent_on: utcToday() },
         ],
       },
     })

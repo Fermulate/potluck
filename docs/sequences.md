@@ -220,7 +220,7 @@ sequenceDiagram
   W->>DB: refetch group_balances
 ```
 
-`update_settlement(id, payload)` edits a payment and `delete_settlement(id)` soft deletes it; `restore_settlement(id)` brings it back. All three are open to the payer, the recipient, whoever recorded it, or an admin. Anything that would move the balance of someone who has left is refused (`member_not_in_group`); the note stays editable. Each change logs `settlement.updated`, `settlement.deleted` or `settlement.restored` and notifies both people.
+`update_settlement(id, payload)` edits a payment and `delete_settlement(id)` soft deletes it; `restore_settlement(id)` brings it back. All three are open to the payer, the recipient, whoever recorded it, or an admin. Anything that would move the balance of someone who has left is refused (`member_not_in_group`); the note stays editable. Each change logs `settlement.updated`, `settlement.deleted` or `settlement.restored` in the activity feed.
 
 ## Settle with a friend across groups
 
@@ -239,7 +239,7 @@ sequenceDiagram
   W->>W: friendTotals(): per friend and currency
   A->>W: Settle up with Ben, Record 3 payments
   W->>DB: rpc settle_with_friend(ben, settled_on, note)
-  DB->>DB: share lock every shared group row, in id order
+  DB->>DB: lock every shared group row for no key update, in id order
   loop each shared group, open, both still members
     DB->>DB: debt between Ava and Ben from private.group_debts
     DB->>DB: insert settlements (group currency, rate 1)
@@ -262,7 +262,7 @@ sequenceDiagram
   A->>W: Remind Ben
   W->>DB: rpc remind_debt(group_id, ben)
   DB->>DB: require_member, require_group_open,<br/>Ben owes Ava per private.group_debts
-  DB->>DB: insert debt_reminders on conflict do nothing<br/>(unique group, pair, UTC day)
+  DB->>DB: insert debt_reminders on conflict do nothing<br/>(unique pair, UTC day)
   alt already sent today
     DB-->>W: already_reminded
   else first today
