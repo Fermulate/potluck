@@ -43,6 +43,9 @@ describe('suggestCategory', () => {
 
   it('does not read everyday English words as a foreign keyword or a brand', () => {
     expect(suggestCategory('Online courses')?.category).toBe('education')
+    // French shopping and English classes share a word, so on its own it suggests nothing.
+    expect(suggestCategory('Courses')).toBeNull()
+    expect(suggestCategory('Courses Carrefour')?.category).toBe('groceries')
     expect(top('Grab lunch with Sam')).not.toBe('transport')
     expect(suggestCategory('Faire les courses')?.category).toBe('groceries')
     expect(suggestCategory('GrabCar to the hotel')?.category).toBe('taxi')

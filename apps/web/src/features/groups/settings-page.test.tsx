@@ -144,9 +144,9 @@ describe('GroupSettingsPage', () => {
       expenses: [expense({ group_id: 'g-hike' })],
       settlements: [],
     })
-    await waitFor(() => expect(db().queries('expenses')).not.toHaveLength(0))
-    expect(await screen.findByRole('button', { name: t('groups.settings.delete') })).toBeDisabled()
-    expect(screen.getByText(t('groups.settings.deleteBlocked'))).toBeInTheDocument()
+    // Only the loaded debts turn the note to "settle up first"; until then it stays neutral.
+    expect(await screen.findByText(t('groups.settings.deleteBlocked'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('groups.settings.delete') })).toBeDisabled()
   })
 
   it('deletes a settled group after confirming and returns to the list', async () => {

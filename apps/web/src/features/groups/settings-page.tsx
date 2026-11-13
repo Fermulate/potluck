@@ -165,7 +165,9 @@ function SettingsBody({ group }: { group: GroupDetail }) {
   const editable = can(group.my_role, 'group.edit')
   const deletable = can(group.my_role, 'group.delete')
   const debts = useDebts(group.id, group)
-  const allSquare = group.members.every((m) => m.net_cents === 0) && debts?.length === 0
+  const netsSquare = group.members.every((m) => m.net_cents === 0)
+  const allSquare = netsSquare && debts?.length === 0
+  const deleteBlocked = !netsSquare || (debts !== undefined && debts.length > 0)
   const me = group.members.find((m) => m.id === viewerId)
 
   async function removeGroup() {
@@ -296,9 +298,9 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           {deletable && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="max-w-sm text-sm text-mute">
-                {allSquare
-                  ? t('groups.settings.deleteConfirm', { group: group.name })
-                  : t('groups.settings.deleteBlocked')}
+                {deleteBlocked
+                  ? t('groups.settings.deleteBlocked')
+                  : t('groups.settings.deleteConfirm', { group: group.name })}
               </p>
               <Button
                 variant="danger"
