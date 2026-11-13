@@ -1,5 +1,5 @@
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, resetDb } from '@/test/supabase'
 import { renderWithProviders } from '@/test/render'
@@ -131,7 +131,7 @@ describe('GuestPage', () => {
     db().respond('rpc:guest_link_preview', { data: [open] })
     renderPage()
     fireEvent.click(await screen.findByRole('radio', { name: t('guests.page.tabs.everyone') }))
-    const grid = screen.getByRole('grid', { name: /How everyone looks/ })
+    expect(screen.getByRole('grid', { name: /How everyone looks/ })).toBeVisible()
     expect(screen.getByText(new RegExp(t('guests.page.respondents', { count: 3 })))).toBeVisible()
     // The readout starts on the warmest cell, so a phone shows something before any tap.
     expect(screen.getByText(t('guests.page.cellCount', { count: 3, total: 3 }))).toBeInTheDocument()

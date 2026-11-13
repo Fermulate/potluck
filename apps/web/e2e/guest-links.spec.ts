@@ -81,6 +81,21 @@ test('share a guest link, a guest adds their times without an account, the plan 
     name: t('availability.heatGridLabel', { event: title }),
   })
   await expect(heatmap.getByRole('gridcell', { name: /: 1 free, 0 maybe/ })).toHaveCount(2)
+
+  // The host turns the link off (after confirming) while the guest is still editing.
+  await links.getByRole('button', { name: t('guests.panel.revoke', { code }) }).click()
+  await page
+    .getByRole('dialog', { name: t('guests.panel.revokeTitle') })
+    .getByRole('button', { name: t('guests.panel.turnOff') })
+    .click()
+  await expect(page.getByText(t('guests.panel.revoked')).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: t('guests.panel.share') })).toBeVisible()
+
+  // The guest's next save is refused, and the page says their times did not go in.
+  await guest.getByRole('button', { name: t('guests.page.update') }).click()
+  await expect(guest.getByRole('heading', { name: t('guests.closed.title') })).toBeVisible()
+  await expect(guest.getByText(t('guests.closed.unsaved'))).toBeVisible()
+  await expect(guest.getByRole('link', { name: t('guests.closed.signUp') })).toBeVisible()
 })
 
 test('a full link turns new guests away but lets the guest who answered edit', async ({
