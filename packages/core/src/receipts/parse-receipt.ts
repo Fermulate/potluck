@@ -1,0 +1,445 @@
+import { minorUnits } from '../currency'
+
+/** One priced line read off a receipt, in minor units of the scan's currency. */
+export interface ReceiptItem {
+  description: string
+  amountCents: number
+  /** How many were bought ("2 x Coffee"); the amount is the line total. */
+  quantity: number
+}
+
+/**
+ * What a receipt says, as far as the text lets us tell. Every field may be missing: a scan is a
+ * suggestion the person confirms, never something saved on its own.
+ */
+export interface ReceiptScan {
+  merchant: string | null
+  /** Calendar day, `YYYY-MM-DD`. */
+  date: string | null
+  /** ISO code when the receipt names its currency (a symbol or a code), else null. */
+  currency: string | null
+  totalCents: number | null
+  subtotalCents: number | null
+  /** Tax added on top of the items. Null when the prices already include it (VAT receipts). */
+  taxCents: number | null
+  tipCents: number | null
+  discountCents: number | null
+  items: ReceiptItem[]
+}
+
+export interface ParseReceiptOptions {
+  /** Currency to read amounts in when the receipt does not say (the expense's currency). */
+  currency: string
+  /** How to read an ambiguous 03/04/2026. Defaults to day first. */
+  dateOrder?: 'dmy' | 'mdy'
+  /** Today, `YYYY-MM-DD`: dates after it are misreads and are dropped. */
+  today?: string
+}
+
+/** At most this many items are offered; a longer list is almost surely noise. */
+export const MAX_RECEIPT_ITEMS = 60
+
+const ITEM_NAME_MAX = 80
+const MERCHANT_MAX = 120
+
+/** Day first or month first for a numeric date, from the currency and the viewer's locale. */
+export function receiptDateOrder(currency: string, locale?: string): 'dmy' | 'mdy' {
+  if (locale) return /^en-US$|^en-PH$|^es-US$/i.test(locale) ? 'mdy' : 'dmy'
+  return currency.toUpperCase() === 'USD' ? 'mdy' : 'dmy'
+}
+
+// Text helpers ---------------------------------------------------------------------------------
+
+/** Lowercase without accents, for keyword matching ("Gesamtbetrag", "Montant dû"). */
+function plain(text: string): string {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+function tidy(text: string): string {
+  return text.normalize('NFKC').replace(/[\t ]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/** "JOE'S DINER" reads better as "Joe's Diner"; mixed case is left as printed. */
+function titleCase(text: string): string {
+  const letters = text.replace(/[^\p{L}]/gu, '')
+  if (letters.length === 0 || letters !== letters.toUpperCase()) return text
+  return text.toLowerCase().replace(/(^|[\s\-/(])(\p{L})/gu, (_, lead: string, ch: string) => {
+    return lead + ch.toUpperCase()
+  })
+}
+
+// Currency -------------------------------------------------------------------------------------
+
+const DOLLARS = new Set(['USD', 'CAD', 'AUD', 'NZD', 'MXN', 'SGD', 'HKD'])
+const CODES = /\b(USD|EUR|GBP|CAD|AUD|NZD|CHF|JPY|MXN|BRL|INR|SEK|NOK|DKK|PLN|CZK|SGD|HKD|ZAR)\b/g
+
+function detectCurrency(text: string, fallback: string): string | null {
+  const votes = new Map<string, number>()
+  const vote = (code: string, n: number) => n && votes.set(code, (votes.get(code) ?? 0) + n)
+  const count = (re: RegExp) => (text.match(re) ?? []).length
+  vote('EUR', count(/€/g))
+  vote('GBP', count(/£/g))
+  vote('JPY', count(/[¥￥円]/g))
+  vote('INR', count(/₹/g))
+  vote('KRW', count(/₩/g))
+  vote('BRL', count(/R\$/g))
+  const dollars = count(/(?<!R)\$/g)
+  vote(DOLLARS.has(fallback.toUpperCase()) ? fallback.toUpperCase() : 'USD', dollars)
+  for (const match of text.matchAll(CODES)) vote(match[1]!, 2)
+  let best: string | null = null
+  for (const [code, n] of votes) if (best === null || n > votes.get(best)!) best = code
+  return best
+}
+
+// Amounts --------------------------------------------------------------------------------------
+
+/**
+ * A printed amount in minor units: "1,234.50", "1.234,50", "1'234.50", "12,5" (one decimal),
+ * "1,280" for yen. The last separator is the decimal one unless it is followed by exactly three
+ * digits in a currency without three decimals. Null when it is not a usable amount.
+ */
+export function parseReceiptAmount(raw: string, currency: string): number | null {
+  const digits = minorUnits(currency)
+  const s = raw.replace(/['\s]/g, '')
+  if (!/^\d[\d.,]*$/.test(s)) return null
+  const sep = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','))
+  let whole = s
+  let fraction = ''
+  if (sep !== -1) {
+    const after = s.slice(sep + 1)
+    const mark = s[sep]!
+    const repeated = s.split(mark).length > 2
+    const thousands =
+      (after.length === 3 && digits !== 3 && !(s.includes('.') && s.includes(','))) ||
+      (repeated && !(s.includes('.') && s.includes(',')))
+    if (thousands) {
+      whole = s
+    } else {
+      if (after.length === 0 || after.length > digits) return null
+      whole = s.slice(0, sep)
+      fraction = after
+    }
+  }
+  whole = whole.replace(/[.,]/g, '')
+  if (whole === '') return null
+  const value = Number(whole) * 10 ** digits + Number(fraction.padEnd(digits, '0') || '0')
+  return Number.isSafeInteger(value) ? value : null
+}
+
+const AMOUNT = String.raw`\d{1,3}(?:[.,']\d{3})+(?:[.,]\d{1,3})?|\d+(?:[.,]\d{1,3})?`
+const SYMBOL = String.raw`R\$|[€$£¥￥₹₩]|EUR|USD|GBP|CHF|CAD|AUD|JPY`
+const PRICE_AT_END = new RegExp(
+  String.raw`(?:^|[\s:=])(-)?\s*(${SYMBOL})?\s*(-)?(${AMOUNT})\s*(${SYMBOL}|円)?\s*(-)?$`,
+  'u',
+)
+/** Trailing marks some tills print after a price: VAT class letters, "*", a currency code. */
+const TRAILING_MARKS = /(?:\s+(?:[A-Z]{1,2}\d?|[*#]))+\s*$/u
+
+interface Priced {
+  cents: number
+  negative: boolean
+  /** The line without the price. */
+  rest: string
+}
+
+function trailingPrice(line: string, currency: string): Priced | null {
+  const trimmed = line.replace(TRAILING_MARKS, '')
+  const match = PRICE_AT_END.exec(trimmed)
+  if (!match) return null
+  const [whole, minusBefore, symbolBefore, minusMiddle, token, symbolAfter, minusAfter] = match
+  const digits = minorUnits(currency)
+  const hasDecimals = new RegExp(String.raw`[.,]\d{${digits}}$`).test(token!)
+  if (digits > 0 && !hasDecimals) return null
+  if (digits === 0 && !symbolBefore && !symbolAfter && !/[.,']/.test(token!)) return null
+  const cents = parseReceiptAmount(token!, currency)
+  if (cents === null) return null
+  return {
+    cents,
+    negative: !!(minusBefore || minusMiddle || minusAfter),
+    rest: trimmed.slice(0, trimmed.length - whole!.length).trim(),
+  }
+}
+
+// Line kinds -----------------------------------------------------------------------------------
+
+const SUBTOTAL =
+  /\b(sub\s*-?\s*total|subtot|sous\s*-?\s*total|zwischensumme|zw\.?\s*summe|total\s+ht|net\s+total|total\s+parcial|base\s+imponible|netto(betrag)?)\b/
+const INCLUSIVE = /\b(incl|inkl|incluse?|incluido|included|ttc|inc)\b/
+const TAX =
+  /\b(tax|taxes|vat|tva|iva|mwst|mw\.?\s?st|ust|gst|hst|pst|qst|impuesto|imposto|steuer|tasse)\b/
+const TIP =
+  /\b(tip|tips|gratuity|pourboire|trinkgeld|propina|gorjeta|service\s+charge|servicio|service)\b/
+const DISCOUNT =
+  /\b(discount|remise|rabatt|descuento|desconto|coupon|savings|you\s+saved|reduction|promo)\b/
+const TOTAL =
+  /\b(total|totale|totaal|gesamt\w*|summe|betrag|amount\s+due|balance\s+due|to\s+pay|a\s+pagar|zu\s+zahlen|montant|net\s+a\s+payer)\b/
+const PAYMENT =
+  /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|tendered|tend|payment|paid|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|girocard|kartenzahlung|cambio|efectivo|tarjeta|troco|dinheiro|cartao|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b/
+const NOT_AN_ITEM =
+  /\b(tel|phone|fax|www|http|order|table|server|guest|guests|cashier|kasse|receipt|invoice|facture|rechnung|ticket|recibo|qty|items|articles|artikel|anzahl)\b/
+
+type Kind = 'subtotal' | 'tax' | 'tip' | 'discount' | 'total' | 'payment' | 'item'
+
+function kindOf(key: string): Kind {
+  if (SUBTOTAL.test(key)) return 'subtotal'
+  if (TOTAL.test(key) && INCLUSIVE.test(key)) return 'total'
+  if (TAX.test(key)) return 'tax'
+  if (TIP.test(key)) return 'tip'
+  if (DISCOUNT.test(key)) return 'discount'
+  if (TOTAL.test(key)) return 'total'
+  if (PAYMENT.test(key)) return 'payment'
+  return 'item'
+}
+
+// Dates ----------------------------------------------------------------------------------------
+
+const MONTHS: Record<string, number> = {
+  jan: 1,
+  ene: 1,
+  feb: 2,
+  fev: 2,
+  mar: 3,
+  apr: 4,
+  avr: 4,
+  abr: 4,
+  may: 5,
+  mai: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  aou: 8,
+  ago: 8,
+  sep: 9,
+  set: 9,
+  oct: 10,
+  okt: 10,
+  out: 10,
+  nov: 11,
+  dec: 12,
+  dez: 12,
+  dic: 12,
+}
+
+function monthOf(word: string): number | null {
+  if (word.startsWith('juin') || word === 'juni') return 6
+  if (word.startsWith('juil') || word === 'juli') return 7
+  return MONTHS[word.slice(0, 3)] ?? null
+}
+
+function isoDay(year: number, month: number, day: number): string | null {
+  if (month < 1 || month > 12 || day < 1) return null
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (day > days) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+const fullYear = (y: string) => (y.length === 2 ? 2000 + Number(y) : Number(y))
+
+function datesIn(key: string, order: 'dmy' | 'mdy'): string[] {
+  const found: string[] = []
+  const push = (day: string | null) => day && found.push(day)
+  for (const m of key.matchAll(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/g)) {
+    push(isoDay(Number(m[1]), Number(m[2]), Number(m[3])))
+  }
+  for (const m of key.matchAll(/\b(\d{1,2})([-/.])(\d{1,2})\2(\d{4}|\d{2})(?![\d.,])/g)) {
+    const a = Number(m[1])
+    const b = Number(m[3])
+    const year = fullYear(m[4]!)
+    const dayFirst = m[2] === '.' || a > 12 || (order === 'dmy' && b <= 12)
+    push(dayFirst ? isoDay(year, b, a) : isoDay(year, a, b))
+  }
+  for (const m of key.matchAll(
+    /\b(\d{1,2})(?:\.|st|nd|rd|th)?\s*(?:de\s+)?([a-z]{3,10})\.?,?\s*(?:de\s+)?(\d{4}|\d{2})\b/g,
+  )) {
+    const month = monthOf(m[2]!)
+    if (month) push(isoDay(fullYear(m[3]!), month, Number(m[1])))
+  }
+  for (const m of key.matchAll(/\b([a-z]{3,10})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/g)) {
+    const month = monthOf(m[1]!)
+    if (month) push(isoDay(Number(m[3]), month, Number(m[2])))
+  }
+  return found
+}
+
+function findDate(keys: string[], order: 'dmy' | 'mdy', today?: string): string | null {
+  const oldest = today ? `${Number(today.slice(0, 4)) - 10}${today.slice(4)}` : null
+  for (const key of keys) {
+    for (const day of datesIn(key, order)) {
+      if (today && (day > today || day < oldest!)) continue
+      return day
+    }
+  }
+  return null
+}
+
+// Merchant -------------------------------------------------------------------------------------
+
+const NOT_A_NAME =
+  /\b(receipt|invoice|facture|rechnung|ticket|recibo|welcome|bienvenue|willkommen|bienvenido|bem-vindo|tel|phone|fax|www|http|vat|tva|siret|siren|ust|nif|cif|cnpj|order|table|server|cashier|kasse|date|time|copy|customer)\b|@|\.com\b/
+
+function findMerchant(lines: string[]): string | null {
+  for (const line of lines.slice(0, 6)) {
+    const key = plain(line)
+    const letters = line.replace(/[^\p{L}]/gu, '').length
+    const numbers = line.replace(/\D/g, '').length
+    if (letters < 3 || numbers > letters) continue
+    if (NOT_A_NAME.test(key) || /^\d+\s+\p{L}/u.test(line)) continue
+    if (datesIn(key, 'dmy').length > 0) continue
+    const name = titleCase(line.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}).!']+$/gu, '').trim())
+    if (name.length >= 2) return name.slice(0, MERCHANT_MAX).trim()
+  }
+  return null
+}
+
+// Items ----------------------------------------------------------------------------------------
+
+const QTY_FIRST = /^(\d{1,2})\s*[x×*]\s*/i
+const QTY_BARE = /^(\d{1,2})\s+(?=\p{L})/u
+const QTY_AT_END = new RegExp(
+  String.raw`\s*(\d{1,3})\s*[x×@*]\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`,
+  'iu',
+)
+const QTY_SUFFIX = /\s+[x×]\s*(\d{1,2})$/i
+const UNIT_AT_END = new RegExp(String.raw`\s+@\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`, 'u')
+
+function itemOf(rest: string): { description: string; quantity: number } {
+  let text = rest.replace(/^\d{4,}\s+/, '')
+  let quantity = 1
+  const atEnd = QTY_AT_END.exec(text)
+  if (atEnd) {
+    quantity = Number(atEnd[1])
+    text = text.slice(0, atEnd.index)
+  } else {
+    text = text.replace(UNIT_AT_END, '')
+  }
+  const suffix = QTY_SUFFIX.exec(text)
+  if (suffix) {
+    quantity = Number(suffix[1])
+    text = text.slice(0, suffix.index)
+  }
+  const first = QTY_FIRST.exec(text) ?? QTY_BARE.exec(text)
+  if (first && Number(first[1]) > 0 && Number(first[1]) <= 20) {
+    quantity = Number(first[1])
+    text = text.slice(first[0].length)
+  }
+  const description = titleCase(text.replace(/^[\s.:\-*#]+|[\s.:\-*#]+$/g, '').replace(/\s+/g, ' '))
+  return {
+    description: description.slice(0, ITEM_NAME_MAX).trim(),
+    quantity: Math.max(quantity, 1),
+  }
+}
+
+// The parser -----------------------------------------------------------------------------------
+
+/**
+ * Reads OCR text from a receipt into a total, a date, a merchant and line items. Built for the
+ * printed till receipts people photograph: US (tax added on top, tip line), UK and Europe (VAT
+ * included, decimal comma, "1,99 A" class letters), and yen without decimals. It guesses; the
+ * person checks everything in the expense form before saving.
+ */
+export function parseReceipt(text: string, options: ParseReceiptOptions): ReceiptScan {
+  const lines = text
+    .split(/\r?\n/)
+    .map(tidy)
+    .filter((l) => l.length > 0)
+  const keys = lines.map(plain)
+  const currency = detectCurrency(text, options.currency)
+  const readIn = currency ?? options.currency
+
+  let total: number | null = null
+  let subtotal: number | null = null
+  let tax: number | null = null
+  let tip: number | null = null
+  let discount: number | null = null
+  let largest: number | null = null
+  let itemsEnd = lines.length
+  const items: ReceiptItem[] = []
+  let pending: string | null = null
+
+  for (const [index, line] of lines.entries()) {
+    const key = keys[index]!
+    const price = trailingPrice(line, readIn)
+    if (!price) {
+      // A name on its own line, with "2 x 3,20  6,40" under it.
+      pending = /\p{L}{2}/u.test(line) && !NOT_AN_ITEM.test(key) ? line : null
+      continue
+    }
+    const kind = kindOf(key)
+    largest = Math.max(largest ?? 0, price.cents)
+    switch (kind) {
+      case 'subtotal':
+        subtotal ??= price.cents
+        itemsEnd = Math.min(itemsEnd, index)
+        break
+      case 'total':
+        // "Total" then "Total incl. VAT", or a grand total under a total: the biggest wins.
+        total = Math.max(total ?? 0, price.cents)
+        itemsEnd = Math.min(itemsEnd, index)
+        break
+      case 'tax':
+        tax = (tax ?? 0) + price.cents
+        break
+      case 'tip':
+        tip = (tip ?? 0) + price.cents
+        break
+      case 'discount':
+        discount = (discount ?? 0) + price.cents
+        break
+      case 'payment':
+        itemsEnd = Math.min(itemsEnd, index)
+        break
+      case 'item': {
+        if (index > itemsEnd || NOT_AN_ITEM.test(key)) break
+        if (price.negative) {
+          discount = (discount ?? 0) + price.cents
+          break
+        }
+        let { description, quantity } = itemOf(price.rest)
+        if (!/\p{L}{2}/u.test(description) && pending) {
+          description = itemOf(pending).description
+        }
+        if (/\p{L}{2}/u.test(description) && price.cents > 0) {
+          items.push({ description, amountCents: price.cents, quantity })
+        }
+        break
+      }
+    }
+    pending = null
+  }
+
+  const offered = items.slice(0, MAX_RECEIPT_ITEMS)
+  const itemsSum = offered.reduce((a, i) => a + i.amountCents, 0)
+  if (total === null && largest !== null) total = largest
+  const base = subtotal ?? itemsSum
+  // Tax, tip and discount are kept only when they make the receipt add up the way the expense
+  // form adds it (items + tax + tip - discount). VAT already inside the prices is left out.
+  if (total !== null && base > 0) {
+    const sums = (t: number | null, p: number | null, d: number | null) =>
+      base + (t ?? 0) + (p ?? 0) - (d ?? 0) === total
+    if (!sums(tax, tip, discount)) {
+      if (sums(null, tip, discount)) tax = null
+      else if (sums(tax, null, discount)) tip = null
+      else if (sums(tax, tip, null)) discount = null
+      else if (sums(null, null, discount)) [tax, tip] = [null, null]
+      else if (sums(null, null, null)) [tax, tip, discount] = [null, null, null]
+    }
+  }
+
+  return {
+    merchant: findMerchant(lines),
+    // A receipt that names its currency says where it was printed, which beats the viewer's
+    // own habit for 03/04 (a euro receipt is day first even for someone in the US).
+    date: findDate(
+      keys,
+      currency ? receiptDateOrder(currency) : (options.dateOrder ?? 'dmy'),
+      options.today,
+    ),
+    currency,
+    totalCents: total,
+    subtotalCents: subtotal,
+    taxCents: tax,
+    tipCents: tip,
+    discountCents: discount,
+    items: offered,
+  }
+}
