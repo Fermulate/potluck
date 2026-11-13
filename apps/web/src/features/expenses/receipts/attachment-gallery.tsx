@@ -6,13 +6,14 @@ import { ChevronLeft, ChevronRight, ExternalLink, FileText } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { attachmentName } from './attachments-state'
+import { ZoomableImage } from './zoomable-image'
 
 const asDraft = (a: ExpenseAttachment) => ({ contentType: a.content_type })
 const isPdf = (a: ExpenseAttachment) => a.content_type === 'application/pdf'
 
 /**
- * Receipts and photos on the expense page. Each opens full screen; arrow keys and the buttons
- * move between them. Links are signed for an hour, for members of the group only.
+ * Receipts and photos on the expense page. Each opens full screen, where it pinches and double
+ * taps to zoom; swipes, arrow keys and the buttons move between them. Links are signed for an hour, for members of the group only.
  */
 export function AttachmentGallery({
   expenseId,
@@ -110,10 +111,11 @@ function Thumb({
         href={url}
         target="_blank"
         rel="noreferrer"
+        aria-label={t('expenses.attachments.open', { name })}
         className="flex h-full min-h-24 items-center gap-3 rounded-card border border-line bg-card p-4 font-semibold hover:border-line-strong"
       >
         <FileText aria-hidden className="size-6 shrink-0 text-mute" />
-        <span className="min-w-0 flex-1 truncate">{t('expenses.receiptUpload.pdf')}</span>
+        <span className="min-w-0 flex-1 break-words">{name}</span>
         <ExternalLink aria-hidden className="size-4 shrink-0 text-mute" />
       </a>
     ) : (
@@ -210,19 +212,21 @@ function Viewer({
         </div>
       }
     >
-      <div className="grid h-full min-h-[50dvh] place-items-center rounded-card bg-sunken">
-        {isPdf(file) ? (
+      {isPdf(file) ? (
+        <div className="grid h-full min-h-[50dvh] place-items-center rounded-card bg-sunken">
           <FileText aria-hidden className="size-16 text-mute" />
-        ) : url ? (
-          <img
-            src={url}
-            alt={t('expenses.attachments.alt', { number: index + 1, description })}
-            className="max-h-[calc(100dvh-11rem)] w-auto max-w-full object-contain"
-          />
-        ) : (
-          <Skeleton className="h-[60dvh] w-full" />
-        )}
-      </div>
+        </div>
+      ) : url ? (
+        <ZoomableImage
+          key={url}
+          src={url}
+          alt={t('expenses.attachments.alt', { number: index + 1, description })}
+          onSwipe={count > 1 ? onMove : undefined}
+          className="h-[calc(100dvh-11rem)] min-h-[50dvh] w-full rounded-card bg-sunken"
+        />
+      ) : (
+        <Skeleton className="h-[60dvh] w-full" />
+      )}
     </SheetContent>
   )
 }

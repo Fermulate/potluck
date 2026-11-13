@@ -374,7 +374,11 @@ describe('ExpenseDetail', () => {
       await screen.findByRole('heading', { name: t('expenses.attachments.label') }),
     ).toBeInTheDocument()
     expect(
-      await screen.findByRole('link', { name: t('expenses.receiptUpload.pdf') }),
+      await screen.findByRole('link', {
+        name: t('expenses.attachments.open', {
+          name: t('expenses.attachments.pdf', { number: 2 }),
+        }),
+      }),
     ).toHaveAttribute('href', `https://files.test/${GROUP_ID}/b.pdf`)
 
     const photo = t('expenses.attachments.photo', { number: 1 })
