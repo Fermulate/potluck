@@ -10,11 +10,13 @@ import {
   fetchActivity,
   fetchExpense,
   fetchExpenseComments,
+  fetchExpenseHistory,
   fetchFxCurrencies,
   fetchFxRate,
   fetchGroupBalances,
   fetchGroupExpenses,
   fetchGroupSettlements,
+  fetchLastCurrency,
   fetchMoneyGroup,
   fetchMoneyGroups,
   fetchPeople,
@@ -26,6 +28,7 @@ import {
   moneyQueries,
   restoreExpense,
   setRecurringActive,
+  setDefaultSplit,
   settleUp,
   updateExpense,
   uploadReceipt,
@@ -424,15 +427,22 @@ describe('expense writes', () => {
     spent_at: '2026-01-01',
   }
 
-  it('creates through create_expense with the payload as is', async () => {
-    const fake = fakeSupabase().respond('rpc:create_expense', { data: { id: 'e1' } })
-    expect(await createExpense(fake.client, payload)).toEqual({ id: 'e1' })
-    expect(fake.rpcArgs('create_expense')).toEqual([{ payload }])
+  it('creates through create_expense_v2 with the payload as is', async () => {
+    const fake = fakeSupabase().respond('rpc:create_expense_v2', { data: { id: 'e1' } })
+    const several = {
+      ...payload,
+      payers: [
+        { user_id: 'u1', paid_cents: 2000 },
+        { user_id: 'u2', paid_cents: 1000 },
+      ],
+    }
+    expect(await createExpense(fake.client, several)).toEqual({ id: 'e1' })
+    expect(fake.rpcArgs('create_expense_v2')).toEqual([{ payload: several }])
   })
 
   it('updates, deletes and restores by id', async () => {
     const fake = fakeSupabase()
-      .respond('rpc:update_expense', { data: { id: 'e1', description: 'Lunch' } })
+      .respond('rpc:update_expense_v2', { data: { id: 'e1', description: 'Lunch' } })
       .respond('rpc:delete_expense', { data: { id: 'e1' } })
       .respond('rpc:restore_expense', { data: { id: 'e1' } })
     const { group_id: _g, ...edit } = payload
@@ -441,17 +451,102 @@ describe('expense writes', () => {
     await deleteExpense(fake.client, 'e1')
     await restoreExpense(fake.client, 'e1')
 
-    expect(fake.rpcArgs('update_expense')).toEqual([{ id: 'e1', payload: edit }])
+    expect(fake.rpcArgs('update_expense_v2')).toEqual([{ id: 'e1', payload: edit }])
     expect(fake.rpcArgs('delete_expense')).toEqual([{ id: 'e1' }])
     expect(fake.rpcArgs('restore_expense')).toEqual([{ id: 'e1' }])
   })
 
   it('rethrows the RPC error so callers can read its code', async () => {
-    const fake = fakeSupabase().respond('rpc:create_expense', {
+    const fake = fakeSupabase().respond('rpc:create_expense_v2', {
       error: { message: 'splits_sum_mismatch' },
     })
     const error = await createExpense(fake.client, payload).catch((e: unknown) => e)
     expect(moneyErrorCode(error)).toBe('splits_sum_mismatch')
+  })
+})
+
+describe('default split', () => {
+  it('saves and clears through set_default_split', async () => {
+    const split = {
+      split_type: 'percent' as const,
+      splits: [
+        { user_id: 'u1', weight: 60 },
+        { user_id: 'u2', weight: 40 },
+      ],
+    }
+    const fake = fakeSupabase().respond('rpc:set_default_split', { data: split })
+    expect(await setDefaultSplit(fake.client, 'g1', split)).toEqual(split)
+    const cleared = fakeSupabase().respond('rpc:set_default_split', { data: null })
+    expect(await setDefaultSplit(cleared.client, 'g1', null)).toBeNull()
+    expect(fake.rpcArgs('set_default_split')).toEqual([{ group_id: 'g1', split }])
+    expect(cleared.rpcArgs('set_default_split')).toEqual([{ group_id: 'g1', split: null }])
+  })
+})
+
+describe('expense history and last currency', () => {
+  it('reads the expense rows of one subject, oldest first', async () => {
+    const fake = fakeSupabase({
+      tables: {
+        activity: [
+          { id: 'a2', subject_id: 'e1', verb: 'expense.updated', created_at: '2026-01-02' },
+          { id: 'a1', subject_id: 'e1', verb: 'expense.created', created_at: '2026-01-01' },
+          { id: 'a3', subject_id: 'e1', verb: 'comment.created', created_at: '2026-01-03' },
+          { id: 'a4', subject_id: 'e2', verb: 'expense.created', created_at: '2026-01-01' },
+        ],
+      },
+    })
+    const rows = await fetchExpenseHistory(fake.client, 'e1')
+    expect(rows.map((r) => r.id)).toEqual(['a1', 'a2'])
+  })
+
+  it('finds the currency of the newest expense the viewer added in the group', async () => {
+    const fake = fakeSupabase({
+      tables: {
+        expenses: [
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'USD',
+            created_at: '2026-01-01',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'EUR',
+            created_at: '2026-01-03',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'CHF',
+            created_at: '2026-01-04',
+            deleted_at: '2026-01-05',
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u2',
+            currency: 'GBP',
+            created_at: '2026-01-04',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g2',
+            created_by: 'u1',
+            currency: 'JPY',
+            created_at: '2026-01-05',
+            deleted_at: null,
+          },
+        ],
+      },
+    })
+    expect(await fetchLastCurrency(fake.client, 'g1', 'u1')).toBe('EUR')
+    expect(await fetchLastCurrency(fake.client, 'g1', 'u3')).toBeNull()
+    expect(moneyQueries.lastCurrency(fake.client, 'g1', 'u1').queryKey).toEqual(
+      moneyKeys.lastCurrency('g1', 'u1'),
+    )
+    expect(moneyQueries.history(fake.client, 'e1').queryKey).toEqual(moneyKeys.history('e1'))
   })
 })
 

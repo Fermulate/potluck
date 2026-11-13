@@ -52,7 +52,9 @@ describe('ExpenseDetail', () => {
     renderDetail({ notes: 'Extra guac', created_by: BEN })
     expect(await screen.findByRole('heading', { name: 'Tacos' })).toBeInTheDocument()
     expect(screen.getByText(t('expenses.detail.youPaid'))).toBeInTheDocument()
-    expect(screen.getByText(t('expenses.detail.paidAndOwes', { amount: '$10.00' }))).toBeVisible()
+    expect(
+      screen.getByText(t('expenses.detail.paidAndShare', { paid: '$30.00', share: '$10.00' })),
+    ).toBeVisible()
     expect(screen.getAllByText(t('expenses.detail.owes', { amount: '$10.00' }))).toHaveLength(2)
     expect(screen.getByText('Extra guac')).toBeInTheDocument()
     expect(screen.getByText(/^Added by Ben/)).toBeInTheDocument()
@@ -73,8 +75,8 @@ describe('ExpenseDetail', () => {
       fx_rate: '1.100000000000',
       split_type: 'shares',
       expense_splits: [
-        { user_id: ME, share_cents: 2000, weight: 2 },
-        { user_id: BEN, share_cents: 1000, weight: 1 },
+        { user_id: ME, share_cents: 2000, weight: 2, adjustment_cents: null },
+        { user_id: BEN, share_cents: 1000, weight: 1, adjustment_cents: null },
       ],
     })
     expect(
@@ -83,6 +85,204 @@ describe('ExpenseDetail', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText(/\(2 shares\)/)).toBeInTheDocument()
+  })
+
+  it('lists every payer, and a payer who is not in the split', async () => {
+    renderDetail({
+      amount_cents: 9000,
+      paid_by: ME,
+      created_by: CLEO,
+      expense_payers: [
+        { user_id: ME, paid_cents: 6000 },
+        { user_id: BEN, paid_cents: 3000 },
+      ],
+      expense_splits: [
+        { user_id: ME, share_cents: 4500, weight: null, adjustment_cents: null },
+        { user_id: CLEO, share_cents: 4500, weight: null, adjustment_cents: null },
+      ],
+    })
+    expect(
+      await screen.findByText(t('expenses.detail.paidByMany', { names: 'you and Ben' })),
+    ).toBeVisible()
+    expect(
+      screen.getByText(t('expenses.detail.paidAndShare', { paid: '$60.00', share: '$45.00' })),
+    ).toBeVisible()
+    expect(screen.getByText(t('expenses.detail.paidOnly', { amount: '$30.00' }))).toBeVisible()
+    // Paying part of it is enough to edit it.
+    expect(screen.getByRole('group', { name: t('expenses.detail.actions') })).toBeVisible()
+  })
+
+  it('marks a refund and says who got the money back', async () => {
+    renderDetail({
+      is_refund: true,
+      paid_by: BEN,
+      expense_payers: [{ user_id: BEN, paid_cents: 3000 }],
+    })
+    expect(await screen.findByText(t('expenses.detail.receivedBy', { name: 'Ben' }))).toBeVisible()
+    expect(screen.getAllByText(t('expenses.refund.badge')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(t('expenses.detail.getsBack', { amount: '$10.00' }))).toHaveLength(2)
+  })
+
+  it('shows stored items with tax, tip and discount, and adjustments', async () => {
+    renderDetail({
+      split_type: 'itemized',
+      amount_cents: 3300,
+      tax_cents: 300,
+      tip_cents: 200,
+      discount_cents: 200,
+      expense_items: [
+        { position: 1, description: 'Dumplings', amount_cents: 2000, user_ids: [ME, BEN] },
+        { position: 0, description: 'Noodles', amount_cents: 1000, user_ids: [ME] },
+      ],
+    })
+    const items = await screen.findByRole('region', { name: t('expenses.detail.items') })
+    expect(
+      within(items)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([expect.stringContaining('Noodles'), expect.stringContaining('Dumplings')])
+    expect(within(items).getByText(t('expenses.itemized.discount'))).toBeVisible()
+    expect(
+      within(items).getByText(t('expenses.detail.itemPeople', { names: 'you and Ben' })),
+    ).toBeVisible()
+  })
+
+  it('shows the adjustment next to a share', async () => {
+    renderDetail({
+      split_type: 'adjustment',
+      expense_splits: [
+        { user_id: ME, share_cents: 1500, weight: null, adjustment_cents: 500 },
+        { user_id: BEN, share_cents: 1000, weight: null, adjustment_cents: 0 },
+        { user_id: CLEO, share_cents: 500, weight: null, adjustment_cents: -500 },
+      ],
+    })
+    expect(await screen.findByText(/\(\+\$5\.00\)/)).toBeVisible()
+    expect(screen.getByText(/\(−\$5\.00\)/)).toBeVisible()
+  })
+
+  it('shows who added and edited it, with the amount change', async () => {
+    resetDb({
+      tables: {
+        activity: [
+          {
+            id: 'a1',
+            subject_id: ID,
+            actor_id: BEN,
+            verb: 'expense.created',
+            data: { amount_cents: 2000, currency: 'USD' },
+            created_at: '2026-11-04T18:00:00Z',
+          },
+          {
+            id: 'a2',
+            subject_id: ID,
+            actor_id: ME,
+            verb: 'expense.updated',
+            data: { amount_cents: 3000, currency: 'USD' },
+            created_at: '2026-11-05T18:00:00Z',
+          },
+          {
+            id: 'a3',
+            subject_id: ID,
+            actor_id: ME,
+            verb: 'comment.created',
+            data: {},
+            created_at: '2026-11-05T19:00:00Z',
+          },
+        ],
+      },
+    })
+    renderDetail()
+    const history = await screen.findByRole('region', { name: t('expenses.history.title') })
+    expect(within(history).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(history).getByText(t('expenses.history.created', { name: 'Ben' }))).toBeVisible()
+    expect(within(history).getByText(t('expenses.history.updated', { name: 'You' }))).toBeVisible()
+    expect(within(history).getByText(/\$20\.00 to \$30\.00/)).toBeVisible()
+  })
+
+  it('lists what each edit changed, old and new', async () => {
+    resetDb({
+      tables: {
+        activity: [
+          {
+            id: 'a1',
+            subject_id: ID,
+            actor_id: BEN,
+            verb: 'expense.updated',
+            data: {
+              amount_cents: 3000,
+              currency: 'USD',
+              changes: {
+                description: { from: 'Taco', to: 'Tacos' },
+                payers: { from: { [ME]: 3000 }, to: { [ME]: 2000, [BEN]: 1000 } },
+              },
+            },
+            created_at: '2026-11-05T18:00:00Z',
+          },
+        ],
+      },
+    })
+    renderDetail()
+    const history = await screen.findByRole('region', { name: t('expenses.history.title') })
+    expect(within(history).getByText(t('expenses.history.updated', { name: 'Ben' }))).toBeVisible()
+    expect(
+      within(history).getByText(
+        t('expenses.history.change.description', { from: 'Taco', to: 'Tacos' }),
+      ),
+    ).toBeVisible()
+    expect(
+      within(history).getByText(
+        t('expenses.history.change.payers', { from: 'you', to: 'you $20.00 and Ben $10.00' }),
+      ),
+    ).toBeVisible()
+  })
+
+  it('keeps a payer share neutral and shows their net in its own colour', async () => {
+    renderDetail({
+      amount_cents: 3000,
+      paid_by: BEN,
+      expense_payers: [{ user_id: BEN, paid_cents: 3000 }],
+    })
+    const ben = (
+      await screen.findByText(
+        t('expenses.detail.paidAndShare', { paid: '$30.00', share: '$10.00' }),
+      )
+    ).closest('li')!
+    expect(ben.querySelector('[data-tone="neutral"]')).not.toBeNull()
+    expect(within(ben).getByText(t('expenses.detail.getsBack', { amount: '$20.00' }))).toBeVisible()
+    // My line: my share is what I owe.
+    const mine = screen
+      .getAllByText(t('expenses.detail.owes', { amount: '$10.00' }))[0]!
+      .closest('li')!
+    expect(mine.querySelector('[data-tone="owe"]')).not.toBeNull()
+  })
+
+  it('is read only in an archived group', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expense(ID), expense({ id: ID }))
+      c.setQueryData(moneyKeys.comments(ID), [])
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+        ...group,
+        archived_at: '2026-10-01T00:00:00Z',
+      })
+    })
+    renderWithProviders(<ExpenseDetail expenseId={ID} />, {
+      path: '/expenses/$expenseId',
+      url: `/expenses/${ID}`,
+      client,
+    })
+    expect(
+      await screen.findByText(t('expenses.form.archived', { group: 'Hike crew' })),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('group', { name: t('expenses.detail.actions') }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: t('expenses.comments.placeholder') }),
+    ).not.toBeInTheDocument()
+    // No comments and no way to add one: no empty heading either.
+    expect(
+      screen.queryByRole('heading', { name: t('expenses.comments.title') }),
+    ).not.toBeInTheDocument()
   })
 
   it('hides edit and delete from people who neither added nor paid it', async () => {
@@ -107,8 +307,13 @@ describe('ExpenseDetail', () => {
   it('offers no delete when someone who left still has money on it, and says why', async () => {
     renderDetail({
       expense_splits: [
-        { user_id: ME, share_cents: 1500, weight: null },
-        { user_id: 'dddddddd-0000-4000-8000-000000000004', share_cents: 1500, weight: null },
+        { user_id: ME, share_cents: 1500, weight: null, adjustment_cents: null },
+        {
+          user_id: 'dddddddd-0000-4000-8000-000000000004',
+          share_cents: 1500,
+          weight: null,
+          adjustment_cents: null,
+        },
       ],
     })
     expect(await screen.findByText(t('expenses.detail.departedLocked'))).toBeInTheDocument()

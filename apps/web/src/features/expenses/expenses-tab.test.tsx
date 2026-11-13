@@ -27,8 +27,8 @@ function setup() {
         paid_by: CLEO,
         spent_at: '2026-11-02',
         expense_splits: [
-          { user_id: BEN, share_cents: 1500, weight: null },
-          { user_id: CLEO, share_cents: 1500, weight: null },
+          { user_id: BEN, share_cents: 1500, weight: null, adjustment_cents: null },
+          { user_id: CLEO, share_cents: 1500, weight: null, adjustment_cents: null },
         ],
       }),
     ])
@@ -121,6 +121,7 @@ describe('ExpensesTab', () => {
       amount_cents: 145000,
       currency: 'USD',
       paid_by: ME,
+      payers: null,
       split_type: 'equal',
       category: 'rent',
       splits: [],

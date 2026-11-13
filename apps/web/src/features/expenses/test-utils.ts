@@ -37,6 +37,7 @@ export const group: MoneyGroup = {
   simplify_debts: true,
   is_direct: false,
   archived_at: null,
+  default_split: null,
   members,
 }
 
@@ -60,10 +61,16 @@ export function expense(patch: Partial<ExpenseWithSplits>): ExpenseWithSplits {
     created_at: '2026-11-04T18:00:00Z',
     updated_at: '2026-11-04T18:00:00Z',
     deleted_at: null,
+    is_refund: false,
+    tax_cents: null,
+    tip_cents: null,
+    discount_cents: null,
+    expense_payers: [{ user_id: patch.paid_by ?? ME, paid_cents: patch.amount_cents ?? 3000 }],
+    expense_items: [],
     expense_splits: [
-      { user_id: ME, share_cents: 1000, weight: null },
-      { user_id: BEN, share_cents: 1000, weight: null },
-      { user_id: CLEO, share_cents: 1000, weight: null },
+      { user_id: ME, share_cents: 1000, weight: null, adjustment_cents: null },
+      { user_id: BEN, share_cents: 1000, weight: null, adjustment_cents: null },
+      { user_id: CLEO, share_cents: 1000, weight: null, adjustment_cents: null },
     ],
     ...patch,
   }
@@ -89,6 +96,7 @@ export function seededClient(seed: (client: QueryClient) => void = () => {}) {
   client.setQueryData(moneyKeys.people(), members)
   client.setQueryData(moneyKeys.groupInfo(GROUP_ID), group)
   client.setQueryData(moneyKeys.recurring(GROUP_ID), [])
+  client.setQueryData(moneyKeys.lastCurrency(GROUP_ID, ME), null)
   seed(client)
   return client
 }

@@ -5,7 +5,7 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { settlementText, viewerLine } from './expense-math'
+import { paidSummary, settlementText, viewerLine, type NameOf } from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -64,20 +64,22 @@ const rowClass =
 export function ExpenseRow({
   expense,
   viewerId,
-  payerName,
+  nameOf,
+  groupCurrency,
   locale,
 }: {
   expense: ExpenseWithSplits
   viewerId: string
-  payerName: string
+  /** First name, or "You" for the viewer. */
+  nameOf: NameOf
+  /** The group's currency: the right side is the viewer's change in the group balance. */
+  groupCurrency: string
   locale?: string
 }) {
-  const line = viewerLine(expense, viewerId)
-  const total = formatMoney(expense.amount_cents, expense.currency, { locale })
-  const subtitle =
-    expense.paid_by === viewerId
-      ? t('expenses.youPaid', { amount: total })
-      : t('expenses.paidSummary', { name: payerName, amount: total })
+  const line = viewerLine(expense, viewerId, groupCurrency)
+  const subtitle = paidSummary(expense, viewerId, nameOf, locale)
+  const refund = expense.is_refund
+  const lineAmount = line.kind === 'none' ? '' : formatMoney(line.cents, groupCurrency, { locale })
 
   return (
     <Link
@@ -90,6 +92,11 @@ export function ExpenseRow({
         title={
           <>
             {expense.description}
+            {refund && (
+              <span className="ml-2 inline-flex -translate-y-px items-center rounded-pill bg-olive-soft px-2 py-0.5 align-middle text-[0.6875rem] font-bold text-olive-ink">
+                {t('expenses.refund.badge')}
+              </span>
+            )}
             {expense.recurring_id && (
               <Repeat
                 aria-hidden
@@ -112,22 +119,28 @@ export function ExpenseRow({
                   line.kind === 'lent' ? 'text-saffron-ink' : 'text-tomato-ink',
                 )}
               >
-                {line.kind === 'lent' ? t('expenses.youLentLabel') : t('expenses.youBorrowedLabel')}
+                {line.kind === 'lent'
+                  ? refund
+                    ? t('expenses.refund.youGetBackLabel')
+                    : t('expenses.youLentLabel')
+                  : refund
+                    ? t('expenses.refund.youOweLabel')
+                    : t('expenses.youBorrowedLabel')}
               </span>
               <Money
                 cents={line.cents}
-                currency={expense.currency}
+                currency={groupCurrency}
                 locale={locale}
                 tone={line.kind === 'lent' ? 'owed' : 'owe'}
                 className="text-[0.9375rem] font-bold"
                 srLabel={
                   line.kind === 'lent'
-                    ? t('expenses.youLent', {
-                        amount: formatMoney(line.cents, expense.currency, { locale }),
-                      })
-                    : t('expenses.youBorrowed', {
-                        amount: formatMoney(line.cents, expense.currency, { locale }),
-                      })
+                    ? refund
+                      ? t('expenses.refund.youGetBack', { amount: lineAmount })
+                      : t('expenses.youLent', { amount: lineAmount })
+                    : refund
+                      ? t('expenses.refund.youOwe', { amount: lineAmount })
+                      : t('expenses.youBorrowed', { amount: lineAmount })
                 }
               />
             </>

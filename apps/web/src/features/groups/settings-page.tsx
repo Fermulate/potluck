@@ -17,6 +17,7 @@ import { CurrencyField } from '@/features/me/profile-fields'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
+import { DefaultSplitSection } from './default-split-section'
 import { GroupTile } from './group-bits'
 import { ColorPicker, EmojiPicker } from './group-form-fields'
 import { useGroup } from './use-groups'
@@ -210,6 +211,8 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           />
         </Card>
       </Section>
+
+      <DefaultSplitSection groupId={group.id} />
 
       <Section title={t('groups.settings.danger')}>
         <Card padding="roomy" className="grid gap-5">

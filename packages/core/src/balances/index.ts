@@ -1,7 +1,9 @@
 export {
   computeBalances,
+  expenseEffect,
   type BalanceExpense,
   type BalanceOptions,
+  type BalancePayer,
   type BalanceSettlement,
   type BalanceSplit,
 } from './balances'

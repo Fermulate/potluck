@@ -80,6 +80,16 @@ export const prefetch = {
     })
   },
 
+  /** New expense: the group, its people and the currency the viewer last used there. */
+  newExpense(queryClient: QueryClient, groupId: string | undefined, userId: string) {
+    if (!groupId) return
+    withClient((client) => {
+      void queryClient.prefetchQuery(moneyQueries.group(client, groupId))
+      void queryClient.prefetchQuery(moneyQueries.people(client))
+      void queryClient.prefetchQuery(moneyQueries.lastCurrency(client, groupId, userId))
+    })
+  },
+
   event(queryClient: QueryClient, eventId: string) {
     withClient((client) => {
       // Members need the group id and the panels depend on the status, so they follow the event.

@@ -18,7 +18,7 @@ import {
 } from './split-state'
 
 /**
- * Line items, each shared equally by the people who had it. Tax and tip are spread in
+ * Line items, each shared equally by the people who had it. Tax, tip and discount are spread in
  * proportion to everyone's subtotal (core `splitItemized`), and the total drives the amount.
  */
 export function ItemizedEditor({
@@ -199,6 +199,21 @@ export function ItemizedEditor({
             locale={locale}
             value={draft.tipCents}
             onValueChange={(tipCents) => onChange({ ...draft, tipCents, tipPercent: null })}
+            className="h-10 w-28"
+          />
+        </dd>
+        <dt>
+          <label htmlFor="itemized-discount" className="text-sm text-mute">
+            {t('expenses.itemized.discount')}
+          </label>
+        </dt>
+        <dd>
+          <CompactMoneyInput
+            id="itemized-discount"
+            currency={currency}
+            locale={locale}
+            value={draft.discountCents}
+            onValueChange={(discountCents) => onChange({ ...draft, discountCents })}
             className="h-10 w-28"
           />
         </dd>

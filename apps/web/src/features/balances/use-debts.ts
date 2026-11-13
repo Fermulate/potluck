@@ -3,6 +3,7 @@ import { pairwiseDebts } from '@potluck/core'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { toBalanceExpense } from '@/features/expenses/expense-math'
 
 /**
  * Who owes whom in the group currency: the server's simplified set when the group simplifies
@@ -23,13 +24,7 @@ export function useDebts(groupId: string, group: MoneyGroup | undefined): Debt[]
   const pairwise = useMemo(() => {
     if (!group || simplify || !expenses.data || !settlements.data) return undefined
     return pairwiseDebts(
-      expenses.data.map((e) => ({
-        paidBy: e.paid_by,
-        amountCents: e.amount_cents,
-        currency: e.currency,
-        fxRate: e.fx_rate,
-        splits: e.expense_splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
-      })),
+      expenses.data.map(toBalanceExpense),
       settlements.data.map((s) => ({
         fromUser: s.from_user,
         toUser: s.to_user,

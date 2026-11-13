@@ -4,7 +4,7 @@
  * Every `.from(table)` chain, `.rpc(name, args)`, storage, auth and edge function call is
  * recorded in `calls`. Responses come from, in order:
  *   1. canned results queued with `respond(key, ...)` (the last one sticks for later calls),
- *   2. the in-memory `tables`, for plain reads (eq / is / in / lt / lte / gt / gte / or / order /
+ *   2. the in-memory `tables`, for plain reads (eq / is / in / like / lt / lte / gt / gte / or / order /
  *      limit / range / single / maybeSingle), capped at `maxRows` like PostgREST `max_rows`,
  *   3. `{ data: null, error: null }`.
  *
@@ -121,6 +121,16 @@ function runInMemory(rows: Row[], ops: Op[], maxRows: number): FakeResult {
       case 'in':
         out = out.filter((r) => (value as unknown[]).includes(r[column]))
         break
+      case 'like': {
+        const pattern = new RegExp(
+          `^${String(value)
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replaceAll('%', '.*')
+            .replaceAll('_', '.')}$`,
+        )
+        out = out.filter((r) => pattern.test(String(r[column])))
+        break
+      }
       case 'or':
         out = out.filter(logicFilter(`or(${column})`))
         break

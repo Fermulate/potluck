@@ -43,6 +43,23 @@ test('a new expense names who added it, the total, your share, and links to it',
   assert.match(e.html, /href="https:\/\/potluck\.example\/expenses\/x1"/)
 })
 
+test('a refund tells each person what they get back, not a share they owe', () => {
+  const data = {
+    expense_id: 'x1',
+    actor_name: 'Ava',
+    description: 'Refund',
+    amount_cents: 4000,
+    currency: 'USD',
+    share_cents: 2000,
+    is_refund: true,
+  }
+  for (const type of ['expense.created', 'expense.updated', 'expense.restored']) {
+    const e = renderEmail(job(type, data), links)
+    assert.match(e.text, /You get back: \$20\.00\./, type)
+    assert.doesNotMatch(e.text, /Your share/, type)
+  }
+})
+
 test('every email carries one-click unsubscribe headers and footer links for its type and for all', () => {
   const e = renderEmail(job('expense.created', { expense_id: 'x1' }), links)
   assert.equal(e.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click')

@@ -214,8 +214,11 @@ erDiagram
   groups ||--o{ settlements : has
   groups ||--o{ recurring_expenses : has
   expenses ||--|{ expense_splits : "split into"
+  expenses ||--|{ expense_payers : "paid by"
+  expenses ||--o{ expense_items : "itemized as"
   profiles ||--o{ expense_splits : owes
-  profiles ||--o{ expenses : "paid_by"
+  profiles ||--o{ expense_payers : paid
+  profiles ||--o{ expenses : "paid_by (largest payer)"
   profiles ||--o{ settlements : "from_user, to_user"
   recurring_expenses |o--o{ expenses : materializes
   events |o--o{ expenses : "event_id"
@@ -239,8 +242,12 @@ erDiagram
     bigint amount_cents "minor units, > 0"
     char3 currency
     numeric fx_rate "24,12, into group currency"
-    uuid paid_by FK "restrict"
+    uuid paid_by FK "largest payer, restrict"
     split_type split_type
+    bool is_refund "signs flip in balances"
+    bigint tax_cents "by item, as entered"
+    bigint tip_cents
+    bigint discount_cents
     date spent_at
     text receipt_path "group_id/..."
     uuid recurring_id FK
@@ -252,6 +259,19 @@ erDiagram
     uuid user_id PK, FK "restrict"
     bigint share_cents "sum = amount_cents"
     numeric weight "percent or shares, display"
+    bigint adjustment_cents "adjustment split, +/-"
+  }
+  expense_payers {
+    uuid expense_id PK, FK
+    uuid user_id PK, FK "restrict"
+    bigint paid_cents "sum = amount_cents"
+  }
+  expense_items {
+    uuid expense_id PK, FK
+    smallint position PK
+    text description
+    bigint amount_cents
+    uuid_array user_ids
   }
   recurring_expenses {
     uuid id PK
@@ -261,6 +281,7 @@ erDiagram
     uuid paid_by FK
     split_type split_type
     jsonb splits "create_expense format"
+    jsonb payers "several payers, or null"
     recurrence recurrence
     date next_run_on
     bool active
@@ -284,7 +305,7 @@ erDiagram
   }
 ```
 
-The `group_balances` view (`security_invoker`) sums `expenses`, `expense_splits` and `settlements` into `(group_id, user_id, net_cents)`.
+The `group_balances` view (`security_invoker`) sums `expenses`, `expense_payers`, `expense_splits` and `settlements` into `(group_id, user_id, net_cents)`.
 
 ### Diagram: plans, feed and platform
 
@@ -414,7 +435,7 @@ erDiagram
 ### Enums
 
 - `group_role`: `owner`, `admin`, `member`
-- `split_type`: `equal`, `exact`, `percent`, `shares`, `itemized`
+- `split_type`: `equal`, `exact`, `percent`, `shares`, `adjustment`, `itemized`
 - `event_status`: `polling`, `scheduled`, `cancelled`, `done`
 - `availability_level`: `yes`, `maybe`
 - `rsvp_status`: `going`, `maybe`, `declined`
@@ -430,15 +451,17 @@ erDiagram
 
 ### Groups
 
-- `groups`: `id`, `name text not null`, `emoji text`, `color text`, `cover_path text`, `currency char(3) not null default 'USD'`, `simplify_debts bool default true`, `members_can_invite bool default true`, `is_direct bool default false` (a hidden 2-person group used for 1:1 expenses between friends), `created_by`, timestamps, `archived_at`.
+- `groups`: `id`, `name text not null`, `emoji text`, `color text`, `cover_path text`, `currency char(3) not null default 'USD'`, `simplify_debts bool default true`, `members_can_invite bool default true`, `is_direct bool default false` (a hidden 2-person group used for 1:1 expenses between friends), `created_by`, timestamps, `archived_at`, `default_split jsonb` (where new expenses start, `{split_type: equal | percent | shares, splits: [{user_id, weight}]}`; written only by `set_default_split`).
 - `group_members`: `(group_id, user_id)` pk, `role group_role not null default 'member'`, `joined_at`. Exactly one `owner` per group (partial unique index).
 - `group_invites`: `id`, `group_id`, `code text unique` (url-safe, 10+ chars), `email text?`, `role group_role default 'member'` (cannot be owner), `max_uses int?`, `uses int default 0`, `expires_at timestamptz?`, `created_by`, `revoked_at`.
 
 ### Money
 
-- `expenses`: `id`, `group_id not null`, `event_id?`, `description text not null`, `amount_cents bigint > 0`, `currency char(3)`, `fx_rate numeric(24,12) default 1` (rate into the group currency, snapshotted at creation), `paid_by uuid`, `split_type`, `category text`, `notes text`, `spent_at date default current_date`, `receipt_path text`, `recurring_id?`, `created_by`, timestamps, `deleted_at` (soft delete, restorable).
-- `expense_splits`: `(expense_id, user_id)` pk, `share_cents bigint not null`, `weight numeric` (percent or share count, for display). Constraint (deferred, via trigger): splits sum to `amount_cents`.
-- `recurring_expenses`: template rows (`group_id`, `description`, `amount_cents`, `currency`, `paid_by`, `split_type`, `splits jsonb`, `recurrence`, `next_run_on date`, `active bool`). A `pg_cron` job materializes due rows into `expenses` daily.
+- `expenses`: `id`, `group_id not null`, `event_id?`, `description text not null`, `amount_cents bigint > 0`, `currency char(3)`, `fx_rate numeric(24,12) default 1` (rate into the group currency, snapshotted at creation), `paid_by uuid` (whoever paid the most, ties to the smaller id; kept for older clients), `split_type`, `category text`, `notes text`, `spent_at date default current_date`, `receipt_path text`, `recurring_id?`, `created_by`, timestamps, `deleted_at` (soft delete, restorable), `is_refund bool default false` (money coming back: the payers received it), `tax_cents`, `tip_cents`, `discount_cents` (by-item expenses, as entered).
+- `expense_splits`: `(expense_id, user_id)` pk, `share_cents bigint not null`, `weight numeric` (percent or share count, for display), `adjustment_cents bigint` (adjustment splits). Constraint (deferred, via trigger): splits sum to `amount_cents`.
+- `expense_payers`: `(expense_id, user_id)` pk, `paid_cents bigint > 0`, in the expense currency. Every expense has at least one row (backfilled from `paid_by`; a trigger keeps a single payer in step with `paid_by` and `amount_cents`, so writers that only know `paid_by` stay correct). Constraint (deferred, via trigger): payers sum to `amount_cents` (`payers_sum_mismatch`). Members read; writes only through the expense RPCs.
+- `expense_items`: `(expense_id, position)` pk, `description`, `amount_cents`, `user_ids uuid[]`. A by-item bill as entered, so editing reopens it; the shares stay in `expense_splits`. Members read; written and dropped by `save_expense` together with the split.
+- `recurring_expenses`: template rows (`group_id`, `description`, `amount_cents`, `currency`, `paid_by`, `payers jsonb` (null when one person pays), `split_type`, `splits jsonb`, `recurrence`, `next_run_on date`, `active bool`). A `pg_cron` job materializes due rows into `expenses` daily.
 - `settlements`: `id`, `group_id`, `from_user`, `to_user`, `amount_cents > 0`, `currency`, `fx_rate`, `note`, `settled_at`, `created_by`, `deleted_at`.
 - `fx_rates`: `(base, quote, day)` pk, `rate numeric(24,12)`, index on `(quote, day desc)` for the currency picker. Filled by the `fx-sync` edge function (Frankfurter API, free, no key), which stores cross rates with 12 decimals so weak currencies (IDR, KRW) keep at least 8 significant digits.
 - View `group_balances` (`security_invoker`): `group_id`, `user_id`, `net_cents` (positive = is owed), in group currency.
@@ -476,7 +499,7 @@ erDiagram
 | Edit group settings                                 | yes   | yes                            | no                      |
 | Delete group, transfer ownership                    | yes   | no                             | no                      |
 
-A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid.
+A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid (any part of). Any member may save the group's default split.
 
 `create_invite` is the source of truth for admin invites: only the owner can mint them, and `can()` in `packages/core/src/roles` applies the same rule.
 
@@ -490,7 +513,9 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `accept_invite(code)` → group_id                                                                                  | validates expiry/uses/revoked, adds member, creates friendships                                                                                                                 |
 | `set_member_role(group_id, user_id, role)` / `remove_member` / `leave_group` / `transfer_ownership`               | role checks per table above                                                                                                                                                     |
 | `get_or_create_direct_group(friend_id)` → group_id                                                                | 1:1 expenses                                                                                                                                                                    |
-| `create_expense(payload jsonb)` / `update_expense(id, payload jsonb)`                                             | validates splits sum, membership, fx snapshot                                                                                                                                   |
+| `create_expense(payload jsonb)` / `update_expense(id, payload jsonb)`                                             | validates splits sum, membership, fx snapshot; ignores the v2 keys                                                                                                              |
+| `create_expense_v2(payload jsonb)` / `update_expense_v2(id, payload jsonb)`                                       | v1 plus `payers`, `is_refund`, `items` with `tax_cents` / `tip_cents` / `discount_cents` ([ADR 12](adr/0012-several-payers-refunds-and-stored-items.md))                        |
+| `set_default_split(group_id, split jsonb)` → jsonb                                                                | any member, from the expense form or group settings; `null` clears; logged as `group.default_split`                                                                             |
 | `delete_expense(id)` / `restore_expense(id)`                                                                      | soft delete                                                                                                                                                                     |
 | `settle_up(group_id, to_user, amount_cents, currency, note)`                                                      |                                                                                                                                                                                 |
 | `simplified_debts(group_id)` → rows `(from_user, to_user, amount_cents)`                                          | greedy max-creditor/max-debtor, tie-break by user id                                                                                                                            |
@@ -531,8 +556,8 @@ Codes:
 - Groups and roles: `group_name_required`, `invalid_currency`, `group_currency_locked`, `group_owner_required`, `group_archived` (any write into an archived group: expenses, recurring expenses, payments, plans, availability, comments, RSVPs), `group_has_balances` (deleting a group while anyone, former members included, has a non-zero balance), `member_not_found`, `member_has_balance`, `owner_must_transfer`, `already_owner`, `cannot_change_owner`, `cannot_remove_owner`, `use_transfer_ownership`, `use_leave_group`.
 - 1:1 tabs: `invalid_friend`, `not_a_friend`.
 - Invites: `direct_group`, `invalid_role`, `invalid_max_uses`, `invalid_expiry`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`.
-- Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left).
-- Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`.
+- Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left), `invalid_payers`, `payers_sum_mismatch` (what each person paid does not add up to the amount, also from the deferred check).
+- Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `adjustments_exceed_total`, `negative_share`, `items_required`, `invalid_items`.
 - Payments: `invalid_recipient`, `settlement_not_found`, `member_not_in_group` (removing a payment with someone who has left).
 - Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`.
 - Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
@@ -546,7 +571,7 @@ Codes:
 - `set_member_role`: admins may change roles of plain members only (including promoting to admin); nobody can grant `owner` here.
 - Lock order (deadlock-free only if every function follows it):
   - `remove_member` / `leave_group` lock the group row before reading balances.
-  - Every RPC that moves a balance (`create_expense`, `update_expense`, `delete_expense`, `restore_expense`, `settle_up`, `delete_settlement`) takes a share lock on the group row first, so nobody leaves between a balance check and a new expense.
+  - Every RPC that moves a balance (`create_expense`, `update_expense`, their `_v2` versions, `delete_expense`, `restore_expense`, `settle_up`, `delete_settlement`) takes a share lock on the group row first, so nobody leaves between a balance check and a new expense. `set_default_split` moves nothing and takes no lock.
   - Always the group row first, then the expense or payment row.
   - `delete_my_account` locks the rows of every group the account is in, in id order, before handing over ownership and removing zero-balance memberships.
   - The recurring expenses job share locks the group rows of every due template, in id order, before touching any template.
@@ -557,11 +582,17 @@ Codes:
   - Payload keys: read `private.save_expense` in `supabase/schema/current.sql` (the live version; the comment at the top of the first expenses migration is older).
   - Extra payload key `recurrence` (`weekly` | `monthly` | `yearly`, create only) also creates a `recurring_expenses` template whose first run is one period after `spent_at`.
   - `receipt_path` must start with `<group_id>/`.
-  - Members edit expenses they created or paid; admins and the owner edit any.
+  - Members edit expenses they created or paid (any part of); admins and the owner edit any.
+- `create_expense_v2(payload)` / `update_expense_v2(id, payload)` ([ADR 12](adr/0012-several-payers-refunds-and-stored-items.md)) take everything v1 does, plus:
+  - `payers`: `[{user_id, paid_cents}]`, whole minor units, zero dropped, one row per person, summing to `amount_cents`; `paid_by` becomes whoever paid the most (ties: smaller id). Without `payers`, `paid_by` alone means one payer; on an expense several people paid, the same `paid_by` and amount keep the stored payers, a new amount refuses with `payers_sum_mismatch`. Only a new payer must be a member.
+  - `is_refund`: the payers received the money; balances flip both signs. A refund cannot repeat.
+  - `items` with `tax_cents`, `tip_cents`, `discount_cents` (by item only): stored as entered, and the server works out the shares from them (`private.itemized_splits`, same rule as core `splitItemized`), ignoring any `splits`. Rewriting the split any other way drops the stored items.
+  - `split_type = 'adjustment'` with `splits: [{user_id, adjustment_cents}]` (`private.compute_split_rows`, same rule as core `splitAdjustment`).
+  - v1 strips these keys, so an old client cannot set them; it still edits a several-payer expense's details.
 - Departed members: nothing may move a former member's balance.
   - Restoring fails if anyone in the expense has left.
   - Deleting fails if the payer or anyone with a share has left.
-  - Editing the amount, currency, payer or split of such an expense fails (`split_member_not_in_group`); its details stay editable.
+  - Editing the amount, currency, payers, refund flag or split of such an expense fails (`split_member_not_in_group`); its details stay editable. Every payer counts, not only `paid_by`.
   - `update_expense` keeps the stored splits when the payload leaves out `splits` (and amount and split type are unchanged), and checks the payer's membership only when the payer changes.
 - Archived groups raise `group_archived` from every expense RPC, and from `settle_up`, `delete_settlement`, `set_availability`, `request_availability`, `schedule_event` and `cancel_event`. Money RPCs check with `private.require_unarchived(group_id)`, the others with `private.require_group_open(group_id)`; both do the same thing.
 - Splits: `exact` and `itemized` need `share_cents` for every person, used as given (must sum to the amount). `equal`, `percent` (weights sum to exactly 100) and `shares` are always derived on the server with 6-decimal fixed-point weights and largest remainder, ties by user id, same as `packages/core`; any `share_cents` sent for them is ignored.
@@ -596,8 +627,8 @@ Codes:
 
 `group_balances` matches `computeBalances` in `packages/core`:
 
-- Each expense is converted once (`round(amount * fx_rate)`, half away from zero, adjusted for currencies whose minor unit is not 2 digits) and the payer is credited that total.
-- The total is spread over the splits in proportion to `share_cents` by largest remainder (ties by user id), so every expense nets to exactly zero.
+- Each expense is converted once (`round(amount * fx_rate)`, half away from zero, adjusted for currencies whose minor unit is not 2 digits).
+- The converted total is spread over the payers in proportion to `paid_cents`, and over the splits in proportion to `share_cents`, both by largest remainder (ties by user id), so every expense nets to exactly zero. Payers are credited, the split debited; a refund flips both (`expenseEffect` in core).
 - Settlements are converted the same way.
 - `fx_rate` is snapshotted on write from the latest `fx_rates` row on or before the expense date (inverse pair as fallback, `round(1 / rate, 12)`); clients cannot supply their own rate.
 
@@ -626,7 +657,7 @@ Who can read what:
 
 ### Activity and notifications
 
-Activity verbs: `group.created`, `group.updated`, `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.deleted`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`. An edit that only changes the split (people or shares) is logged and notified as `expense.updated` by `update_expense` itself, since the triggers only compare expense columns; people dropped from the split are notified too.
+Activity verbs: `group.created`, `group.updated`, `group.default_split`, `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.deleted`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`. Every `expense.updated` row carries `changes`: `{field: {from, to}}` for each field the edit changed (`description`, `amount_cents`, `currency`, `spent_at`, `category`, `notes`, `is_refund`, `receipt`, `event_id`, `tax_cents`, `tip_cents`, `discount_cents`, `items` (the bill's lines as entered), plus `payers` and `split` as `{type, shares}` when those changed beyond rescaling to a new amount; `private.expense_row_changes` builds the row part). `private.save_expense` writes that row itself, once per edit, so payer and split changes are in it; it sets `potluck.expense_logged` for the update so the `expenses_activity` trigger stays out of the way, and the trigger still logs (with row `changes`) any other update. An edit that only changes the split or who paid is also notified as `expense.updated` from `save_expense`, since the notification triggers only compare expense columns; people dropped from the split or the payers are notified too. Every payer hears about a new expense, like the people in the split. The expense page reads its history (`expense.*` rows for that subject) from `activity` and renders every change, old value to new.
 
 Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `expense.deleted`, `expense.restored` (everyone in the expense), `settlement.created`, `member.added` (someone else put you in a group; not 1:1 tabs; nothing does that yet, it is ready for placeholder members), `summary.monthly` (monthly job, everyone with a non-zero balance), `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
 
@@ -730,7 +761,7 @@ Each recurring template runs inside its own `begin ... exception` block, so one 
 - **Fixed-point weights.** Percent and shares weights are scaled to 6 decimals before splitting. Percent weights must sum to exactly 100.
 - **FX snapshot.** `fx_rate` is written once, when the expense or settlement is saved: the latest `fx_rates` row on or before `spent_at` (settlements use today), with the inverse pair as a fallback. Clients cannot send a rate. Editing an expense keeps its rate unless the currency changes. A missing rate raises `fx_rate_unavailable`.
 - **Rates travel as text.** `fx_rate` is `numeric(24,12)`, up to 24 digits; a JS number keeps about 16. `packages/api` selects `fx_rate::text` and `rate::text`, and `convert()` / `invertRate()` in core work on the decimal text, so a client total matches `group_balances` to the minor unit even for rates like 16000.123456789012.
-- **Convert once per expense.** Balances convert the expense total into group currency once, credit the payer, then split that converted total over the splits by largest remainder. Each expense nets to exactly zero in group currency.
+- **Convert once per expense.** Balances convert the expense total into group currency once, spread that converted total over the payers (by what each paid) and over the splits (by share), both by largest remainder. Each expense nets to exactly zero in group currency. A refund flips the signs.
 
 ## Time zones
 

@@ -20,7 +20,7 @@ import { useUserId } from '@/lib/auth'
 import { ActivityIconLink } from '@/features/activity/activity-link'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
-import { expensesToCsv, settlementText } from './expense-math'
+import { expensesToCsv, payersOf, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
 import { categoryEmoji, categoryLabel, dayLabel, groupByDay } from './format'
 import {
@@ -65,7 +65,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
           expense.description,
           expense.notes ?? '',
           categoryLabel(expense.category),
-          nameOf(expense.paid_by),
+          ...payersOf(expense).map((p) => nameOf(p.user_id)),
         ]
           .join(' ')
           .toLocaleLowerCase()
@@ -232,7 +232,8 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
                           <ExpenseRow
                             expense={item.expense}
                             viewerId={me}
-                            payerName={nameOf(item.expense.paid_by)}
+                            groupCurrency={group.data?.currency ?? item.expense.currency}
+                            nameOf={nameOf}
                           />
                         ) : (
                           <SettlementRow

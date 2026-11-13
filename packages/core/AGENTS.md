@@ -10,7 +10,11 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
   | core                                           | SQL (live body in `supabase/schema/current.sql`)                  |
   | ---------------------------------------------- | ----------------------------------------------------------------- |
   | `money/` splits, `allocate()`                  | `private.compute_splits`                                          |
-  | `balances/computeBalances`, `pairwise`         | view `public.group_balances`                                      |
+  | `money/splitAdjustment`                        | `private.compute_split_rows`                                      |
+  | `money/splitItemized` (tax, tip, discount)     | `private.itemized_splits`                                         |
+  | `money/checkPayers`, `primaryPayer`            | payers checks in `private.save_expense`                           |
+  | `balances/expenseEffect`, `computeBalances`    | view `public.group_balances` (payers credited, refunds flipped)   |
+  | `balances/pairwiseDebts`                       | client only; sums per person to `group_balances`                  |
   | `balances/simplifyDebts`                       | `public.simplified_debts`                                         |
   | `currency/convert`, `minorUnits`, `invertRate` | `private.convert_minor`, `private.minor_units`, `private.fx_rate` |
   | `availability/` slots, `rankSlots`, heat       | `public.set_availability` grid check, `public.best_slots`         |

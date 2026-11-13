@@ -30,10 +30,45 @@ export interface ExpenseSplit {
   user_id: string
   share_cents: number
   weight: number | null
+  /** Adjustment splits: the +/- on top of the equal part. */
+  adjustment_cents: number | null
+}
+
+/** Who paid (or, for a refund, received) how much, in the expense currency. */
+export interface ExpensePayer {
+  user_id: string
+  paid_cents: number
+}
+
+/** One line of a by-item bill, as entered. */
+export interface ExpenseItem {
+  position: number
+  description: string
+  amount_cents: number
+  user_ids: string[]
 }
 
 export interface ExpenseWithSplits extends Expense {
   expense_splits: ExpenseSplit[]
+  /** Every payer; sums to `amount_cents`. `paid_by` is whoever paid the most. */
+  expense_payers: ExpensePayer[]
+  /** By-item expenses only. Sort by `position`. */
+  expense_items: ExpenseItem[]
+}
+
+/** Where new expenses in a group start (`groups.default_split`). */
+export interface DefaultSplit {
+  split_type: 'equal' | 'percent' | 'shares'
+  splits: { user_id: string; weight: number | null }[]
+}
+
+/** An `expense.*` activity row for one expense's history. */
+export interface ExpenseHistoryEntry {
+  id: string
+  actor_id: string | null
+  verb: string
+  data: Record<string, unknown>
+  created_at: string
 }
 
 export interface MoneyPerson {
@@ -56,6 +91,7 @@ export interface MoneyGroup {
   simplify_debts: boolean
   is_direct: boolean
   archived_at: string | null
+  default_split: DefaultSplit | null
   members: MoneyMember[]
 }
 
@@ -96,24 +132,43 @@ export interface FxQuote {
   day: string
 }
 
-/** One person in a `create_expense` / `update_expense` payload. */
+/** One person in a `create_expense_v2` / `update_expense_v2` payload. */
 export interface ExpenseSplitInput {
   user_id: string
   /** Required for `exact` and `itemized`; ignored by the server for the other types. */
   share_cents?: number
   /** Percent (`percent`) or share count (`shares`). */
   weight?: number
+  /** `adjustment`: the +/- on top of an equal share. */
+  adjustment_cents?: number
 }
 
-/** Payload for `create_expense(payload)` (and `update_expense`, minus `group_id`). */
+/** One line of a by-item bill in a payload; the server works out the shares from these. */
+export interface ExpenseItemInput {
+  description: string
+  amount_cents: number
+  user_ids: string[]
+}
+
+/** Payload for `create_expense_v2(payload)` (and `update_expense_v2`, minus `group_id`). */
 export interface ExpensePayload {
   group_id?: string
   description: string
   amount_cents: number
   currency: string
+  /** One payer. With `payers`, the server sets it to whoever paid the most. */
   paid_by: string
+  /** Everyone who paid; must add up to `amount_cents`. */
+  payers?: ExpensePayer[]
+  /** Money coming back: the payers received it and the split is credited. */
+  is_refund?: boolean
   split_type: SplitTypeValue
   splits: ExpenseSplitInput[]
+  /** By-item bills: stored as entered, and the shares are worked out from them. */
+  items?: ExpenseItemInput[]
+  tax_cents?: number | null
+  tip_cents?: number | null
+  discount_cents?: number | null
   category?: string | null
   notes?: string | null
   spent_at: string
@@ -149,7 +204,11 @@ export const moneyKeys = {
   balances: (groupId: string) => [...moneyKeys.group(groupId), 'balances'] as const,
   simplified: (groupId: string) => [...moneyKeys.group(groupId), 'simplified'] as const,
   recurring: (groupId: string) => [...moneyKeys.group(groupId), 'recurring'] as const,
+  /** The currency the viewer last used in a group; refreshed with the group's money. */
+  lastCurrency: (groupId: string, userId: string) =>
+    [...moneyKeys.group(groupId), 'last-currency', userId] as const,
   expense: (expenseId: string) => [...moneyKeys.all, 'expense', expenseId] as const,
+  history: (expenseId: string) => [...moneyKeys.expense(expenseId), 'history'] as const,
   comments: (expenseId: string) => [...moneyKeys.expense(expenseId), 'comments'] as const,
   fxRate: (from: string, to: string, onDay: string) =>
     [...moneyKeys.all, 'fx', from, to, onDay] as const,
@@ -188,7 +247,7 @@ type GroupSelectRow = Omit<MoneyGroup, 'members'> & {
 }
 
 const GROUP_SELECT = `id, name, emoji, color, currency, simplify_debts, is_direct, archived_at,
-  group_members (role, profiles (${PERSON}))`
+  default_split, group_members (role, profiles (${PERSON}))`
 
 function toGroup(row: GroupSelectRow): MoneyGroup {
   const { group_members, ...group } = row
@@ -218,7 +277,7 @@ export async function fetchMoneyGroups(client: PotluckClient): Promise<MoneyGrou
 // fails typecheck where these rows are returned as `Expense`.
 // (One literal each: supabase-js derives the row type from the select string.)
 const EXPENSE_SELECT =
-  'id, group_id, event_id, description, amount_cents, currency, fx_rate::text, paid_by, split_type, category, notes, spent_at, receipt_path, recurring_id, created_by, created_at, updated_at, deleted_at, expense_splits (user_id, share_cents, weight)'
+  'id, group_id, event_id, description, amount_cents, currency, fx_rate::text, paid_by, split_type, category, notes, spent_at, receipt_path, recurring_id, created_by, created_at, updated_at, deleted_at, is_refund, tax_cents, tip_cents, discount_cents, expense_splits (user_id, share_cents, weight, adjustment_cents), expense_payers (user_id, paid_cents), expense_items (position, description, amount_cents, user_ids)'
 const SETTLEMENT_SELECT =
   'id, group_id, from_user, to_user, amount_cents, currency, fx_rate::text, note, settled_at, created_by, created_at, deleted_at'
 
@@ -297,6 +356,45 @@ export async function fetchExpenseComments(
       .is('deleted_at', null)
       .order('created_at'),
   )
+}
+
+/** Who added, changed, deleted and restored an expense, oldest first (from `activity`). */
+export async function fetchExpenseHistory(
+  client: PotluckClient,
+  expenseId: string,
+): Promise<ExpenseHistoryEntry[]> {
+  const rows = unwrap(
+    await client
+      .from('activity')
+      .select('id, actor_id, verb, data, created_at')
+      .eq('subject_id', expenseId)
+      .like('verb', 'expense.%')
+      .order('created_at')
+      .order('id'),
+  )
+  return rows as ExpenseHistoryEntry[]
+}
+
+/**
+ * The currency of the last expense the viewer added in a group (deleted ones do not count), or
+ * null if there is none. New expenses start in it, as in Splitwise.
+ */
+export async function fetchLastCurrency(
+  client: PotluckClient,
+  groupId: string,
+  userId: string,
+): Promise<string | null> {
+  const rows = unwrap(
+    await client
+      .from('expenses')
+      .select('currency')
+      .eq('group_id', groupId)
+      .eq('created_by', userId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1),
+  )
+  return rows[0]?.currency ?? null
 }
 
 export async function fetchRecurringExpenses(
@@ -436,7 +534,7 @@ export async function createExpense(
   client: PotluckClient,
   payload: ExpensePayload,
 ): Promise<ExpenseRow> {
-  return unwrap(await client.rpc('create_expense', { payload: payload as unknown as Json }))
+  return unwrap(await client.rpc('create_expense_v2', { payload: payload as unknown as Json }))
 }
 
 export async function updateExpense(
@@ -445,8 +543,26 @@ export async function updateExpense(
   payload: ExpenseUpdate,
 ): Promise<ExpenseRow> {
   return unwrap(
-    await client.rpc('update_expense', { id: expenseId, payload: payload as unknown as Json }),
+    await client.rpc('update_expense_v2', { id: expenseId, payload: payload as unknown as Json }),
   )
+}
+
+/**
+ * Save where new expenses in a group start, or `null` to go back to equal between everyone.
+ * Any member may change it; it never moves a balance.
+ */
+export async function setDefaultSplit(
+  client: PotluckClient,
+  groupId: string,
+  split: DefaultSplit | null,
+): Promise<DefaultSplit | null> {
+  const result = unwrap(
+    await client.rpc('set_default_split', {
+      group_id: groupId,
+      split: split as unknown as Json,
+    }),
+  )
+  return (result ?? null) as unknown as DefaultSplit | null
 }
 
 export async function deleteExpense(client: PotluckClient, expenseId: string): Promise<ExpenseRow> {
@@ -573,6 +689,16 @@ export const moneyQueries = {
     queryOptions({
       queryKey: moneyKeys.expense(expenseId),
       queryFn: () => fetchExpense(client, expenseId),
+    }),
+  history: (client: PotluckClient, expenseId: string) =>
+    queryOptions({
+      queryKey: moneyKeys.history(expenseId),
+      queryFn: () => fetchExpenseHistory(client, expenseId),
+    }),
+  lastCurrency: (client: PotluckClient, groupId: string, userId: string) =>
+    queryOptions({
+      queryKey: moneyKeys.lastCurrency(groupId, userId),
+      queryFn: () => fetchLastCurrency(client, groupId, userId),
     }),
   comments: (client: PotluckClient, expenseId: string) =>
     queryOptions({

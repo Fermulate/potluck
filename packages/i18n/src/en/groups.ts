@@ -87,6 +87,20 @@ export const groups = {
     leaveLastActive: 'Everyone else here has closed their account. Leaving deletes the group.',
     leaveLastActiveConfirm:
       'Leave and delete {group}? Its expenses and payments go with it, and this cannot be undone.',
+    /** Where new expenses start; any member may change it. */
+    defaultSplit: {
+      title: 'Default split',
+      hint: 'New expenses here start with this split. Anyone in the group can change it.',
+      equalAll: 'Equally between everyone',
+      equalSome: 'Equally between {people}',
+      percent: 'By percent: {people}',
+      shares: 'By shares: {people}',
+      change: 'Change',
+      save: 'Save default split',
+      clear: 'Back to equal',
+      saved: 'Saved. New expenses start with this split.',
+      cleared: 'New expenses split equally again.',
+    },
   },
 } as const
 

@@ -188,7 +188,7 @@
         "invite_used_up",
         "invite_wrong_email"
       ],
-      "snapshotLine": 2622,
+      "snapshotLine": 3151,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -198,7 +198,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 2680,
+      "snapshotLine": 3209,
       "definedIn": "supabase/migrations/20261105071518_rpc_availability.sql"
     },
     {
@@ -208,7 +208,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["not_authenticated"],
-      "snapshotLine": 2742,
+      "snapshotLine": 3271,
       "definedIn": "supabase/migrations/20261105160000_edge_function_hooks.sql"
     },
     {
@@ -218,7 +218,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["event_done"],
-      "snapshotLine": 2771,
+      "snapshotLine": 3300,
       "definedIn": "supabase/migrations/20261105071521_rpc_events_timeline.sql"
     },
     {
@@ -228,8 +228,18 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 2798,
-      "definedIn": "supabase/migrations/20261105071511_rpc_expenses.sql"
+      "snapshotLine": 3327,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
+    },
+    {
+      "name": "public.create_expense_v2",
+      "args": "payload jsonb",
+      "returns": "public.expenses",
+      "securityDefiner": true,
+      "execute": ["authenticated", "service_role"],
+      "raises": [],
+      "snapshotLine": 3341,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "public.create_group",
@@ -238,7 +248,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["group_name_required", "invalid_currency"],
-      "snapshotLine": 2837,
+      "snapshotLine": 3386,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -255,7 +265,7 @@
         "invalid_role",
         "not_allowed"
       ],
-      "snapshotLine": 2898,
+      "snapshotLine": 3447,
       "definedIn": "supabase/migrations/20261105071508_rpc_invites.sql"
     },
     {
@@ -265,8 +275,8 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["split_member_not_in_group"],
-      "snapshotLine": 2952,
-      "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
+      "snapshotLine": 3501,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "public.delete_group",
@@ -275,7 +285,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["group_has_balances", "not_allowed"],
-      "snapshotLine": 2988,
+      "snapshotLine": 3539,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -285,7 +295,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["not_authenticated"],
-      "snapshotLine": 3017,
+      "snapshotLine": 3568,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -295,7 +305,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["member_not_in_group", "not_allowed", "settlement_not_found"],
-      "snapshotLine": 3121,
+      "snapshotLine": 3672,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -305,7 +315,7 @@
       "securityDefiner": true,
       "execute": ["service_role"],
       "raises": [],
-      "snapshotLine": 3166,
+      "snapshotLine": 3717,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -315,7 +325,7 @@
       "securityDefiner": true,
       "execute": ["anon", "authenticated", "service_role"],
       "raises": ["invalid_payload", "invalid_unsubscribe_link"],
-      "snapshotLine": 3201,
+      "snapshotLine": 3752,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -325,7 +335,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["blocked", "invalid_friend", "not_a_friend"],
-      "snapshotLine": 3290,
+      "snapshotLine": 3841,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -335,7 +345,7 @@
       "securityDefiner": true,
       "execute": ["anon", "authenticated", "service_role"],
       "raises": ["invite_not_found"],
-      "snapshotLine": 3354,
+      "snapshotLine": 3905,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -345,7 +355,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["member_has_balance", "owner_must_transfer"],
-      "snapshotLine": 3409,
+      "snapshotLine": 3960,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -355,7 +365,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 3463,
+      "snapshotLine": 4014,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -365,7 +375,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 3488,
+      "snapshotLine": 4039,
       "definedIn": "supabase/migrations/20261105071521_rpc_events_timeline.sql"
     },
     {
@@ -381,7 +391,7 @@
         "not_allowed",
         "use_leave_group"
       ],
-      "snapshotLine": 3541,
+      "snapshotLine": 4092,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -391,7 +401,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["event_not_polling", "member_not_found"],
-      "snapshotLine": 3588,
+      "snapshotLine": 4139,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -401,8 +411,8 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["split_member_not_in_group"],
-      "snapshotLine": 3655,
-      "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
+      "snapshotLine": 4206,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "public.schedule_event",
@@ -411,7 +421,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["event_not_schedulable", "starts_at_required"],
-      "snapshotLine": 3692,
+      "snapshotLine": 4245,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -421,8 +431,18 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["duplicate_slot", "event_not_polling", "invalid_slot", "invalid_slots"],
-      "snapshotLine": 3726,
+      "snapshotLine": 4279,
       "definedIn": "supabase/migrations/20261106020000_availability_lock.sql"
+    },
+    {
+      "name": "public.set_default_split",
+      "args": "group_id uuid, split jsonb",
+      "returns": "jsonb",
+      "securityDefiner": true,
+      "execute": ["authenticated", "service_role"],
+      "raises": ["invalid_splits", "split_member_not_in_group"],
+      "snapshotLine": 4368,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "public.set_member_role",
@@ -436,7 +456,7 @@
         "not_allowed",
         "use_transfer_ownership"
       ],
-      "snapshotLine": 3815,
+      "snapshotLine": 4429,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -446,7 +466,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["invalid_notification_category"],
-      "snapshotLine": 3855,
+      "snapshotLine": 4469,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -462,7 +482,7 @@
         "invalid_recipient",
         "member_not_found"
       ],
-      "snapshotLine": 3886,
+      "snapshotLine": 4500,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -472,7 +492,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 3944,
+      "snapshotLine": 4558,
       "definedIn": "supabase/migrations/20261105210000_query_performance.sql"
     },
     {
@@ -482,7 +502,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["already_owner", "member_not_found", "not_allowed"],
-      "snapshotLine": 4004,
+      "snapshotLine": 4618,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -492,8 +512,18 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": ["expense_not_found"],
-      "snapshotLine": 4042,
-      "definedIn": "supabase/migrations/20261105071511_rpc_expenses.sql"
+      "snapshotLine": 4656,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
+    },
+    {
+      "name": "public.update_expense_v2",
+      "args": "id uuid, payload jsonb",
+      "returns": "public.expenses",
+      "securityDefiner": true,
+      "execute": ["authenticated", "service_role"],
+      "raises": ["expense_not_found"],
+      "snapshotLine": 4675,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     }
   ],
   "privateFunctions": [
@@ -504,7 +534,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 105,
+      "snapshotLine": 106,
       "definedIn": "supabase/migrations/20261105071424_social_graph.sql"
     },
     {
@@ -514,7 +544,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 133,
+      "snapshotLine": 134,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -524,8 +554,18 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 153,
+      "snapshotLine": 154,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
+    },
+    {
+      "name": "private.check_expense_payers",
+      "args": "",
+      "returns": "trigger",
+      "securityDefiner": true,
+      "execute": ["PUBLIC"],
+      "raises": ["payers_sum_mismatch"],
+      "snapshotLine": 171,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.check_expense_splits",
@@ -534,7 +574,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": ["splits_sum_mismatch"],
-      "snapshotLine": 170,
+      "snapshotLine": 211,
       "definedIn": "supabase/migrations/20261105071427_money_tables.sql"
     },
     {
@@ -544,7 +584,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": ["group_owner_required"],
-      "snapshotLine": 211,
+      "snapshotLine": 252,
       "definedIn": "supabase/migrations/20261105071420_groups_members_invites.sql"
     },
     {
@@ -554,7 +594,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 250,
+      "snapshotLine": 291,
       "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
     },
     {
@@ -564,7 +604,7 @@
       "securityDefiner": false,
       "execute": ["PUBLIC"],
       "raises": ["not_allowed"],
-      "snapshotLine": 269,
+      "snapshotLine": 310,
       "definedIn": "supabase/migrations/20261105071501_rls_platform.sql"
     },
     {
@@ -574,8 +614,8 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 287,
-      "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
+      "snapshotLine": 328,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.comments_set_group",
@@ -584,8 +624,24 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 333,
+      "snapshotLine": 376,
       "definedIn": "supabase/migrations/20261105071441_feed_and_platform.sql"
+    },
+    {
+      "name": "private.compute_split_rows",
+      "args": "amount bigint, kind public.split_type, splits jsonb",
+      "returns": "TABLE(user_id uuid, share_cents bigint, weight numeric, adjustment_cents bigint)",
+      "securityDefiner": false,
+      "execute": ["PUBLIC"],
+      "raises": [
+        "adjustments_exceed_total",
+        "duplicate_user",
+        "invalid_splits",
+        "negative_share",
+        "splits_required"
+      ],
+      "snapshotLine": 394,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.compute_splits",
@@ -603,7 +659,7 @@
         "splits_sum_mismatch",
         "zero_shares"
       ],
-      "snapshotLine": 351,
+      "snapshotLine": 471,
       "definedIn": "supabase/migrations/20261105071511_rpc_expenses.sql"
     },
     {
@@ -613,7 +669,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": ["expense_not_found", "not_allowed"],
-      "snapshotLine": 467,
+      "snapshotLine": 587,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -623,8 +679,8 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["expense_not_found", "not_allowed"],
-      "snapshotLine": 510,
-      "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
+      "snapshotLine": 657,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.email_enabled",
@@ -633,7 +689,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 536,
+      "snapshotLine": 684,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -643,7 +699,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 550,
+      "snapshotLine": 698,
       "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
     },
     {
@@ -653,7 +709,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 578,
+      "snapshotLine": 726,
       "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
     },
     {
@@ -663,8 +719,18 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 618,
+      "snapshotLine": 766,
       "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
+    },
+    {
+      "name": "private.expense_row_changes",
+      "args": "o public.expenses, n public.expenses",
+      "returns": "jsonb",
+      "securityDefiner": false,
+      "execute": ["PUBLIC"],
+      "raises": [],
+      "snapshotLine": 796,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.expenses_activity",
@@ -673,8 +739,8 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 648,
-      "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
+      "snapshotLine": 825,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.expenses_notify",
@@ -683,8 +749,8 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 686,
-      "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
+      "snapshotLine": 873,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.expenses_notify_removal",
@@ -693,8 +759,8 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 730,
-      "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
+      "snapshotLine": 919,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.expenses_notify_update",
@@ -703,8 +769,8 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 773,
-      "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
+      "snapshotLine": 965,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.finish_past_events",
@@ -713,7 +779,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 814,
+      "snapshotLine": 1011,
       "definedIn": "supabase/migrations/20261105071542_cron_jobs.sql"
     },
     {
@@ -723,7 +789,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 833,
+      "snapshotLine": 1030,
       "definedIn": "supabase/migrations/20261105170000_account_closure_cleanup.sql"
     },
     {
@@ -733,7 +799,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 847,
+      "snapshotLine": 1044,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -743,7 +809,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 862,
+      "snapshotLine": 1059,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -753,7 +819,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 895,
+      "snapshotLine": 1092,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -763,7 +829,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 906,
+      "snapshotLine": 1103,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -773,7 +839,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 936,
+      "snapshotLine": 1133,
       "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
     },
     {
@@ -783,7 +849,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 965,
+      "snapshotLine": 1162,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -793,7 +859,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 991,
+      "snapshotLine": 1188,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -803,7 +869,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 1003,
+      "snapshotLine": 1200,
       "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
     },
     {
@@ -813,7 +879,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": ["group_currency_locked"],
-      "snapshotLine": 1027,
+      "snapshotLine": 1224,
       "definedIn": "supabase/migrations/20261105071427_money_tables.sql"
     },
     {
@@ -823,7 +889,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["group_has_balances"],
-      "snapshotLine": 1049,
+      "snapshotLine": 1246,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -833,7 +899,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["rsvp_closed"],
-      "snapshotLine": 1072,
+      "snapshotLine": 1269,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -843,7 +909,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 1111,
+      "snapshotLine": 1308,
       "definedIn": "supabase/migrations/20261105071417_profiles.sql"
     },
     {
@@ -853,7 +919,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1143,
+      "snapshotLine": 1340,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -863,7 +929,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1155,
+      "snapshotLine": 1352,
       "definedIn": "supabase/migrations/20261105160000_edge_function_hooks.sql"
     },
     {
@@ -873,7 +939,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1182,
+      "snapshotLine": 1379,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -883,7 +949,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1198,
+      "snapshotLine": 1395,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -893,8 +959,18 @@
       "securityDefiner": false,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1212,
+      "snapshotLine": 1409,
       "definedIn": "supabase/migrations/20261105071434_plans_tables.sql"
+    },
+    {
+      "name": "private.itemized_splits",
+      "args": "items jsonb, tax bigint, tip bigint, discount bigint",
+      "returns": "TABLE(user_id uuid, share_cents bigint)",
+      "securityDefiner": false,
+      "execute": ["PUBLIC"],
+      "raises": ["duplicate_user", "invalid_items", "items_required", "zero_shares"],
+      "snapshotLine": 1426,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.log_activity",
@@ -903,7 +979,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 1229,
+      "snapshotLine": 1524,
       "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
     },
     {
@@ -913,7 +989,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["event_not_found", "not_allowed"],
-      "snapshotLine": 1297,
+      "snapshotLine": 1592,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -923,7 +999,7 @@
       "securityDefiner": false,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1323,
+      "snapshotLine": 1618,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -933,8 +1009,8 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1337,
-      "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
+      "snapshotLine": 1632,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.member_balance",
@@ -943,7 +1019,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1433,
+      "snapshotLine": 1736,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -953,7 +1029,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["event_not_found"],
-      "snapshotLine": 1447,
+      "snapshotLine": 1750,
       "definedIn": "supabase/migrations/20261105071518_rpc_availability.sql"
     },
     {
@@ -963,7 +1039,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": ["expense_not_found", "not_allowed"],
-      "snapshotLine": 459,
+      "snapshotLine": 579,
       "definedIn": "supabase/migrations/20261105210000_query_performance.sql"
     },
     {
@@ -973,8 +1049,8 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1467,
-      "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
+      "snapshotLine": 1770,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.my_contact_ids",
@@ -983,7 +1059,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1531,
+      "snapshotLine": 1836,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -993,7 +1069,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1547,
+      "snapshotLine": 1852,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -1003,7 +1079,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1561,
+      "snapshotLine": 1866,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -1013,7 +1089,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1575,
+      "snapshotLine": 1880,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
     },
     {
@@ -1023,7 +1099,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1586,
+      "snapshotLine": 1891,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1033,7 +1109,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 1614,
+      "snapshotLine": 1919,
       "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
     },
     {
@@ -1043,7 +1119,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1632,
+      "snapshotLine": 1937,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1053,7 +1129,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1651,
+      "snapshotLine": 1956,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1063,7 +1139,7 @@
       "securityDefiner": false,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 1675,
+      "snapshotLine": 1980,
       "definedIn": "supabase/migrations/20261105071410_extensions_and_private_schema.sql"
     },
     {
@@ -1073,7 +1149,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1717,
+      "snapshotLine": 2028,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -1083,7 +1159,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1730,
+      "snapshotLine": 2041,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -1093,7 +1169,7 @@
       "securityDefiner": false,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1756,
+      "snapshotLine": 2067,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -1103,8 +1179,8 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1777,
-      "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
+      "snapshotLine": 2088,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.require_group_open",
@@ -1113,7 +1189,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["group_archived"],
-      "snapshotLine": 1805,
+      "snapshotLine": 2121,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -1123,7 +1199,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["not_a_member"],
-      "snapshotLine": 1820,
+      "snapshotLine": 2136,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -1133,7 +1209,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["group_archived"],
-      "snapshotLine": 1842,
+      "snapshotLine": 2158,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -1143,7 +1219,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": ["account_deleted", "not_authenticated"],
-      "snapshotLine": 1857,
+      "snapshotLine": 2173,
       "definedIn": "supabase/migrations/20261105071504_rpc_groups.sql"
     },
     {
@@ -1153,7 +1229,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 1878,
+      "snapshotLine": 2194,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1163,7 +1239,7 @@
       "securityDefiner": true,
       "execute": ["authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 1892,
+      "snapshotLine": 2208,
       "definedIn": "supabase/migrations/20261106000000_review_fixes.sql"
     },
     {
@@ -1182,15 +1258,19 @@
         "group_required",
         "invalid_amount",
         "invalid_currency",
+        "invalid_items",
+        "invalid_payers",
         "invalid_payload",
         "invalid_receipt_path",
         "not_allowed",
         "payer_not_in_group",
+        "payers_sum_mismatch",
         "split_member_not_in_group",
-        "splits_required"
+        "splits_required",
+        "splits_sum_mismatch"
       ],
-      "snapshotLine": 1908,
-      "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
+      "snapshotLine": 2224,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.send_email_notifications",
@@ -1199,7 +1279,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 2213,
+      "snapshotLine": 2724,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1209,7 +1289,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 2388,
+      "snapshotLine": 2899,
       "definedIn": "supabase/migrations/20261105071542_cron_jobs.sql"
     },
     {
@@ -1219,7 +1299,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 2439,
+      "snapshotLine": 2950,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     },
     {
@@ -1229,7 +1309,7 @@
       "securityDefiner": false,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 2472,
+      "snapshotLine": 2983,
       "definedIn": "supabase/migrations/20261105071410_extensions_and_private_schema.sql"
     },
     {
@@ -1239,7 +1319,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 2486,
+      "snapshotLine": 2997,
       "definedIn": "supabase/migrations/20261105071528_activity_triggers.sql"
     },
     {
@@ -1249,7 +1329,7 @@
       "securityDefiner": true,
       "execute": ["PUBLIC"],
       "raises": [],
-      "snapshotLine": 2516,
+      "snapshotLine": 3027,
       "definedIn": "supabase/migrations/20261105071531_notification_triggers.sql"
     },
     {
@@ -1259,8 +1339,18 @@
       "securityDefiner": true,
       "execute": ["PUBLIC", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 2542,
+      "snapshotLine": 3053,
       "definedIn": "supabase/migrations/20261105071444_policy_helpers.sql"
+    },
+    {
+      "name": "private.sync_single_payer",
+      "args": "",
+      "returns": "trigger",
+      "securityDefiner": true,
+      "execute": ["PUBLIC"],
+      "raises": [],
+      "snapshotLine": 3069,
+      "definedIn": "supabase/migrations/20261113091955_expense_entry.sql"
     },
     {
       "name": "private.track_former_members",
@@ -1269,7 +1359,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 2558,
+      "snapshotLine": 3087,
       "definedIn": "supabase/migrations/20261106010000_integrity_fixes.sql"
     },
     {
@@ -1279,7 +1369,7 @@
       "securityDefiner": false,
       "execute": ["PUBLIC", "anon", "authenticated", "service_role"],
       "raises": [],
-      "snapshotLine": 2586,
+      "snapshotLine": 3115,
       "definedIn": "supabase/migrations/20261105071410_extensions_and_private_schema.sql"
     },
     {
@@ -1289,7 +1379,7 @@
       "securityDefiner": true,
       "execute": [],
       "raises": [],
-      "snapshotLine": 2602,
+      "snapshotLine": 3131,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
     }
   ],
@@ -1531,6 +1621,36 @@
       ]
     },
     {
+      "name": "public.expense_items",
+      "kind": "table",
+      "rls": true,
+      "realtime": false,
+      "clientGrants": {
+        "authenticated": [
+          "SELECT(expense_id)",
+          "SELECT(position)",
+          "SELECT(description)",
+          "SELECT(amount_cents)",
+          "SELECT(user_ids)"
+        ]
+      },
+      "policies": [
+        { "name": "expense_items: members read", "command": "SELECT", "roles": ["authenticated"] }
+      ]
+    },
+    {
+      "name": "public.expense_payers",
+      "kind": "table",
+      "rls": true,
+      "realtime": false,
+      "clientGrants": {
+        "authenticated": ["SELECT(expense_id)", "SELECT(user_id)", "SELECT(paid_cents)"]
+      },
+      "policies": [
+        { "name": "expense_payers: members read", "command": "SELECT", "roles": ["authenticated"] }
+      ]
+    },
+    {
       "name": "public.expense_splits",
       "kind": "table",
       "rls": true,
@@ -1761,6 +1881,12 @@
       "i18n": ["errors.codes.account_deleted"]
     },
     {
+      "code": "adjustments_exceed_total",
+      "sqlstates": ["22023"],
+      "raisedBy": ["private.compute_split_rows"],
+      "i18n": ["expenses.errors.adjustments_exceed_total"]
+    },
+    {
       "code": "already_owner",
       "sqlstates": ["22023"],
       "raisedBy": ["public.transfer_ownership"],
@@ -1805,7 +1931,11 @@
     {
       "code": "duplicate_user",
       "sqlstates": ["22023"],
-      "raisedBy": ["private.compute_splits"],
+      "raisedBy": [
+        "private.compute_split_rows",
+        "private.compute_splits",
+        "private.itemized_splits"
+      ],
       "i18n": ["expenses.errors.duplicate_user"]
     },
     {
@@ -1847,7 +1977,12 @@
     {
       "code": "expense_not_found",
       "sqlstates": ["PT404"],
-      "raisedBy": ["private.editable_expense", "private.save_expense", "public.update_expense"],
+      "raisedBy": [
+        "private.editable_expense",
+        "private.save_expense",
+        "public.update_expense",
+        "public.update_expense_v2"
+      ],
       "i18n": ["expenses.errors.expense_not_found"]
     },
     {
@@ -1927,6 +2062,12 @@
       "i18n": ["errors.codes.invalid_friend"]
     },
     {
+      "code": "invalid_items",
+      "sqlstates": ["22023"],
+      "raisedBy": ["private.itemized_splits", "private.save_expense"],
+      "i18n": ["expenses.errors.invalid_items"]
+    },
+    {
       "code": "invalid_max_uses",
       "sqlstates": ["22023"],
       "raisedBy": ["public.create_invite"],
@@ -1937,6 +2078,12 @@
       "sqlstates": ["22023"],
       "raisedBy": ["public.set_notification_pref"],
       "i18n": ["errors.codes.invalid_notification_category"]
+    },
+    {
+      "code": "invalid_payers",
+      "sqlstates": ["22023"],
+      "raisedBy": ["private.save_expense"],
+      "i18n": ["expenses.errors.invalid_payers"]
     },
     {
       "code": "invalid_payload",
@@ -1977,7 +2124,11 @@
     {
       "code": "invalid_splits",
       "sqlstates": ["22023"],
-      "raisedBy": ["private.compute_splits"],
+      "raisedBy": [
+        "private.compute_split_rows",
+        "private.compute_splits",
+        "public.set_default_split"
+      ],
       "i18n": ["expenses.errors.invalid_splits"]
     },
     {
@@ -2023,6 +2174,12 @@
       "i18n": ["errors.codes.invite_wrong_email"]
     },
     {
+      "code": "items_required",
+      "sqlstates": ["22023"],
+      "raisedBy": ["private.itemized_splits"],
+      "i18n": ["expenses.errors.items_required"]
+    },
+    {
       "code": "member_has_balance",
       "sqlstates": ["23514"],
       "raisedBy": ["public.leave_group", "public.remove_member"],
@@ -2049,6 +2206,12 @@
       "sqlstates": ["23514"],
       "raisedBy": ["public.delete_settlement"],
       "i18n": ["expenses.errors.member_not_in_group", "errors.codes.member_not_in_group"]
+    },
+    {
+      "code": "negative_share",
+      "sqlstates": ["22023"],
+      "raisedBy": ["private.compute_split_rows"],
+      "i18n": ["expenses.errors.negative_share"]
     },
     {
       "code": "not_a_friend",
@@ -2110,6 +2273,12 @@
       "i18n": ["expenses.errors.payer_not_in_group"]
     },
     {
+      "code": "payers_sum_mismatch",
+      "sqlstates": ["22023", "23514"],
+      "raisedBy": ["private.check_expense_payers", "private.save_expense"],
+      "i18n": ["expenses.errors.payers_sum_mismatch"]
+    },
+    {
       "code": "percent_sum",
       "sqlstates": ["22023"],
       "raisedBy": ["private.compute_splits"],
@@ -2136,7 +2305,12 @@
     {
       "code": "split_member_not_in_group",
       "sqlstates": ["23514"],
-      "raisedBy": ["private.save_expense", "public.delete_expense", "public.restore_expense"],
+      "raisedBy": [
+        "private.save_expense",
+        "public.delete_expense",
+        "public.restore_expense",
+        "public.set_default_split"
+      ],
       "i18n": [
         "expenses.errors.split_member_not_in_group",
         "errors.codes.split_member_not_in_group"
@@ -2145,13 +2319,17 @@
     {
       "code": "splits_required",
       "sqlstates": ["22023"],
-      "raisedBy": ["private.compute_splits", "private.save_expense"],
+      "raisedBy": ["private.compute_split_rows", "private.compute_splits", "private.save_expense"],
       "i18n": ["expenses.errors.splits_required"]
     },
     {
       "code": "splits_sum_mismatch",
       "sqlstates": ["22023", "23514"],
-      "raisedBy": ["private.check_expense_splits", "private.compute_splits"],
+      "raisedBy": [
+        "private.check_expense_splits",
+        "private.compute_splits",
+        "private.save_expense"
+      ],
       "i18n": ["expenses.errors.splits_sum_mismatch"]
     },
     {
@@ -2175,7 +2353,7 @@
     {
       "code": "zero_shares",
       "sqlstates": ["22023"],
-      "raisedBy": ["private.compute_splits"],
+      "raisedBy": ["private.compute_splits", "private.itemized_splits"],
       "i18n": ["expenses.errors.zero_shares"]
     }
   ],

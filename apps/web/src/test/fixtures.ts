@@ -41,6 +41,7 @@ export function group(overrides: Partial<GroupDetail> = {}): GroupDetail {
     created_at: '2026-08-17T12:00:00Z',
     updated_at: '2026-11-01T12:00:00Z',
     archived_at: null,
+    default_split: null,
     my_role: me?.role ?? null,
     my_net_cents: me?.net_cents ?? 0,
     ...overrides,

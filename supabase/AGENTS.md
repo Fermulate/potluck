@@ -39,6 +39,9 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   grant execute on function public.<name>(uuid, ...) to authenticated, service_role;
   ```
 
+- Expense payers live in `expense_payers` (deferred sum check). A trigger keeps a lone payer in step with
+  `expenses.paid_by`, so an insert that only sets `paid_by` is still right; several payers are written by
+  `private.save_expense`. Balances and departed checks read payers, not `paid_by` (ADR 12).
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
 - Small immutable SQL helpers used per row (`private.minor_units`, `private.convert_minor`) use a

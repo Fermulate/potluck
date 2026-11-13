@@ -16,6 +16,10 @@ export type SplitError =
   | { code: 'item_no_users'; index: number }
   | { code: 'invalid_item_amount'; index: number }
   | { code: 'invalid_extra' }
+  /** Adjustments add up to more than the total, by `difference`. */
+  | { code: 'adjustments_exceed_total'; difference: number }
+  /** A minus adjustment takes this person below zero. */
+  | { code: 'negative_share'; userId: string }
 
 const fail = (error: SplitError): SplitResult => ({ ok: false, error })
 
@@ -121,6 +125,36 @@ export function splitShares(
   return { ok: true, shares: allocate(totalCents, scaled.weights) }
 }
 
+/**
+ * Split by adjustment: each person's +/- amount comes off the top, and what is left is split
+ * equally between everyone (largest remainder, ties by user id). Matches the `adjustment`
+ * branch of `private.compute_split_rows`.
+ */
+export function splitAdjustment(
+  totalCents: number,
+  adjustments: Readonly<Record<string, number>>,
+): SplitResult {
+  if (!isCents(totalCents)) return fail({ code: 'invalid_total' })
+  const ids = Object.keys(adjustments).sort(compareIds)
+  if (ids.length === 0) return fail({ code: 'no_users' })
+  let adjusted = 0
+  for (const id of ids) {
+    const value = adjustments[id]!
+    if (!Number.isSafeInteger(value)) return fail({ code: 'invalid_amount', userId: id })
+    adjusted += value
+  }
+  const rest = totalCents - adjusted
+  if (rest < 0) return fail({ code: 'adjustments_exceed_total', difference: -rest })
+  const equal = allocate(rest, new Map(ids.map((id) => [id, 1n])))
+  const shares: Shares = {}
+  for (const id of ids) {
+    const share = equal[id]! + adjustments[id]!
+    if (share < 0) return fail({ code: 'negative_share', userId: id })
+    shares[id] = share
+  }
+  return { ok: true, shares }
+}
+
 export interface SplitItem {
   amountCents: number
   /** People sharing this item equally. */
@@ -130,6 +164,8 @@ export interface SplitItem {
 export interface SplitExtras {
   taxCents?: number
   tipCents?: number
+  /** Comes off the bill and is shared out like tax and tip. */
+  discountCents?: number
 }
 
 const gcd = (a: bigint, b: bigint): bigint => (b === 0n ? a : gcd(b, a % b))
@@ -151,15 +187,19 @@ function itemizedWeights(items: readonly SplitItem[]): Map<string, bigint> {
 }
 
 /**
- * Itemized bill: each item is shared equally by its people, then tax and tip are spread in
- * proportion to each person's subtotal. Rounding happens once over the whole bill (largest
- * remainder, ties by user id), so the result sums exactly to items + tax + tip.
+ * Itemized bill: each item is shared equally by its people, then tax and tip (added) and any
+ * discount (taken off) are spread in proportion to each person's subtotal. Rounding happens once
+ * over the whole bill (largest remainder, ties by user id), so the result sums exactly to
+ * items + tax + tip - discount. Matches `private.itemized_splits`.
  */
 export function splitItemized(items: readonly SplitItem[], extras: SplitExtras = {}): SplitResult {
   if (items.length === 0) return fail({ code: 'no_items' })
   const taxCents = extras.taxCents ?? 0
   const tipCents = extras.tipCents ?? 0
-  if (!isCents(taxCents) || !isCents(tipCents)) return fail({ code: 'invalid_extra' })
+  const discountCents = extras.discountCents ?? 0
+  if (!isCents(taxCents) || !isCents(tipCents) || !isCents(discountCents)) {
+    return fail({ code: 'invalid_extra' })
+  }
 
   let itemsTotal = 0
   for (const [index, item] of items.entries()) {
@@ -171,7 +211,8 @@ export function splitItemized(items: readonly SplitItem[], extras: SplitExtras =
   }
   const weights = itemizedWeights(items)
 
-  const total = itemsTotal + taxCents + tipCents
+  const total = itemsTotal + taxCents + tipCents - discountCents
+  if (total < 0) return fail({ code: 'invalid_extra' })
   if (!isCents(total)) return fail({ code: 'invalid_total' })
   if (itemsTotal === 0) {
     if (total > 0) return fail({ code: 'zero_shares' })
@@ -186,6 +227,7 @@ export type SplitBasis =
   | { mode: 'percent'; percents: Readonly<Record<string, number>> }
   | { mode: 'shares'; shareCounts: Readonly<Record<string, number>> }
   | { mode: 'itemized'; items: readonly SplitItem[] }
+  | { mode: 'adjustment'; adjustments: Readonly<Record<string, number>> }
 
 /**
  * Who got one of the leftover cents: the people whose share in `shares` is above their exact,
@@ -193,6 +235,14 @@ export type SplitBasis =
  * the list is empty whenever the total divided evenly. Sorted by user id.
  */
 export function roundedUp(basis: SplitBasis, shares: Readonly<Shares>): string[] {
+  if (basis.mode === 'adjustment') {
+    // Only the equal part rounds; take the adjustments back off and look at that.
+    const ids = Object.keys(basis.adjustments)
+    const equalPart = Object.fromEntries(
+      ids.map((id) => [id, (shares[id] ?? 0) - basis.adjustments[id]!]),
+    )
+    return roundedUp({ mode: 'equal', userIds: ids }, equalPart)
+  }
   let weights: Map<string, bigint>
   switch (basis.mode) {
     case 'equal':

@@ -22,14 +22,19 @@ async function saveAndOpen(page: Page, group: TestGroup, description: string) {
 
 /** Each person's line on the expense detail page. */
 async function expectShares(page: Page, payer: TestUser, shares: [TestUser, number][]) {
+  const total = shares.reduce((sum, [, cents]) => sum + cents, 0)
   for (const [user, cents] of shares) {
     if (user.id === payer.id) {
       // The payer's own line reads "You".
-      const line = t('expenses.detail.paidAndOwes', { amount: usd(cents) })
+      const line = t('expenses.detail.paidAndShare', { paid: usd(total), share: usd(cents) })
       await expect(page.getByRole('listitem').filter({ hasText: line })).toHaveCount(1)
     } else {
-      const row = page.getByRole('listitem').filter({ hasText: user.name })
-      await expect(row).toContainText(t('expenses.detail.owes', { amount: usd(cents) }))
+      // By item, the items card names people too; the split line is the one with "owes".
+      const row = page
+        .getByRole('listitem')
+        .filter({ hasText: user.name })
+        .filter({ hasText: t('expenses.detail.owes', { amount: usd(cents) }) })
+      await expect(row).toHaveCount(1)
     }
   }
 }

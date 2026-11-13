@@ -2,7 +2,7 @@ import { formatMoney, t } from '@potluck/i18n'
 import { Card } from '@potluck/ui'
 import { useMemo } from 'react'
 import { ExpenseRow } from '@/features/expenses/expense-row'
-import { useGroupExpenses, useNameOf } from '@/features/expenses/money-data'
+import { useGroupExpenses, useMoneyGroup, useNameOf } from '@/features/expenses/money-data'
 import { useUserId } from '@/lib/auth'
 
 /**
@@ -13,8 +13,10 @@ export function PlanExpenses({ groupId, eventId }: { groupId: string; eventId: s
   const me = useUserId()
   const nameOf = useNameOf()
   const { data } = useGroupExpenses(groupId)
+  const group = useMoneyGroup(groupId)
   const linked = useMemo(() => (data ?? []).filter((e) => e.event_id === eventId), [data, eventId])
-  if (!me || linked.length === 0) return null
+  // Rows show what each expense means in the group currency, so they wait for the group.
+  if (!me || linked.length === 0 || !group.data) return null
 
   // Totals only make sense in one currency; mixed plans just list the rows.
   const currency = linked[0]!.currency
@@ -37,7 +39,12 @@ export function PlanExpenses({ groupId, eventId }: { groupId: string; eventId: s
         <ul className="divide-y divide-line">
           {linked.map((expense) => (
             <li key={expense.id}>
-              <ExpenseRow expense={expense} viewerId={me} payerName={nameOf(expense.paid_by)} />
+              <ExpenseRow
+                expense={expense}
+                viewerId={me}
+                groupCurrency={group.data.currency}
+                nameOf={nameOf}
+              />
             </li>
           ))}
         </ul>

@@ -103,4 +103,41 @@ describe('splitItemized', () => {
       ),
     )
   })
+
+  // The same cases run against `private.itemized_splits` in
+  // supabase/tests/19_expense_entry.test.sql.
+  it('takes a discount off in proportion to each subtotal', () => {
+    expect(
+      splitItemized(
+        [
+          { amountCents: 1000, userIds: ['a'] },
+          { amountCents: 500, userIds: ['b'] },
+        ],
+        { taxCents: 120, tipCents: 30, discountCents: 150 },
+      ),
+    ).toEqual({ ok: true, shares: { a: 1000, b: 500 } })
+    expect(
+      splitItemized([{ amountCents: 100, userIds: ['a', 'b', 'c'] }], { discountCents: 10 }),
+    ).toEqual({ ok: true, shares: { a: 30, b: 30, c: 30 } })
+    expect(
+      splitItemized(
+        [
+          { amountCents: 1000, userIds: ['a', 'b'] },
+          { amountCents: 333, userIds: ['c'] },
+        ],
+        { taxCents: 101, discountCents: 7 },
+      ),
+    ).toEqual({ ok: true, shares: { a: 535, b: 535, c: 357 } })
+  })
+
+  it('refuses a discount bigger than the bill', () => {
+    expect(splitItemized([{ amountCents: 100, userIds: ['a'] }], { discountCents: 101 })).toEqual({
+      ok: false,
+      error: { code: 'invalid_extra' },
+    })
+    expect(splitItemized([{ amountCents: 100, userIds: ['a'] }], { discountCents: -1 })).toEqual({
+      ok: false,
+      error: { code: 'invalid_extra' },
+    })
+  })
 })

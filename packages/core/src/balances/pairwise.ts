@@ -1,11 +1,41 @@
 import { convert } from '../currency'
 import { allocate, compareIds } from '../money/allocate'
-import type { BalanceExpense, BalanceOptions, BalanceSettlement } from './balances'
+import {
+  expenseEffect,
+  type BalanceExpense,
+  type BalanceOptions,
+  type BalanceSettlement,
+} from './balances'
 import type { Transfer } from './simplify'
 
 /**
- * Who owes whom without simplification: every split person owes the payer their part of each
- * expense, settlements pay those debts down, and each pair is netted to a single transfer.
+ * Who pays whom inside one expense, from its effect on each person: everyone who comes out
+ * behind pays the people who come out ahead. Debtors go in id order and each one is spread over
+ * the creditors in proportion to what those creditors are still owed (largest remainder), so
+ * both sides add up exactly. With one payer this is simply "everyone owes the payer their share".
+ */
+function expenseTransfers(effect: Readonly<Record<string, number>>): Transfer[] {
+  const ids = Object.keys(effect).sort(compareIds)
+  const creditors = new Map<string, bigint>()
+  for (const id of ids) if (effect[id]! > 0) creditors.set(id, BigInt(effect[id]!))
+  const transfers: Transfer[] = []
+  for (const debtor of ids) {
+    const owes = -effect[debtor]!
+    if (owes <= 0) continue
+    const open = new Map([...creditors].filter(([, left]) => left > 0n))
+    for (const [creditor, cents] of Object.entries(allocate(owes, open))) {
+      if (cents === 0) continue
+      creditors.set(creditor, creditors.get(creditor)! - BigInt(cents))
+      transfers.push({ fromUser: debtor, toUser: creditor, amountCents: cents })
+    }
+  }
+  return transfers
+}
+
+/**
+ * Who owes whom without simplification: inside every expense the people who came out behind
+ * owe the people who came out ahead (with one payer: everyone owes the payer their part),
+ * settlements pay those debts down, and each pair is netted to a single transfer.
  *
  * Uses the same per-expense conversion and largest remainder spread as `computeBalances`, so
  * summing the transfers per person gives exactly the net balances. Ordered by amount (largest
@@ -24,28 +54,19 @@ export function pairwiseDebts(
     const key = `${lo}|${hi}`
     owed.set(key, (owed.get(key) ?? 0) + sign * cents)
   }
-  const toGroup = (amount: number, fxRate: number | string | undefined, currency?: string) =>
-    convert(amount, fxRate ?? 1, { from: currency, to: options.groupCurrency })
 
   for (const expense of expenses) {
-    if (expense.deletedAt) continue
-    const weights = new Map<string, bigint>()
-    for (const split of expense.splits) {
-      weights.set(split.userId, (weights.get(split.userId) ?? 0n) + BigInt(split.shareCents))
-    }
-    let weightSum = 0n
-    for (const w of weights.values()) weightSum += w
-    if (weightSum === 0n) continue
-
-    const total = toGroup(expense.amountCents, expense.fxRate, expense.currency)
-    for (const [userId, share] of Object.entries(allocate(total, weights))) {
-      addDebt(userId, expense.paidBy, share)
-    }
+    const effect = expenseEffect(expense, options)
+    if (!effect) continue
+    for (const t of expenseTransfers(effect)) addDebt(t.fromUser, t.toUser, t.amountCents)
   }
 
   for (const settlement of settlements) {
     if (settlement.deletedAt) continue
-    const amount = toGroup(settlement.amountCents, settlement.fxRate, settlement.currency)
+    const amount = convert(settlement.amountCents, settlement.fxRate ?? 1, {
+      from: settlement.currency,
+      to: options.groupCurrency,
+    })
     // Paying someone reduces what you owe them.
     addDebt(settlement.toUser, settlement.fromUser, amount)
   }

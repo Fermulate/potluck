@@ -93,3 +93,59 @@ export function PercentInput({
     </span>
   )
 }
+
+/**
+ * A +/- amount for adjustment splits. Phone keypads often have no minus key, so the sign is a
+ * toggle next to the field and the field holds the size of the adjustment.
+ */
+export function SignedMoneyInput({
+  value,
+  onValueChange,
+  currency,
+  locale,
+  minusLabel,
+  className,
+  ...props
+}: {
+  value: number | null
+  onValueChange: (cents: number | null) => void
+  currency: string
+  locale: string
+  /** Accessible name of the sign toggle, pressed while the amount is taken off. */
+  minusLabel: string
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  const [negative, setNegative] = useState((value ?? 0) < 0)
+  const isNegative = value !== null && value !== 0 ? value < 0 : negative
+  const magnitude = value === null ? null : Math.abs(value)
+  const signed = (cents: number | null, minus: boolean) =>
+    cents === null ? null : minus ? -cents : cents
+  return (
+    <span className={cn('flex items-center gap-1', className)}>
+      <button
+        type="button"
+        aria-pressed={isNegative}
+        aria-label={minusLabel}
+        onClick={() => {
+          setNegative(!isNegative)
+          onValueChange(signed(magnitude, !isNegative))
+        }}
+        className={cn(
+          'grid h-11 w-9 shrink-0 place-items-center rounded-input border text-lg leading-none font-bold transition-colors',
+          isNegative
+            ? 'border-tomato/40 bg-tomato-soft text-tomato-ink'
+            : 'border-olive/40 bg-olive-soft text-olive-ink',
+        )}
+      >
+        <span aria-hidden>{isNegative ? '−' : '+'}</span>
+      </button>
+      <CompactMoneyInput
+        currency={currency}
+        locale={locale}
+        value={magnitude}
+        onValueChange={(cents) => onValueChange(signed(cents, isNegative))}
+        className="min-w-0 flex-1"
+        {...props}
+      />
+    </span>
+  )
+}
