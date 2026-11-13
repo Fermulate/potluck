@@ -502,8 +502,76 @@ export type Database = {
           },
         ]
       }
+      expense_items: {
+        Row: {
+          amount_cents: number
+          description: string
+          expense_id: string
+          position: number
+          user_ids: string[]
+        }
+        ComputedFields: never
+        Insert: {
+          amount_cents: number
+          description?: string
+          expense_id: string
+          position: number
+          user_ids: string[]
+        }
+        Update: {
+          amount_cents?: number
+          description?: string
+          expense_id?: string
+          position?: number
+          user_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expense_items_expense_id_fkey'
+            columns: ['expense_id']
+            isOneToOne: false
+            referencedRelation: 'expenses'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      expense_payers: {
+        Row: {
+          expense_id: string
+          paid_cents: number
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          expense_id: string
+          paid_cents: number
+          user_id: string
+        }
+        Update: {
+          expense_id?: string
+          paid_cents?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expense_payers_expense_id_fkey'
+            columns: ['expense_id']
+            isOneToOne: false
+            referencedRelation: 'expenses'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expense_payers_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       expense_splits: {
         Row: {
+          adjustment_cents: number | null
           expense_id: string
           share_cents: number
           user_id: string
@@ -511,12 +579,14 @@ export type Database = {
         }
         ComputedFields: never
         Insert: {
+          adjustment_cents?: number | null
           expense_id: string
           share_cents: number
           user_id: string
           weight?: number | null
         }
         Update: {
+          adjustment_cents?: number | null
           expense_id?: string
           share_cents?: number
           user_id?: string
@@ -548,16 +618,20 @@ export type Database = {
           currency: string
           deleted_at: string | null
           description: string
+          discount_cents: number | null
           event_id: string | null
           fx_rate: number
           group_id: string
           id: string
+          is_refund: boolean
           notes: string | null
           paid_by: string
           receipt_path: string | null
           recurring_id: string | null
           spent_at: string
           split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         ComputedFields: never
@@ -569,16 +643,20 @@ export type Database = {
           currency: string
           deleted_at?: string | null
           description: string
+          discount_cents?: number | null
           event_id?: string | null
           fx_rate?: number
           group_id: string
           id?: string
+          is_refund?: boolean
           notes?: string | null
           paid_by: string
           receipt_path?: string | null
           recurring_id?: string | null
           spent_at?: string
           split_type?: Database['public']['Enums']['split_type']
+          tax_cents?: number | null
+          tip_cents?: number | null
           updated_at?: string
         }
         Update: {
@@ -589,16 +667,20 @@ export type Database = {
           currency?: string
           deleted_at?: string | null
           description?: string
+          discount_cents?: number | null
           event_id?: string | null
           fx_rate?: number
           group_id?: string
           id?: string
+          is_refund?: boolean
           notes?: string | null
           paid_by?: string
           receipt_path?: string | null
           recurring_id?: string | null
           spent_at?: string
           split_type?: Database['public']['Enums']['split_type']
+          tax_cents?: number | null
+          tip_cents?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -798,6 +880,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           currency: string
+          default_split: Json | null
           emoji: string | null
           id: string
           is_direct: boolean
@@ -814,6 +897,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          default_split?: Json | null
           emoji?: string | null
           id?: string
           is_direct?: boolean
@@ -829,6 +913,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          default_split?: Json | null
           emoji?: string | null
           id?: string
           is_direct?: boolean
@@ -1005,6 +1090,7 @@ export type Database = {
           id: string
           next_run_on: string
           paid_by: string
+          payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
@@ -1023,6 +1109,7 @@ export type Database = {
           id?: string
           next_run_on: string
           paid_by: string
+          payers?: Json | null
           recurrence: Database['public']['Enums']['recurrence']
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
@@ -1040,6 +1127,7 @@ export type Database = {
           id?: string
           next_run_on?: string
           paid_by?: string
+          payers?: Json | null
           recurrence?: Database['public']['Enums']['recurrence']
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
@@ -1263,16 +1351,53 @@ export type Database = {
           currency: string
           deleted_at: string | null
           description: string
+          discount_cents: number | null
           event_id: string | null
           fx_rate: number
           group_id: string
           id: string
+          is_refund: boolean
           notes: string | null
           paid_by: string
           receipt_path: string | null
           recurring_id: string | null
           spent_at: string
           split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_expense_v2: {
+        Args: { payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          discount_cents: number | null
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          is_refund: boolean
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         SetofOptions: {
@@ -1291,6 +1416,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           currency: string
+          default_split: Json | null
           emoji: string | null
           id: string
           is_direct: boolean
@@ -1344,16 +1470,20 @@ export type Database = {
           currency: string
           deleted_at: string | null
           description: string
+          discount_cents: number | null
           event_id: string | null
           fx_rate: number
           group_id: string
           id: string
+          is_refund: boolean
           notes: string | null
           paid_by: string
           receipt_path: string | null
           recurring_id: string | null
           spent_at: string
           split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         SetofOptions: {
@@ -1455,16 +1585,20 @@ export type Database = {
           currency: string
           deleted_at: string | null
           description: string
+          discount_cents: number | null
           event_id: string | null
           fx_rate: number
           group_id: string
           id: string
+          is_refund: boolean
           notes: string | null
           paid_by: string
           receipt_path: string | null
           recurring_id: string | null
           spent_at: string
           split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         SetofOptions: {
@@ -1508,6 +1642,7 @@ export type Database = {
         }
       }
       set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
+      set_default_split: { Args: { group_id: string; split: Json }; Returns: Json }
       set_member_role: {
         Args: { group_id: string; role: Database['public']['Enums']['group_role']; user_id: string }
         Returns: undefined
@@ -1564,16 +1699,53 @@ export type Database = {
           currency: string
           deleted_at: string | null
           description: string
+          discount_cents: number | null
           event_id: string | null
           fx_rate: number
           group_id: string
           id: string
+          is_refund: boolean
           notes: string | null
           paid_by: string
           receipt_path: string | null
           recurring_id: string | null
           spent_at: string
           split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_expense_v2: {
+        Args: { id: string; payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          discount_cents: number | null
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          is_refund: boolean
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         SetofOptions: {
@@ -1591,7 +1763,7 @@ export type Database = {
       push_platform: 'web' | 'ios' | 'android'
       recurrence: 'weekly' | 'monthly' | 'yearly'
       rsvp_status: 'going' | 'maybe' | 'declined'
-      split_type: 'equal' | 'exact' | 'percent' | 'shares' | 'itemized'
+      split_type: 'equal' | 'exact' | 'percent' | 'shares' | 'adjustment' | 'itemized'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1712,7 +1884,7 @@ export const Constants = {
       push_platform: ['web', 'ios', 'android'],
       recurrence: ['weekly', 'monthly', 'yearly'],
       rsvp_status: ['going', 'maybe', 'declined'],
-      split_type: ['equal', 'exact', 'percent', 'shares', 'itemized'],
+      split_type: ['equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized'],
     },
   },
 } as const

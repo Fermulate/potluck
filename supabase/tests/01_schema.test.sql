@@ -10,12 +10,12 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(70);
+select plan(73);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
   'groups', 'group_members', 'group_invites',
-  'expenses', 'expense_splits', 'recurring_expenses', 'settlements', 'fx_rates',
+  'expenses', 'expense_splits', 'expense_payers', 'expense_items', 'recurring_expenses', 'settlements', 'fx_rates',
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
@@ -37,7 +37,7 @@ select ok(
 );
 
 select enum_has_labels('public', 'group_role', array['owner', 'admin', 'member'], 'group_role labels');
-select enum_has_labels('public', 'split_type', array['equal', 'exact', 'percent', 'shares', 'itemized'], 'split_type labels');
+select enum_has_labels('public', 'split_type', array['equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized'], 'split_type labels');
 select enum_has_labels('public', 'event_status', array['polling', 'scheduled', 'cancelled', 'done'], 'event_status labels');
 select enum_has_labels('public', 'availability_level', array['yes', 'maybe'], 'availability_level labels');
 select enum_has_labels('public', 'rsvp_status', array['going', 'maybe', 'declined'], 'rsvp_status labels');
@@ -58,6 +58,9 @@ select has_function('public', 'create_expense', array['jsonb'], 'create_expense'
 select has_function('public', 'update_expense', array['uuid', 'jsonb'], 'update_expense');
 select has_function('public', 'delete_expense', array['uuid'], 'delete_expense');
 select has_function('public', 'restore_expense', array['uuid'], 'restore_expense');
+select has_function('public', 'create_expense_v2', array['jsonb'], 'create_expense_v2');
+select has_function('public', 'update_expense_v2', array['uuid', 'jsonb'], 'update_expense_v2');
+select has_function('public', 'set_default_split', array['uuid', 'jsonb'], 'set_default_split');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
