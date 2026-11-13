@@ -2,7 +2,8 @@ import { firstName } from '@potluck/core'
 import type { NotificationRow } from '@potluck/api'
 import { formatDate, formatMoney, formatRelative, formatTime, t } from '@potluck/i18n'
 
-export type NotificationKind = 'money' | 'payment' | 'people' | 'plan' | 'comment' | 'other'
+export type NotificationKind =
+  'money' | 'payment' | 'people' | 'plan' | 'comment' | 'summary' | 'other'
 
 /** Where tapping a notification goes. Shaped for the router's `navigate`. */
 export type NotificationTarget =
@@ -12,6 +13,7 @@ export type NotificationTarget =
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
   | { to: '/groups/$groupId/members'; params: { groupId: string } }
   | { to: '/notifications'; params?: undefined }
+  | { to: '/home'; params?: undefined }
 
 export interface NotificationView {
   title: string
@@ -37,6 +39,26 @@ const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined
 
 const firstNameOf = (full: string | undefined) => (full ? firstName(full) : undefined)
+
+/** "Roommates: you are owed $12.50, Hike crew: you owe $5.00 and 1 more group". */
+function summaryLine(groups: unknown, ctx: DescribeContext): string {
+  const owing = (Array.isArray(groups) ? groups : [])
+    .map((g) => (g ?? {}) as Data)
+    .filter((g) => (num(g.net_cents) ?? 0) !== 0)
+  if (owing.length === 0) return t('notifications.types.summary.monthly.settled')
+  const parts = owing.slice(0, 2).map((g) => {
+    const net = num(g.net_cents)!
+    const groupId = str(g.group_id)
+    const group = (groupId && ctx.groups.get(groupId)) || str(g.name) || t('notifications.aGroup')
+    const amount = formatMoney(Math.abs(net), str(g.currency) ?? 'USD')
+    return net > 0
+      ? t('notifications.types.summary.owed', { group, amount })
+      : t('notifications.types.summary.owe', { group, amount })
+  })
+  const line = parts.join(', ')
+  const more = owing.length - parts.length
+  return more > 0 ? `${line} ${t('notifications.types.summary.more', { count: more })}` : line
+}
 
 /** Turns a notification row into copy and a deep link. Unknown types fall back gracefully. */
 export function describeNotification(n: NotificationRow, ctx: DescribeContext): NotificationView {
@@ -178,6 +200,34 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         }),
         kind: 'comment',
         target: eventId ? toEvent() : toExpense(),
+      }
+    case 'expense.deleted':
+      return {
+        title: t('notifications.types.expense.deleted.title'),
+        body: t('notifications.types.expense.deleted.body', { actor, description, group }),
+        kind: 'money',
+        target: toExpense(),
+      }
+    case 'expense.restored':
+      return {
+        title: t('notifications.types.expense.restored.title'),
+        body: t('notifications.types.expense.restored.body', { actor, description, group }),
+        kind: 'money',
+        target: toExpense(),
+      }
+    case 'member.added':
+      return {
+        title: t('notifications.types.member.added.title', { group }),
+        body: t('notifications.types.member.added.body', { actor }),
+        kind: 'people',
+        target: toGroup(),
+      }
+    case 'summary.monthly':
+      return {
+        title: t('notifications.types.summary.monthly.title'),
+        body: summaryLine(d.groups, ctx),
+        kind: 'summary',
+        target: { to: '/home' },
       }
     default:
       return {

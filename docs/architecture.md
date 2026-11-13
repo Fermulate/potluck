@@ -305,6 +305,7 @@ erDiagram
   profiles ||--o| calendar_feed_tokens : owns
   profiles ||--o{ notifications : receives
   profiles ||--o{ push_tokens : registers
+  profiles ||--o{ notification_prefs : chooses
 
   groups {
     uuid id PK
@@ -390,6 +391,13 @@ erDiagram
     text type
     jsonb data
     timestamptz read_at
+    text_array channels "push, email"
+  }
+  notification_prefs {
+    uuid user_id PK, FK
+    text category PK
+    bool push "null = default"
+    bool email "null = default"
   }
   push_tokens {
     uuid user_id PK, FK
@@ -448,7 +456,8 @@ erDiagram
 
 - `activity`: `id`, `group_id`, `actor_id`, `verb text` (`expense.created`, `settlement.created`, `member.joined`, `event.scheduled`, ...), `subject_id uuid`, `data jsonb`, `created_at`. Written by triggers.
 - `comments`: `id`, `expense_id?`, `event_id?`, `author_id`, `body`, `created_at`, `deleted_at`.
-- `notifications`: `id`, `user_id`, `type text`, `data jsonb`, `read_at`, `created_at`.
+- `notifications`: `id`, `user_id`, `type text`, `data jsonb`, `read_at`, `created_at`, `channels text[]` (where it went besides the inbox: `push`, `email`; set by a trigger).
+- `notification_prefs`: `(user_id, category)` pk, `push bool?`, `email bool?` (null = the category default), `updated_at`. Only settings someone changed; categories and their defaults live in `private.notification_categories`, the type to category map in `private.notification_types` ([ADR 11](adr/0011-notification-prefs-and-email.md)).
 - `push_tokens`: `(user_id, token)` pk, `platform push_platform`, `subscription jsonb` (web push), `last_seen_at`.
 - `app_config`: `key text pk`, `value jsonb` (feature flags, `min_client_version` per platform). Readable by everyone.
 - `calendar_feed_tokens`: `user_id pk`, `token text unique` (32+ chars), `created_at`. The only credential for the `ics-feed` URL. Owners can read their row; nobody writes it directly.
@@ -473,25 +482,29 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 
 ## RPCs
 
-| Function                                                                                                          | Notes                                                                                                                                                         |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create_group(name, emoji, color, currency)`                                                                      | creator becomes owner                                                                                                                                         |
-| `create_invite(group_id, role, max_uses, expires_at, email)` → invite                                             |                                                                                                                                                               |
-| `invite_preview(code)` → group name, emoji, member count, first names                                             | callable by `anon`, for the join page                                                                                                                         |
-| `accept_invite(code)` → group_id                                                                                  | validates expiry/uses/revoked, adds member, creates friendships                                                                                               |
-| `set_member_role(group_id, user_id, role)` / `remove_member` / `leave_group` / `transfer_ownership`               | role checks per table above                                                                                                                                   |
-| `get_or_create_direct_group(friend_id)` → group_id                                                                | 1:1 expenses                                                                                                                                                  |
-| `create_expense(payload jsonb)` / `update_expense(id, payload jsonb)`                                             | validates splits sum, membership, fx snapshot                                                                                                                 |
-| `delete_expense(id)` / `restore_expense(id)`                                                                      | soft delete                                                                                                                                                   |
-| `settle_up(group_id, to_user, amount_cents, currency, note)`                                                      |                                                                                                                                                               |
-| `simplified_debts(group_id)` → rows `(from_user, to_user, amount_cents)`                                          | greedy max-creditor/max-debtor, tie-break by user id                                                                                                          |
-| `set_availability(event_id, slots jsonb)`                                                                         | replaces caller's rows for that event, marks request responded                                                                                                |
-| `request_availability(event_id, user_ids uuid[])`                                                                 | creates notifications                                                                                                                                         |
-| `best_slots(event_id, limit int default 5)` → `starts_at, ends_at, yes_count, maybe_count, score, missing uuid[]` | score = yes + 0.5 * maybe, a person counts only if available for every slot in the duration, filtered by `min_attendees`, ordered by score desc then earliest |
-| `schedule_event(event_id, starts_at)` / `cancel_event(event_id)`                                                  |                                                                                                                                                               |
-| `my_timeline(from, to)`                                                                                           | upcoming events across all my groups with my RSVP and request state                                                                                           |
-| `delete_my_account()`                                                                                             | anonymizes profile (tombstone name), removes PII, deletes auth user via edge function                                                                         |
-| `calendar_feed_token(rotate bool default false)` → text                                                           | returns (and creates on first call) the caller's `.ics` feed token; `rotate` issues a new one and breaks old subscriptions                                    |
+| Function                                                                                                          | Notes                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create_group(name, emoji, color, currency)`                                                                      | creator becomes owner                                                                                                                                                           |
+| `create_invite(group_id, role, max_uses, expires_at, email)` → invite                                             |                                                                                                                                                                                 |
+| `invite_preview(code)` → group name, emoji, member count, first names                                             | callable by `anon`, for the join page                                                                                                                                           |
+| `accept_invite(code)` → group_id                                                                                  | validates expiry/uses/revoked, adds member, creates friendships                                                                                                                 |
+| `set_member_role(group_id, user_id, role)` / `remove_member` / `leave_group` / `transfer_ownership`               | role checks per table above                                                                                                                                                     |
+| `get_or_create_direct_group(friend_id)` → group_id                                                                | 1:1 expenses                                                                                                                                                                    |
+| `create_expense(payload jsonb)` / `update_expense(id, payload jsonb)`                                             | validates splits sum, membership, fx snapshot                                                                                                                                   |
+| `delete_expense(id)` / `restore_expense(id)`                                                                      | soft delete                                                                                                                                                                     |
+| `settle_up(group_id, to_user, amount_cents, currency, note)`                                                      |                                                                                                                                                                                 |
+| `simplified_debts(group_id)` → rows `(from_user, to_user, amount_cents)`                                          | greedy max-creditor/max-debtor, tie-break by user id                                                                                                                            |
+| `set_availability(event_id, slots jsonb)`                                                                         | replaces caller's rows for that event, marks request responded                                                                                                                  |
+| `request_availability(event_id, user_ids uuid[])`                                                                 | creates notifications                                                                                                                                                           |
+| `best_slots(event_id, limit int default 5)` → `starts_at, ends_at, yes_count, maybe_count, score, missing uuid[]` | score = yes + 0.5 * maybe, a person counts only if available for every slot in the duration, filtered by `min_attendees`, ordered by score desc then earliest                   |
+| `schedule_event(event_id, starts_at)` / `cancel_event(event_id)`                                                  |                                                                                                                                                                                 |
+| `my_timeline(from, to)`                                                                                           | upcoming events across all my groups with my RSVP and request state                                                                                                             |
+| `delete_my_account()`                                                                                             | anonymizes profile (tombstone name), removes PII, deletes auth user via edge function                                                                                           |
+| `calendar_feed_token(rotate bool default false)` → text                                                           | returns (and creates on first call) the caller's `.ics` feed token; `rotate` issues a new one and breaks old subscriptions                                                      |
+| `my_notification_prefs()` → rows `(category, push, email, push_allowed, email_allowed)`                           | every notification setting with the caller's effective value, in display order                                                                                                  |
+| `set_notification_pref(category, push?, email?)`                                                                  | changes one setting; a null channel is left as it is                                                                                                                            |
+| `email_unsubscribe(token, action default 'unsubscribe')` → `{ category, email, subscribed, restored }`            | callable by `anon`: the signed token from an email is the credential. `preview` changes nothing, `unsubscribe`, `undo` restores what the unsubscribe changed; `email` is masked |
+| `email_outbox_report(batch, delivered, error?, rejected?)`                                                        | service role only: `notify` reports each email batch (sent, or back to pending with backoff, failed after 5 attempts)                                                           |
 
 ## Database implementation notes
 
@@ -521,6 +534,7 @@ Codes:
 - Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left).
 - Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`.
 - Payments: `invalid_recipient`, `settlement_not_found`, `member_not_in_group` (removing a payment with someone who has left).
+- Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`.
 - Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
 
 ### RPC details and deviations
@@ -599,6 +613,7 @@ Clients write directly (RLS-checked) only to these tables. Everything else goes 
 - `comments`: insert own, author edits, author or admin soft deletes.
 - For `events`, `event_rsvps` and `comments`, every write is refused in archived groups: inserts and updates raise `group_archived` from a trigger, with the same check in the policies; deletes, and withdrawing an RSVP after the deadline, match no row.
 - `notifications`: own `read_at`, delete.
+- `notification_prefs`: read own; writes only through `set_notification_pref` and `email_unsubscribe`.
 - `push_tokens`, `blocks`, `reports`, `busy_blocks`: own rows.
 - `recurring_expenses`: creator or admin may change `active`, `description`, `category`, `next_run_on`, or delete. Archived groups raise `group_archived` from a trigger. Turning `active` back on moves a past `next_run_on` to the next occurrence on or after today, so paused periods are never charged.
 - `friendships`: delete, either side.
@@ -613,14 +628,17 @@ Who can read what:
 
 Activity verbs: `group.created`, `group.updated`, `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.deleted`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`. An edit that only changes the split (people or shares) is logged and notified as `expense.updated` by `update_expense` itself, since the triggers only compare expense columns; people dropped from the split are notified too.
 
-Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `settlement.created`, `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
+Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `expense.deleted`, `expense.restored` (everyone in the expense), `settlement.created`, `member.added` (someone else put you in a group; not 1:1 tabs; nothing does that yet, it is ready for placeholder members), `summary.monthly` (monthly job, everyone with a non-zero balance), `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
+
+Every notification lands in the inbox. `notifications_route` (before insert) fills `channels` from `private.notification_channels(user, type)`: the type's category in `private.notification_types`, the person's `notification_prefs` row or the category default, and for email also `app_config.email_notifications` and a confirmed address. A type with no category row is pushed and never emailed. New type: one insert into `private.notification_types` (see `supabase/AGENTS.md`). Categories and defaults: new expenses, edits and deletions, payments, comments, groups, reminders push and email; plans push only; the monthly summary emails only.
 
 ### Storage, realtime, cron
 
 - Buckets: `avatars` (public, `<user_id>/...`, owner writes), `group-covers` (public, `<group_id>/...`, owner and admins write), `receipts` (private, `<group_id>/...`, members read and upload, uploader or admins replace and delete).
 - `supabase_realtime` publishes `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events`, `group_members`.
 - pg_cron: `materialize-recurring-expenses` daily at 00:10 UTC (catches up at most 12 periods per template per run; deactivates templates whose people left or closed their account; retries when an FX rate is missing), `event-reminders` hourly at :05 (reminders once per event starting within 24h, then marks ended events `done`) and `fx-sync` daily at 16:30 UTC (calls the `fx-sync` edge function through `private.invoke_edge_function`).
-- Database to edge function hooks (`20261105160000_edge_function_hooks.sql`): `private.invoke_edge_function(fn, body)` posts through `pg_net` with the `x-potluck-secret` header. It reads `project_url` and `edge_secret` from Vault and does nothing when either is missing, so the local stack and CI never call out. The `notifications_push` trigger calls `notify` for every new notification.
+- Database to edge function hooks (`20261105160000_edge_function_hooks.sql`): `private.invoke_edge_function(fn, body)` posts through `pg_net` with the `x-potluck-secret` header. It reads `project_url` and `edge_secret` from Vault and does nothing when either is missing, so the local stack and CI never call out. The `notifications_push` trigger calls `notify` for every new notification routed to push.
+- Email: `notifications_queue_email` puts rows routed to email in `private.email_outbox` (`pending`, `folded`, `sending`, `sent`, `failed`, `dropped`); the `email-notifications` job hands them to `notify` in batches and `notify` reports each batch through `email_outbox_report` (see Scheduled jobs). Unsubscribe tokens are HMACs keyed by `private.signing_keys`, made by `private.unsubscribe_token(uid, category)`; `private.email_unsubscribe_undo` keeps what an unsubscribe changed so undo restores exactly that.
 
 ### Local demo data
 
@@ -632,7 +650,7 @@ The browser is untrusted. It holds the publishable key and, once signed in, a sh
 
 ### Layers
 
-1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview`, and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
+1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview` and `email_unsubscribe` (which needs a signed token), and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
 2. **Row Level Security.** Enabled on every table in `public`. Policies answer "which rows" using helpers from the `private` schema. Policies use `(select auth.uid())` and `group_id = any (array(select private.my_group_ids()))` so Postgres evaluates them once per statement instead of once per row, and can read only the caller's rows through the `group_id` indexes.
 3. **Security definer RPCs.** Multi-row writes (expense plus splits, settle up, joining, role changes, scheduling) have no insert or update policy at all. They go through `public.*` functions that run as the owner, start with `private.require_user()` (signed in, account not closed) and `private.require_member(group_id)`, then check the role rules themselves. All of them set `search_path = ''` and schema-qualify every name.
 4. **Triggers and constraints** hold invariants no client can skip: exactly one owner per group, splits sum to the amount, group currency locked once money exists, `comments.group_id` copied from the parent, only the author edits a comment body.
@@ -641,7 +659,7 @@ The browser is untrusted. It holds the publishable key and, once signed in, a sh
 
 `private` is not in `[api].schemas`, so PostgREST never exposes it. `revoke all on schema private from public` plus `alter default privileges ... revoke execute on functions from public` means a new function is callable by nobody until a migration grants it. API roles get `usage` on the schema and `execute` only on the policy helpers (`is_group_member`, `group_role`, `is_group_admin`, `my_group_ids`, `my_event_ids`, `shares_group_with`, `my_contact_ids`, `can_manage_event`) and a few pure functions (`try_uuid`, `minor_units`, `convert_minor`, `is_time_zone`). The helpers are `security definer` so they can read `group_members` without recursing into its own policy, and they only ever answer questions about `auth.uid()`.
 
-Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function` and `notify` are not executable by `anon` or `authenticated`.
+Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function`, `notify`, `notification_channels` and `unsubscribe_token` are not executable by `anon` or `authenticated`. Private tables (`former_members`, `notification_categories`, `notification_types`, `email_outbox`, `signing_keys`) are not readable by them either.
 
 ### Storage
 
@@ -659,12 +677,13 @@ Paths start with an owning id, and policies parse it with `storage.foldername(na
 
 Each function uses one of three schemes. `verify_jwt` is set per function in `supabase/config.toml`.
 
-| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                                       |
-| ---------------- | ------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                                           |
-| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)                      |
-| `fx-sync`        | false        | same shared secret                               | same                                                                                                                             |
-| `ics-feed`       | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string |
+| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                                                                                                                              |
+| ---------------- | ------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                                                                                                                                  |
+| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)                                                                                                             |
+| `fx-sync`        | false        | same shared secret                               | same                                                                                                                                                                                                                    |
+| `ics-feed`       | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string                                                                                        |
+| `unsubscribe`    | false        | `?token=` signed unsubscribe token               | no privilege of its own: a POST (RFC 8058 one-click) calls the anon `email_unsubscribe` RPC with the publishable key; Postgres checks the HMAC. GET only redirects to the web page, which asks before changing anything |
 
 The service-role client (`_shared/admin.ts`) bypasses RLS, so each function authorizes the caller before touching it.
 
@@ -693,11 +712,13 @@ Channels batch invalidations for 300 ms (`useBatchedInvalidate` in `apps/web/src
 
 All jobs are `pg_cron` entries created by migrations, so every environment gets the same schedule. `cron.schedule` with an existing name updates the job, which keeps the migrations rerunnable. Times are UTC.
 
-| Job                              | Schedule      | Runs                                                                 | Does                                                                                                                                                                                                                                                                                                                             |
-| -------------------------------- | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `materialize-recurring-expenses` | `10 0 * * *`  | `private.materialize_recurring_expenses()`                           | Writes due recurring templates as real expenses, catching up at most 12 periods per template. Deactivates templates whose payer or people left or closed their account (`delete_my_account` also pauses them right away, except in archived groups, where nothing runs anyway). Leaves a template due when no FX rate exists yet |
-| `event-reminders`                | `5 * * * *`   | `private.send_event_reminders()` then `private.finish_past_events()` | `event.reminder` to going and maybe, `rsvp.reminder` to members who have not answered, once per event starting in the next 24 hours. Then flips ended scheduled events to `done`                                                                                                                                                 |
-| `fx-sync`                        | `30 16 * * *` | `private.invoke_edge_function('fx-sync')`                            | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                                                                                                                                                           |
+| Job                              | Schedule      | Runs                                                                 | Does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------- | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `materialize-recurring-expenses` | `10 0 * * *`  | `private.materialize_recurring_expenses()`                           | Writes due recurring templates as real expenses, catching up at most 12 periods per template. Deactivates templates whose payer or people left or closed their account (`delete_my_account` also pauses them right away, except in archived groups, where nothing runs anyway). Leaves a template due when no FX rate exists yet                                                                                                                                                                                                 |
+| `event-reminders`                | `5 * * * *`   | `private.send_event_reminders()` then `private.finish_past_events()` | `event.reminder` to going and maybe, `rsvp.reminder` to members who have not answered, once per event starting in the next 24 hours. Then flips ended scheduled events to `done`                                                                                                                                                                                                                                                                                                                                                 |
+| `fx-sync`                        | `30 16 * * *` | `private.invoke_edge_function('fx-sync')`                            | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `email-notifications`            | `* * * * *`   | `private.send_email_notifications()`                                 | Does nothing while `app_config.email_notifications` is off. Otherwise hands `notify` the outbox rows whose subject has been quiet for 60 seconds, one email per expense (nothing if it was added and deleted inside the hold), re-checking settings, in batches of 50 per call. Re-sends batches with no report after 10 minutes (same batch id, the provider's idempotency key, when exactly the same rows go again; otherwise a new one), retries reported failures with backoff up to 5 attempts, drops rows older than a day |
+| `monthly-summary`                | `0 15 1 * *`  | `private.send_monthly_summaries()`                                   | One `summary.monthly` notification (inbox card, email when on, never push) for everyone with a non-zero balance, about the month that just ended                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Each recurring template runs inside its own `begin ... exception` block, so one bad template logs a warning and the rest still run.
 
@@ -720,7 +741,8 @@ Each recurring template runs inside its own `begin ... exception` block, so one 
 
 ## Edge functions
 
-- `notify`: fans a notification out to web push (VAPID). Expo push tokens are skipped until the native app ships.
+- `notify`: fans a notification out to web push (VAPID), and sends outbox batches (`{ batch, emails }`) through the sender in `notify/sender.ts` (Resend's batch endpoint; off until `RESEND_API_KEY` and `EMAIL_FROM` are set). It answers at once, sends in the background (`EdgeRuntime.waitUntil`) with backoff on rate limits, and reports each batch with `email_outbox_report`. Expo push tokens are skipped until the native app ships.
+- `unsubscribe`: one-click unsubscribe target (RFC 8058) for the `List-Unsubscribe` header.
 - `ics-feed`: per-user `.ics` subscription URL (token in query string).
 - `fx-sync`: daily FX rates from Frankfurter.
 - `delete-account`: runs `delete_my_account()` as the caller, then soft deletes the auth user with the service role.
@@ -731,4 +753,4 @@ There is no `og-invite` function yet. Invite links render the SPA, so link previ
 
 - Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.fermulate.com (custom domain, [ADR 10](adr/0010-custom-domains.md)); https://potluck.potluck-web.workers.dev still serves the same worker. PR previews are worker versions with a `pr-<number>` alias. User guide: https://docs.potluck.fermulate.com (repo `Fermulate/potluck-docs`).
 - Backend: Supabase project `mzotlkpghnrwbezcazld`.
-- Email: Supabase built-in SMTP for now (rate-limited). Swap to Resend with a sender on `fermulate.com`.
+- Email: auth email uses Supabase built-in SMTP for now (rate-limited); swap to Resend with a sender on `fermulate.com`. Notification email is built and off until the same provider is configured ([launch checklist](launch-checklist.md#3-email)).

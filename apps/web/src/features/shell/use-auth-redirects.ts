@@ -21,6 +21,7 @@ export function useAuthRedirects() {
           path.startsWith('/sign-') ||
           path.startsWith('/join/') ||
           path.startsWith('/auth/') ||
+          path === '/unsubscribe' ||
           path.endsWith('-password')
         if (!isPublic) void router.navigate({ to: '/sign-in', replace: true })
       }

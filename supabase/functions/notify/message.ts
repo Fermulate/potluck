@@ -27,6 +27,24 @@ export function message(n: NotificationRow): { title: string; body: string; url:
         body: String(d.description ?? 'An expense changed'),
         url: expense,
       }
+    case 'expense.deleted':
+      return {
+        title: 'Expense deleted',
+        body: String(d.description ?? 'An expense was deleted'),
+        url: expense,
+      }
+    case 'expense.restored':
+      return {
+        title: 'Expense restored',
+        body: String(d.description ?? 'An expense is back'),
+        url: expense,
+      }
+    case 'member.added':
+      return {
+        title: 'You were added to a group',
+        body: 'Pull up a chair.',
+        url: group,
+      }
     case 'settlement.created':
       return {
         title: 'Payment recorded',
