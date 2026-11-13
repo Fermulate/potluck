@@ -429,16 +429,17 @@ sequenceDiagram
     alt group archived, payer or a split person left<br/>or closed their account
       DB->>DB: active = false, skip
     else
-      DB->>DB: anchor_day = day of the series' first expense
+      DB->>DB: anchor_day = the stored anchor_day,<br/>else the day of the series' first expense
       loop while due <= today and runs < 12
         DB->>DB: fx = private.fx_rate(currency, group currency, due)
         break fx is null
           Note over DB: template stays due,<br/>tomorrow's run retries
         end
-        DB->>DB: insert expenses (spent_at = due, recurring_id)
+        DB->>DB: insert expenses (spent_at = due, recurring_id,<br/>tax, tip, discount for a by-item bill)
+        DB->>DB: insert expense_items from the template's items (if any)
         DB->>DB: insert expense_payers from the template's payers (if several)
         DB->>DB: insert expense_splits from private.compute_split_rows()
-        DB->>DB: due = next week, or next month or year<br/>on anchor_day clamped to month end
+        DB->>DB: due = next week, two weeks on, or next month or year<br/>on anchor_day clamped to month end
       end
       DB->>DB: update next_run_on = due
     end
@@ -448,6 +449,48 @@ sequenceDiagram
 ```
 
 `nextOccurrence()` in core computes the same dates (Jan 31, Feb 28, Mar 31), so the UI can show when a series runs next.
+
+### Changing, skipping and starting a series
+
+A template only shapes the copies still to come ([ADR 14](adr/0014-editable-recurring-templates.md)). The web app opens it at `/recurring/$recurringId` in the expense form; the expense page shows the series a copy belongs to, or "Make it repeat".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as Web app
+  participant DB as DB
+  participant CR as pg_cron
+
+  U->>DB: rpc update_recurring_expense(id, payload)
+  DB->>DB: share lock group, require member, not archived
+  DB->>DB: admin or anyone it involves, else not_allowed
+  DB->>DB: merge with the stored template, check payers,<br/>split (compute_split_rows) or items (itemized_splits)
+  alt money changed and someone named has left
+    DB-->>U: payer_not_in_group / split_member_not_in_group
+  else
+    DB->>DB: update template (anchor_day follows a new date),<br/>activity recurring.updated
+    DB-->>U: template
+  end
+
+  U->>DB: rpc skip_recurring_expense(id)
+  DB->>DB: next_run_on = recurring_step(next_run_on), activity recurring.skipped
+
+  U->>DB: rpc make_expense_recurring(expense_id, recurrence)
+  DB->>DB: refuse refunds, deleted, already repeating, someone left
+  DB->>DB: insert template from the expense's payers, split, items
+  DB->>DB: next_run_on = recurring_next_from(spent_at, recurrence, day, today)
+  DB->>DB: expenses.recurring_id = template, activity recurring.created
+
+  CR->>DB: at :05 and :35: private.send_recurring_heads_ups(now())
+  loop templates due within 2 days, active, remind on, group open, nobody left
+    loop payers and people with a share, not yet told about this date
+      alt 09:00 on their local day before has come, and it is before 00:10 UTC on the date
+        DB->>DB: notify recurring.upcoming (share, posts_on, deadline, their zone,<br/>quiet if 22:00 to 07:00 there: inbox only); insert private.recurring_heads_ups
+      end
+    end
+  end
+  Note over DB: routed by the Reminders setting:<br/>inbox always, push and email per person
+```
 
 ## Daily FX sync
 

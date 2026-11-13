@@ -123,14 +123,14 @@ What Splitwise Free holds back today: 4 new expenses per day, ads, and the Pro f
 
 ### Recurring
 
-| Splitwise feature                                              | Tier | Potluck | Notes                                                                 |
-| -------------------------------------------------------------- | ---- | ------- | --------------------------------------------------------------------- |
-| Repeat an expense                                              | Free | exists  | weekly, monthly, yearly; cron materializes due rows                   |
-| Every 2 weeks (fortnightly)                                    | Free | missing | `recurrence` enum has three values                                    |
-| Edit a repeating expense's amount and split                    | Free | partial | only description, category, schedule and pause (launch checklist gap) |
-| Make an existing expense repeat                                | Free | missing | recurrence is create only                                             |
-| Skip one occurrence ("just this once") vs stop all future ones | Free | partial | pause and remove exist; no skip-once                                  |
-| Email reminder before a repeating expense posts                | Free | missing |                                                                       |
+| Splitwise feature                                              | Tier | Potluck | Notes                                                                                                                                                                                                                              |
+| -------------------------------------------------------------- | ---- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repeat an expense                                              | Free | exists  | weekly, every 2 weeks, monthly, yearly; cron materializes due rows                                                                                                                                                                 |
+| Every 2 weeks (fortnightly)                                    | Free | exists  | `recurrence` gains `biweekly`; core `nextOccurrence` and `private.recurring_step` share the cases (Batch 8)                                                                                                                        |
+| Edit a repeating expense's amount and split                    | Free | exists  | the expense form opens the template (several payers, adjustments, items); only copies still to come change (Batch 8, ADR 14)                                                                                                       |
+| Make an existing expense repeat                                | Free | exists  | "Make it repeat" on the expense page; the first copy is a period after its date, missed periods are not charged (Batch 8)                                                                                                          |
+| Skip one occurrence ("just this once") vs stop all future ones | Free | exists  | Skip next, Pause and Stop repeating, from the group's list, the template and the expense page (Batch 8)                                                                                                                            |
+| Email reminder before a repeating expense posts                | Free | exists  | `recurring.upcoming` at 9 in the morning, each person's own time, the day before, naming the date and the deadline, with their share; push and email follow the Reminders setting, and it can be turned off per template (Batch 8) |
 
 ### Account and settings
 
@@ -345,6 +345,8 @@ Migrations: none expected (Auth handles email, password and MFA); RLS policies m
 Conflicts: Batches 2, 4, 5 and 6 mount sections on the Me page. Rule for all of them: each adds its section as its own component file and a one-line mount, so merges are trivial.
 
 ### Batch 8: Recurring expenses
+
+Status: built on `feat/recurring` ([ADR 14](adr/0014-editable-recurring-templates.md)). Templates keep the Batch 1 payload shape and now store by-item bills and their repeat day.
 
 Features:
 

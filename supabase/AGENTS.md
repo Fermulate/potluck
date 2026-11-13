@@ -42,6 +42,12 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - Expense payers live in `expense_payers` (deferred sum check). A trigger keeps a lone payer in step with
   `expenses.paid_by`, so an insert that only sets `paid_by` is still right; several payers are written by
   `private.save_expense`. Balances and departed checks read payers, not `paid_by` (ADR 12).
+- Repeating expenses ([ADR 14](../docs/adr/0014-editable-recurring-templates.md)): a template keeps the
+  `create_expense_v2` payload shape (`splits`, `payers`, `items` with tax, tip, discount) and only shapes
+  future copies. Dates step through `private.recurring_step` (core `nextOccurrence`); "who it names and
+  whether they all still belong" is `private.recurring_departed` / `recurring_blocked`, shared by the job, the heads-up and
+  the resume trigger; who may change one is `private.recurring_involves` (RPCs and policies alike). The
+  heads-up job runs at :05 and :35, per person (`profiles.timezone`), deduplicated by `private.recurring_heads_ups`. Edits go through `update_recurring_expense`, never new direct grants.
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
 - Two-step sign in ([ADR 13](../docs/adr/0013-two-step-sign-in-enforced-in-the-database.md)):
@@ -73,7 +79,8 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   (`apps/web/src/features/me/notification-prefs.tsx`).
 - Routing is a before insert trigger on `public.notifications`, so any insert (through
   `private.notify` or not) gets its `channels`; push and the email outbox follow from them. Email only
-  flows while `app_config.email_notifications` is true. Tests: `17_notification_prefs`,
+  flows while `app_config.email_notifications` is true. A payload with `"quiet": true` gets no
+  channels at all (inbox only); the repeating expense heads-up uses it at night (ADR 14). Tests: `17_notification_prefs`,
   `18_monthly_summary`.
 - Email delivery is a state machine on `private.email_outbox` (`pending`, `sending`, `sent`, ...):
   `private.send_email_notifications` hands batches to `notify`, which must always answer with
