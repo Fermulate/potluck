@@ -96,7 +96,7 @@ export function seededClient(seed: (client: QueryClient) => void = () => {}) {
   client.setQueryData(moneyKeys.people(), members)
   client.setQueryData(moneyKeys.groupInfo(GROUP_ID), group)
   client.setQueryData(moneyKeys.recurring(GROUP_ID), [])
-  client.setQueryData(moneyKeys.lastCurrency(GROUP_ID), null)
+  client.setQueryData(moneyKeys.lastCurrency(GROUP_ID, ME), null)
   seed(client)
   return client
 }

@@ -4,9 +4,13 @@ import { ExpenseForm } from '@/features/expenses/form/expense-form'
 import { GroupPicker } from '@/features/expenses/group-picker'
 import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { validateNewExpenseSearch } from '@/features/expenses/search-params'
+import { prefetch } from '@/lib/prefetch'
 
 export const Route = createFileRoute('/_app/new/expense')({
   validateSearch: validateNewExpenseSearch,
+  loaderDeps: ({ search }) => ({ groupId: search.groupId }),
+  loader: ({ context, deps }) =>
+    prefetch.newExpense(context.queryClient, deps.groupId, context.session.user.id),
   component: NewExpense,
 })
 

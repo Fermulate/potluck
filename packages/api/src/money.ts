@@ -205,7 +205,8 @@ export const moneyKeys = {
   simplified: (groupId: string) => [...moneyKeys.group(groupId), 'simplified'] as const,
   recurring: (groupId: string) => [...moneyKeys.group(groupId), 'recurring'] as const,
   /** The currency the viewer last used in a group; refreshed with the group's money. */
-  lastCurrency: (groupId: string) => [...moneyKeys.group(groupId), 'last-currency'] as const,
+  lastCurrency: (groupId: string, userId: string) =>
+    [...moneyKeys.group(groupId), 'last-currency', userId] as const,
   expense: (expenseId: string) => [...moneyKeys.all, 'expense', expenseId] as const,
   history: (expenseId: string) => [...moneyKeys.expense(expenseId), 'history'] as const,
   comments: (expenseId: string) => [...moneyKeys.expense(expenseId), 'comments'] as const,
@@ -375,8 +376,8 @@ export async function fetchExpenseHistory(
 }
 
 /**
- * The currency of the last expense the viewer added in a group, or null if they never added
- * one. New expenses start in it, as in Splitwise.
+ * The currency of the last expense the viewer added in a group (deleted ones do not count), or
+ * null if there is none. New expenses start in it, as in Splitwise.
  */
 export async function fetchLastCurrency(
   client: PotluckClient,
@@ -389,6 +390,7 @@ export async function fetchLastCurrency(
       .select('currency')
       .eq('group_id', groupId)
       .eq('created_by', userId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(1),
   )
@@ -695,7 +697,7 @@ export const moneyQueries = {
     }),
   lastCurrency: (client: PotluckClient, groupId: string, userId: string) =>
     queryOptions({
-      queryKey: moneyKeys.lastCurrency(groupId),
+      queryKey: moneyKeys.lastCurrency(groupId, userId),
       queryFn: () => fetchLastCurrency(client, groupId, userId),
     }),
   comments: (client: PotluckClient, expenseId: string) =>

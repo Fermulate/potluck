@@ -15,7 +15,7 @@ import {
   Plus,
   ReceiptText,
 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { SPLIT_HELP } from '@/features/help/topics'
 import { joinNames } from '@/features/plans/format'
@@ -51,6 +51,10 @@ export interface SplitEditorProps {
   currency: string
   /** How amounts and percents are typed, the same as the main amount field. */
   locale: string
+  /** Which split types to offer (all of them by default). */
+  modes?: readonly SplitTypeValue[]
+  /** Show each person's amount; off when there is no amount yet (the group's default split). */
+  showAmounts?: boolean
 }
 
 function displayName(member: MoneyMember, viewerId: string) {
@@ -65,8 +69,23 @@ export function SplitEditor({
   amountCents,
   currency,
   locale,
+  modes = SPLIT_TYPES,
+  showAmounts = true,
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
+  const modesRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // Sideways only: scrollIntoView could also move the page.
+    const track = modesRef.current
+    const chosen = track?.querySelector<HTMLElement>('[aria-checked="true"]')
+    if (!track || !chosen) return
+    const left =
+      chosen.getBoundingClientRect().left - track.getBoundingClientRect().left + track.scrollLeft
+    if (left < track.scrollLeft) track.scrollLeft = left
+    else if (left + chosen.offsetWidth > track.scrollLeft + track.clientWidth) {
+      track.scrollLeft = left + chosen.offsetWidth - track.clientWidth
+    }
+  }, [draft.mode])
   const byId = new Map(members.map((m) => [m.id, m]))
   const result = previewSplit(draft, amountCents)
   const shares = result.ok ? result.shares : null
@@ -77,7 +96,7 @@ export function SplitEditor({
   const money = (cents: number) => formatMoney(cents, currency)
   const extras = amountCents > 0 ? roundingExtras(draft, result) : []
   const roundingNote =
-    extras.length > 0 ? (
+    showAmounts && extras.length > 0 ? (
       <p className="flex items-start justify-between gap-3 text-xs text-mute">
         <span>
           {t(extras.length === 1 ? 'help.rounding.one' : 'help.rounding.each', {
@@ -96,15 +115,16 @@ export function SplitEditor({
       </p>
     ) : null
 
-  const shareCell = (id: string) => (
-    <span className="w-20 shrink-0 text-right tabular text-[0.9375rem] font-bold">
-      {shares ? (
-        <Money cents={shares[id] ?? 0} currency={currency} tone="neutral" />
-      ) : (
-        <span className="text-mute">...</span>
-      )}
-    </span>
-  )
+  const shareCell = (id: string) =>
+    showAmounts && (
+      <span className="w-20 shrink-0 text-right tabular text-[0.9375rem] font-bold">
+        {shares ? (
+          <Money cents={shares[id] ?? 0} currency={currency} tone="neutral" />
+        ) : (
+          <span className="text-mute">...</span>
+        )}
+      </span>
+    )
 
   const personCell = (member: MoneyMember) => (
     <span className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -128,7 +148,7 @@ export function SplitEditor({
         {shareCell(m.id)}
       </li>
     ))
-    if (shares && participants.length > 0) {
+    if (showAmounts && shares && participants.length > 0) {
       status = (
         <StatusPill tone="ok">
           {t('expenses.perPerson', {
@@ -273,16 +293,20 @@ export function SplitEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="pb-1">
-        {/* Short labels and tight padding so all six fit on a phone; icons join in only where
-            the split column is wide (one column layouts from md, before the two column lg). */}
+      {/* Six modes do not fit every phone: the track scrolls sideways and keeps the chosen mode
+          in view. Icons join in only where the split column is wide (one
+          column layouts from md, before the two column lg). */}
+      <div
+        ref={modesRef}
+        className="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden"
+      >
         <SegmentedControl
           block
-          className="[&>button]:px-1.5 sm:[&>button]:px-2.5"
+          className="w-full min-w-max [&>button]:px-2.5"
           label={t('splitTypes.label')}
           value={draft.mode}
           onValueChange={(mode) => onChange({ ...draft, mode })}
-          options={SPLIT_TYPES.map((mode) => ({
+          options={modes.map((mode) => ({
             value: mode,
             label: (
               <>

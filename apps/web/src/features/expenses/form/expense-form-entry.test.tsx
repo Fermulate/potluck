@@ -1,7 +1,7 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, setDefaultSplit, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BEN,
@@ -14,6 +14,7 @@ import {
   renderWithClient,
   seededClient,
 } from '../test-utils'
+import { renderInRouter } from '../router-test-utils'
 import { ExpenseForm } from './expense-form'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
@@ -133,6 +134,67 @@ describe('several payers', () => {
   })
 })
 
+describe('rest to someone', () => {
+  it('gives what is still unpaid to the next person with nothing typed', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('button', { name: 'Paid by' }))
+    const sheet = await screen.findByRole('dialog', { name: t('expenses.payers.title') })
+    fireEvent.click(within(sheet).getByRole('radio', { name: t('expenses.payers.several') }))
+    fireEvent.change(
+      within(sheet).getByRole('textbox', { name: t('expenses.payers.amountOf', { name: 'You' }) }),
+      { target: { value: '50' } },
+    )
+    fireEvent.click(
+      within(sheet).getByRole('button', {
+        name: t('expenses.payers.fillRestLabel', { amount: '$40.00', name: 'Ben' }),
+      }),
+    )
+    expect(
+      within(sheet).getByRole('textbox', { name: t('expenses.payers.amountOf', { name: 'Ben' }) }),
+    ).toHaveValue('40')
+    expect(within(sheet).getByText('Everything adds up')).toBeInTheDocument()
+    expect(within(sheet).queryByRole('button', { name: /Rest to/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('last currency', () => {
+  it('opens at once in the group currency, then swaps in the remembered one', async () => {
+    const client = seededClient((c) =>
+      c.removeQueries({ queryKey: moneyKeys.lastCurrency(GROUP_ID, ME) }),
+    )
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+      client,
+    )
+    // No skeleton while it loads.
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: `${t('expenses.fields.currency')}, USD` }),
+    ).toBeVisible()
+    act(() => client.setQueryData(moneyKeys.lastCurrency(GROUP_ID, ME), 'EUR'))
+    expect(
+      await screen.findByRole('button', { name: `${t('expenses.fields.currency')}, EUR` }),
+    ).toBeVisible()
+  })
+})
+
+describe('archived groups', () => {
+  it('shows a read only notice instead of the form', async () => {
+    renderInRouter(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+      seededClient((c) =>
+        c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+          ...group,
+          archived_at: '2026-10-01T00:00:00Z',
+        }),
+      ),
+    )
+    expect(await screen.findByText(t('expenses.form.archivedTitle'))).toBeVisible()
+    expect(screen.queryByRole('textbox', { name: 'Amount' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save expense' })).not.toBeInTheDocument()
+  })
+})
+
 describe('adjustment split', () => {
   it('adds each adjustment on top of an equal split', async () => {
     setup()
@@ -242,7 +304,7 @@ describe('default split and last currency', () => {
   })
 
   it('starts in the currency last used in the group', () => {
-    setup((c) => c.setQueryData(moneyKeys.lastCurrency(GROUP_ID), 'EUR'))
+    setup((c) => c.setQueryData(moneyKeys.lastCurrency(GROUP_ID, ME), 'EUR'))
     expect(
       screen.getByRole('button', { name: `${t('expenses.fields.currency')}, EUR` }),
     ).toBeVisible()

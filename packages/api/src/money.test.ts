@@ -503,17 +503,48 @@ describe('expense history and last currency', () => {
     const fake = fakeSupabase({
       tables: {
         expenses: [
-          { group_id: 'g1', created_by: 'u1', currency: 'USD', created_at: '2026-01-01' },
-          { group_id: 'g1', created_by: 'u1', currency: 'EUR', created_at: '2026-01-03' },
-          { group_id: 'g1', created_by: 'u2', currency: 'GBP', created_at: '2026-01-04' },
-          { group_id: 'g2', created_by: 'u1', currency: 'JPY', created_at: '2026-01-05' },
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'USD',
+            created_at: '2026-01-01',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'EUR',
+            created_at: '2026-01-03',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u1',
+            currency: 'CHF',
+            created_at: '2026-01-04',
+            deleted_at: '2026-01-05',
+          },
+          {
+            group_id: 'g1',
+            created_by: 'u2',
+            currency: 'GBP',
+            created_at: '2026-01-04',
+            deleted_at: null,
+          },
+          {
+            group_id: 'g2',
+            created_by: 'u1',
+            currency: 'JPY',
+            created_at: '2026-01-05',
+            deleted_at: null,
+          },
         ],
       },
     })
     expect(await fetchLastCurrency(fake.client, 'g1', 'u1')).toBe('EUR')
     expect(await fetchLastCurrency(fake.client, 'g1', 'u3')).toBeNull()
     expect(moneyQueries.lastCurrency(fake.client, 'g1', 'u1').queryKey).toEqual(
-      moneyKeys.lastCurrency('g1'),
+      moneyKeys.lastCurrency('g1', 'u1'),
     )
     expect(moneyQueries.history(fake.client, 'e1').queryKey).toEqual(moneyKeys.history('e1'))
   })

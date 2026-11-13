@@ -59,7 +59,11 @@ export function PayersField({
   const field = useField()
   const [open, setOpen] = useState(false)
   const byId = new Map(members.map((m) => [m.id, m]))
-  const ids = payerIds(value)
+  // The viewer first, so it reads "You and Ben".
+  const ids = [
+    ...payerIds(value).filter((id) => id === viewerId),
+    ...payerIds(value).filter((id) => id !== viewerId),
+  ]
   const people = ids.map((id) => byId.get(id))
   const check = checkDraftPayers(value, totalCents)
   const left = payersLeft(value, totalCents)
@@ -145,6 +149,9 @@ function PayersSheet({
   const money = (cents: number) => formatMoney(cents, currency, { locale })
   const left = payersLeft(value, totalCents)
   const close = () => onOpenChange(false)
+  // One tap to give what is still unpaid to the first person with nothing typed yet.
+  const restTo =
+    value.mode === 'several' && left > 0 ? members.find((m) => !value.amounts[m.id]) : undefined
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -154,7 +161,7 @@ function PayersSheet({
         size="sm"
         footer={
           value.mode === 'several' ? (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               {totalCents > 0 ? (
                 <StatusPill tone={left === 0 ? 'ok' : left > 0 ? 'left' : 'over'}>
                   {left === 0
@@ -166,7 +173,27 @@ function PayersSheet({
               ) : (
                 <span />
               )}
-              <Button onClick={close}>{t('expenses.payers.done')}</Button>
+              <span className="flex items-center gap-1">
+                {restTo && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('expenses.payers.fillRestLabel', {
+                      amount: money(left),
+                      name: nameOf(restTo, viewerId),
+                    })}
+                    onClick={() =>
+                      onChange({
+                        mode: 'several',
+                        amounts: { ...value.amounts, [restTo.id]: left },
+                      })
+                    }
+                  >
+                    {t('expenses.payers.fillRest', { name: nameOf(restTo, viewerId) })}
+                  </Button>
+                )}
+                <Button onClick={close}>{t('expenses.payers.done')}</Button>
+              </span>
             </div>
           ) : undefined
         }

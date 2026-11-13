@@ -18,6 +18,7 @@ import {
   Avatar,
   Button,
   Checkbox,
+  EmptyState,
   Field,
   Input,
   MoneyInput,
@@ -32,6 +33,7 @@ import { Help } from '@/features/help/help'
 import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { CalendarHeart } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
@@ -96,14 +98,31 @@ export function ExpenseForm(props: ExpenseFormProps) {
   const groupId = props.mode === 'create' ? props.groupId : props.expense.group_id
   const me = useUserId()
   const group = useMoneyGroup(groupId)
-  // A new expense starts in the currency the viewer last used in this group.
-  const lastCurrency = useQuery({
-    ...moneyQueries.lastCurrency(supabase, groupId, me),
-    enabled: props.mode === 'create',
-  })
   const title = props.mode === 'create' ? t('expenses.form.newTitle') : t('expenses.form.editTitle')
 
-  if (!group.data || (props.mode === 'create' && lastCurrency.isPending)) {
+  if (group.data?.archived_at) {
+    // Archived groups are read only: say so instead of a form the server would refuse.
+    return (
+      <MoneyPageShell title={title} onClose={props.onClose} width="lg">
+        <div className="px-4 py-10 md:px-8">
+          <EmptyState
+            illustration="🗄️"
+            title={t('expenses.form.archivedTitle')}
+            description={t('expenses.form.archived', { group: groupTitle(group.data, me) })}
+            action={
+              <Button asChild variant="secondary">
+                <Link to="/groups/$groupId" params={{ groupId }}>
+                  {t('expenses.form.backToGroup')}
+                </Link>
+              </Button>
+            }
+          />
+        </div>
+      </MoneyPageShell>
+    )
+  }
+
+  if (!group.data) {
     return (
       <MoneyPageShell title={title} onClose={props.onClose} width="lg">
         <div
@@ -118,16 +137,12 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </MoneyPageShell>
     )
   }
-  return (
-    <LoadedExpenseForm {...props} group={group.data} lastCurrency={lastCurrency.data ?? null} />
-  )
+  return <LoadedExpenseForm {...props} group={group.data} />
 }
 
 type Recurrence = RecurrenceValue | 'none'
 
-function LoadedExpenseForm(
-  props: ExpenseFormProps & { group: MoneyGroup; lastCurrency: string | null },
-) {
+function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const { group } = props
   const editing = props.mode === 'edit' ? props.expense : null
   const me = useUserId()
@@ -149,9 +164,20 @@ function LoadedExpenseForm(
   }
 
   const [amount, setAmount] = useState<number | null>(editing?.amount_cents ?? null)
-  const [currency, setCurrency] = useState(
-    editing?.currency ?? props.lastCurrency ?? group.currency,
-  )
+  const [currency, setCurrency] = useState(editing?.currency ?? group.currency)
+  // A new expense starts in the currency the viewer last used in this group. The route loader
+  // prefetches it; until it is there the form starts in the group currency and swaps once,
+  // unless a currency was already picked.
+  const lastCurrency = useQuery({
+    ...moneyQueries.lastCurrency(supabase, group.id, me),
+    enabled: !editing,
+  })
+  const [currencyPicked, setCurrencyPicked] = useState(false)
+  const [lastApplied, setLastApplied] = useState(!!editing)
+  if (!lastApplied && lastCurrency.data !== undefined) {
+    setLastApplied(true)
+    if (lastCurrency.data && !currencyPicked) setCurrency(lastCurrency.data)
+  }
   const [description, setDescription] = useState(editing?.description ?? '')
   const [category, setCategory] = useState<string | null>(editing?.category ?? null)
   const [payers, setPayers] = useState<PayersDraft>(() =>
@@ -331,9 +357,9 @@ function LoadedExpenseForm(
         </span>
       }
       footer={
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
           {submitted && (descriptionError || amountError || payersError || splitError) && (
-            <p role="alert" className="mr-auto text-sm font-medium text-tomato-ink">
+            <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
               {descriptionError ?? amountError ?? payersError ?? splitError}
             </p>
           )}
@@ -427,7 +453,7 @@ function LoadedExpenseForm(
             <div
               role="radiogroup"
               aria-label={t('categories.label')}
-              className="flex flex-wrap gap-2"
+              className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
             >
               {CATEGORIES.map((c) => {
                 const checked = category === c.id
@@ -439,7 +465,7 @@ function LoadedExpenseForm(
                     aria-checked={checked}
                     onClick={() => setCategory(checked ? null : (c.id as CategoryId))}
                     className={cn(
-                      'inline-flex h-9 items-center gap-1.5 rounded-pill border px-3 text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]',
+                      'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill border px-3 text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]',
                       checked
                         ? 'border-ink bg-ink text-paper'
                         : 'border-line-strong bg-card text-ink hover:border-ink/40',
@@ -455,7 +481,7 @@ function LoadedExpenseForm(
             </div>
           </fieldset>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3 sm:gap-4">
             <Field
               label={refund ? t('expenses.payers.receivedBy') : t('expenses.fields.paidBy')}
               error={payersError ?? undefined}
@@ -480,6 +506,29 @@ function LoadedExpenseForm(
               />
             </Field>
           </div>
+          <div className="-mt-2 flex items-start justify-between gap-3">
+            <Switch
+              label={t('expenses.refund.label')}
+              description={refund ? t('expenses.refund.hint') : undefined}
+              checked={refund}
+              onCheckedChange={setRefund}
+              disabled={locked}
+              className="flex-1"
+            />
+            <Help topic="refunds" className="mt-0.5" />
+          </div>
+          {!locked && (
+            <QuickSplit
+              members={group.members}
+              viewerId={me}
+              payers={payers}
+              draft={draft}
+              onPick={(nextPayers, nextDraft) => {
+                setPayers(nextPayers)
+                setDraft(nextDraft)
+              }}
+            />
+          )}
           {props.mode === 'create' && props.eventId && (
             <p className="inline-flex items-center gap-2 text-sm font-medium text-plum-ink">
               <CalendarHeart aria-hidden className="size-4" />
@@ -531,16 +580,6 @@ function LoadedExpenseForm(
                   {t('expenses.form.formerNote', { names: formerNames })}
                 </p>
               )}
-              <QuickSplit
-                members={group.members}
-                viewerId={me}
-                payers={payers}
-                draft={draft}
-                onPick={(nextPayers, nextDraft) => {
-                  setPayers(nextPayers)
-                  setDraft(nextDraft)
-                }}
-              />
               <SplitEditor
                 members={splitMembers}
                 viewerId={me}
@@ -580,17 +619,6 @@ function LoadedExpenseForm(
         </section>
 
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
-          <div className="flex items-start justify-between gap-3">
-            <Switch
-              label={t('expenses.refund.label')}
-              description={t('expenses.refund.hint')}
-              checked={refund}
-              onCheckedChange={setRefund}
-              disabled={locked}
-              className="flex-1"
-            />
-            <Help topic="refunds" className="mt-0.5" />
-          </div>
           <Field label={t('expenses.fields.notes')} hint={t('common.optional')}>
             <TextArea
               value={notes}
@@ -625,7 +653,10 @@ function LoadedExpenseForm(
         value={currency}
         groupCurrency={group.currency}
         spentAt={spentAt}
-        onSelect={setCurrency}
+        onSelect={(next) => {
+          setCurrencyPicked(true)
+          setCurrency(next)
+        }}
       />
     </MoneyPageShell>
   )
