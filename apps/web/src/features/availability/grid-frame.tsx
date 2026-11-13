@@ -48,11 +48,12 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
               <span
                 role="columnheader"
                 key={day.key}
-                aria-label={
-                  shift ? `${fullDay.format(day.date)}, ${shift}` : fullDay.format(day.date)
-                }
                 className="flex flex-col items-center pb-1.5 text-center leading-tight"
               >
+                {/* The header's text for assistive tech; the stacked labels below are visual. */}
+                <span className="sr-only">
+                  {shift ? `${fullDay.format(day.date)}, ${shift}` : fullDay.format(day.date)}
+                </span>
                 <span aria-hidden className="text-[0.6875rem] font-semibold text-mute">
                   {weekday.format(day.date)}
                 </span>

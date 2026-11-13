@@ -79,9 +79,7 @@ export function Stamp({ children, caption, tone = 'tomato', className }: StampPr
       style={{ maskImage: INK_TEXTURE, WebkitMaskImage: INK_TEXTURE, maskSize: '120px 120px' }}
     >
       {caption && (
-        <span className="mb-1 text-[0.625rem] font-bold tracking-[0.08em] opacity-80">
-          {caption}
-        </span>
+        <span className="mb-1 text-[0.625rem] font-bold tracking-[0.08em]">{caption}</span>
       )}
       <span className="text-lg font-extrabold tracking-tight">{children}</span>
     </span>
