@@ -188,7 +188,7 @@ The service worker shows the message. The PWA is built with `vite-plugin-pwa` in
 
 ## Settle up
 
-A member records a payment they are part of, in either direction ("I paid Ben", "Ben paid me"); owners and admins also between two others. The day defaults to today; a past day keeps that day's FX rate. If the recipient saved payment methods, the payer can open their app first (ADR 11): Potluck builds the link on the client and records nothing until the payer confirms.
+A member records a payment they are part of, in either direction ("I paid Ben", "Ben paid me"); owners and admins also between two others. The day defaults to today; a past day keeps that day's FX rate. If the recipient saved payment methods, the payer can open their app first (ADR 15): Potluck builds the link on the client and records nothing until the payer confirms.
 
 ```mermaid
 sequenceDiagram
@@ -224,7 +224,7 @@ sequenceDiagram
 
 ## Settle with a friend across groups
 
-One tap squares two people in every group they share (ADR 11). Each group keeps its own payment in its own currency, so balances stay per group.
+One tap squares two people in every group they share (ADR 15). Each group keeps its own payment in its own currency, so balances stay per group.
 
 ```mermaid
 sequenceDiagram
