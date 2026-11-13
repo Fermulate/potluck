@@ -252,7 +252,8 @@ otp_expiry = 3600
 # content_path = "./supabase/templates/invite.html"
 
 # Security notices: a short email to the account whenever its sign in changes, so someone who
-# did not do it finds out. Supabase's default bodies; they apply to production too.
+# did not do it finds out. Supabase's default bodies. Production overrides the subjects for now
+# (see [remotes.production.auth.email.notification.*] below).
 [auth.email.notification.password_changed]
 enabled = true
 subject = "Your Potluck password was changed"
