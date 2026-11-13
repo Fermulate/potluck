@@ -27,6 +27,7 @@ export const help = {
     houseRules: 'About house rules',
     painter: 'Mouse, touch and keyboard',
     heatmap: 'Reading the heatmap',
+    guestLinks: 'How guest links work',
     bestTimes: 'How best times are picked',
     lockIn: 'What locking in does',
     calendarFeed: 'How the calendar feed works',

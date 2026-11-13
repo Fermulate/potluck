@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { createPlanEvent } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import type { Page, TestInfo } from '@playwright/test'
-import { addEqualExpense, groupWith } from './support/api'
+import { addEqualExpense, groupWith, guestLinkFor, pollIn } from './support/api'
 import { expect, test, unique, type TestUser } from './support/fixtures'
 
 /** Serious and critical WCAG 2.1 A/AA violations fail the test; the rest are reported. */
@@ -164,6 +164,18 @@ test.describe('accessibility', () => {
     })
     const page = await openAs(me)
     await page.goto(`/plans/${event.id}`)
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+    await expect(page.getByRole('grid').first()).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('guest link page, signed out', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const title = unique('Dumplings')
+    const event = await pollIn(me, group, title)
+    const link = await guestLinkFor(me, event.id)
+    const page = await openAs(null)
+    await page.goto(`/a/${link.code}`)
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
     await expect(page.getByRole('grid').first()).toBeVisible()
     await audit(page, testInfo)

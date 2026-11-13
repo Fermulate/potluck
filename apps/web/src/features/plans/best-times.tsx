@@ -1,10 +1,10 @@
-import { firstName } from '@potluck/core'
 import type { PlanBestSlot, PlanMember } from '@potluck/api'
 import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
 import { AvatarStack, Button, Card, ConfirmDialog, Skeleton } from '@potluck/ui'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { GoodToKnow, Help } from '@/features/help/help'
+import { personName } from '@/features/availability/person-name'
 import { joinNames } from './format'
 
 export interface BestTimesProps {
@@ -63,7 +63,7 @@ export function BestTimes({
   const whoIsMissing = (slot: PlanBestSlot) => {
     const missing = slot.missing.filter((id) => byId.has(id))
     if (missing.length === 0) return t('bestTime.everyoneCanMake')
-    const names = missing.map((id) => firstName(byId.get(id)!.displayName)).filter(Boolean)
+    const names = missing.map((id) => personName(byId.get(id))).filter(Boolean)
     return names.length === missing.length
       ? t('bestTime.missing', { names: joinNames(names, 2) })
       : t('bestTime.missingCount', { count: missing.length })

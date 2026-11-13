@@ -1,1 +1,1 @@
-export { firstName } from './names'
+export { cleanGuestName, firstName } from './names'

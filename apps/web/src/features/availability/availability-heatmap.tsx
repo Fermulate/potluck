@@ -1,11 +1,12 @@
 import type { PlanMember } from '@potluck/api'
-import { firstName, heatLevels } from '@potluck/core'
+import { heatLevels } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import { AvatarStack, cn, HeatCell, usePrefersReducedMotion } from '@potluck/ui'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { joinNames } from '@/features/plans/format'
 import { Help } from '@/features/help/help'
 import { GridFrame } from './grid-frame'
+import { personName } from './person-name'
 import { cellName } from './grid-labels'
 import { step, type GridModel, type PaintLevel } from './grid'
 
@@ -120,7 +121,7 @@ export function AvailabilityHeatmap({
   }
 
   const shown = active ? info.get(active) : undefined
-  const names = (ids: string[]) => ids.map((id) => firstName(byId.get(id)?.displayName ?? ''))
+  const names = (ids: string[]) => ids.map((id) => personName(byId.get(id)))
 
   return (
     <div className="flex flex-col gap-3">

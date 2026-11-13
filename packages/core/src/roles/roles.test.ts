@@ -55,6 +55,17 @@ describe('can', () => {
     }
   })
 
+  it('lets everyone make guest links, like create_guest_link', () => {
+    expect(everyone((r) => can(r, 'guestLink.create'))).toEqual([true, true, true])
+  })
+
+  it('lets members revoke their own links and remove guests only on plans they organize', () => {
+    for (const action of ['guestLink.revoke', 'guest.remove'] as const) {
+      expect(everyone((r) => can(r, action, { isCreator: false }))).toEqual([true, true, false])
+      expect(everyone((r) => can(r, action, { isCreator: true }))).toEqual([true, true, true])
+    }
+  })
+
   it('lets members invite only when the group allows it', () => {
     const invite = (membersCanInvite: boolean) =>
       everyone((r) => can(r, 'invite.create', { membersCanInvite, inviteRole: 'member' }))

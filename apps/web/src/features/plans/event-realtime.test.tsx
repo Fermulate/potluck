@@ -1,4 +1,4 @@
-import { plansKeys } from '@potluck/api'
+import { guestKeys, plansKeys } from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -45,6 +45,19 @@ describe('useEventRealtime', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: plansKeys.groupEvents('g1') }),
     )
     expect(invalidate).toHaveBeenCalledWith({ queryKey: plansKeys.event('e1') })
+  })
+
+  it('refetches guests, their slots and link usage when a guest answers', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    renderHook(() => useEventRealtime('e1', 'g1'), { wrapper })
+
+    emitChange('event_guest_availability', 'INSERT', {})
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: guestKeys.slots('e1') }),
+    )
+    for (const key of [guestKeys.guests('e1'), guestKeys.links('e1'), plansKeys.bestSlots('e1')]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
+    }
   })
 
   it('waits for the group before listening', () => {

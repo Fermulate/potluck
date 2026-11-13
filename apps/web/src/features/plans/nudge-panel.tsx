@@ -123,9 +123,12 @@ export function NudgePanel({
                       nudge.variables[0] === m.userId
                     }
                     onClick={() => nudge.mutate([m.userId])}
-                    aria-label={`${t('events.nudge')} ${m.displayName}`}
                   >
-                    {nudgedAt ? t('events.nudgeAgain') : t('events.nudge')}
+                    {/* The accessible name starts with the visible words, so voice control matches. */}
+                    <span aria-hidden>{nudgedAt ? t('events.nudgeAgain') : t('events.nudge')}</span>
+                    <span className="sr-only">
+                      {`${nudgedAt ? t('events.nudgeAgain') : t('events.nudge')} ${m.displayName}`}
+                    </span>
                   </Button>
                 )}
               </li>

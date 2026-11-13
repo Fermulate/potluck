@@ -1,3 +1,4 @@
+import { t } from '@potluck/i18n'
 import { cn } from '@potluck/ui'
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react'
 import type { GridModel } from './grid'
@@ -35,7 +36,9 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
         {...props}
       >
         <div role="row" className="contents">
-          <span role="columnheader" className="sticky left-0 z-10 bg-card" />
+          <span role="columnheader" className="sticky left-0 z-10 bg-card">
+            <span className="sr-only">{t('availability.timeColumn')}</span>
+          </span>
           {model.days.map((day, i) => {
             const m = month.format(day.date)
             const prev = model.days[i - 1]
@@ -45,11 +48,12 @@ export const GridFrame = forwardRef<HTMLDivElement, GridFrameProps>(function Gri
               <span
                 role="columnheader"
                 key={day.key}
-                aria-label={
-                  shift ? `${fullDay.format(day.date)}, ${shift}` : fullDay.format(day.date)
-                }
                 className="flex flex-col items-center pb-1.5 text-center leading-tight"
               >
+                {/* The header's text for assistive tech; the stacked labels below are visual. */}
+                <span className="sr-only">
+                  {shift ? `${fullDay.format(day.date)}, ${shift}` : fullDay.format(day.date)}
+                </span>
                 <span aria-hidden className="text-[0.6875rem] font-semibold text-mute">
                   {weekday.format(day.date)}
                 </span>

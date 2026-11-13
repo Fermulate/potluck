@@ -22,6 +22,7 @@ Participants used throughout:
 - [Plan an event](#plan-an-event)
 - [Request availability](#request-availability)
 - [Paint availability and the live heatmap](#paint-availability-and-the-live-heatmap)
+- [Guest availability links](#guest-availability-links)
 - [Best slots and scheduling](#best-slots-and-scheduling)
 - [Recurring expenses](#recurring-expenses)
 - [Daily FX sync](#daily-fx-sync)
@@ -379,6 +380,50 @@ sequenceDiagram
   C-->>WB: levels 0 to 4 for the heat cells
 ```
 
+## Guest availability links
+
+A member shares a link; someone without an account opens `/a/<code>`, types a name and paints. Guests never sign in: two `anon` RPCs check the link on every call, and a token kept in the guest's browser (stored as a sha256 on the server) lets them edit their own answer later. See [ADR 16](adr/0016-guest-availability-links.md).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor M as Member
+  participant WM as Member's web
+  participant DB as DB
+  participant RT as Realtime
+  actor G as Guest
+  participant WG as Guest's browser
+
+  M->>WM: Share with guests, pick 24 hours, 7 days or 30 days and a guest cap
+  WM->>DB: rpc create_guest_link(event_id, ttl, max_guests)
+  DB->>DB: member, group open, plan polling, under 20 open links
+  DB-->>WM: event_guest_links row with a random code
+  M->>G: sends /a/code (copy or the share sheet)
+  G->>WG: opens /a/code, signed out
+  WG->>WG: read token for this code from localStorage (maybe none)
+  WG->>DB: rpc guest_link_preview(code, token) as anon
+  DB->>DB: status: revoked, removed, expired, archived,<br/>scheduled (only to a guest who answered),<br/>closed (not polling), full, or open
+  DB-->>WG: title, emojis, host first name, grid,<br/>heat counts per slot (no names), own answer if the token matches
+  G->>WG: types a name, paints yes or maybe
+  WG->>DB: rpc set_guest_availability(code, name, token, slots) as anon
+  DB->>DB: lock the link row, same checks, name 1 to 40 chars,<br/>slots must be grid cells
+  alt token matches a guest on this link
+    DB->>DB: rate limit 60 saves per hour, rename, replace slots
+  else new guest
+    DB->>DB: at least one slot, a free seat (else guest_link_full),<br/>under 20 new guests per 10 minutes
+    DB->>DB: insert event_guests with sha256(new token)
+  end
+  DB-->>WG: guest_token, saved
+  WG->>WG: keep token and name in localStorage
+  DB-->>RT: WAL changes on event_guest_availability
+  RT-->>WM: postgres_changes (members' RLS)
+  WM->>DB: select event_guests, event_guest_availability, best_slots
+  WM->>WM: heatmap and best times with the guest tagged
+  opt organizer cleans up
+    M->>DB: rpc remove_guest_answer(guest_id) or revoke_guest_link(link_id)
+  end
+```
+
 ## Best slots and scheduling
 
 `best_slots` ranks start times with the same rules as `rankSlots()` in core: a duration covers `ceil(duration / slot)` cells, a person counts as yes only if they marked yes on every cell, as maybe if every cell is yes or maybe, and `score = yes + 0.5 * maybe`.
@@ -393,7 +438,7 @@ sequenceDiagram
   actor M as Members
 
   W->>DB: rpc best_slots(event_id, limit 5)
-  DB->>DB: candidates = distinct slot_start of current members
+  DB->>DB: candidates = distinct slot_start of current members and guests
   DB->>DB: per candidate and member: cells covered, all yes?
   DB->>DB: keep yes + maybe >= min_attendees,<br/>order by score desc, then earliest, cap 100
   DB-->>W: starts_at, ends_at, yes_count, maybe_count, score, missing

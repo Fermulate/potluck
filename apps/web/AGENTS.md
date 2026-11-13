@@ -17,6 +17,7 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   `src/lib/prefetch.ts` and must not await it.
 - After adding, moving or renaming a route file run `pnpm gen:routes` (typecheck fails until then).
   Signed-out routes must be added to the public list in `src/features/shell/use-auth-redirects.ts`.
+- `/a/$code` (guest links) is signed out. Plan pages add guests to `members` with `guest: true`.
 - `/` is prerendered at build time (`prerender-landing.ts`): nothing on the landing page may touch
   `window` during render.
 - Server data goes through `@potluck/api` functions and `queryOptions`; never call `supabase.from()` in

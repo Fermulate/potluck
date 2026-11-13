@@ -1,6 +1,7 @@
 import { avatarSrc } from '@/lib/queries'
 import {
   cancelEvent,
+  guestQueries,
   planQueries,
   plansKeys,
   scheduleEvent,
@@ -30,6 +31,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AvailabilityHeatmap, type HeatRow } from '@/features/availability/availability-heatmap'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
+import { GuestLinksPanel } from '@/features/guests/guest-links-panel'
+import { GuestAnswers } from '@/features/guests/guest-list'
 import { buildGridModel, busySlots, slotKey, type GridModel } from '@/features/availability/grid'
 import { BackToPlans } from './back-link'
 import { BestTimes } from './best-times'
@@ -251,6 +254,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 timeZone={timeZone}
               />
             )}
+            <GuestAnswers eventId={event.id} />
             <PlanExpenses groupId={event.group_id} eventId={event.id} />
             {event.status !== 'cancelled' && (
               <a
@@ -272,10 +276,10 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
             )}
             {comments}
           </div>
-          <aside className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4">
             <div className="hidden lg:block">{details}</div>
             {cancelButton}
-          </aside>
+          </div>
         </div>
       )}
 
@@ -448,6 +452,8 @@ function PollingBody({
     [event.window_start, event.window_end],
   )
   const busyQ = useQuery(planQueries.busy(supabase, viewerId, range))
+  const guestsQ = useQuery(guestQueries.guests(supabase, event.id))
+  const guestSlotsQ = useQuery(guestQueries.slots(supabase, event.id))
   const [tab, setTab] = useState<'mine' | 'group' | null>(null)
   const [answered, setAnswered] = useState<boolean | null>(null)
   const [preview, setPreview] = useState<PlanBestSlot | null>(null)
@@ -460,12 +466,41 @@ function PollingBody({
   const rows = availQ.data
   const initial = useMemo(() => mySlots(rows ?? [], viewerId), [rows, viewerId])
   const mine = useMyAvailability(event.id, viewerId, initial)
-  const heatRows = useMemo<HeatRow[]>(
+  const memberRows = useMemo<HeatRow[]>(
     () =>
       (rows ?? []).map((r) => ({ userId: r.user_id, slot: slotKey(r.slot_start), level: r.level })),
     [rows],
   )
-  const responded = useMemo(() => new Set(heatRows.map((r) => r.userId)), [heatRows])
+  const responded = useMemo(() => new Set(memberRows.map((r) => r.userId)), [memberRows])
+  // Guests who answered through a guest link sit next to members in the heatmap and best
+  // times (tagged as guests); nudges stay members only.
+  const people = useMemo<PlanMember[]>(
+    () => [
+      ...members,
+      ...(guestsQ.data ?? []).map((g) => ({
+        userId: g.id,
+        role: 'member' as const,
+        displayName: g.display_name,
+        avatarPath: null,
+        deleted: false,
+        guest: true,
+      })),
+    ],
+    [members, guestsQ.data],
+  )
+  const heatRows = useMemo<HeatRow[]>(
+    () => [
+      ...memberRows,
+      ...(guestSlotsQ.data ?? []).map((r) => ({
+        userId: r.guest_id,
+        slot: slotKey(r.slot_start),
+        level: r.level,
+      })),
+    ],
+    [memberRows, guestSlotsQ.data],
+  )
+  const viewerMember = members.find((m) => m.userId === viewerId)
+  const guestPanel = <GuestLinksPanel event={event} viewer={viewerMember} timeZone={timeZone} />
   const highlight = useMemo(() => {
     if (!preview) return undefined
     const from = Date.parse(preview.starts_at)
@@ -483,7 +518,7 @@ function PollingBody({
   const best = (
     <BestTimes
       slots={bestQ.data}
-      members={members}
+      members={people}
       timeZone={timeZone}
       canLock={canLock}
       onLock={onLock}
@@ -534,7 +569,7 @@ function PollingBody({
             <AvailabilityHeatmap
               model={model}
               rows={heatRows}
-              members={members}
+              members={people}
               busy={busy}
               highlight={highlight}
               viewerId={viewerId}
@@ -562,10 +597,11 @@ function PollingBody({
             requests={requestsQ.data}
           />
         </div>
+        <div className="lg:hidden">{guestPanel}</div>
         <div className="flex flex-col gap-4 lg:hidden">{aside}</div>
         {comments}
       </div>
-      <aside className="hidden flex-col gap-4 lg:flex">
+      <div className="hidden flex-col gap-4 lg:flex">
         {desktop && best}
         <NudgeBlock
           event={event}
@@ -575,8 +611,9 @@ function PollingBody({
           timeZone={timeZone}
           requests={requestsQ.data}
         />
+        {guestPanel}
         {aside}
-      </aside>
+      </div>
     </div>
   )
 }

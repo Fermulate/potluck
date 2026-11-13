@@ -24,6 +24,7 @@ export const help = {
     houseRules: 'À propos des règles de la maison',
     painter: 'Souris, tactile et clavier',
     heatmap: 'Lire la carte de chaleur',
+    guestLinks: 'Comment marchent les liens invité',
     bestTimes: 'Comment les meilleurs horaires sont choisis',
     lockIn: 'Ce que fait le calage',
     calendarFeed: 'Comment marche le flux de calendrier',

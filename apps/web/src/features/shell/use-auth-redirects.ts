@@ -20,6 +20,7 @@ export function useAuthRedirects() {
           path === '/' ||
           path.startsWith('/sign-') ||
           path.startsWith('/join/') ||
+          path.startsWith('/a/') ||
           path.startsWith('/auth/') ||
           path === '/unsubscribe' ||
           path.endsWith('-password')

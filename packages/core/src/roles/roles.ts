@@ -20,6 +20,11 @@ export interface ActionContext {
   'event.create': undefined
   'event.lock': { isCreator: boolean }
   'event.cancel': { isCreator: boolean }
+  'guestLink.create': undefined
+  /** `isCreator`: the viewer made the link or organizes the plan. */
+  'guestLink.revoke': { isCreator: boolean }
+  /** `isCreator`: the viewer organizes the plan. */
+  'guest.remove': { isCreator: boolean }
   /** `inviteRole`: the role the invite grants. Only the owner may mint admin invites. */
   'invite.create': { membersCanInvite: boolean; inviteRole: 'admin' | 'member' }
   'member.remove': { targetRole: GroupRole; targetNetCents: number }
@@ -54,6 +59,9 @@ const RULES: { [A in Action]: Rule<A> } = {
   'event.create': anyone,
   'event.lock': (role, { isCreator }) => isCreator || isManager(role),
   'event.cancel': (role, { isCreator }) => isCreator || isManager(role),
+  'guestLink.create': anyone,
+  'guestLink.revoke': (role, { isCreator }) => isCreator || isManager(role),
+  'guest.remove': (role, { isCreator }) => isCreator || isManager(role),
   'invite.create': (role, { membersCanInvite, inviteRole }) =>
     inviteRole === 'admin' ? role === 'owner' : isManager(role) || membersCanInvite,
   'member.remove': (role, { targetRole, targetNetCents }) =>

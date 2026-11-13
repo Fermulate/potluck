@@ -443,6 +443,167 @@ export type Database = {
           },
         ]
       }
+      event_guest_availability: {
+        Row: {
+          event_id: string
+          guest_id: string
+          level: Database['public']['Enums']['availability_level']
+          slot_start: string
+        }
+        ComputedFields: never
+        Insert: {
+          event_id: string
+          guest_id: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start: string
+        }
+        Update: {
+          event_id?: string
+          guest_id?: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'event_guest_availability_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_guest_availability_guest_id_fkey'
+            columns: ['guest_id']
+            isOneToOne: false
+            referencedRelation: 'event_guests'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      event_guest_links: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string | null
+          event_id: string
+          expires_at: string
+          group_id: string
+          id: string
+          max_guests: number
+          revoked_at: string | null
+        }
+        ComputedFields: never
+        Insert: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          event_id: string
+          expires_at: string
+          group_id: string
+          id?: string
+          max_guests: number
+          revoked_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          event_id?: string
+          expires_at?: string
+          group_id?: string
+          id?: string
+          max_guests?: number
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'event_guest_links_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_guest_links_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_guest_links_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      event_guests: {
+        Row: {
+          created_at: string
+          display_name: string
+          event_id: string
+          group_id: string
+          id: string
+          link_id: string
+          removed_at: string | null
+          saves: number
+          saves_window_start: string
+          token_hash: string
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          display_name: string
+          event_id: string
+          group_id: string
+          id?: string
+          link_id: string
+          removed_at?: string | null
+          saves?: number
+          saves_window_start?: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          event_id?: string
+          group_id?: string
+          id?: string
+          link_id?: string
+          removed_at?: string | null
+          saves?: number
+          saves_window_start?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'event_guests_event_id_fkey'
+            columns: ['event_id']
+            isOneToOne: false
+            referencedRelation: 'events'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_guests_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'event_guests_link_id_fkey'
+            columns: ['link_id']
+            isOneToOne: false
+            referencedRelation: 'event_guest_links'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       event_rsvps: {
         Row: {
           event_id: string
@@ -1553,6 +1714,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_guest_link: {
+        Args: { event_id: string; max_guests?: number; ttl: string }
+        Returns: {
+          code: string
+          created_at: string
+          created_by: string | null
+          event_id: string
+          expires_at: string
+          group_id: string
+          id: string
+          max_guests: number
+          revoked_at: string | null
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'event_guest_links'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_invite: {
         Args: {
           email?: string
@@ -1657,6 +1838,32 @@ export type Database = {
         }[]
       }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
+      guest_link_preview: {
+        Args: { code: string; token?: string }
+        Returns: {
+          day_end_minute: number
+          day_start_minute: number
+          duration_minutes: number
+          emoji: string
+          ends_at: string
+          expires_at: string
+          group_emoji: string
+          guest_count: number
+          heat: Json
+          host_name: string
+          max_guests: number
+          my_name: string
+          my_slots: Json
+          respondents: number
+          slot_minutes: number
+          starts_at: string
+          status: string
+          timezone: string
+          title: string
+          window_end: string
+          window_start: string
+        }[]
+      }
       invite_preview: {
         Args: { code: string }
         Returns: {
@@ -1763,6 +1970,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      remove_guest_answer: { Args: { guest_id: string }; Returns: undefined }
       remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
       request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
       restore_expense: {
@@ -1821,6 +2029,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      revoke_guest_link: {
+        Args: { link_id: string }
+        Returns: {
+          code: string
+          created_at: string
+          created_by: string | null
+          event_id: string
+          expires_at: string
+          group_id: string
+          id: string
+          max_guests: number
+          revoked_at: string | null
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'event_guest_links'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       schedule_event: {
         Args: { event_id: string; starts_at: string }
         Returns: {
@@ -1856,6 +2084,13 @@ export type Database = {
       }
       set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
       set_default_split: { Args: { group_id: string; split: Json }; Returns: Json }
+      set_guest_availability: {
+        Args: { code: string; name: string; slots: Json; token: string }
+        Returns: {
+          guest_token: string
+          saved: number
+        }[]
+      }
       set_member_role: {
         Args: { group_id: string; role: Database['public']['Enums']['group_role']; user_id: string }
         Returns: undefined

@@ -127,4 +127,27 @@ describe('rankSlots', () => {
     })
     expect(ranked[0]).toMatchObject({ startsAt: at('18:00'), endsAt: at('18:45'), yesCount: 1 })
   })
+  // Same case as the best_slots test in supabase/tests/22_guest_links.test.sql.
+  it('counts guests like members, toward the minimum too', () => {
+    const guestRows = [
+      row('m1', '10:00'),
+      row('m1', '10:30'),
+      row('ana', '10:00'),
+      row('ana', '10:30'),
+      row('ben', '10:00', 'maybe'),
+      row('ben', '10:30', 'maybe'),
+    ]
+    const people = { durationMinutes: 60, slotMinutes: 30, members: ['owner', 'm1', 'm2'] }
+    expect(rankSlots(guestRows, { ...people, minAttendees: 3, guests: ['ana', 'ben'] })).toEqual([
+      {
+        startsAt: at('10:00'),
+        endsAt: at('11:00'),
+        yesCount: 2,
+        maybeCount: 1,
+        score: 2.5,
+        missing: ['m2', 'owner'],
+      },
+    ])
+    expect(rankSlots(guestRows, { ...people, minAttendees: 3 })).toEqual([])
+  })
 })

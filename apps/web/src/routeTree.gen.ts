@@ -21,6 +21,7 @@ import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
 import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
+import { Route as ACodeRouteImport } from './routes/a.$code'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
@@ -102,6 +103,11 @@ const AppNotificationsRoute = AppNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
   getParentRoute: () => AppRoute,
+} as any)
+const ACodeRoute = ACodeRouteImport.update({
+  id: '/a/$code',
+  path: '/a/$code',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
   '/notifications': typeof AppNotificationsRoute
+  '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
@@ -265,6 +272,7 @@ export interface FileRoutesByTo {
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
   '/notifications': typeof AppNotificationsRoute
+  '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/_app/activity': typeof AppActivityRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/notifications': typeof AppNotificationsRoute
+  '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
   '/join/$code': typeof JoinCodeRoute
@@ -338,6 +347,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/home'
     | '/notifications'
+    | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
@@ -373,6 +383,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/home'
     | '/notifications'
+    | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
@@ -408,6 +419,7 @@ export interface FileRouteTypes {
     | '/_app/activity'
     | '/_app/home'
     | '/_app/notifications'
+    | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
     | '/join/$code'
@@ -442,6 +454,7 @@ export interface RootRouteChildren {
   TwoFactorRoute: typeof TwoFactorRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
+  ACodeRoute: typeof ACodeRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   DevKitRoute: typeof DevKitRoute
   JoinCodeRoute: typeof JoinCodeRoute
@@ -532,6 +545,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/notifications'
       preLoaderRoute: typeof AppNotificationsRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/a/$code': {
+      id: '/a/$code'
+      path: '/a/$code'
+      fullPath: '/a/$code'
+      preLoaderRoute: typeof ACodeRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/auth/callback': {
       id: '/auth/callback'
@@ -761,6 +781,7 @@ const rootRouteChildren: RootRouteChildren = {
   TwoFactorRoute: TwoFactorRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,
+  ACodeRoute: ACodeRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   DevKitRoute: DevKitRoute,
   JoinCodeRoute: JoinCodeRoute,
