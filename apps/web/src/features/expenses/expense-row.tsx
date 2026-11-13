@@ -5,7 +5,7 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { paidSummary, settlementText, viewerLine } from './expense-math'
+import { paidSummary, settlementText, viewerLine, type NameOf } from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -65,19 +65,21 @@ export function ExpenseRow({
   expense,
   viewerId,
   nameOf,
+  groupCurrency,
   locale,
 }: {
   expense: ExpenseWithSplits
   viewerId: string
   /** First name, or "You" for the viewer. */
-  nameOf: (id: string) => string
+  nameOf: NameOf
+  /** The group's currency: the right side is the viewer's change in the group balance. */
+  groupCurrency: string
   locale?: string
 }) {
-  const line = viewerLine(expense, viewerId)
+  const line = viewerLine(expense, viewerId, groupCurrency)
   const subtitle = paidSummary(expense, viewerId, nameOf, locale)
   const refund = expense.is_refund
-  const lineAmount =
-    line.kind === 'none' ? '' : formatMoney(line.cents, expense.currency, { locale })
+  const lineAmount = line.kind === 'none' ? '' : formatMoney(line.cents, groupCurrency, { locale })
 
   return (
     <Link
@@ -127,7 +129,7 @@ export function ExpenseRow({
               </span>
               <Money
                 cents={line.cents}
-                currency={expense.currency}
+                currency={groupCurrency}
                 locale={locale}
                 tone={line.kind === 'lent' ? 'owed' : 'owe'}
                 className="text-[0.9375rem] font-bold"

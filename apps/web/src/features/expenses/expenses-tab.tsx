@@ -232,7 +232,8 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
                           <ExpenseRow
                             expense={item.expense}
                             viewerId={me}
-                            nameOf={(id) => nameOf(id)}
+                            groupCurrency={group.data?.currency ?? item.expense.currency}
+                            nameOf={nameOf}
                           />
                         ) : (
                           <SettlementRow

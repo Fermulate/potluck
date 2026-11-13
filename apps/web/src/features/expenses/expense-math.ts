@@ -1,11 +1,15 @@
 import type { ExpenseWithSplits, MoneyMember, Settlement } from '@potluck/api'
-import { convert, minorUnits, type BalanceExpense } from '@potluck/core'
+import { convert, expenseEffect, minorUnits, type BalanceExpense } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { joinNames } from '@/features/plans/format'
 import { categoryLabel } from './format'
 
+/** What an expense does to the viewer's balance, in the group currency. */
 export type ViewerLine =
   { kind: 'lent'; cents: number } | { kind: 'borrowed'; cents: number } | { kind: 'none' }
+
+/** First name for a user id, "You" for the viewer, or "you" with `lower` (mid-sentence). */
+export type NameOf = (id: string, options?: { lower?: boolean }) => string
 
 /** Everyone who paid and how much; an expense read without payers had one, `paid_by`. */
 export function payersOf(
@@ -19,13 +23,35 @@ export function payersOf(
 }
 
 /**
- * What an expense means for the viewer, in the expense currency: what they paid minus their
- * share. A refund flips it (the payers received the money). "lent" means the group owes them.
+ * "You and Cleo", "Ben, you and Cleo": the viewer first, then the others in the order given.
+ * Mid-sentence (`start: false`) the viewer reads "you".
  */
-export function viewerLine(expense: ExpenseWithSplits, viewerId: string): ViewerLine {
-  const mine = expense.expense_splits.find((s) => s.user_id === viewerId)?.share_cents ?? 0
-  const paid = payersOf(expense).find((p) => p.user_id === viewerId)?.paid_cents ?? 0
-  const net = (expense.is_refund ? -1 : 1) * (paid - mine)
+export function namesOf(
+  ids: readonly string[],
+  viewerId: string,
+  nameOf: NameOf,
+  { start = true, max = 2 }: { start?: boolean; max?: number } = {},
+): string {
+  const ordered = [...ids.filter((id) => id === viewerId), ...ids.filter((id) => id !== viewerId)]
+  return joinNames(
+    ordered.map((id, i) => nameOf(id, { lower: !start || i > 0 })),
+    max,
+  )
+}
+
+/**
+ * What an expense means for the viewer: their change in the group balance, in the group
+ * currency, from core `expenseEffect` (the same numbers as the `group_balances` view). Converting
+ * first and spreading after is what the server does, so a row can never say "you borrowed $0.01"
+ * while the balance is all square. "lent" means the group owes them; a refund is already flipped.
+ */
+export function viewerLine(
+  expense: ExpenseWithSplits,
+  viewerId: string,
+  groupCurrency: string,
+): ViewerLine {
+  const effect = expenseEffect({ ...toBalanceExpense(expense), deletedAt: null }, { groupCurrency })
+  const net = effect?.[viewerId] ?? 0
   return net > 0
     ? { kind: 'lent', cents: net }
     : net < 0
@@ -35,18 +61,18 @@ export function viewerLine(expense: ExpenseWithSplits, viewerId: string): Viewer
 
 /**
  * "Ava paid $90.00", "You and Ben paid $90.00", or for a refund "Ava got back $40.00".
- * `nameOf` gives "You" for the viewer.
+ * The viewer comes first.
  */
 export function paidSummary(
   expense: ExpenseWithSplits,
   viewerId: string,
-  nameOf: (id: string) => string,
+  nameOf: NameOf,
   locale?: string,
 ): string {
   const amount = formatMoney(expense.amount_cents, expense.currency, { locale })
   const ids = payersOf(expense).map((p) => p.user_id)
   if (ids.length > 1) {
-    const names = joinNames(ids.map(nameOf), 2)
+    const names = namesOf(ids, viewerId, nameOf)
     return expense.is_refund
       ? t('expenses.refund.gotBackMany', { names, amount })
       : t('expenses.payers.paidMany', { names, amount })

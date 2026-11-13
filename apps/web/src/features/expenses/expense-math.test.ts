@@ -13,8 +13,11 @@ import { BEN, CLEO, ME, expense, members } from './test-utils'
 
 describe('viewerLine', () => {
   it('is what you lent when you paid, and your share when someone else did', () => {
-    expect(viewerLine(expense({ paid_by: ME }), ME)).toEqual({ kind: 'lent', cents: 2000 })
-    expect(viewerLine(expense({ paid_by: BEN }), ME)).toEqual({ kind: 'borrowed', cents: 1000 })
+    expect(viewerLine(expense({ paid_by: ME }), ME, 'USD')).toEqual({ kind: 'lent', cents: 2000 })
+    expect(viewerLine(expense({ paid_by: BEN }), ME, 'USD')).toEqual({
+      kind: 'borrowed',
+      cents: 1000,
+    })
     expect(
       viewerLine(
         expense({
@@ -24,8 +27,34 @@ describe('viewerLine', () => {
           ],
         }),
         ME,
+        'USD',
       ),
     ).toEqual({ kind: 'none' })
+  })
+
+  it('agrees with the balance on a foreign expense with several payers', () => {
+    // 10.00 EUR at 0.5 into USD is 5.00. I paid 3.34 EUR and my share is 3.33 EUR, so in euros
+    // I am a cent ahead; but converted first and spread after (as the server does), I paid
+    // $1.67 and my share is $1.67 (the tied leftover cent goes to the smaller id, mine).
+    const foreign = expense({
+      currency: 'EUR',
+      fx_rate: '0.500000000000',
+      amount_cents: 1000,
+      expense_payers: [
+        { user_id: ME, paid_cents: 334 },
+        { user_id: BEN, paid_cents: 666 },
+      ],
+      expense_splits: [
+        { user_id: ME, share_cents: 333, weight: null, adjustment_cents: null },
+        { user_id: BEN, share_cents: 333, weight: null, adjustment_cents: null },
+        { user_id: CLEO, share_cents: 334, weight: null, adjustment_cents: null },
+      ],
+    })
+    const balances = computeBalances([toBalanceExpense(foreign)], [], { groupCurrency: 'USD' })
+    expect(balances[ME]).toBe(0)
+    expect(viewerLine(foreign, ME, 'USD')).toEqual({ kind: 'none' })
+    expect(viewerLine(foreign, CLEO, 'USD')).toEqual({ kind: 'borrowed', cents: -balances[CLEO]! })
+    expect(viewerLine(foreign, BEN, 'USD')).toEqual({ kind: 'lent', cents: balances[BEN]! })
   })
 })
 
@@ -139,11 +168,11 @@ describe('several payers and refunds', () => {
   const nameOf = (id: string) => (id === ME ? 'You' : id === BEN ? 'Ben' : 'Cleo')
 
   it('nets what each person paid against their share', () => {
-    expect(viewerLine(dinner, ME)).toEqual({ kind: 'lent', cents: 3000 })
-    expect(viewerLine(dinner, BEN)).toEqual({ kind: 'none' })
-    expect(viewerLine(dinner, CLEO)).toEqual({ kind: 'borrowed', cents: 3000 })
-    expect(viewerLine(refund, ME)).toEqual({ kind: 'borrowed', cents: 2000 })
-    expect(viewerLine(refund, BEN)).toEqual({ kind: 'lent', cents: 2000 })
+    expect(viewerLine(dinner, ME, 'USD')).toEqual({ kind: 'lent', cents: 3000 })
+    expect(viewerLine(dinner, BEN, 'USD')).toEqual({ kind: 'none' })
+    expect(viewerLine(dinner, CLEO, 'USD')).toEqual({ kind: 'borrowed', cents: 3000 })
+    expect(viewerLine(refund, ME, 'USD')).toEqual({ kind: 'borrowed', cents: 2000 })
+    expect(viewerLine(refund, BEN, 'USD')).toEqual({ kind: 'lent', cents: 2000 })
   })
 
   it('agrees with core balances to the cent', () => {
