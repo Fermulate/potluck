@@ -3,6 +3,7 @@ export {
   parseReceipt,
   parseReceiptAmount,
   receiptDateOrder,
+  receiptItemsMatch,
   type ParseReceiptOptions,
   type ReceiptItem,
   type ReceiptScan,

@@ -1,7 +1,13 @@
 import type { ReceiptScan } from '@potluck/core'
 import { describe, expect, it } from 'vitest'
 import { initialDraft, itemsTotal } from '../form/split-state'
-import { defaultChoice, fillFromScan, scanFoundSomething, scanItemsTotal } from './scan-fill'
+import {
+  bestScan,
+  defaultChoice,
+  fillFromScan,
+  scanFoundSomething,
+  scanItemsTotal,
+} from './scan-fill'
 
 const scan = (over: Partial<ReceiptScan> = {}): ReceiptScan => ({
   merchant: "Joe's Diner",
@@ -16,6 +22,7 @@ const scan = (over: Partial<ReceiptScan> = {}): ReceiptScan => ({
     { description: 'Cheeseburger', amountCents: 2500, quantity: 2 },
     { description: 'Fries', amountCents: 1950, quantity: 1 },
   ],
+  itemsMatch: 'exact',
   ...over,
 })
 
@@ -29,6 +36,20 @@ describe('scan review defaults', () => {
     expect(
       defaultChoice(scan({ merchant: null, date: null, totalCents: null, items: [] }), ''),
     ).toEqual({ name: false, date: false, total: false, items: false })
+  })
+
+  it('leaves items unticked when they come nowhere near the total', () => {
+    expect(defaultChoice(scan({ itemsMatch: 'off' }), '').items).toBe(false)
+    expect(defaultChoice(scan({ itemsMatch: 'close' }), '').items).toBe(true)
+  })
+
+  it('picks the reading whose items come closest to its total', () => {
+    const off = scan({ itemsMatch: 'off' })
+    const exact = scan({ itemsMatch: 'exact', merchant: 'Second look' })
+    const empty = scan({ itemsMatch: null, totalCents: null, items: [] })
+    expect(bestScan([off, exact]).merchant).toBe('Second look')
+    expect(bestScan([off, empty])).toBe(off)
+    expect(bestScan([empty])).toBe(empty)
   })
 
   it('knows when a scan found nothing usable', () => {

@@ -420,6 +420,8 @@ export const expenses = {
     openPdf: 'Abrir o PDF',
     partial:
       'Salvo, mas os arquivos não foram anexados. Edite a despesa para adicioná-los de novo.',
+    zoomIn: 'Aproximar',
+    zoomOut: 'Afastar',
   },
   scan: {
     button: 'Escanear um recibo',
@@ -451,6 +453,9 @@ export const expenses = {
     attachOnly: 'Só anexar a foto',
     again: 'Tentar outra foto',
     applied: 'Preenchido com o recibo. Confira e escolha quem pegou o quê.',
+    closer: 'Olhando mais de perto',
+    checkPrices: 'Confira os preços com a foto, ou desmarque os itens para usar só o total.',
+    photoAlt: 'O recibo que você escaneou',
   },
 } satisfies Translation<typeof en.expenses>
 

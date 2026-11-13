@@ -36,7 +36,22 @@ test.describe('receipts', () => {
     await expect(review).toBeVisible({ timeout: 90_000 })
     await expect(review.getByText('Corner Bistro')).toBeVisible()
     await expect(review.getByText(t('expenses.scan.items', { count: 3 }))).toBeVisible()
-    await expect(review).toContainText(formatMoney(2550, 'USD'))
+    await expect(review.getByRole('img', { name: t('expenses.scan.photoAlt') })).toBeVisible()
+    const priceOf = (label: string) =>
+      review.getByRole('textbox', { name: `${t('expenses.itemized.itemAmount')}, ${label}` })
+    await expect(priceOf(t('expenses.scan.total'))).toHaveValue('25.50')
+    // A price corrected against the photo is checked against the total again.
+    const warning = review.getByRole('status').filter({ hasText: t('expenses.scan.checkPrices') })
+    await expect(warning).toHaveCount(0)
+    await priceOf('Lemonade').fill('4.75')
+    await expect(warning).toContainText(
+      t('expenses.scan.itemsOff', {
+        items: formatMoney(2575, 'USD'),
+        total: formatMoney(2550, 'USD'),
+      }),
+    )
+    await priceOf('Lemonade').fill('4.50')
+    await expect(warning).toHaveCount(0)
     await review.getByRole('button', { name: t('expenses.scan.apply') }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
 
@@ -78,7 +93,13 @@ test.describe('receipts', () => {
       name: t('expenses.attachments.position', { number: 1, count: 2 }),
     })
     await expect(viewer).toBeVisible()
-    await expect(viewer.getByRole('img')).toBeVisible()
+    const shown = viewer.getByRole('img')
+    await expect(shown).toBeVisible()
+    // Zoom in to read the small print, then back out.
+    await viewer.getByRole('button', { name: t('expenses.attachments.zoomIn') }).click()
+    await expect(shown).toHaveAttribute('style', /scale\(1\.5\)/)
+    await viewer.getByRole('button', { name: t('expenses.attachments.zoomOut') }).click()
+    await expect(shown).toHaveAttribute('style', /scale\(1\)/)
     await viewer.getByRole('button', { name: t('expenses.attachments.next') }).click()
     await expect(
       page.getByRole('dialog', {

@@ -355,6 +355,25 @@ function itemOf(rest: string): { description: string; quantity: number } {
   }
 }
 
+/**
+ * Whether the items, with tax and tip added and the discount taken off, come to the total:
+ * `exact`, `close` (within 5% of it), `off`, or null when there is no total or no item. Run again
+ * after the person corrects a price.
+ */
+export function receiptItemsMatch(
+  scan: Pick<ReceiptScan, 'totalCents' | 'taxCents' | 'tipCents' | 'discountCents' | 'items'>,
+): ReceiptScan['itemsMatch'] {
+  const total = scan.totalCents
+  if (total === null || total <= 0 || scan.items.length === 0) return null
+  const sum =
+    scan.items.reduce((a, i) => a + i.amountCents, 0) +
+    (scan.taxCents ?? 0) +
+    (scan.tipCents ?? 0) -
+    (scan.discountCents ?? 0)
+  const diff = Math.abs(sum - total)
+  return diff === 0 ? 'exact' : diff * 20 <= total ? 'close' : 'off'
+}
+
 // The parser -----------------------------------------------------------------------------------
 
 /**
@@ -481,12 +500,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     }
   }
 
-  let itemsMatch: ReceiptScan['itemsMatch'] = null
-  if (total !== null && total > 0 && offered.length > 0) {
-    const diff = Math.abs(itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0) - total)
-    itemsMatch = diff === 0 ? 'exact' : diff * 20 <= total ? 'close' : 'off'
-  }
-
   return {
     merchant: findMerchant(lines),
     // A receipt that names its currency says where it was printed, which beats the viewer's
@@ -503,6 +516,12 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     tipCents: tip,
     discountCents: discount,
     items: offered,
-    itemsMatch,
+    itemsMatch: receiptItemsMatch({
+      totalCents: total,
+      taxCents: tax,
+      tipCents: tip,
+      discountCents: discount,
+      items: offered,
+    }),
   }
 }

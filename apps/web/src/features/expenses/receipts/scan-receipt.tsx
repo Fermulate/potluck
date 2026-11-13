@@ -1,4 +1,4 @@
-import { parseReceipt, receiptDateOrder, type ReceiptScan } from '@potluck/core'
+import { parseReceipt, receiptDateOrder, receiptItemsMatch, type ReceiptScan } from '@potluck/core'
 import { formatDate, formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Button,
@@ -10,16 +10,18 @@ import {
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { motion } from 'motion/react'
-import { ScanLine } from 'lucide-react'
+import { AlertTriangle, ScanLine } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { todayIn } from '../format'
+import { CompactMoneyInput } from '../form/compact-inputs'
 import type { SplitDraft } from '../form/split-state'
-import { Money } from '../money'
 import { draftFromFile, type AttachmentDraft } from './attachments-state'
 import { prepareImage } from './image'
 import { ReaderUnavailableError, readReceiptText, type ReadStage } from './ocr'
+import { ZoomableImage } from './zoomable-image'
 import {
+  bestScan,
   defaultChoice,
   fillFromScan,
   scanFoundSomething,
@@ -85,20 +87,25 @@ export function ScanReceipt({
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-    const photo = await prepareImage(picked)
-    const photoUrl = URL.createObjectURL(photo)
-    setState({ phase: 'reading', photo, url: photoUrl, stage: 'loading', progress: 0 })
-    try {
-      const text = await readReceiptText(photo, {
-        signal: controller.signal,
-        onProgress: ({ stage, progress }) =>
-          setState((s) => (s.phase === 'reading' ? { ...s, stage, progress } : s)),
-      })
-      const scan = parseReceipt(text, {
+    // The reader works from the original photo; the shrunk JPEG is only what gets uploaded.
+    const photoUrl = URL.createObjectURL(picked)
+    setState({ phase: 'reading', photo: picked, url: photoUrl, stage: 'loading', progress: 0 })
+    const upload = prepareImage(picked)
+    const parse = (text: string) =>
+      parseReceipt(text, {
         currency,
         dateOrder: receiptDateOrder(currency, intlLocale()),
         today: todayIn(timeZone),
       })
+    try {
+      const texts = await readReceiptText(picked, {
+        signal: controller.signal,
+        onProgress: ({ stage, progress }) =>
+          setState((s) => (s.phase === 'reading' ? { ...s, stage, progress } : s)),
+        enough: (text) => parse(text).itemsMatch === 'exact',
+      })
+      const scan = bestScan((texts.length > 0 ? texts : ['']).map(parse))
+      const photo = await upload
       setState(
         scanFoundSomething(scan)
           ? {
@@ -207,6 +214,7 @@ export function ScanReceipt({
             state.phase === 'review' ? t('expenses.scan.reviewHint') : t('expenses.scan.private')
           }
           closeLabel={t('common.close')}
+          size={state.phase === 'review' ? 'lg' : 'md'}
           footer={footer}
         >
           {state.phase === 'reading' && (
@@ -214,10 +222,12 @@ export function ScanReceipt({
           )}
           {state.phase === 'review' && (
             <Review
+              url={state.url}
               scan={state.scan}
               choice={state.choice}
               formCurrency={currency}
               timeZone={timeZone}
+              onScan={(scan) => setState({ ...state, scan })}
               onChoice={(choice) => setState({ ...state, choice })}
               attach={state.attach}
               canAttach={canAttach}
@@ -242,7 +252,13 @@ export function ScanReceipt({
 function Reading({ url, stage, progress }: { url: string; stage: ReadStage; progress: number }) {
   const reduced = usePrefersReducedMotion()
   const percent = Math.round(progress * 100)
-  const label = stage === 'loading' ? t('expenses.scan.loading') : t('expenses.scan.reading')
+  const label =
+    stage === 'loading'
+      ? t('expenses.scan.loading')
+      : stage === 'closer'
+        ? t('expenses.scan.closer')
+        : t('expenses.scan.reading')
+  const reading = stage !== 'loading'
   return (
     <div className="flex flex-col items-center gap-5 pt-2" aria-live="polite">
       <div className="relative w-full max-w-[16rem] overflow-hidden rounded-card border border-line bg-sunken">
@@ -264,9 +280,9 @@ function Reading({ url, stage, progress }: { url: string; stage: ReadStage; prog
       </div>
       <div className="flex items-center gap-3">
         <ProgressRing
-          value={stage === 'reading' ? progress : 0}
+          value={reading ? progress : 0}
           label={label}
-          valueText={t('expenses.scan.percent', { percent: stage === 'reading' ? percent : 0 })}
+          valueText={t('expenses.scan.percent', { percent: reading ? percent : 0 })}
           size={44}
           tone="saffron"
         />
@@ -307,150 +323,196 @@ function Message({ url, children }: { url?: string; children: ReactNode }) {
 }
 
 /**
- * What the receipt says, set like a till roll: one box per part, so a misread date or a wrong
- * total can be left out while the rest is used.
+ * What the receipt says, set like a till roll beside the photo: one box per part, so a misread
+ * date or a wrong total can be left out, and every price can be corrected against the photo.
  */
 function Review({
+  url,
   scan,
   choice,
   formCurrency,
   timeZone,
+  onScan,
   onChoice,
   attach,
   canAttach,
   onAttach,
 }: {
+  url: string
   scan: ReceiptScan
   choice: ScanChoice
   formCurrency: string
   timeZone: string
+  onScan: (scan: ReceiptScan) => void
   onChoice: (choice: ScanChoice) => void
   attach: boolean
   canAttach: boolean
   onAttach: (attach: boolean) => void
 }) {
   const id = useId()
+  const locale = intlLocale()
   const currency = scan.currency ?? formCurrency
   const itemsTotal = useMemo(() => scanItemsTotal(scan), [scan])
-  const off = scan.totalCents !== null && scan.items.length > 0 && itemsTotal !== scan.totalCents
   const toggle = (key: keyof ScanChoice) => (on: boolean | 'indeterminate') =>
     onChoice({ ...choice, [key]: on === true })
+  // A corrected price is checked against the total again straight away.
+  const edit = (patch: Partial<ReceiptScan>) => {
+    const next = { ...scan, ...patch }
+    onScan({ ...next, itemsMatch: receiptItemsMatch(next) })
+  }
+  const price = (
+    label: string,
+    cents: number | null,
+    onChange: (cents: number) => void,
+    className?: string,
+  ) => (
+    <CompactMoneyInput
+      currency={currency}
+      locale={locale}
+      value={cents}
+      onValueChange={(next) => onChange(next ?? 0)}
+      aria-label={`${t('expenses.itemized.itemAmount')}, ${label}`}
+      className={cn('h-9 w-24 shrink-0 bg-card text-right', className)}
+    />
+  )
 
   const row = (part: keyof ScanChoice, label: ReactNode, value?: ReactNode, strong = false) => (
-    <div className="flex items-center gap-3 py-2.5">
+    <div className="flex items-center gap-3 py-2">
       <Checkbox id={`${id}-${part}`} checked={choice[part]} onCheckedChange={toggle(part)} />
       <label
         htmlFor={`${id}-${part}`}
         className={cn(
-          'flex min-w-0 flex-1 cursor-pointer items-baseline justify-between gap-3',
+          'min-w-0 flex-1 cursor-pointer truncate',
+          strong && 'font-bold',
           !choice[part] && 'text-mute line-through decoration-line-strong',
         )}
       >
-        <span className={cn('min-w-0 truncate', strong && 'font-bold')}>{label}</span>
-        {value && (
-          <span
-            className={cn('shrink-0 tabular', strong ? 'text-lg font-extrabold' : 'font-semibold')}
-          >
-            {value}
-          </span>
-        )}
+        {label}
       </label>
+      {value}
     </div>
   )
+  const extras = (
+    [
+      ['tax', 'taxCents'],
+      ['tip', 'tipCents'],
+      ['discount', 'discountCents'],
+    ] as const
+  ).filter(([, key]) => scan[key] !== null)
 
   return (
-    <div className="flex flex-col gap-4 pt-1">
-      <div className="relative rounded-t-card border border-b-0 border-line bg-paper px-4 pt-3 pb-6 text-ink [--tooth:0.625rem] [mask:linear-gradient(#000_0_0)_top/100%_calc(100%-var(--tooth))_no-repeat,conic-gradient(from_135deg_at_top,#000_90deg,#0000_0)_bottom/calc(2*var(--tooth))_var(--tooth)_repeat-x]">
-        {scan.merchant &&
-          row(
-            'name',
-            <span className="font-display text-2xl leading-tight italic">{scan.merchant}</span>,
-          )}
-        {scan.date &&
-          row(
-            'date',
-            t('expenses.scan.date'),
-            formatDate(scan.date, { timeZone, style: 'medium' }),
-          )}
-        {scan.items.length > 0 && (
-          <div className="border-t border-dashed border-line-strong">
-            {row('items', t('expenses.scan.items', { count: scan.items.length }))}
-            <ul
-              className={cn(
-                'mb-2 ml-9 flex flex-col gap-1 text-sm',
-                !choice.items && 'text-mute opacity-60',
-              )}
-            >
-              {scan.items.map((item, i) => (
-                <li key={i} className="flex justify-between gap-3">
-                  <span className="min-w-0 truncate">
-                    {item.quantity > 1
+    <div className="flex flex-col gap-4 pt-1 md:flex-row md:items-start">
+      <ZoomableImage
+        src={url}
+        alt={t('expenses.scan.photoAlt')}
+        className="h-48 w-full shrink-0 rounded-card border border-line bg-sunken sm:h-64 md:sticky md:top-0 md:h-[26rem] md:w-56"
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div className="relative rounded-t-card border border-b-0 border-line bg-paper px-4 pt-2 pb-6 text-ink [--tooth:0.625rem] [mask:linear-gradient(#000_0_0)_top/100%_calc(100%-var(--tooth))_no-repeat,conic-gradient(from_135deg_at_top,#000_90deg,#0000_0)_bottom/calc(2*var(--tooth))_var(--tooth)_repeat-x]">
+          {scan.merchant &&
+            row(
+              'name',
+              <span className="font-display text-2xl leading-tight italic">{scan.merchant}</span>,
+            )}
+          {scan.date &&
+            row(
+              'date',
+              t('expenses.scan.date'),
+              <span className="shrink-0 tabular font-semibold">
+                {formatDate(scan.date, { timeZone, style: 'medium' })}
+              </span>,
+            )}
+          {scan.items.length > 0 && (
+            <div className="border-t border-dashed border-line-strong">
+              {row('items', t('expenses.scan.items', { count: scan.items.length }))}
+              <ul
+                className={cn(
+                  'mb-2 ml-9 flex flex-col gap-1.5 text-sm',
+                  !choice.items && 'text-mute opacity-60',
+                )}
+              >
+                {scan.items.map((item, i) => {
+                  const name =
+                    item.quantity > 1
                       ? t('expenses.scan.quantity', {
                           count: item.quantity,
                           name: item.description,
                         })
-                      : item.description}
-                  </span>
-                  <Money cents={item.amountCents} currency={currency} tone="neutral" />
-                </li>
-              ))}
-              {(
-                [
-                  ['tax', scan.taxCents],
-                  ['tip', scan.tipCents],
-                  ['discount', scan.discountCents],
-                ] as const
-              ).map(
-                ([key, cents]) =>
-                  cents !== null && (
-                    <li key={key} className="flex justify-between gap-3 text-mute">
-                      <span>{t(`expenses.itemized.${key}`)}</span>
-                      <Money
-                        cents={key === 'discount' ? -cents : cents}
-                        currency={currency}
-                        tone="neutral"
-                      />
+                      : item.description
+                  return (
+                    <li key={i} className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 break-words">{name}</span>
+                      {price(name, item.amountCents, (cents) =>
+                        edit({
+                          items: scan.items.map((x, j) =>
+                            j === i ? { ...x, amountCents: cents } : x,
+                          ),
+                        }),
+                      )}
                     </li>
-                  ),
+                  )
+                })}
+                {extras.map(([label, key]) => (
+                  <li key={key} className="flex items-center justify-between gap-3 text-mute">
+                    <span>{t(`expenses.itemized.${label}`)}</span>
+                    {price(t(`expenses.itemized.${label}`), scan[key], (cents) =>
+                      edit({ [key]: cents }),
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {choice.items && (
+                <p className="mb-2 ml-9 text-xs text-mute">{t('expenses.scan.itemsHint')}</p>
               )}
-            </ul>
-            {choice.items && (
-              <p className="mb-2 ml-9 text-xs text-mute">{t('expenses.scan.itemsHint')}</p>
-            )}
-          </div>
-        )}
-        {scan.totalCents !== null && (
-          <div className="border-t border-dashed border-line-strong">
-            {row(
-              'total',
-              t('expenses.scan.total'),
-              <Money cents={scan.totalCents} currency={currency} tone="neutral" />,
-              true,
-            )}
-            {off && (
-              <p className="ml-9 text-xs font-medium text-saffron-ink">
+            </div>
+          )}
+          {scan.totalCents !== null && (
+            <div className="border-t border-dashed border-line-strong">
+              {row(
+                'total',
+                t('expenses.scan.total'),
+                price(
+                  t('expenses.scan.total'),
+                  scan.totalCents,
+                  (cents) => edit({ totalCents: cents }),
+                  'text-lg font-extrabold',
+                ),
+                true,
+              )}
+            </div>
+          )}
+          {scan.currency && scan.currency !== formCurrency && (
+            <p className="mt-1 flex justify-between border-t border-dashed border-line-strong pt-2.5 text-sm">
+              <span className="text-mute">{t('expenses.scan.currency')}</span>
+              <span className="font-semibold">{scan.currency}</span>
+            </p>
+          )}
+        </div>
+        {scan.itemsMatch !== null && scan.itemsMatch !== 'exact' && scan.totalCents !== null && (
+          <div
+            role="status"
+            className="flex gap-2.5 rounded-card bg-saffron-soft px-3 py-2.5 text-sm text-saffron-ink"
+          >
+            <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+            <p>
+              <span className="font-semibold">
                 {t('expenses.scan.itemsOff', {
                   items: formatMoney(itemsTotal, currency),
                   total: formatMoney(scan.totalCents, currency),
                 })}
-              </p>
-            )}
+              </span>{' '}
+              {t('expenses.scan.checkPrices')}
+            </p>
           </div>
         )}
-        {scan.currency && scan.currency !== formCurrency && (
-          <p className="mt-1 flex justify-between border-t border-dashed border-line-strong pt-2.5 text-sm">
-            <span className="text-mute">{t('expenses.scan.currency')}</span>
-            <span className="font-semibold">{scan.currency}</span>
-          </p>
+        {canAttach && (
+          <Checkbox
+            label={t('expenses.scan.attach')}
+            checked={attach}
+            onCheckedChange={(on) => onAttach(on === true)}
+          />
         )}
       </div>
-      {canAttach && (
-        <Checkbox
-          label={t('expenses.scan.attach')}
-          checked={attach}
-          onCheckedChange={(on) => onAttach(on === true)}
-        />
-      )}
     </div>
   )
 }

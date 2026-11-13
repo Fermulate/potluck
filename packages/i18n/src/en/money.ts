@@ -427,6 +427,8 @@ export const expenses = {
     openOriginal: 'Open the original',
     openPdf: 'Open the PDF',
     partial: 'Saved, but the files did not attach. Edit the expense to add them again.',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
   },
   /** Reading a receipt photo on the device to fill in the form. */
   scan: {
@@ -458,6 +460,9 @@ export const expenses = {
     attachOnly: 'Just attach the photo',
     again: 'Try another photo',
     applied: 'Filled in from the receipt. Check it, then pick who had what.',
+    closer: 'Taking a closer look',
+    checkPrices: 'Check the prices against the photo, or untick the items to use the total only.',
+    photoAlt: 'The receipt you scanned',
   },
 } as const
 

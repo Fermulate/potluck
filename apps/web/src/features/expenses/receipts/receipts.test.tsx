@@ -23,7 +23,7 @@ vi.mock('./ocr', async (original) => {
         onProgress?.({ stage: 'loading', progress: 0.5 })
         onProgress?.({ stage: 'reading', progress: 0.4 })
         if (ocr.fail) throw new real.ReaderUnavailableError(new Error('fetch failed'))
-        return ocr.text
+        return [ocr.text]
       },
     ),
   }

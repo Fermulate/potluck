@@ -427,6 +427,8 @@ export const expenses = {
     openPdf: 'Ouvrir le PDF',
     partial:
       "C'est enregistré, mais les fichiers ne sont pas passés. Modifie la dépense pour les rajouter.",
+    zoomIn: 'Agrandir',
+    zoomOut: 'Réduire',
   },
   scan: {
     button: 'Scanner un reçu',
@@ -460,6 +462,10 @@ export const expenses = {
     attachOnly: 'Joindre seulement la photo',
     again: 'Essayer une autre photo',
     applied: 'Rempli depuis le reçu. Vérifie, puis choisis qui a pris quoi.',
+    closer: 'On regarde de plus près',
+    checkPrices:
+      'Compare les prix avec la photo, ou décoche les articles pour garder seulement le total.',
+    photoAlt: 'Le reçu que tu as scanné',
   },
 } satisfies Translation<typeof en.expenses>
 

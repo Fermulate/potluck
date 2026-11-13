@@ -427,6 +427,8 @@ export const expenses = {
     openPdf: 'PDF öffnen',
     partial:
       'Gespeichert, aber die Dateien wurden nicht angehängt. Bearbeite die Ausgabe, um sie erneut hinzuzufügen.',
+    zoomIn: 'Vergrößern',
+    zoomOut: 'Verkleinern',
   },
   scan: {
     button: 'Beleg scannen',
@@ -459,6 +461,10 @@ export const expenses = {
     attachOnly: 'Nur das Foto anhängen',
     again: 'Anderes Foto versuchen',
     applied: 'Vom Beleg übernommen. Prüf alles und wähl, wer was hatte.',
+    closer: 'Wir schauen genauer hin',
+    checkPrices:
+      'Vergleich die Preise mit dem Foto, oder nimm den Haken bei den Posten raus, um nur die Summe zu nehmen.',
+    photoAlt: 'Der gescannte Beleg',
   },
 } satisfies Translation<typeof en.expenses>
 

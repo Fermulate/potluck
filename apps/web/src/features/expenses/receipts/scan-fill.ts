@@ -25,8 +25,23 @@ export function defaultChoice(scan: ReceiptScan, description: string): ScanChoic
     name: !!scan.merchant && description.trim() === '',
     date: !!scan.date,
     total: scan.totalCents !== null,
-    items: scan.items.length > 0,
+    // Items that come nowhere near the total are offered but not ticked: the total alone is safer.
+    items: scan.items.length > 0 && scan.itemsMatch !== 'off',
   }
+}
+
+const RANK = { exact: 3, close: 2, off: 1 } as const
+
+/**
+ * The best of several readings of one photo: the one whose items come closest to its total,
+ * then the one that found the most, then the first.
+ */
+export function bestScan(scans: ReceiptScan[]): ReceiptScan {
+  const score = (s: ReceiptScan) =>
+    (s.itemsMatch ? RANK[s.itemsMatch] : 0) * 1000 +
+    (s.totalCents !== null ? 100 : 0) +
+    s.items.length
+  return scans.reduce((best, s) => (score(s) > score(best) ? s : best))
 }
 
 /** Whether the scan found anything the form could use. */
