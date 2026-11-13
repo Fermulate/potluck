@@ -1,6 +1,12 @@
-import { dayKey } from '@potluck/core'
+import {
+  dayKey,
+  matchesExpenseFilters,
+  matchesPaymentFilters,
+  noFilters,
+  viewerShare,
+} from '@potluck/core'
 import type { ExpenseWithSplits, Settlement } from '@potluck/api'
-import { t } from '@potluck/i18n'
+import { formatMoney, t } from '@potluck/i18n'
 import {
   Button,
   Card,
@@ -18,11 +24,13 @@ import { motion } from 'motion/react'
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { ActivityIconLink } from '@/features/activity/activity-link'
+import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
+import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
 import { expensesToCsv, payersOf, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
-import { categoryEmoji, categoryLabel, dayLabel, groupByDay } from './format'
+import { categoryEmoji, categoryLabel, dayLabel, groupByDay, todayIn } from './format'
 import {
   useGroupExpenses,
   useGroupMoneyRealtime,
@@ -36,7 +44,16 @@ type FeedItem =
   | { kind: 'expense'; day: string; at: string; expense: ExpenseWithSplits }
   | { kind: 'settlement'; day: string; at: string; settlement: Settlement }
 
-export function ExpensesTab({ groupId }: { groupId: string }) {
+export function ExpensesTab({
+  groupId,
+  filters,
+  onFiltersChange: setFilters,
+}: {
+  groupId: string
+  /** Kept by the caller (the route keeps them in the address). */
+  filters: MoneyFilters
+  onFiltersChange: (next: MoneyFilters) => void
+}) {
   useGroupMoneyRealtime(groupId)
   const me = useUserId()
   const timeZone = useTimeZone()
@@ -46,8 +63,10 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
   const expenses = useGroupExpenses(groupId)
   const settlements = useGroupSettlements(groupId)
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<string | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const search = useDeferredValue(query.trim().toLocaleLowerCase())
+  const selectedCategories = filters.categories ?? []
+  const today = todayIn(timeZone)
 
   const categories = useMemo(() => {
     const seen = new Set<string>()
@@ -55,11 +74,20 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
     return [...seen].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b)))
   }, [expenses.data])
 
-  const sections = useMemo(() => {
-    const filtering = search !== '' || category !== null
+  const expenseData = expenses.data
+  const settlementData = settlements.data
+  const { sections, matched } = useMemo(() => {
     const items: FeedItem[] = []
-    for (const expense of expenses.data ?? []) {
-      if (category && (expense.category ?? 'other') !== category) continue
+    const matched: ExpenseWithSplits[] = []
+    for (const expense of filters.kind === 'payment' ? [] : (expenseData ?? [])) {
+      const filterable = {
+        paidBy: expense.paid_by,
+        payers: payersOf(expense).map((p) => ({ userId: p.user_id })),
+        spentAt: expense.spent_at,
+        category: expense.category,
+        splits: expense.expense_splits.map((s) => ({ userId: s.user_id })),
+      }
+      if (!matchesExpenseFilters(filterable, filters)) continue
       if (search) {
         const haystack = [
           expense.description,
@@ -72,27 +100,83 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
         if (!haystack.includes(search)) continue
       }
       items.push({ kind: 'expense', day: expense.spent_at, at: expense.created_at, expense })
+      matched.push(expense)
     }
-    if (!filtering) {
-      for (const settlement of settlements.data ?? []) {
-        items.push({
-          kind: 'settlement',
-          day: dayKey(settlement.settled_at, timeZone),
-          at: settlement.settled_at,
-          settlement,
-        })
+    for (const settlement of filters.kind === 'expense' ? [] : (settlementData ?? [])) {
+      const day = dayKey(settlement.settled_at, timeZone)
+      const filterable = { fromUser: settlement.from_user, toUser: settlement.to_user, day }
+      if (!matchesPaymentFilters(filterable, filters)) continue
+      if (search) {
+        const haystack = [
+          settlement.note ?? '',
+          nameOf(settlement.from_user),
+          nameOf(settlement.to_user),
+        ]
+          .join(' ')
+          .toLocaleLowerCase()
+        if (!haystack.includes(search)) continue
       }
+      items.push({ kind: 'settlement', day, at: settlement.settled_at, settlement })
     }
     items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
-    return groupByDay(items, (item) => item.day)
-  }, [expenses.data, settlements.data, search, category, nameOf, timeZone])
+    return { sections: groupByDay(items, (item) => item.day), matched }
+  }, [expenseData, settlementData, search, filters, nameOf, timeZone])
 
   const myRole = group.data?.members.find((m) => m.id === me)?.role
   // Payments count too: wait for them before calling the tab empty.
   const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
     !loading && (expenses.data?.length ?? 0) === 0 && (settlements.data?.length ?? 0) === 0
-  const filtering = query.trim() !== '' || category !== null
+  const filtering = query.trim() !== '' || !noFilters(filters) || Boolean(filters.kind)
+  const currency = group.data?.currency
+  // What the filtered list adds up to, in the group currency: the whole of it and the viewer's
+  // part, by the same rules as the balances and Totals.
+  const filteredTotals = useMemo(() => {
+    if (!filtering || !currency || filters.kind === 'payment') return null
+    let total = 0
+    let share = 0
+    for (const e of matched) {
+      const line = viewerShare(
+        {
+          id: e.id,
+          groupId: e.group_id,
+          paidBy: e.paid_by,
+          payers: payersOf(e).map((p) => ({ userId: p.user_id, paidCents: p.paid_cents })),
+          isRefund: e.is_refund,
+          amountCents: e.amount_cents,
+          currency: e.currency,
+          fxRate: e.fx_rate,
+          spentAt: e.spent_at,
+          category: e.category,
+          splits: e.expense_splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
+        },
+        me,
+        currency,
+      )
+      total += line.totalCents
+      share += line.shareCents
+    }
+    return { count: matched.length, total, share }
+  }, [filtering, currency, filters.kind, matched, me])
+  const people = useMemo(
+    () =>
+      (group.data?.members ?? []).map((m) => ({
+        id: m.id,
+        name: m.id === me ? t('common.you') : m.display_name,
+        avatarPath: m.avatar_path,
+      })),
+    [group.data, me],
+  )
+  const chips = activeFilters(
+    { ...filters, categories: [] },
+    { today, personName: (id) => nameOf(id) },
+  )
+  const toggleCategory = (c: string | null) =>
+    setFilters({
+      ...filters,
+      categories:
+        c === null || (filters.categories?.length === 1 && filters.categories[0] === c) ? [] : [c],
+    })
 
   const exportCsv = () => {
     if (!group.data || !expenses.data) return
@@ -148,6 +232,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
             disabled={loading}
           />
         </div>
+        <FilterButton filters={filters} onClick={() => setSheetOpen(true)} />
         <IconButton
           label={t('expenses.exportCsv')}
           icon={<Download />}
@@ -155,7 +240,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
           onClick={exportCsv}
           disabled={loading || !expenses.data?.length}
         />
-        <ActivityIconLink />
+        <ActivityIconLink groupId={groupId} />
         <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
           <Link to="/new/expense" search={{ groupId }}>
             {t('expenses.add')}
@@ -163,20 +248,20 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
         </Button>
       </div>
 
-      {categories.length > 1 && (
+      {categories.length > 1 && filters.kind !== 'payment' && (
         <div
           role="group"
           aria-label={t('expenses.filterCategory')}
           className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0"
         >
-          <Chip selected={category === null} onClick={() => setCategory(null)}>
+          <Chip selected={selectedCategories.length === 0} onClick={() => toggleCategory(null)}>
             {t('expenses.allCategories')}
           </Chip>
           {categories.map((c) => (
             <Chip
               key={c}
-              selected={category === c}
-              onClick={() => setCategory(category === c ? null : c)}
+              selected={selectedCategories.includes(c)}
+              onClick={() => toggleCategory(c)}
               icon={<span className="text-base leading-none">{categoryEmoji(c)}</span>}
             >
               {categoryLabel(c)}
@@ -185,7 +270,34 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
         </div>
       )}
 
-      <RecurringSection groupId={groupId} />
+      <ActiveFilterChips
+        chips={chips}
+        onRemove={(chip) => setFilters(withoutFilter(filters, chip))}
+      />
+
+      {filteredTotals && currency && (
+        <p
+          aria-live="polite"
+          className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-card bg-sunken px-4 py-2.5 text-sm"
+        >
+          <span className="font-semibold">
+            {t('filters.summary', {
+              count: filteredTotals.count,
+              total: formatMoney(filteredTotals.total, currency),
+            })}
+          </span>
+          <span className="text-mute">
+            {t('filters.yourShare', { amount: formatMoney(filteredTotals.share, currency) })}
+          </span>
+          {filters.kind !== 'expense' &&
+            selectedCategories.length > 0 &&
+            (settlements.data?.length ?? 0) > 0 && (
+              <span className="w-full text-xs text-mute">{t('filters.paymentsHidden')}</span>
+            )}
+        </p>
+      )}
+
+      {!filtering && <RecurringSection groupId={groupId} />}
 
       {loading ? (
         <ExpenseListSkeleton />
@@ -200,7 +312,7 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
               leadingIcon={<X />}
               onClick={() => {
                 setQuery('')
-                setCategory(null)
+                setFilters({})
               }}
             >
               {t('empty.search.action')}
@@ -259,6 +371,17 @@ export function ExpensesTab({ groupId }: { groupId: string }) {
           ))}
         </div>
       )}
+
+      <FilterSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        filters={filters}
+        onChange={setFilters}
+        today={today}
+        people={people}
+        categories={categories.length ? categories : undefined}
+        showKind
+      />
     </div>
   )
 }

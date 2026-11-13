@@ -1,5 +1,6 @@
 import {
   groupKeys,
+  insightsKeys,
   moneyKeys,
   plansKeys,
   moneyQueries,
@@ -85,6 +86,8 @@ export function invalidateMoney(queryClient: QueryClient, groupId: string, expen
   void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
   void queryClient.invalidateQueries({ queryKey: groupKeys.all })
   void queryClient.invalidateQueries({ queryKey: [...plansKeys.all, 'home-balances'] })
+  // Search results and the totals across groups.
+  void queryClient.invalidateQueries({ queryKey: insightsKeys.all })
 }
 
 /** First name, or "You" for the viewer. */

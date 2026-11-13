@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { group, groupTables, member, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { db, emitChange, resetDb } from '@/test/supabase'
+import { rememberGroupFilters } from '@/features/insights/group-filters'
 import { GroupLayout } from './group-layout'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -14,9 +15,9 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   useUserId: () => VIEWER,
 }))
 
-function renderLayout(seeded: GroupDetail[], path = '/groups/g-hike') {
+function renderLayout(seeded: GroupDetail[], path = '/groups/g-hike', url = path) {
   resetDb({ tables: { ...groupTables(...seeded), group_invites: [] } })
-  return renderWithProviders(<GroupLayout groupId="g-hike" />, { path })
+  return renderWithProviders(<GroupLayout groupId="g-hike" />, { path, url })
 }
 
 function tabs() {
@@ -41,6 +42,7 @@ describe('GroupLayout', () => {
     ).toEqual([
       t('groups.tabs.expenses'),
       t('groups.tabs.balances'),
+      t('insights.tab'),
       t('groups.tabs.plans'),
       t('groups.tabs.members'),
       t('groups.tabs.settings'),
@@ -65,6 +67,26 @@ describe('GroupLayout', () => {
     expect(tabs().getByRole('link', { name: t('groups.tabs.expenses') })).not.toHaveAttribute(
       'aria-current',
     )
+  })
+
+  it('brings the Expenses filters back from other tabs, and keeps the ones in use on Expenses', async () => {
+    rememberGroupFilters('g-hike', { cats: 'food' })
+    const balances = renderLayout([group()], '/groups/g-hike/balances')
+    await screen.findByRole('heading', { name: 'Hike crew' })
+    expect(tabs().getByRole('link', { name: t('groups.tabs.expenses') })).toHaveAttribute(
+      'href',
+      '/groups/g-hike?cats=food',
+    )
+    balances.unmount()
+
+    // On Expenses the filters were changed since; the tab must not bring the old ones back.
+    renderLayout([group()], '/groups/g-hike', '/groups/g-hike?cats=rent')
+    await screen.findByRole('heading', { name: 'Hike crew' })
+    expect(tabs().getByRole('link', { name: t('groups.tabs.expenses') })).toHaveAttribute(
+      'href',
+      '/groups/g-hike?cats=rent',
+    )
+    rememberGroupFilters('g-hike', {})
   })
 
   it('opens the invite sheet', async () => {
@@ -100,8 +122,11 @@ describe('GroupLayout', () => {
       await screen.findByRole('heading', { name: t('groups.header.withFriend', { name: 'Ben' }) }),
     ).toBeInTheDocument()
     expect(screen.getByText('Ben owes you $25.00')).toBeInTheDocument()
-    expect(tabs().getAllByRole('link')).toHaveLength(2)
+    expect(tabs().getAllByRole('link')).toHaveLength(3)
     expect(screen.getByRole('link', { name: t('nav.friends') })).toHaveAttribute('href', '/friends')
+    expect(
+      screen.getByRole('link', { name: t('activityFilter.personLink', { name: 'Ben' }) }),
+    ).toHaveAttribute('href', '/activity?person=u-ben')
   })
 
   it('says who owes whom in either direction, or all square', async () => {

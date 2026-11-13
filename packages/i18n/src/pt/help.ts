@@ -41,6 +41,9 @@ export const help = {
     settleEverything: 'Sobre acertar tudo',
     settleFriend: 'Sobre acertar entre grupos',
     paymentMethods: 'Quem vê suas formas de receber',
+    search: 'O que a busca procura',
+    totals: 'Como os totais são contados',
+    restore: 'Sobre restaurar',
   },
   tips: {
     simplifiedDebts:

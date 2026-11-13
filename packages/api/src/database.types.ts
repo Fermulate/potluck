@@ -1565,6 +1565,21 @@ export type Database = {
       }
     }
     Views: {
+      expense_ledger: {
+        Row: {
+          category: string | null
+          currency: string | null
+          expense_id: string | null
+          group_id: string | null
+          paid_cents: number | null
+          share_cents: number | null
+          spent_at: string | null
+          total_cents: number | null
+          user_id: string | null
+        }
+        ComputedFields: never
+        Relationships: []
+      }
       group_balances: {
         Row: {
           group_id: string | null
@@ -1821,12 +1836,45 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      deleted_items: {
+        Args: { before_at?: string; before_id?: string; in_group: string; max_rows?: number }
+        Returns: {
+          amount_cents: number
+          category: string
+          created_by: string
+          currency: string
+          day: string
+          deleted_at: string
+          deleted_by: string
+          description: string
+          group_id: string
+          id: string
+          kind: string
+          paid_by: string
+          payers: string[]
+          to_user: string
+        }[]
+      }
       email_outbox_report: {
         Args: { batch: string; delivered: boolean; error?: string; rejected?: string[] }
         Returns: number
       }
       email_unsubscribe: { Args: { action?: string; token: string }; Returns: Json }
       forget_mfa_recovery_codes: { Args: { target: string }; Returns: undefined }
+      friend_activity: {
+        Args: { before_at?: string; before_id?: string; friend: string; max_rows?: number }
+        Returns: {
+          actor_id: string
+          actor_info: Json
+          created_at: string
+          data: Json
+          group_id: string
+          group_info: Json
+          id: string
+          subject_id: string
+          verb: string
+        }[]
+      }
       friend_balances: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -2082,6 +2130,44 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      search_money: {
+        Args: {
+          before_at?: string
+          before_day?: string
+          before_id?: string
+          categories?: string[]
+          from_day?: string
+          in_group?: string
+          kinds?: string[]
+          max_rows?: number
+          person?: string
+          query?: string
+          to_day?: string
+        }
+        Returns: {
+          amount_cents: number
+          at: string
+          category: string
+          created_by: string
+          currency: string
+          day: string
+          deleted_at: string
+          description: string
+          group_amount_cents: number
+          group_currency: string
+          group_id: string
+          id: string
+          is_refund: boolean
+          kind: string
+          matched: string
+          my_paid_cents: number
+          my_share_cents: number
+          paid_by: string
+          payers: string[]
+          snippet: string
+          to_user: string
+        }[]
+      }
       set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
       set_default_split: { Args: { group_id: string; split: Json }; Returns: Json }
       set_guest_availability: {
@@ -2245,6 +2331,22 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      spending_summary: {
+        Args: { from_day?: string; in_currency?: string; in_group?: string; to_day?: string }
+        Returns: {
+          category: string
+          currency: string
+          expense_count: number
+          group_id: string
+          month: string
+          paid_cents: number
+          payments_made_cents: number
+          payments_received_cents: number
+          share_cents: number
+          spend_cents: number
+          unconverted_count: number
+        }[]
       }
       transfer_ownership: { Args: { group_id: string; user_id: string }; Returns: undefined }
       update_expense: {

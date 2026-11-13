@@ -5,6 +5,7 @@ import { expenses, categories, splitTypes, balances, settle, activity } from './
 import { events, availability, bestTime, rsvp, timeline, home, guests } from './en/plans'
 import { notifications, settings, account, unsubscribe, security } from './en/me'
 import { help } from './en/help'
+import { search, filters, insights, deletedItems, activityFilter } from './en/insights'
 
 /**
  * English strings. Nested by screen or domain; look them up with dotted keys via `t()`.
@@ -48,6 +49,11 @@ export const en = {
   unsubscribe,
   security,
   help,
+  search,
+  filters,
+  insights,
+  deletedItems,
+  activityFilter,
   empty,
   errors,
 } as const

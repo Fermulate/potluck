@@ -14,7 +14,8 @@ Live at https://potluck.fermulate.com (user guide at https://docs.potluck.fermul
 - Exact to the cent: integer minor units, the same rounding rules on the client and the server
 - Multi-currency expenses, converted with daily ECB reference rates
 - Recurring expenses (weekly, monthly, yearly) created automatically
-- Receipt photos, comments, and an activity feed per group
+- Receipt photos, comments, an activity feed per group and per friend, and a Recently deleted list with restore
+- Search across every group, filters with a matching total, and spending charts by month and category in one currency
 - Simplified debts: the fewest payments that clear the group
 
 **Plans**

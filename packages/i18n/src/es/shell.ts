@@ -200,6 +200,9 @@ export const errors = {
     invalid_friend: 'No puedes dividir contigo mismo.',
     not_a_friend: 'Solo puedes dividir con amigos.',
     blocked: 'Un bloqueo entre tú y alguien de aquí lo impide.',
+    invalid_date_range: 'La fecha de inicio es posterior a la de fin.',
+    invalid_query: 'Esa búsqueda es un poco larga. Prueba con menos palabras.',
+    invalid_cursor: 'Perdimos el hilo de la lista. Busca otra vez.',
     member_not_in_group: 'Alguien de este pago salió del grupo, así que se queda en los registros.',
     split_member_not_in_group:
       'Alguien de este gasto ya no está en el grupo, así que el importe, quién pagó y el reparto se quedan como están.',

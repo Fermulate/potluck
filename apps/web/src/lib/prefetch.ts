@@ -1,6 +1,7 @@
 import {
   activityInfiniteQueryOptions,
   groupDetailQueryOptions,
+  insightsQueries,
   moneyQueries,
   myGroupsQueryOptions,
   myProfileQueryOptions,
@@ -110,10 +111,24 @@ export const prefetch = {
     })
   },
 
-  activity(queryClient: QueryClient) {
+  activity(queryClient: QueryClient, filter: { groupId?: string; person?: string } = {}) {
     withClient((client) => {
-      void queryClient.prefetchInfiniteQuery(activityInfiniteQueryOptions(client))
+      void queryClient.prefetchInfiniteQuery(
+        activityInfiniteQueryOptions(client, { groupId: filter.groupId, friendId: filter.person }),
+      )
       void queryClient.prefetchQuery(moneyQueries.people(client))
+    })
+  },
+
+  groupTotals(queryClient: QueryClient, groupId: string) {
+    withClient((client) => {
+      void queryClient.prefetchQuery(insightsQueries.groupSpending(client, groupId))
+    })
+  },
+
+  spending(queryClient: QueryClient) {
+    withClient((client) => {
+      void queryClient.prefetchQuery(insightsQueries.spending(client))
     })
   },
 

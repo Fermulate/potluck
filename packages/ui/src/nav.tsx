@@ -119,8 +119,10 @@ export function BottomTabBar({
   return (
     <nav
       aria-label={label}
+      // Opaque enough that the labels keep AA contrast over dark content (the balance hero, chart
+      // bars) scrolling underneath.
       className={cn(
-        'fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/88 pb-safe backdrop-blur-xl backdrop-saturate-150 lg:hidden',
+        'fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 pb-safe backdrop-blur-xl backdrop-saturate-150 lg:hidden',
         className,
       )}
     >

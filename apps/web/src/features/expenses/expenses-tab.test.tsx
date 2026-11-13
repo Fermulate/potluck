@@ -1,13 +1,21 @@
 import { moneyKeys, type RecurringExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type { MoneyFilters } from '@/features/insights/filter-state'
 import { ExpensesTab } from './expenses-tab'
 import { renderInRouter } from './router-test-utils'
 import { BEN, CLEO, GROUP_ID, ME, expense, seededClient } from './test-utils'
 
 vi.mock('@/lib/supabase', () => import('./fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
+
+/** The tab with its filters held in state, the way the route holds them in the address. */
+function Tab({ initial = {} }: { initial?: MoneyFilters }) {
+  const [filters, setFilters] = useState<MoneyFilters>(initial)
+  return <ExpensesTab groupId={GROUP_ID} filters={filters} onFiltersChange={setFilters} />
+}
 
 function setup() {
   const client = seededClient((c) => {
@@ -34,7 +42,7 @@ function setup() {
     ])
     c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
   })
-  return renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+  return renderInRouter(<Tab />, client)
 }
 
 describe('ExpensesTab', () => {
@@ -52,13 +60,11 @@ describe('ExpensesTab', () => {
     expect(within(firewood).getByText('not involved')).toBeInTheDocument()
   })
 
-  it('links to the activity feed from the toolbar', async () => {
+  it('links to the group activity from the toolbar', async () => {
     setup()
     await screen.findByText('Tacos')
-    expect(screen.getByRole('link', { name: t('activity.recent') })).toHaveAttribute(
-      'href',
-      '/activity',
-    )
+    const link = screen.getByRole('link', { name: t('insights.links.activity') })
+    expect(link.getAttribute('href')).toMatch(/^\/activity\?groupId=/)
   })
 
   it('links each row to the expense', async () => {
@@ -85,12 +91,112 @@ describe('ExpensesTab', () => {
     expect(screen.queryByText('Tacos')).not.toBeInTheDocument()
   })
 
+  it('filters by person and dates from the sheet, with a matching total', async () => {
+    setup()
+    await screen.findByText('Tacos')
+    fireEvent.click(screen.getByRole('button', { name: t('filters.open') }))
+    const sheet = await screen.findByRole('dialog', { name: t('filters.title') })
+    // Ben paid for the gas and is in the split for the tacos and the firewood.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Ben Okafor' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: t('filters.custom') }))
+    fireEvent.change(within(sheet).getByLabelText(t('filters.from')), {
+      target: { value: '2026-11-03' },
+    })
+    fireEvent.change(within(sheet).getByLabelText(t('filters.to')), {
+      target: { value: '2026-11-04' },
+    })
+    fireEvent.click(within(sheet).getByRole('button', { name: t('filters.done') }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await waitFor(() => expect(screen.queryByText('Firewood')).not.toBeInTheDocument())
+    expect(screen.getByText('Tacos')).toBeInTheDocument()
+    expect(screen.getByText('Gas for two cars')).toBeInTheDocument()
+    expect(
+      screen.getByText(t('filters.summary', { count: 2, total: '$60.00' })),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('filters.yourShare', { amount: '$20.00' }))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: t('filters.openActive', { count: 2 }) }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('filters.remove', { filter: 'Ben' }) }))
+    expect(
+      await screen.findByText(t('filters.summary', { count: 2, total: '$60.00' })),
+    ).toBeInTheDocument()
+  })
+
+  function withPayment() {
+    return seededClient((c) => {
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [
+        expense({ id: 'e1', description: 'Tacos', category: 'food' }),
+      ])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [
+        {
+          id: 's1',
+          group_id: GROUP_ID,
+          from_user: BEN,
+          to_user: ME,
+          amount_cents: 1000,
+          currency: 'USD',
+          fx_rate: '1.000000000000',
+          note: 'Cash for tacos',
+          settled_at: '2026-11-04T10:00:00Z',
+          created_by: BEN,
+          created_at: '2026-11-04T10:00:00Z',
+          deleted_at: null,
+        },
+      ])
+    })
+  }
+
+  it('keeps payments that match a person filter, and takes filters from the caller', async () => {
+    const changes: unknown[] = []
+    renderInRouter(
+      <ExpensesTab
+        groupId={GROUP_ID}
+        filters={{ person: BEN }}
+        onFiltersChange={(next) => changes.push(next)}
+      />,
+      withPayment(),
+    )
+    expect(await screen.findByText('Cash for tacos')).toBeInTheDocument()
+    expect(screen.getByText('Tacos')).toBeInTheDocument()
+    expect(screen.queryByText(t('filters.paymentsHidden'))).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('filters.remove', { filter: 'Ben' }) }))
+    expect(changes).toEqual([{ person: null }])
+  })
+
+  it('leaves payments out of a category filter and says so', async () => {
+    renderInRouter(<Tab initial={{ categories: ['food'] }} />, withPayment())
+    expect(await screen.findByText(t('filters.paymentsHidden'))).toBeInTheDocument()
+    expect(screen.getByText('Tacos')).toBeInTheDocument()
+    expect(screen.queryByText('Cash for tacos')).not.toBeInTheDocument()
+  })
+
+  it('shows only payments or only expenses from the type filter', async () => {
+    renderInRouter(<Tab />, withPayment())
+    await screen.findByText('Cash for tacos')
+    fireEvent.click(screen.getByRole('button', { name: t('filters.open') }))
+    const sheet = await screen.findByRole('dialog', { name: t('filters.title') })
+    fireEvent.click(within(sheet).getByRole('radio', { name: t('filters.payments') }))
+    await waitFor(() => expect(screen.queryByText('Tacos')).not.toBeInTheDocument())
+    expect(screen.getByText('Cash for tacos')).toBeInTheDocument()
+    expect(screen.queryByText(/in all/)).not.toBeInTheDocument()
+
+    fireEvent.click(within(sheet).getByRole('radio', { name: t('filters.expenses') }))
+    await waitFor(() => expect(screen.queryByText('Cash for tacos')).not.toBeInTheDocument())
+    expect(screen.getByText('Tacos')).toBeInTheDocument()
+    expect(
+      screen.getByText(t('filters.summary', { count: 1, total: '$30.00' })),
+    ).toBeInTheDocument()
+  })
+
   it('shows the empty state when nothing has been added yet', async () => {
     const client = seededClient((c) => {
       c.setQueryData(moneyKeys.expenses(GROUP_ID), [])
       c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
     })
-    renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+    renderInRouter(<Tab />, client)
     expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
   })
 
@@ -103,7 +209,7 @@ describe('ExpensesTab', () => {
         queryFn: () => new Promise<never>(() => {}),
       })
     })
-    renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+    renderInRouter(<Tab />, client)
     await waitFor(() =>
       expect(document.querySelector('[aria-busy="true"]')).toHaveAttribute(
         'aria-label',
@@ -143,7 +249,7 @@ describe('ExpensesTab', () => {
       c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
       c.setQueryData(moneyKeys.recurring(GROUP_ID), [rent])
     })
-    renderInRouter(<ExpensesTab groupId={GROUP_ID} />, client)
+    renderInRouter(<Tab />, client)
     expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Repeating/ })).toBeInTheDocument()
   })

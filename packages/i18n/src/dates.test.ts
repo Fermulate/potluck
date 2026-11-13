@@ -17,6 +17,8 @@ describe('formatDate', () => {
     expect(formatDate(friday, { timeZone: NY, style: 'full' })).toBe('Friday, June 12, 2026')
     expect(formatDate(friday, { timeZone: NY, style: 'weekday' })).toBe('Fri, Jun 12')
     expect(formatDate(friday, { timeZone: NY, style: 'dayMonth' })).toBe('Jun 12')
+    expect(formatDate('2026-03-01', { timeZone: NY, style: 'monthYear' })).toBe('March 2026')
+    expect(formatDate('2026-03-01', { timeZone: NY, style: 'monthShort' })).toBe('Mar')
   })
 
   it('treats YYYY-MM-DD as a calendar date, whatever the time zone', () => {

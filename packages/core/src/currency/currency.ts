@@ -114,6 +114,18 @@ export function invertRate(rate: number | string): string {
   return `${whole}.${fraction}`
 }
 
+/**
+ * `a * b` rounded to 12 decimals, as decimal text: what Postgres gives for
+ * `round(a * b, 12)` on two numeric(24,12) rates (the product is exact, then rounded half away
+ * from zero). Chains two rates through a third currency.
+ */
+export function crossRate(a: number | string, b: number | string): string {
+  const product = divideHalfUp(scaleRate(a) * scaleRate(b), RATE_SCALE)
+  const whole = product / RATE_SCALE
+  const fraction = (product % RATE_SCALE).toString().padStart(RATE_DECIMALS, '0')
+  return `${whole}.${fraction}`
+}
+
 export interface ConvertOptions {
   /** Currency of `amountMinor`. Only its minor unit count matters. Defaults to a 2 digit currency. */
   from?: string

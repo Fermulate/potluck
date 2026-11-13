@@ -20,7 +20,9 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
+import { Route as AppInsightsRouteImport } from './routes/_app/insights'
 import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
+import { Route as AppSearchRouteImport } from './routes/_app/search'
 import { Route as ACodeRouteImport } from './routes/a.$code'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
@@ -40,9 +42,11 @@ import { Route as AppRecurringRecurringIdRouteImport } from './routes/_app/recur
 import { Route as AppExpensesExpenseIdEditRouteImport } from './routes/_app/expenses/$expenseId_.edit'
 import { Route as AppGroupsGroupIdIndexRouteImport } from './routes/_app/groups/$groupId/index'
 import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/groups/$groupId/balances'
+import { Route as AppGroupsGroupIdDeletedRouteImport } from './routes/_app/groups/$groupId/deleted'
 import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
 import { Route as AppGroupsGroupIdPlansRouteImport } from './routes/_app/groups/$groupId/plans'
 import { Route as AppGroupsGroupIdSettingsRouteImport } from './routes/_app/groups/$groupId/settings'
+import { Route as AppGroupsGroupIdTotalsRouteImport } from './routes/_app/groups/$groupId/totals'
 import { Route as AppPaymentsPaymentIdEditRouteImport } from './routes/_app/payments/$paymentId_.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -99,9 +103,19 @@ const AppHomeRoute = AppHomeRouteImport.update({
   path: '/home',
   getParentRoute: () => AppRoute,
 } as any)
+const AppInsightsRoute = AppInsightsRouteImport.update({
+  id: '/insights',
+  path: '/insights',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNotificationsRoute = AppNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSearchRoute = AppSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
   getParentRoute: () => AppRoute,
 } as any)
 const ACodeRoute = ACodeRouteImport.update({
@@ -201,6 +215,11 @@ const AppGroupsGroupIdBalancesRoute =
     path: '/balances',
     getParentRoute: () => AppGroupsGroupIdRoute,
   } as any)
+const AppGroupsGroupIdDeletedRoute = AppGroupsGroupIdDeletedRouteImport.update({
+  id: '/deleted',
+  path: '/deleted',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
 const AppGroupsGroupIdMembersRoute = AppGroupsGroupIdMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -217,6 +236,11 @@ const AppGroupsGroupIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AppGroupsGroupIdRoute,
   } as any)
+const AppGroupsGroupIdTotalsRoute = AppGroupsGroupIdTotalsRouteImport.update({
+  id: '/totals',
+  path: '/totals',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
 const AppPaymentsPaymentIdEditRoute =
   AppPaymentsPaymentIdEditRouteImport.update({
     id: '/payments/$paymentId_/edit',
@@ -235,7 +259,9 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
+  '/insights': typeof AppInsightsRoute
   '/notifications': typeof AppNotificationsRoute
+  '/search': typeof AppSearchRoute
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
@@ -254,9 +280,11 @@ export interface FileRoutesByFullPath {
   '/plans/': typeof AppPlansIndexRoute
   '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
   '/payments/$paymentId/edit': typeof AppPaymentsPaymentIdEditRoute
   '/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
@@ -271,7 +299,9 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/activity': typeof AppActivityRoute
   '/home': typeof AppHomeRoute
+  '/insights': typeof AppInsightsRoute
   '/notifications': typeof AppNotificationsRoute
+  '/search': typeof AppSearchRoute
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
@@ -289,9 +319,11 @@ export interface FileRoutesByTo {
   '/plans': typeof AppPlansIndexRoute
   '/expenses/$expenseId/edit': typeof AppExpensesExpenseIdEditRoute
   '/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
   '/payments/$paymentId/edit': typeof AppPaymentsPaymentIdEditRoute
   '/groups/$groupId': typeof AppGroupsGroupIdIndexRoute
 }
@@ -308,7 +340,9 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/_app/activity': typeof AppActivityRoute
   '/_app/home': typeof AppHomeRoute
+  '/_app/insights': typeof AppInsightsRoute
   '/_app/notifications': typeof AppNotificationsRoute
+  '/_app/search': typeof AppSearchRoute
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
@@ -327,9 +361,11 @@ export interface FileRoutesById {
   '/_app/plans/': typeof AppPlansIndexRoute
   '/_app/expenses/$expenseId_/edit': typeof AppExpensesExpenseIdEditRoute
   '/_app/groups/$groupId/balances': typeof AppGroupsGroupIdBalancesRoute
+  '/_app/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/_app/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/_app/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
   '/_app/payments/$paymentId_/edit': typeof AppPaymentsPaymentIdEditRoute
   '/_app/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
@@ -346,7 +382,9 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/activity'
     | '/home'
+    | '/insights'
     | '/notifications'
+    | '/search'
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
@@ -365,9 +403,11 @@ export interface FileRouteTypes {
     | '/plans/'
     | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
+    | '/groups/$groupId/deleted'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
+    | '/groups/$groupId/totals'
     | '/payments/$paymentId/edit'
     | '/groups/$groupId/'
   fileRoutesByTo: FileRoutesByTo
@@ -382,7 +422,9 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/activity'
     | '/home'
+    | '/insights'
     | '/notifications'
+    | '/search'
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
@@ -400,9 +442,11 @@ export interface FileRouteTypes {
     | '/plans'
     | '/expenses/$expenseId/edit'
     | '/groups/$groupId/balances'
+    | '/groups/$groupId/deleted'
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
+    | '/groups/$groupId/totals'
     | '/payments/$paymentId/edit'
     | '/groups/$groupId'
   id:
@@ -418,7 +462,9 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/_app/activity'
     | '/_app/home'
+    | '/_app/insights'
     | '/_app/notifications'
+    | '/_app/search'
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
@@ -437,9 +483,11 @@ export interface FileRouteTypes {
     | '/_app/plans/'
     | '/_app/expenses/$expenseId_/edit'
     | '/_app/groups/$groupId/balances'
+    | '/_app/groups/$groupId/deleted'
     | '/_app/groups/$groupId/members'
     | '/_app/groups/$groupId/plans'
     | '/_app/groups/$groupId/settings'
+    | '/_app/groups/$groupId/totals'
     | '/_app/payments/$paymentId_/edit'
     | '/_app/groups/$groupId/'
   fileRoutesById: FileRoutesById
@@ -539,11 +587,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHomeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/insights': {
+      id: '/_app/insights'
+      path: '/insights'
+      fullPath: '/insights'
+      preLoaderRoute: typeof AppInsightsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/notifications': {
       id: '/_app/notifications'
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof AppNotificationsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/search': {
+      id: '/_app/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof AppSearchRouteImport
       parentRoute: typeof AppRoute
     }
     '/a/$code': {
@@ -679,6 +741,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsGroupIdBalancesRouteImport
       parentRoute: typeof AppGroupsGroupIdRoute
     }
+    '/_app/groups/$groupId/deleted': {
+      id: '/_app/groups/$groupId/deleted'
+      path: '/deleted'
+      fullPath: '/groups/$groupId/deleted'
+      preLoaderRoute: typeof AppGroupsGroupIdDeletedRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
     '/_app/groups/$groupId/members': {
       id: '/_app/groups/$groupId/members'
       path: '/members'
@@ -700,6 +769,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsGroupIdSettingsRouteImport
       parentRoute: typeof AppGroupsGroupIdRoute
     }
+    '/_app/groups/$groupId/totals': {
+      id: '/_app/groups/$groupId/totals'
+      path: '/totals'
+      fullPath: '/groups/$groupId/totals'
+      preLoaderRoute: typeof AppGroupsGroupIdTotalsRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
     '/_app/payments/$paymentId_/edit': {
       id: '/_app/payments/$paymentId_/edit'
       path: '/payments/$paymentId/edit'
@@ -712,17 +788,21 @@ declare module '@tanstack/react-router' {
 
 interface AppGroupsGroupIdRouteChildren {
   AppGroupsGroupIdBalancesRoute: typeof AppGroupsGroupIdBalancesRoute
+  AppGroupsGroupIdDeletedRoute: typeof AppGroupsGroupIdDeletedRoute
   AppGroupsGroupIdMembersRoute: typeof AppGroupsGroupIdMembersRoute
   AppGroupsGroupIdPlansRoute: typeof AppGroupsGroupIdPlansRoute
   AppGroupsGroupIdSettingsRoute: typeof AppGroupsGroupIdSettingsRoute
+  AppGroupsGroupIdTotalsRoute: typeof AppGroupsGroupIdTotalsRoute
   AppGroupsGroupIdIndexRoute: typeof AppGroupsGroupIdIndexRoute
 }
 
 const AppGroupsGroupIdRouteChildren: AppGroupsGroupIdRouteChildren = {
   AppGroupsGroupIdBalancesRoute: AppGroupsGroupIdBalancesRoute,
+  AppGroupsGroupIdDeletedRoute: AppGroupsGroupIdDeletedRoute,
   AppGroupsGroupIdMembersRoute: AppGroupsGroupIdMembersRoute,
   AppGroupsGroupIdPlansRoute: AppGroupsGroupIdPlansRoute,
   AppGroupsGroupIdSettingsRoute: AppGroupsGroupIdSettingsRoute,
+  AppGroupsGroupIdTotalsRoute: AppGroupsGroupIdTotalsRoute,
   AppGroupsGroupIdIndexRoute: AppGroupsGroupIdIndexRoute,
 }
 
@@ -732,7 +812,9 @@ const AppGroupsGroupIdRouteWithChildren =
 interface AppRouteChildren {
   AppActivityRoute: typeof AppActivityRoute
   AppHomeRoute: typeof AppHomeRoute
+  AppInsightsRoute: typeof AppInsightsRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
+  AppSearchRoute: typeof AppSearchRoute
   AppExpensesExpenseIdRoute: typeof AppExpensesExpenseIdRoute
   AppGroupsGroupIdRoute: typeof AppGroupsGroupIdRouteWithChildren
   AppNewExpenseRoute: typeof AppNewExpenseRoute
@@ -752,7 +834,9 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppActivityRoute: AppActivityRoute,
   AppHomeRoute: AppHomeRoute,
+  AppInsightsRoute: AppInsightsRoute,
   AppNotificationsRoute: AppNotificationsRoute,
+  AppSearchRoute: AppSearchRoute,
   AppExpensesExpenseIdRoute: AppExpensesExpenseIdRoute,
   AppGroupsGroupIdRoute: AppGroupsGroupIdRouteWithChildren,
   AppNewExpenseRoute: AppNewExpenseRoute,

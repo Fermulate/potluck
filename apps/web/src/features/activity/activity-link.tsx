@@ -25,12 +25,13 @@ export function RecentActivityRow() {
   )
 }
 
-/** A round icon link to the activity feed, for toolbars. */
-export function ActivityIconLink({ className }: { className?: string }) {
-  const label = t('activity.recent')
+/** A round icon link to the activity feed (one group's, with `groupId`), for toolbars. */
+export function ActivityIconLink({ className, groupId }: { className?: string; groupId?: string }) {
+  const label = groupId ? t('insights.links.activity') : t('activity.recent')
   return (
     <Link
       to="/activity"
+      search={groupId ? { groupId } : {}}
       aria-label={label}
       title={label}
       className={cn(

@@ -9,7 +9,7 @@ import {
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
-import { ChevronDown, Plus, UsersRound } from 'lucide-react'
+import { ChartColumn, ChevronDown, Plus, Search, UsersRound } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 import { errorMessage } from '@/lib/errors'
@@ -116,6 +116,18 @@ export function GroupsPage({
           <Link to="/friends">
             <UsersRound aria-hidden className="-ml-1 size-4" />
             {t('nav.friends')}
+          </Link>
+        </Button>
+        <Button asChild variant="secondary" size="sm">
+          <Link to="/insights">
+            <ChartColumn aria-hidden className="-ml-1 size-4" />
+            {t('insights.open')}
+          </Link>
+        </Button>
+        <Button asChild variant="secondary" size="sm" className="lg:hidden">
+          <Link to="/search">
+            <Search aria-hidden className="-ml-1 size-4" />
+            {t('search.title')}
           </Link>
         </Button>
         <Button
