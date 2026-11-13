@@ -82,6 +82,8 @@ export function ExpenseComments({
   }
 
   const count = data?.length ?? 0
+  // Read only with nothing to read: no empty "Comments" heading.
+  if (readOnly && !isPending && count === 0) return null
   return (
     <section aria-labelledby="comments-title" className="flex flex-col gap-4">
       <h2 id="comments-title" className="font-display text-2xl">

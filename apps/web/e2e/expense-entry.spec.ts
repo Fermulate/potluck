@@ -204,6 +204,7 @@ test.describe('expense entry', () => {
     await expect(
       page.getByRole('textbox', { name: t('expenses.comments.placeholder') }),
     ).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: t('expenses.comments.title') })).toHaveCount(0)
   })
 
   test('a slow last currency never changes what was typed', async ({ newUser, openAs }) => {

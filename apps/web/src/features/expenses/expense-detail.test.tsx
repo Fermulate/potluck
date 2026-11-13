@@ -279,6 +279,10 @@ describe('ExpenseDetail', () => {
     expect(
       screen.queryByRole('textbox', { name: t('expenses.comments.placeholder') }),
     ).not.toBeInTheDocument()
+    // No comments and no way to add one: no empty heading either.
+    expect(
+      screen.queryByRole('heading', { name: t('expenses.comments.title') }),
+    ).not.toBeInTheDocument()
   })
 
   it('hides edit and delete from people who neither added nor paid it', async () => {
