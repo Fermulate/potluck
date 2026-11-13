@@ -47,6 +47,23 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - After the migration: `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then update `01_schema.test.sql`
   and `docs/architecture.md`.
 
+## Notifications
+
+- Settings are per category ([ADR 11](../docs/adr/0011-notification-prefs-and-email.md)). A new
+  notification type is ONE row in your migration:
+  `insert into private.notification_types (type, category) values ('<type>', '<category>') on conflict (type) do nothing;`
+  Without it the type still reaches the inbox and push, but ignores the person's settings and is
+  never emailed. Then add copy: `describe.ts` (inbox), `functions/notify/message.ts` (push), and
+  optionally `functions/notify/email.ts` (otherwise a generic email).
+- A new category is a row in `private.notification_categories` (defaults, allowed channels), its
+  labels under `settings.notificationPrefs.categories` in `packages/i18n/src/en/me.ts`, and an entry
+  in `NOTIFICATION_CATEGORIES` (`packages/api/src/notification-prefs.ts`) and `LOOK`
+  (`apps/web/src/features/me/notification-prefs.tsx`).
+- Routing is a before insert trigger on `public.notifications`, so any insert (through
+  `private.notify` or not) gets its `channels`; push and the email outbox follow from them. Email only
+  flows while `app_config.email_notifications` is true. Tests: `17_notification_prefs`,
+  `18_monthly_summary`.
+
 ## pgTAP
 
 - `tests.create_user('alice')`, `tests.login('alice')` / `tests.login_anon()`, `reset role`,

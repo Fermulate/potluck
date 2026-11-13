@@ -23,6 +23,7 @@ Participants used throughout:
 - [Best slots and scheduling](#best-slots-and-scheduling)
 - [Recurring expenses](#recurring-expenses)
 - [Daily FX sync](#daily-fx-sync)
+- [Notification settings, email and the monthly summary](#notification-settings-email-and-the-monthly-summary)
 - [Delete an account](#delete-an-account)
 - [Deploy pipeline](#deploy-pipeline)
 
@@ -162,7 +163,8 @@ sequenceDiagram
   Note over DB: at commit (deferred constraint triggers)
   DB->>DB: check_expense_splits(): sum = amount_cents
   DB->>DB: expenses_notify(): notifications expense.created<br/>to split people and payer, never the actor
-  DB->>E: notifications_push trigger, pg_net POST /functions/v1/notify<br/>x-potluck-secret from Vault
+  DB->>DB: notifications_route: channels from notification_prefs<br/>(push, and email when the flag is on)
+  DB->>E: notifications_push trigger (only when channels has push),<br/>pg_net POST /functions/v1/notify, x-potluck-secret from Vault
   DB-->>W: expenses row
   DB-->>W: Realtime: expenses, expense_splits, activity changes
   W->>W: invalidate money queries, refetch group_balances
@@ -409,6 +411,47 @@ sequenceDiagram
 ```
 
 To backfill, call the function with `?from=YYYY-MM-DD` and the secret header. It fetches the range from Frankfurter and upserts every day in it.
+
+## Notification settings, email and the monthly summary
+
+Every notification lands in the inbox. Where else it goes is decided once, when the row is inserted, from the person's settings ([ADR 11](adr/0011-notification-prefs-and-email.md)). Email waits a minute in an outbox so quick fixes fold into one message.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as Person
+  participant W as Web
+  participant DB as DB
+  participant CR as pg_cron
+  participant E as Edge notify
+  participant R as Resend
+  participant UF as Edge unsubscribe
+
+  U->>W: Me page, "What to hear about": Payments push off
+  W->>DB: rpc set_notification_pref('payments', push := false)
+  Note over DB: later, someone settles up with U
+  DB->>DB: insert notifications settlement.created
+  DB->>DB: notifications_route (before insert):<br/>channels = notification_channels(user, type)
+  DB->>DB: notifications_push: no push in channels, no call
+  DB-->>W: Realtime: notifications insert, inbox shows it
+  opt email in channels (app_config.email_notifications on, setting on)
+    DB->>DB: notifications_queue_email: private.email_outbox<br/>(subject = expense id for expense types)
+    CR->>DB: every minute: send_email_notifications()
+    DB->>DB: subjects quiet for 60 s; fold per expense<br/>(added and deleted inside the hold: nothing),<br/>re-check settings, mark handled
+    DB->>E: POST notify { emails: [...] } (names, current amounts,<br/>signed unsubscribe tokens)
+    E->>R: one email each, List-Unsubscribe and<br/>List-Unsubscribe-Post headers, Idempotency-Key
+  end
+  alt mail client one-click
+    R-->>UF: POST /functions/v1/unsubscribe?token=...
+    UF->>DB: rpc email_unsubscribe(token) as anon
+  else footer link
+    U->>W: /unsubscribe?token=...
+    W->>DB: rpc email_unsubscribe(token), "Keep sending them" undoes it
+  end
+  DB->>DB: check HMAC, set notification_prefs.email = false
+```
+
+On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
 
 ## Delete an account
 

@@ -104,6 +104,8 @@ Each file runs in its own transaction and rolls back, so tests do not leak into 
 | `14_review_fixes.test.sql`         | archived groups refuse money, plan, comment, RSVP and recurring template writes, `delete_group` and the open balance guard, resuming a paused recurring template, templates stopping for closed accounts, RSVP deadlines, editing an expense that involves a former member                                                     |
 | `15_integrity.test.sql`            | blocked joins and invite previews, splits-only edits logging and notifying, edits, deletes, restores and payments involving people who left, former members staying readable, an owner leaving with only closed accounts, rescheduling reminders, closing an account across groups, the recurring job lock order, FX precision |
 | `16_availability_lock.test.sql`    | `set_availability` holds a per event and viewer advisory lock around its replace, so two requests from the same viewer (a save in flight and the flush sent as the page is left) apply one after the other                                                                                                                     |
+| `17_notification_prefs.test.sql`   | notification settings (defaults, one channel at a time, who can read and write), routing to push and email, the email flag, the outbox hold and folding per expense, unsubscribe tokens, `expense.deleted`, `expense.restored`, `member.added`, settings dropped with the account                                              |
+| `18_monthly_summary.test.sql`      | `private.monthly_summary` (balances in group currency, the month's expenses and payments) and the monthly job: who gets one, no duplicates, inbox only while email is off, opt-out, closed accounts                                                                                                                            |
 
 Every table in `public` needs tests for both who can and who cannot read and write it. A new RPC needs tests for each error code it can raise.
 
@@ -141,16 +143,17 @@ Where the test data comes from:
 
 Every test creates its own users and groups with unique names, so tests run in parallel and never depend on seed rows or on each other. Selectors are roles and labels built with `t()` from `@potluck/i18n`, never CSS classes: copy changes do not break them, and a missing label does.
 
-| Spec                     | Covers                                                                                                                                                                                         |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `onboarding.spec.ts`     | landing page, sign up, onboarding (name, time zone, currency), skipping the first group step, home greets you by name                                                                          |
-| `groups-invites.spec.ts` | create a group, create an invite link, a signed out friend opens `/join/<code>`, signs in and joins, the owner sees them                                                                       |
-| `expenses.spec.ts`       | equal, exact, percent, shares and itemized splits with each person's share on the detail page, editing the amount, delete with Undo, a EUR expense in a USD group showing the converted amount |
-| `balances.spec.ts`       | balances follow an expense, settle up reaches all square ($0.00), activity lists the payment                                                                                                   |
-| `plans.spec.ts`          | create a plan, a second user paints availability with the keyboard, the host's heatmap updates live (realtime), best slot listed, lock it in, RSVP, download the `.ics`                        |
-| `members.spec.ts`        | promote to admin, a member who owes money cannot be removed, remove a settled member, admins get no owner actions, members get no member actions and no delete button                          |
-| `me.spec.ts`             | theme choice survives a reload, calendar feed link shown, deleting the account signs out and the password stops working                                                                        |
-| `a11y.spec.ts`           | axe (WCAG 2.1 A and AA) on landing, home, group expenses, add expense, balances, event page and Me: fails on serious or critical violations and on any sideways page scroll                    |
+| Spec                     | Covers                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onboarding.spec.ts`     | landing page, sign up, onboarding (name, time zone, currency), skipping the first group step, home greets you by name                                                                             |
+| `groups-invites.spec.ts` | create a group, create an invite link, a signed out friend opens `/join/<code>`, signs in and joins, the owner sees them                                                                          |
+| `expenses.spec.ts`       | equal, exact, percent, shares and itemized splits with each person's share on the detail page, editing the amount, delete with Undo, a EUR expense in a USD group showing the converted amount    |
+| `balances.spec.ts`       | balances follow an expense, settle up reaches all square ($0.00), activity lists the payment                                                                                                      |
+| `plans.spec.ts`          | create a plan, a second user paints availability with the keyboard, the host's heatmap updates live (realtime), best slot listed, lock it in, RSVP, download the `.ics`                           |
+| `members.spec.ts`        | promote to admin, a member who owes money cannot be removed, remove a settled member, admins get no owner actions, members get no member actions and no delete button                             |
+| `me.spec.ts`             | theme choice survives a reload, calendar feed link shown, deleting the account signs out and the password stops working                                                                           |
+| `notifications.spec.ts`  | turning Payments push off on the Me page survives a reload; a payment then still lands in the inbox but is not routed to push, while a new expense is                                             |
+| `a11y.spec.ts`           | axe (WCAG 2.1 A and AA) on landing, home, group expenses, add expense, balances, event page, Me and the unsubscribe page: fails on serious or critical violations and on any sideways page scroll |
 
 The landing audit emulates reduced motion: the hero demo is decorative and loops fade-ins, so the audit checks its settled state.
 

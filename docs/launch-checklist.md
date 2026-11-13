@@ -38,11 +38,15 @@ The `migrate` job skips until both secrets exist.
 
 ### 3. Email
 
-Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production, so sign-ups beyond the limit wait. To send from `fermulate.com`:
+Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production, so sign-ups beyond the limit wait. Notification email (new expenses, payments, the monthly summary, with one-click unsubscribe) is built but off: `app_config.email_notifications` is `false`, so nothing is queued. To send from `fermulate.com`:
 
-1. Create a Resend (or other SMTP) account and verify the domain.
-2. Supabase dashboard, Authentication, SMTP settings: enter the SMTP details.
+1. Create a Resend account and verify the domain.
+2. Supabase dashboard, Authentication, SMTP settings: enter Resend's SMTP details (auth email).
 3. Optionally raise `[auth.rate_limit] email_sent` for production.
+4. Notification email: set the function secrets `RESEND_API_KEY` and `EMAIL_FROM` (for example `Potluck <notifications@fermulate.com>`, optionally `EMAIL_REPLY_TO`), and deploy the `unsubscribe` function with the others.
+5. Flip it on: `update public.app_config set value = 'true' where key = 'email_notifications';`. The Me page then shows the Email column, and the `email-notifications` job starts sending within a minute. Setting it back to `false` stops new email right away.
+
+Nothing else changes: the sender, the outbox, the monthly summary job and the unsubscribe links are already deployed ([ADR 11](adr/0011-notification-prefs-and-email.md)).
 
 ### 4. Sign in with Google or Apple
 
@@ -74,5 +78,4 @@ PR previews build against the production Supabase project. Before inviting outsi
 - Repeating expenses can only change description, category and schedule; amount and split changes need a migration that lets clients update them.
 - Itemized line items are not stored, so editing a by-item expense reopens it as exact amounts.
 - A deleted payment cannot be restored (there is no restore RPC).
-- Notification preferences are a single push switch; per-type settings need a table.
 - Activity is one feed across all groups; there is no per-group filter yet.

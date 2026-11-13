@@ -14,16 +14,17 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 
 ### Who we defend against
 
-| Actor                                   | Can                                                         | Stopped by                                                                                             |
-| --------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Anyone on the internet                  | call the API with the publishable key                       | grants: `anon` can read `app_config`, call `invite_preview`, and read the public buckets. Nothing else |
-| A signed-in stranger                    | call every RPC, query every table                           | RLS on every table, `require_member()` in every group RPC                                              |
-| A group member overreaching             | edit others' expenses, promote themselves, delete the group | role checks inside RPCs and policies, the role matrix in [architecture.md](architecture.md#roles)      |
-| A removed or departed member            | keep reading the group                                      | membership is checked on every query. Realtime re-applies RLS per change                               |
-| Someone holding an invite link          | see the group name, member count, first names; join         | expiry, max uses, revocation, optional email binding                                                   |
-| Someone holding a calendar feed URL     | read the owner's scheduled events                           | 32-character random token, rotatable with `calendar_feed_token(true)`                                  |
-| A client with a tampered bundle         | send any payload to any RPC                                 | the server derives splits, FX rates, payer of a settlement and `created_by` itself                     |
-| Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                |
+| Actor                                   | Can                                                         | Stopped by                                                                                                                                            |
+| --------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone on the internet                  | call the API with the publishable key                       | grants: `anon` can read `app_config`, call `invite_preview` and `email_unsubscribe` (needs a signed token), and read the public buckets. Nothing else |
+| A signed-in stranger                    | call every RPC, query every table                           | RLS on every table, `require_member()` in every group RPC                                                                                             |
+| A group member overreaching             | edit others' expenses, promote themselves, delete the group | role checks inside RPCs and policies, the role matrix in [architecture.md](architecture.md#roles)                                                     |
+| A removed or departed member            | keep reading the group                                      | membership is checked on every query. Realtime re-applies RLS per change                                                                              |
+| Someone holding an invite link          | see the group name, member count, first names; join         | expiry, max uses, revocation, optional email binding                                                                                                  |
+| Someone holding a calendar feed URL     | read the owner's scheduled events                           | 32-character random token, rotatable with `calendar_feed_token(true)`                                                                                 |
+| A client with a tampered bundle         | send any payload to any RPC                                 | the server derives splits, FX rates, payer of a settlement and `created_by` itself                                                                    |
+| Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                                                               |
+| Someone guessing unsubscribe links      | turn off another person's emails                            | each link carries an HMAC of user id and category; the key stays in `private.signing_keys`                                                            |
 
 Out of scope: a compromised Supabase or Cloudflare account, a malicious maintainer, and a stolen unlocked phone with an active session.
 
@@ -51,6 +52,7 @@ These are real today. Each should become an issue.
 | Availability, RSVPs, events                               | plans tables                               | members of that group                                                      |
 | Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off)                |
 | Notifications, push subscriptions                         | `notifications`, `push_tokens`             | only you                                                                   |
+| Notification settings                                     | `notification_prefs`                       | only you                                                                   |
 | Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL)                |
 | Avatars, group covers                                     | public buckets                             | anyone with the URL                                                        |
 
@@ -62,6 +64,7 @@ There is no analytics or tracking code in the app.
 - **FX sync** sends nothing about users to Frankfurter. It requests public reference rates.
 - **Calendar feeds** contain event titles, descriptions, locations and group names for whoever has the URL.
 - **Auth emails** go out through Supabase's SMTP.
+- **Notification emails** (off until `app_config.email_notifications` is on) go through the configured provider (Resend). They carry the recipient's address, names, amounts and comment excerpts, so the provider can read them.
 
 ## Account deletion
 
@@ -79,6 +82,8 @@ Closed accounts get `account_deleted` from every RPC and never receive notificat
 - **The publishable key is public.** It ships in the web bundle and in `VITE_*` variables. That is fine, because RLS and grants decide what it can do. Never rely on it being secret.
 - **The service role key never leaves Supabase.** Only edge functions use it, through `_shared/admin.ts`, and only after they have authorized the caller. It is never in GitHub, in `.env` files or in the web app.
 - **`EDGE_SECRET` lives in two places**: the edge function secrets and the Vault entry `edge_secret`. Rotate both together ([deployment.md](deployment.md#vault-entries)).
+- **`RESEND_API_KEY`** is an edge function secret only. Without it no notification email is sent.
+- **The unsubscribe signing key** is generated by a migration into `private.signing_keys` and never leaves the database. Replacing that row breaks every unsubscribe link already sent.
 - **VAPID private key** is an edge function secret only. Rotating it invalidates every existing push subscription, and browsers have to subscribe again.
 - **CI secrets** (listed in [deployment.md](deployment.md#secrets)) are GitHub Actions secrets, scoped as narrowly as the providers allow. Fork PRs do not receive them.
 - **If a secret leaks**, rotate it first, then investigate. Report leaks in this repository through private vulnerability reporting.
