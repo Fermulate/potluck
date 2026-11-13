@@ -42,5 +42,9 @@ export function parseMinor(text: string, currency: string): number | null {
 /** "1.100000000000" -> "1.1", "1.000000000000" -> "1": a rate without its padding. */
 export function trimRate(rate: string | number): string {
   const text = String(rate)
-  return text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text
+  if (!text.includes('.')) return text
+  let end = text.length
+  while (end > 0 && text[end - 1] === '0') end -= 1
+  if (text[end - 1] === '.') end -= 1
+  return text.slice(0, end)
 }
