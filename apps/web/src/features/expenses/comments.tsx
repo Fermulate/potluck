@@ -20,9 +20,12 @@ import { moneyErrorMessage, useNameOf, usePeople, useTimeZone } from './money-da
 export function ExpenseComments({
   expenseId,
   canModerate,
+  readOnly = false,
 }: {
   expenseId: string
   canModerate: boolean
+  /** Archived groups: comments can be read but not added or removed. */
+  readOnly?: boolean
 }) {
   const me = useUserId()
   const people = usePeople()
@@ -117,7 +120,7 @@ export function ExpenseComments({
                       {c.body}
                     </p>
                   </div>
-                  {(mine || canModerate) && !c.id.startsWith('pending-') && (
+                  {!readOnly && (mine || canModerate) && !c.id.startsWith('pending-') && (
                     <IconButton
                       size="sm"
                       label={t('common.delete')}
@@ -132,33 +135,35 @@ export function ExpenseComments({
           </ol>
         )
       )}
-      <form onSubmit={submit} className="flex items-end gap-2">
-        <label htmlFor="comment-body" className="sr-only">
-          {t('expenses.comments.placeholder')}
-        </label>
-        <textarea
-          id="comment-body"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (isSendEnter(e)) {
-              e.preventDefault()
-              e.currentTarget.form?.requestSubmit()
-            }
-          }}
-          placeholder={t('expenses.comments.placeholder')}
-          maxLength={2000}
-          rows={1}
-          className="field-sizing-content max-h-40 min-h-12 flex-1 resize-none rounded-[1.5rem] border border-line-strong bg-card px-4 py-3 text-base text-ink placeholder:text-mute/80 focus:border-ink focus-visible:outline-none"
-        />
-        <IconButton
-          type="submit"
-          label={t('expenses.comments.send')}
-          icon={<SendHorizontal />}
-          variant="ink"
-          disabled={!body.trim()}
-        />
-      </form>
+      {!readOnly && (
+        <form onSubmit={submit} className="flex items-end gap-2">
+          <label htmlFor="comment-body" className="sr-only">
+            {t('expenses.comments.placeholder')}
+          </label>
+          <textarea
+            id="comment-body"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (isSendEnter(e)) {
+                e.preventDefault()
+                e.currentTarget.form?.requestSubmit()
+              }
+            }}
+            placeholder={t('expenses.comments.placeholder')}
+            maxLength={2000}
+            rows={1}
+            className="field-sizing-content max-h-40 min-h-12 flex-1 resize-none rounded-[1.5rem] border border-line-strong bg-card px-4 py-3 text-base text-ink placeholder:text-mute/80 focus:border-ink focus-visible:outline-none"
+          />
+          <IconButton
+            type="submit"
+            label={t('expenses.comments.send')}
+            icon={<SendHorizontal />}
+            variant="ink"
+            disabled={!body.trim()}
+          />
+        </form>
+      )}
     </section>
   )
 }

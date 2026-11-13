@@ -93,13 +93,15 @@ export function SplitCard({
   const money = (cents: number) => formatMoney(cents, e.currency)
   const type = t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase()
   const sign = e.is_refund ? -1 : 1
-  // Payers (and you) are coloured by where the expense leaves them: owed or owing. A refund
-  // flips it, since the payers received the money.
-  const toneOf = (id: string, paid: number | undefined, share: number) => {
-    if (paid === undefined && id !== me) return 'neutral' as const
-    const net = sign * ((paid ?? 0) - share)
-    return net > 0 ? ('owed' as const) : net < 0 ? ('owe' as const) : ('neutral' as const)
-  }
+  // The share on the right is coloured only where it is also what you owe (or get back, on a
+  // refund): your own line when you did not pay. A payer's share is not their balance, so it
+  // stays neutral and their net goes underneath, in its own colour.
+  const toneOf = (id: string, paid: number | undefined) =>
+    paid !== undefined || id !== me
+      ? ('neutral' as const)
+      : e.is_refund
+        ? ('owed' as const)
+        : ('owe' as const)
 
   return (
     <Card padding="none" className="overflow-hidden">
@@ -153,8 +155,22 @@ export function SplitCard({
                     ` (${s.adjustment_cents > 0 ? '+' : '−'}${money(Math.abs(s.adjustment_cents))})`}
                 </span>
               </span>
-              <span className="text-lg font-bold">
-                <Money cents={share} currency={e.currency} tone={toneOf(id, paid, share)} />
+              <span className="flex shrink-0 flex-col items-end">
+                <span className="text-lg font-bold">
+                  <Money cents={share} currency={e.currency} tone={toneOf(id, paid)} />
+                </span>
+                {paid !== undefined && sign * (paid - share) !== 0 && (
+                  <span
+                    className={cn(
+                      'text-xs font-semibold',
+                      sign * (paid - share) > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
+                    )}
+                  >
+                    {sign * (paid - share) > 0
+                      ? t('expenses.detail.getsBack', { amount: money(sign * (paid - share)) })
+                      : t('expenses.detail.owes', { amount: money(-sign * (paid - share)) })}
+                  </span>
+                )}
               </span>
             </li>
           )

@@ -236,17 +236,49 @@ describe('ExpenseDetail', () => {
     ).toBeVisible()
   })
 
-  it('colours payers by where the expense leaves them', async () => {
+  it('keeps a payer share neutral and shows their net in its own colour', async () => {
     renderDetail({
       amount_cents: 3000,
       paid_by: BEN,
       expense_payers: [{ user_id: BEN, paid_cents: 3000 }],
     })
-    const ben = await screen.findByText(
-      t('expenses.detail.paidAndShare', { paid: '$30.00', share: '$10.00' }),
-    )
-    // Ben is owed, I owe: the shares carry those tones.
-    expect(ben.closest('li')!.querySelector('[data-tone="owed"]')).not.toBeNull()
+    const ben = (
+      await screen.findByText(
+        t('expenses.detail.paidAndShare', { paid: '$30.00', share: '$10.00' }),
+      )
+    ).closest('li')!
+    expect(ben.querySelector('[data-tone="neutral"]')).not.toBeNull()
+    expect(within(ben).getByText(t('expenses.detail.getsBack', { amount: '$20.00' }))).toBeVisible()
+    // My line: my share is what I owe.
+    const mine = screen
+      .getAllByText(t('expenses.detail.owes', { amount: '$10.00' }))[0]!
+      .closest('li')!
+    expect(mine.querySelector('[data-tone="owe"]')).not.toBeNull()
+  })
+
+  it('is read only in an archived group', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expense(ID), expense({ id: ID }))
+      c.setQueryData(moneyKeys.comments(ID), [])
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+        ...group,
+        archived_at: '2026-10-01T00:00:00Z',
+      })
+    })
+    renderWithProviders(<ExpenseDetail expenseId={ID} />, {
+      path: '/expenses/$expenseId',
+      url: `/expenses/${ID}`,
+      client,
+    })
+    expect(
+      await screen.findByText(t('expenses.form.archived', { group: 'Hike crew' })),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('group', { name: t('expenses.detail.actions') }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: t('expenses.comments.placeholder') }),
+    ).not.toBeInTheDocument()
   })
 
   it('hides edit and delete from people who neither added nor paid it', async () => {

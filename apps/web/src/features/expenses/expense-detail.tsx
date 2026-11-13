@@ -20,7 +20,7 @@ import { supabase } from '@/lib/supabase'
 import { ExpenseComments } from './comments'
 import { ExpenseHistory, ItemsCard, PayersLine, SplitCard } from './expense-detail-parts'
 import { CategoryTile } from './expense-row'
-import { categoryLabel } from './format'
+import { categoryLabel, groupTitle } from './format'
 import { Money } from './money'
 import {
   invalidateMoney,
@@ -75,8 +75,10 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const role = group.data?.members.find((m) => m.id === me)?.role
   const isOwn =
     e.created_by === me || e.paid_by === me || e.expense_payers.some((p) => p.user_id === me)
-  const mayEdit = can(role, 'expense.edit', { isOwn })
-  const mayDelete = can(role, 'expense.delete', { isOwn })
+  // An archived group is read only: no edit, delete, restore or new comments.
+  const archived = !!group.data?.archived_at
+  const mayEdit = !archived && can(role, 'expense.edit', { isOwn })
+  const mayDelete = !archived && can(role, 'expense.delete', { isOwn })
   const deleted = !!e.deleted_at
   // The server will not delete an expense that still moves money for someone who left.
   const departed = group.data
@@ -139,6 +141,15 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
           </div>
         )}
       </div>
+
+      {archived && group.data && (
+        <p
+          role="note"
+          className="mt-4 rounded-card bg-sunken px-4 py-3 text-sm font-medium text-mute"
+        >
+          {t('expenses.form.archived', { group: groupTitle(group.data, me) })}
+        </p>
+      )}
 
       {!deleted && departed && (mayEdit || mayDelete) && (
         <p role="note" className="mt-4 text-sm font-medium text-saffron-ink">
@@ -258,7 +269,11 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               </p>
             </section>
           )}
-          <ExpenseComments expenseId={e.id} canModerate={role === 'owner' || role === 'admin'} />
+          <ExpenseComments
+            expenseId={e.id}
+            canModerate={role === 'owner' || role === 'admin'}
+            readOnly={archived}
+          />
         </div>
       </div>
 
