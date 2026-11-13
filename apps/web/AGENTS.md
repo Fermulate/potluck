@@ -30,7 +30,8 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
 - Money: `fx_rate` arrives as decimal text; pass it to `convert()` unchanged. An expense can have
   several payers and be a refund ([ADR 12](../../docs/adr/0012-several-payers-refunds-and-stored-items.md)):
   read who paid with `payersOf()` and feed core with `toBalanceExpense()` (`features/expenses/expense-math.ts`),
-  never `paid_by` alone.
+  never `paid_by` alone. What an expense means for the viewer (`viewerLine`) comes from core `expenseEffect`
+  in the group currency, so a row can never disagree with the balance.
 - UI copy: `t()` keys only. Visual rules: [docs/design.md](../../docs/design.md).
 
 ## Tests

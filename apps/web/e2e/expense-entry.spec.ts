@@ -1,3 +1,4 @@
+import { updateGroup } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import type { Page } from '@playwright/test'
 import { addEqualExpense, groupWith, type TestGroup } from './support/api'
@@ -39,7 +40,15 @@ test.describe('expense entry', () => {
 
     // 90 paid 60 by me and 30 by Ben, split equally between three.
     await startExpense(page, group, '90', description)
-    await page.getByRole('button', { name: t('expenses.fields.paidBy') }).click()
+    // Escape closes the sheet and puts focus back on "Paid by".
+    const paidByButton = page.getByRole('button', { name: t('expenses.fields.paidBy') })
+    await paidByButton.click()
+    await page.getByRole('dialog', { name: t('expenses.payers.title') }).waitFor()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(paidByButton).toBeFocused()
+
+    await paidByButton.click()
     const sheet = page.getByRole('dialog', { name: t('expenses.payers.title') })
     await sheet.getByRole('radio', { name: t('expenses.payers.several') }).click()
     const paidBy = (name: string) =>
@@ -73,7 +82,7 @@ test.describe('expense entry', () => {
     await expect(
       page.getByText(
         t('expenses.detail.paidByMany', {
-          names: `${t('common.you')} ${t('common.and')} ${ben.name}`,
+          names: `${t('common.youLower')} ${t('common.and')} ${ben.name}`,
         }),
       ),
     ).toBeVisible()
@@ -142,14 +151,7 @@ test.describe('expense entry', () => {
       history.getByText(t('expenses.history.updated', { name: t('common.you') })),
     ).toBeVisible()
     await expect(
-      history.getByText(
-        new RegExp(
-          t('expenses.history.amountChanged', { from: usd(10000), to: usd(13000) }).replace(
-            /\$/g,
-            '\\$',
-          ),
-        ),
-      ),
+      history.getByText(t('expenses.history.change.amount', { from: usd(10000), to: usd(13000) })),
     ).toBeVisible()
   })
 
@@ -183,6 +185,16 @@ test.describe('expense entry', () => {
     await expect(
       page.getByText(t('balances.owesYou', { name: ben.name, amount: usd(3000) })),
     ).toBeVisible()
+  })
+
+  test('an archived group is read only', async ({ newUser, openAs }) => {
+    const me = await newUser({ name: unique('Ava') })
+    const group = await groupWith(me)
+    await updateGroup(me.client, group.id, { archived_at: new Date().toISOString() })
+    const page = await openAs(me)
+    await page.goto(`/new/expense?groupId=${group.id}`)
+    await expect(page.getByText(t('expenses.form.archivedTitle'))).toBeVisible()
+    await expect(page.getByRole('textbox', { name: t('expenses.fields.amount') })).toHaveCount(0)
   })
 
   test('two people: one tap says who owes it all', async ({ newUser, openAs }) => {
