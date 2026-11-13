@@ -33,6 +33,14 @@ export interface PushCopy {
   memberAddedBody: string
   mfaRemoved: string
   mfaRemovedBody: string
+  paymentUpdated: string
+  paymentUpdatedBody: string
+  paymentDeleted: string
+  paymentDeletedBody: string
+  paymentRestored: string
+  paymentRestoredBody: string
+  nudge: string
+  nudgeBody: string
   other: string
 }
 
@@ -67,6 +75,14 @@ const en: PushCopy = {
   memberAddedBody: 'Pull up a chair.',
   mfaRemoved: 'Two-step sign in is off',
   mfaRemovedBody: 'A recovery code was used to sign in. Not you? Change your password.',
+  paymentUpdated: 'Payment changed',
+  paymentUpdatedBody: 'A payment with you was edited.',
+  paymentDeleted: 'Payment deleted',
+  paymentDeletedBody: 'A payment with you was deleted.',
+  paymentRestored: 'Payment restored',
+  paymentRestoredBody: 'A payment with you is back.',
+  nudge: 'A friendly nudge',
+  nudgeBody: 'Someone is waiting on a payment from you.',
   other: 'Something new is waiting for you.',
 }
 
@@ -102,6 +118,14 @@ const es: PushCopy = {
   mfaRemoved: 'El inicio de sesión en dos pasos está desactivado',
   mfaRemovedBody:
     'Alguien entró con un código de recuperación. ¿No fuiste tú? Cambia tu contraseña.',
+  paymentUpdated: 'Pago modificado',
+  paymentUpdatedBody: 'Se editó un pago contigo.',
+  paymentDeleted: 'Pago eliminado',
+  paymentDeletedBody: 'Se eliminó un pago contigo.',
+  paymentRestored: 'Pago restaurado',
+  paymentRestoredBody: 'Un pago contigo ha vuelto.',
+  nudge: 'Un recordatorio amistoso',
+  nudgeBody: 'Alguien está esperando un pago tuyo.',
   other: 'Tienes algo nuevo esperándote.',
 }
 
@@ -137,6 +161,14 @@ const fr: PushCopy = {
   mfaRemoved: 'La connexion en deux étapes est désactivée',
   mfaRemovedBody:
     "Un code de secours a servi à se connecter. Ce n'était pas toi ? Change ton mot de passe.",
+  paymentUpdated: 'Paiement modifié',
+  paymentUpdatedBody: 'Un paiement avec toi a été modifié.',
+  paymentDeleted: 'Paiement supprimé',
+  paymentDeletedBody: 'Un paiement avec toi a été supprimé.',
+  paymentRestored: 'Paiement restauré',
+  paymentRestoredBody: 'Un paiement avec toi est de retour.',
+  nudge: 'Un petit rappel',
+  nudgeBody: "Quelqu'un attend un paiement de ta part.",
   other: "Quelque chose de nouveau t'attend.",
 }
 
@@ -172,6 +204,14 @@ const de: PushCopy = {
   mfaRemoved: 'Die Anmeldung in zwei Schritten ist aus',
   mfaRemovedBody:
     'Jemand hat sich mit einem Wiederherstellungscode angemeldet. Warst du das nicht? Ändere dein Passwort.',
+  paymentUpdated: 'Zahlung geändert',
+  paymentUpdatedBody: 'Eine Zahlung mit dir wurde bearbeitet.',
+  paymentDeleted: 'Zahlung gelöscht',
+  paymentDeletedBody: 'Eine Zahlung mit dir wurde gelöscht.',
+  paymentRestored: 'Zahlung wiederhergestellt',
+  paymentRestoredBody: 'Eine Zahlung mit dir ist wieder da.',
+  nudge: 'Eine freundliche Erinnerung',
+  nudgeBody: 'Jemand wartet auf eine Zahlung von dir.',
   other: 'Etwas Neues wartet auf dich.',
 }
 
@@ -206,6 +246,14 @@ const pt: PushCopy = {
   memberAddedBody: 'Puxe uma cadeira.',
   mfaRemoved: 'O login em duas etapas está desligado',
   mfaRemovedBody: 'Alguém entrou com um código de recuperação. Não foi você? Troque sua senha.',
+  paymentUpdated: 'Pagamento alterado',
+  paymentUpdatedBody: 'Um pagamento com você foi editado.',
+  paymentDeleted: 'Pagamento excluído',
+  paymentDeletedBody: 'Um pagamento com você foi excluído.',
+  paymentRestored: 'Pagamento restaurado',
+  paymentRestoredBody: 'Um pagamento com você voltou.',
+  nudge: 'Um lembrete amigável',
+  nudgeBody: 'Alguém está esperando um pagamento seu.',
   other: 'Tem novidade esperando por você.',
 }
 

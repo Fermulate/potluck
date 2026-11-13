@@ -10,7 +10,7 @@ import {
 
 // The same cases run against the `group_balances` view in
 // supabase/tests/19_expense_entry.test.sql; the pairwise cases also run against private.pairwise_debts in
-// supabase/tests/20_payments.test.sql.
+// supabase/tests/23_payments.test.sql.
 const equalThree = [
   { userId: 'ava', shareCents: 3000 },
   { userId: 'ben', shareCents: 3000 },

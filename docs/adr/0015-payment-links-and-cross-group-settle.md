@@ -20,7 +20,7 @@ Splitwise parity needs three payment features that touch money and privacy: payi
 ## Consequences
 
 - No processor fees, no money held, nothing to reconcile. The cost is a manual confirmation step, and a payment can be recorded that never went through; the payer and payee can edit, delete or restore it.
-- The pairwise rule now lives in SQL too. Any change to how an expense moves balances must update `private.pairwise_debts`, `group_balances`, `simplified_debts` and core together, with the shared cases in `20_payments.test.sql` (several payers and refunds included).
+- The pairwise rule now lives in SQL too. Any change to how an expense moves balances must update `private.pairwise_debts`, `group_balances`, `simplified_debts` and core together, with the shared cases in `23_payments.test.sql` (several payers and refunds included).
 - A friend in three groups gets three `settlement.created` notifications from one tap.
 - Links depend on third party URL formats that can change; they live in one core function with tests.
 - Handles are personal data visible to everyone in your groups. The Me page says so next to the form.

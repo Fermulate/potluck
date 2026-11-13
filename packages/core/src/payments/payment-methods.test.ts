@@ -11,7 +11,7 @@ import {
 } from '../index'
 
 describe('isValidHandle', () => {
-  // Same cases as "handle rules match the core test cases" in supabase/tests/20_payments.test.sql.
+  // Same cases as "handle rules match the core test cases" in supabase/tests/23_payments.test.sql.
   const cases: [string, string, boolean][] = [
     ['paypal', 'avamakes', true],
     ['paypal', 'ava.makes', false],

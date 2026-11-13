@@ -1,7 +1,7 @@
 -- Debts per group on the server, and settling several debts in one step (ADR 15).
 --
 -- private.pairwise_debts mirrors pairwiseDebts in packages/core (same cases in
--- supabase/tests/20_payments.test.sql, pairwise-debts.test.ts and payers-refunds.test.ts):
+-- supabase/tests/23_payments.test.sql, pairwise-debts.test.ts and payers-refunds.test.ts):
 -- each expense's effect per person is computed as group_balances does (payers credited, split
 -- debited, refunds flipped, largest remainder with ties to the smaller id); inside an expense the
 -- people behind pay the people ahead, debtors in id order, each spread over the creditors by what

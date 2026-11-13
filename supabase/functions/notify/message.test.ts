@@ -68,3 +68,31 @@ test('copy follows the recipient language, English when it is missing or unknown
   assert.equal(message(tacos, 'fr').body, 'Tacos')
   assert.equal(message(tacos, 'fr').title, 'Nouvelle dépense')
 })
+
+test('payment pushes open the payment, and a comment on one does too', () => {
+  for (const type of [
+    'settlement.created',
+    'settlement.updated',
+    'settlement.deleted',
+    'settlement.restored',
+  ]) {
+    assert.equal(message(row(type, { group_id: 'g1', settlement_id: 's1' })).url, '/payments/s1')
+  }
+  assert.equal(message(row('settlement.deleted', {}), 'es').title, 'Pago eliminado')
+  assert.equal(
+    message(row('comment.created', { group_id: 'g1', settlement_id: 's1' })).url,
+    '/payments/s1',
+  )
+})
+
+test('a reminder opens settle up with the person owed picked, and shows their note', () => {
+  const m = message(row('debt.reminder', { group_id: 'g1', from_user: 'u2' }))
+  assert.equal(m.title, 'A friendly nudge')
+  assert.equal(m.url, '/new/settle?groupId=g1&to=u2')
+  assert.equal(message(row('debt.reminder', {})).url, '/home')
+  assert.equal(
+    message(row('debt.reminder', {}), 'pt').body,
+    'Alguém está esperando um pagamento seu.',
+  )
+  assert.equal(message(row('debt.reminder', { note: 'Rent is due' }), 'fr').body, 'Rent is due')
+})

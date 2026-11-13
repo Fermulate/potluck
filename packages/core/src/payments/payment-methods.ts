@@ -6,7 +6,7 @@ import { minorUnits } from '../currency'
  * payment went through before it is recorded.
  *
  * Handle rules mirror `private.valid_payment_handle` in SQL; both are tested with the same cases
- * (`payment-methods.test.ts`, `supabase/tests/20_payments.test.sql`).
+ * (`payment-methods.test.ts`, `supabase/tests/23_payments.test.sql`).
  */
 export const PAYMENT_KINDS = [
   'paypal',
