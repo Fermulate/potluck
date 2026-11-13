@@ -33,6 +33,7 @@ export const HELP_TOPICS = {
   houseRules: '/groups/settings/#house-rules',
   painter: '/plans/availability/#mouse-touch-and-keyboard',
   heatmap: '/plans/availability/#the-live-heatmap',
+  guestLinks: '/plans/availability/#guest-links',
   bestTimes: '/plans/best-time/#the-rules',
   lockIn: '/plans/lock-in/#lock-it-in',
   calendarFeed: '/account/#calendar-feed',

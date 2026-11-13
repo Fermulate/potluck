@@ -2,7 +2,7 @@ import { app, toast, common, nav, empty, errors } from './en/shell'
 import { auth, onboarding } from './en/auth'
 import { groups, members, roles, invites, friends } from './en/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './en/money'
-import { events, availability, bestTime, rsvp, timeline, home } from './en/plans'
+import { events, availability, bestTime, rsvp, timeline, home, guests } from './en/plans'
 import { notifications, settings, account, unsubscribe, security } from './en/me'
 import { help } from './en/help'
 
@@ -39,6 +39,7 @@ export const en = {
   availability,
   bestTime,
   rsvp,
+  guests,
   timeline,
   activity,
   notifications,

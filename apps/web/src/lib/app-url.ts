@@ -8,3 +8,8 @@ export function appOrigin(): string {
 export function inviteUrl(code: string): string {
   return `${appOrigin()}/join/${encodeURIComponent(code)}`
 }
+
+/** A plan's guest availability link (`/a/<code>`), short enough to paste in a group chat. */
+export function guestUrl(code: string): string {
+  return `${appOrigin()}/a/${encodeURIComponent(code)}`
+}
