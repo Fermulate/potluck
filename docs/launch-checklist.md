@@ -31,10 +31,7 @@ The deploy workflow builds on every push but only deploys when `CLOUDFLARE_API_T
 
 ### 2. Supabase credentials (CI migrations)
 
-The `migrate` job skips until both secrets exist.
-
-- `SUPABASE_ACCESS_TOKEN`: Supabase dashboard, Account, Access Tokens.
-- `SUPABASE_DB_PASSWORD`: the project's database password (Project Settings, Database; reset it there if nobody has it).
+The `migrate` job skips until `SUPABASE_ACCESS_TOKEN` exists (Supabase dashboard, Account, Access Tokens). With it, every merge to `main` that passes CI pushes migrations, auth config and edge functions. The database password is not needed: the pinned CLI signs in with a temporary role made from the token.
 
 ### 3. Email
 
