@@ -15,7 +15,7 @@ Tables that need multi-row consistency get no insert or update policy at all. Wr
 - Each one sets `search_path = ''` and schema-qualifies every name, so a caller cannot shadow a table or function.
 - Errors use one shape: `message` is a stable snake_case code, `detail` is readable English, `errcode` is one of `42501`, `PT404` (HTTP 404), `22023` or `23514`. Clients translate the code, never the English.
 - Invariants that must hold whatever path wrote the row are deferred constraint triggers checked at commit: one owner per group, splits sum to the amount.
-- `execute` is revoked from `public` and `anon` and granted to `authenticated` (and `service_role`). `invite_preview` and `email_unsubscribe` ([ADR 11](0011-notification-prefs-and-email.md), the signed token is the credential) are the only exceptions callable by `anon`.
+- `execute` is revoked from `public` and `anon` and granted to `authenticated` (and `service_role`). `invite_preview` and `email_unsubscribe` ([ADR 11](0011-notification-prefs-and-email.md), the signed token is the credential) and the two guest link RPCs, `guest_link_preview` and `set_guest_availability` ([ADR 16](0016-guest-availability-links.md)), are the only exceptions callable by `anon`.
 
 Single-row writes that RLS can judge stay direct: profile fields, group settings, event details, RSVPs, comments, notifications, push tokens, blocks.
 

@@ -328,6 +328,9 @@ erDiagram
   profiles ||--o| calendar_feed_tokens : owns
   profiles ||--o{ notifications : receives
   profiles ||--o{ push_tokens : registers
+  events ||--o{ event_guest_links : shares
+  event_guest_links ||--o{ event_guests : admits
+  event_guests ||--o{ event_guest_availability : paints
   profiles ||--o{ notification_prefs : chooses
 
   groups {
@@ -361,6 +364,28 @@ erDiagram
     uuid user_id PK, FK
     timestamptz slot_start PK "UTC cell start"
     availability_level level "yes or maybe"
+  }
+  event_guest_links {
+    uuid id PK
+    uuid event_id FK
+    uuid group_id FK
+    text code UK "16 url-safe chars"
+    int max_guests "1 to 100"
+    timestamptz expires_at "24h, 7d or 30d"
+    timestamptz revoked_at
+  }
+  event_guests {
+    uuid id PK
+    uuid link_id FK
+    uuid event_id FK
+    text display_name "1 to 40 chars"
+    bytea token_hash "sha256, never readable"
+  }
+  event_guest_availability {
+    uuid guest_id PK, FK
+    timestamptz slot_start PK
+    uuid event_id FK
+    availability_level level
   }
   availability_requests {
     uuid event_id PK, FK
@@ -478,6 +503,9 @@ erDiagram
 - `event_rsvps`: `(event_id, user_id)` pk, `status rsvp_status`, `updated_at`.
 - `calendar_connections`: `user_id`, `provider ('google'|'microsoft')`, encrypted tokens in Vault, `last_synced_at`. Feature-flagged off until OAuth credentials exist.
 - `busy_blocks`: `(user_id, starts_at, ends_at, source)`; imported busy time, shown as hatched cells on the availability grid.
+- `event_guest_links`: `id`, `event_id`, `group_id`, `code text unique` (16 url-safe chars), `created_by`, `max_guests int` (1 to 100), `expires_at`, `revoked_at`, `created_at`. Shareable links that let people without an account answer one polling plan ([ADR 16](adr/0016-guest-availability-links.md)).
+- `event_guests`: `id`, `link_id`, `event_id`, `group_id`, `display_name` (1 to 40 chars), `token_hash bytea` (sha256 of the token the guest's browser keeps; unique per link, never readable by clients), `saves` and `saves_window_start` (rate limit), timestamps.
+- `event_guest_availability`: `(guest_id, slot_start)` pk, `event_id`, `level`. Same shape as `availability`.
 
 ### Feed, notifications, platform
 
@@ -496,6 +524,9 @@ erDiagram
 | Add/edit own expenses, availability, RSVP, comments | yes   | yes                            | yes                     |
 | Create events, request availability                 | yes   | yes                            | yes                     |
 | Lock / cancel an event                              | yes   | yes                            | creator only            |
+| Create guest links                                  | yes   | yes                            | yes                     |
+| Turn off a guest link                               | yes   | yes                            | link or plan creator    |
+| Remove a guest's answer                             | yes   | yes                            | plan creator only       |
 | Edit/delete others' expenses                        | yes   | yes                            | no                      |
 | Record a payment between two other members          | yes   | yes                            | no                      |
 | Edit/delete/restore a payment you were not part of  | yes   | yes                            | no                      |
@@ -540,6 +571,11 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `schedule_event(event_id, starts_at)` / `cancel_event(event_id)`                                                  |                                                                                                                                                                                                                         |
 | `my_timeline(from, to)`                                                                                           | upcoming events across all my groups with my RSVP and request state                                                                                                                                                     |
 | `delete_my_account()`                                                                                             | anonymizes profile (tombstone name), removes PII, deletes auth user via edge function                                                                                                                                   |
+| `create_guest_link(event_id, ttl, max_guests default 10)` → link                                                  | `ttl` is `24h`, `7d` or `30d`; any member, polling plans only                                                                                                                                                           |
+| `revoke_guest_link(link_id)` → link                                                                               | link creator, plan creator, admins                                                                                                                                                                                      |
+| `remove_guest_answer(guest_id)`                                                                                   | plan creator or admins; the guest's slots go too                                                                                                                                                                        |
+| `guest_link_preview(code, token default null)` → status, plan window, aggregated heat, the guest's own answer     | callable by `anon`, for `/a/<code>`                                                                                                                                                                                     |
+| `set_guest_availability(code, name, token, slots)` → `guest_token, saved`                                         | callable by `anon`; adds or edits a guest's answer                                                                                                                                                                      |
 | `calendar_feed_token(rotate bool default false)` → text                                                           | returns (and creates on first call) the caller's `.ics` feed token; `rotate` issues a new one and breaks old subscriptions                                                                                              |
 | `my_notification_prefs()` → rows `(category, push, email, push_allowed, email_allowed)`                           | every notification setting with the caller's effective value, in display order                                                                                                                                          |
 | `set_notification_pref(category, push?, email?)`                                                                  | changes one setting; a null channel is left as it is                                                                                                                                                                    |
@@ -583,6 +619,7 @@ Codes:
 - Payments: `invalid_recipient`, `invalid_parties` (payer and payee must differ), `not_a_party` (a member recording a payment between two others), `note_too_long`, `settlement_not_found`, `settlement_deleted` (editing a deleted payment), `member_not_in_group` (moving the balance of someone who has left), `nothing_owed` and `already_reminded` (reminders, picked groups), `invalid_payment_handle` (payment methods).
 - Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`, `notification_setting_required` (changing a required category, i.e. security notices).
 - Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
+- Guest links: `invalid_guest_link_ttl`, `invalid_guest_limit`, `guest_link_limit` (20 open links per plan), `guest_link_not_found`, `guest_link_revoked`, `guest_link_expired`, `guest_link_full`, `invalid_guest_name`, `guest_slots_required` (a new guest with no times), `guest_rate_limited`, `guest_not_found`.
 
 ### RPC details and deviations
 
@@ -634,7 +671,12 @@ Codes:
 - `simplified_debts(group_id)`: greedy largest creditor vs largest debtor, ties by user id. Always simplifies, whatever `groups.simplify_debts` says (the client decides what to show).
 - `set_availability(event_id, slots)` returns the number of slots saved. `slots` is an array of `{slot_start, level}` objects; `level` defaults to yes. Every slot must be a grid cell: inside the date window and `[day_start_minute, day_end_minute)` in `events.timezone`, aligned to `slot_minutes`. Only while the event is `polling`. Replaces are serialized per event and caller with a transaction advisory lock, so a save still in flight and the flush sent as the page is left apply one after the other.
 - `request_availability(event_id, user_ids?)` returns how many people were asked. `null` or empty means every member (except the caller) who has not answered.
-- `best_slots(event_id, limit = 5)`: candidates are the distinct `slot_start`s in current members' availability; durations round up to whole cells; yes needs yes on every covered cell, maybe needs yes or maybe on all of them; `missing` lists members who cannot make the whole duration, sorted by id; `min_attendees` counts yes + maybe; capped at 100 rows. Same rules as `rankSlots` in `packages/core`. Past candidates are not filtered out.
+- `best_slots(event_id, limit = 5)`: candidates are the distinct `slot_start`s in current members' and the plan's guests' availability (guests count exactly like members, toward `min_attendees` too, and their guest ids can appear in `missing`); durations round up to whole cells; yes needs yes on every covered cell, maybe needs yes or maybe on all of them; `missing` lists members who cannot make the whole duration, sorted by id; `min_attendees` counts yes + maybe; capped at 100 rows. Same rules as `rankSlots` in `packages/core`. Past candidates are not filtered out.
+- Guest links ([ADR 16](adr/0016-guest-availability-links.md)):
+  - `create_guest_link(event_id, ttl, max_guests = 10)` returns the link row. Any member, while the plan is `polling` and the group open; at most 20 open links per plan. It takes a `no key update` lock on the event row, so it serializes with `schedule_event` and `cancel_event`.
+  - `guest_link_preview(code, token?)` returns `status` (`open`, `full`, `revoked`, `expired`, `archived`, or `closed` for a plan that is no longer polling) plus, for `open` and `full`, the title, emoji, group emoji, the link creator's first name, the grid fields, `expires_at`, `max_guests` and `guest_count`. Only `open` carries `respondents`, `heat` (`[{slot_start, yes, maybe}]` from members and guests, never names or ids) and, when `token` matches a guest of this link, `my_name` and `my_slots`. A guest who already answered sees `open` on a full link. Unknown codes raise `guest_link_not_found`.
+  - `set_guest_availability(code, name, token, slots)` locks the link row, checks revoked, expired, archived and polling in that order, trims the name (1 to 40 characters, no control characters) and checks the slots like `set_availability`. A token that matches a guest on this link edits that guest (60 saves per hour). Anything else is a new guest, who needs at least one slot, a free seat (`guest_link_full`) and the link under 20 new guests in 10 minutes, and gets a fresh 24 byte token back. The table keeps `sha256(token)` only.
+  - `remove_guest_answer(guest_id)` deletes the guest and their slots, which frees their seat on the link.
 - `schedule_event(event_id, starts_at)` also reschedules an already scheduled event and sets `ends_at = starts_at + duration`. `reminder_sent_at` is cleared only when the start time actually changes, so locking in the same time again does not send a second reminder. `cancel_event` is idempotent. Owner, admins or the event creator.
 - `my_timeline(from = now(), to = now() + 60 days)` returns `event_id, group_id, group_name, group_emoji, group_color, title, emoji, location, status, timezone, starts_at, ends_at, window_start, window_end, rsvp_deadline, my_rsvp, going_count, availability_requested, availability_submitted` for scheduled events in range and open polls overlapping it.
 - `delete_my_account()` returns void. It:
@@ -681,12 +723,14 @@ Clients write directly (RLS-checked) only to these tables. Everything else goes 
 - `push_tokens`, `blocks`, `reports`, `busy_blocks`, `payment_methods`: own rows.
 - `recurring_expenses`: an admin or anyone it involves (`private.recurring_involves`: creator, payer, someone in the split) may change `active` (pause, resume) or delete; every other change goes through `update_recurring_expense`. Archived groups raise `group_archived` from a trigger. Turning `active` back on moves a past `next_run_on` to the next occurrence on or after today, so paused periods are never charged, and is refused while the template names someone who left.
 - `friendships`: delete, either side.
+- `event_guest_links`, `event_guests`, `event_guest_availability`: no direct writes at all; members read them (`event_guests` without `token_hash`, `saves`, `saves_window_start`).
 
 Who can read what:
 
 - Profiles are visible to yourself, people you share a group with, friends, and anyone who has left (or closed their account in) one of your groups, so old expenses, payments and activity keep their names.
 - Former members are tracked in `private.former_members` by a trigger on `group_members`, only while something in the group (an expense, payment, comment, or a feed entry for something they did there, not their joining or leaving) still names them. Rejoining removes the row.
 - Busy blocks are private. `app_config` is readable by `anon`.
+- Guests are not users and read nothing directly: `anon` has no grants on the guest tables, only the two guest RPCs, which show one link's plan window and aggregated counts.
 
 ### Activity and notifications
 
@@ -699,7 +743,7 @@ Every notification lands in the inbox. `notifications_route` (before insert) fil
 ### Storage, realtime, cron
 
 - Buckets: `avatars` (public, `<user_id>/...`, owner writes), `group-covers` (public, `<group_id>/...`, owner and admins write), `receipts` (private, `<group_id>/...`, members read and upload, uploader or admins replace and delete).
-- `supabase_realtime` publishes `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events`, `group_members`.
+- `supabase_realtime` publishes `availability`, `event_guest_availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events`, `group_members`.
 - pg_cron: `materialize-recurring-expenses` daily at 00:10 UTC (catches up at most 12 periods per template per run; deactivates templates whose people left or closed their account; retries when an FX rate is missing), `recurring-heads-up` at :05 and :35 every hour (`recurring.upcoming` at 09:00 local the day before; a late one between 22:00 and 07:00 local is inbox only), `event-reminders` hourly at :05 (reminders once per event starting within 24h, then marks ended events `done`) and `fx-sync` daily at 16:30 UTC (calls the `fx-sync` edge function through `private.invoke_edge_function`).
 - Database to edge function hooks (`20261105160000_edge_function_hooks.sql`): `private.invoke_edge_function(fn, body)` posts through `pg_net` with the `x-potluck-secret` header. It reads `project_url` and `edge_secret` from Vault and does nothing when either is missing, so the local stack and CI never call out. The `notifications_push` trigger calls `notify` for every new notification routed to push.
 - Email: `notifications_queue_email` puts rows routed to email in `private.email_outbox` (`pending`, `folded`, `sending`, `sent`, `failed`, `dropped`); the `email-notifications` job hands them to `notify` in batches and `notify` reports each batch through `email_outbox_report` (see Scheduled jobs). Unsubscribe tokens are HMACs keyed by `private.signing_keys`, made by `private.unsubscribe_token(uid, category)`; `private.email_unsubscribe_undo` keeps what an unsubscribe changed so undo restores exactly that.
@@ -714,7 +758,7 @@ The browser is untrusted. It holds the publishable key and, once signed in, a sh
 
 ### Layers
 
-1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview` and `email_unsubscribe` (which needs a signed token), and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
+1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview`, `email_unsubscribe` (which needs a signed token), `guest_link_preview` and `set_guest_availability` (which need a guest link code), and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
 2. **Row Level Security.** Enabled on every table in `public`. Policies answer "which rows" using helpers from the `private` schema. Policies use `(select auth.uid())` and `group_id = any (array(select private.my_group_ids()))` so Postgres evaluates them once per statement instead of once per row, and can read only the caller's rows through the `group_id` indexes.
 3. **Security definer RPCs.** Multi-row writes (expense plus splits, settle up, joining, role changes, scheduling) have no insert or update policy at all. They go through `public.*` functions that run as the owner, start with `private.require_user()` (signed in, account not closed) and `private.require_member(group_id)`, then check the role rules themselves. All of them set `search_path = ''` and schema-qualify every name.
 4. **Triggers and constraints** hold invariants no client can skip: exactly one owner per group, splits sum to the amount, group currency locked once money exists, `comments.group_id` copied from the parent, only the author edits a comment body.
@@ -767,21 +811,21 @@ The service-role client (`_shared/admin.ts`) bypasses RLS, so each function auth
 
 ## Realtime
 
-The `supabase_realtime` publication carries `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway. Each of these tables also has a restrictive policy that sends nothing to a session that still owes its two-step code.
+The `supabase_realtime` publication carries `availability`, `event_guest_availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway. Each of these tables also has a restrictive policy that sends nothing to a session that still owes its two-step code.
 
 Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. Each screen owns one channel, mounted while it is open; `notifications-<userId>` lives in the app layout and is the only one open on every screen. Channels opened through `useRealtime` (`apps/web/src/lib/realtime.ts`) get a `:<n>` mount counter suffix so a remount never joins the topic the previous mount is still leaving.
 
-| Channel                  | Mounted by                                                 | Tables (filter)                                                                                       | Refetches                                                                                    |
-| ------------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `notifications-<userId>` | app layout                                                 | `notifications` (`user_id=eq.<userId>`)                                                               | the notification list and the unread badge                                                   |
-| `groups-live`            | the Groups tab                                             | `group_members`, `expenses`, `settlements` (`group_id=in.(<my groups>)`), own joins                   | every `groups` key: list, detail, invites, friends                                           |
-| `groups-live-<groupId>`  | the group layout                                           | same three tables (`group_id=eq.<groupId>`)                                                           | same                                                                                         |
-| `friends-live`           | the Friends page                                           | `expenses`, `settlements`, `group_members` (`group_id=in.(<my groups>)`), own joins                   | the friends list with its net balances                                                       |
-| `money:<groupId>`        | the Expenses tab, the Balances tab, an expense detail page | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                               | group money queries, the changed expense, the activity feed, comments on a commented expense |
-| `payment:<paymentId>`    | a payment detail page                                      | `settlements` (`id=eq.<paymentId>`), `activity` inserts (`group_id=eq.<groupId>`)                     | the payment, its comments                                                                    |
-| `activity-feed`          | the Activity tab                                           | `activity` inserts (`group_id=in.(<my groups>)`), own joins                                           | the activity feed                                                                            |
-| `group-plans:<groupId>`  | the group's Plans tab                                      | `events` (`group_id=eq.<groupId>`)                                                                    | the group's event list and the timeline                                                      |
-| `plan:<eventId>`         | an event page                                              | `availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests; the event, timeline and group event list; RSVPs; comments   |
+| Channel                  | Mounted by                                                 | Tables (filter)                                                                                                                   | Refetches                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `notifications-<userId>` | app layout                                                 | `notifications` (`user_id=eq.<userId>`)                                                                                           | the notification list and the unread badge                                                                                     |
+| `groups-live`            | the Groups tab                                             | `group_members`, `expenses`, `settlements` (`group_id=in.(<my groups>)`), own joins                                               | every `groups` key: list, detail, invites, friends                                                                             |
+| `groups-live-<groupId>`  | the group layout                                           | same three tables (`group_id=eq.<groupId>`)                                                                                       | same                                                                                                                           |
+| `friends-live`           | the Friends page                                           | `expenses`, `settlements`, `group_members` (`group_id=in.(<my groups>)`), own joins                                               | the friends list with its net balances                                                                                         |
+| `money:<groupId>`        | the Expenses tab, the Balances tab, an expense detail page | `expenses`, `settlements`, `activity` inserts (`group_id=eq.<groupId>`)                                                           | group money queries, the changed expense, the activity feed, comments on a commented expense                                   |
+| `payment:<paymentId>`    | a payment detail page                                      | `settlements` (`id=eq.<paymentId>`), `activity` inserts (`group_id=eq.<groupId>`)                                                 | the payment, its comments                                                                                                      |
+| `activity-feed`          | the Activity tab                                           | `activity` inserts (`group_id=in.(<my groups>)`), own joins                                                                       | the activity feed                                                                                                              |
+| `group-plans:<groupId>`  | the group's Plans tab                                      | `events` (`group_id=eq.<groupId>`)                                                                                                | the group's event list and the timeline                                                                                        |
+| `plan:<eventId>`         | an event page                                              | `availability`, `event_guest_availability`, `event_rsvps` (`event_id=eq`), `events` (`id=eq`), `activity` inserts (`group_id=eq`) | heatmap, `best_slots`, requests; guests, their slots and link usage; the event, timeline and group event list; RSVPs; comments |
 
 The three cross-group channels (`groups-live`, `friends-live`, `activity-feed`) go through `useMyGroupsRealtime` (`apps/web/src/features/groups/use-groups.ts`): they wait for the group list, filter every table to `group_id=in.(...)` over the viewer's group ids so the server does not fan every change in the database out to the socket for RLS to sift, and also listen for `group_members` inserts with `user_id=eq.<viewer>`. A join refreshes the group list, which resubscribes with the new id. Realtime caps an `in` filter at 100 values; past that the channel falls back to unfiltered and relies on RLS. Realtime cannot filter delete events, so the channels that watch `group_members` keep an unfiltered listener for its deletes (leaving, removals); any of those also refreshes the group list.
 

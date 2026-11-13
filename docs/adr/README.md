@@ -19,6 +19,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0013](0013-two-step-sign-in-enforced-in-the-database.md)  | Two-step sign in is enforced in the database                |
 | [0014](0014-editable-recurring-templates.md)               | Editable repeating expenses                                 |
 | [0015](0015-payment-links-and-cross-group-settle.md)       | Payment links and settling across groups                    |
+| [0016](0016-guest-availability-links.md)                   | Guest availability links without accounts                   |
 
 ## Writing a new one
 
