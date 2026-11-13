@@ -33,6 +33,12 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   never `paid_by` alone. What an expense means for the viewer (`viewerLine`) comes from core `expenseEffect`
   in the group currency, so a row can never disagree with the balance.
 - UI copy: `t()` keys only. Visual rules: [docs/design.md](../../docs/design.md).
+- Language: `src/lib/language.ts` starts the app in the remembered (or browser) language before the
+  first render; the root keys its outlet by language, so a switch redraws every screen. The profile's
+  `locale` wins once it loads (`features/account/use-profile-language.ts`).
+- Two-step sign in: signed-in routes check `needsSecondFactor(session)` (`src/lib/auth.ts`) and send
+  the person to `/two-factor`; the database refuses that session anyway ([ADR 11](../../docs/adr/0011-two-step-sign-in-enforced-in-the-database.md)).
+  Sign in and security sections live in `src/features/account/`, mounted on Me with one line each.
 
 ## Tests
 
@@ -54,3 +60,5 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   signed out). Set up groups and expenses through `e2e/support/api.ts`, not the UI.
 - Selectors are roles and labels built with `t()` from `@potluck/i18n`, never CSS classes or test ids.
 - Keep e2e to journeys; anything testable lower in the pyramid goes there.
+- `support/totp.ts` makes authenticator codes from a secret; `support/mail.ts` reads Mailpit and opens
+  Supabase verify links on the test server's origin.

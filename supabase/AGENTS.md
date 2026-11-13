@@ -44,6 +44,10 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   `private.save_expense`. Balances and departed checks read payers, not `paid_by` (ADR 12).
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
+- Two-step sign in ([ADR 11](../docs/adr/0011-two-step-sign-in-enforced-in-the-database.md)):
+  `private.check_request()` is PostgREST's pre-request hook and refuses an unfinished two-step
+  session. Add any other per-request rule there (PostgREST runs one function). A table added to the
+  `supabase_realtime` publication also needs the restrictive "two-step sign in done" `select` policy.
 - Small immutable SQL helpers used per row (`private.minor_units`, `private.convert_minor`) use a
   SQL-standard body and no `set` clause so they inline; the `function_search_path_mutable` advisor
   warning on them is expected.

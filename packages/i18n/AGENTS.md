@@ -1,7 +1,16 @@
 # packages/i18n
 
-Every user-facing string, `t()`, and the money and date formatters. English only for now.
-Root rules: [../../AGENTS.md](../../AGENTS.md). Full recipe: the `add-i18n-strings-and-error-code` skill.
+Every user-facing string, `t()`, and the money and date formatters. English is the source; Spanish
+is the second language. Root rules: [../../AGENTS.md](../../AGENTS.md). Full recipe: the
+`add-i18n-strings-and-error-code` skill.
+
+- Languages are listed in `src/locales.ts`. `src/es/<feature>.ts` mirrors `src/en/<feature>.ts`, typed
+  `satisfies Translation<typeof en.x>` (a key English lacks fails typecheck). A key it leaves out shows
+  in English, so a new English key does not need Spanish in the same PR; add it when you can.
+  `locales.test.ts` checks placeholders, plurals and dashes in Spanish.
+- `setLocale(code)` loads a language (dynamic import, so English pages never download it) and switches
+  `t()`, plural rules and date formats. `t()` reads the language when called: never keep its result in
+  module scope. A date format kept in module scope goes through `localDateFormat()`.
 
 - Add keys to the feature file in `src/en/` (`shell.ts`, `auth.ts`, `groups.ts`, `money.ts`, `plans.ts`,
   `me.ts`, `help.ts`), never to `src/en.ts`. A new top-level namespace needs one import and one entry
@@ -15,5 +24,7 @@ Root rules: [../../AGENTS.md](../../AGENTS.md). Full recipe: the `add-i18n-strin
 - Server error codes: wording goes in `expenses.errors` (`en/money.ts`) or `events.errors` (`en/plans.ts`)
   when one screen owns it, else `errors.codes` (`en/shell.ts`). `apps/web/src/lib/server-codes.test.ts`
   fails for a code raised in a migration without wording.
-- Formatters never read the host zone or locale: `formatDate` needs an explicit `timeZone`.
+- Formatters never read the host zone or locale: `formatDate` needs an explicit `timeZone` and uses
+  the active language. `formatMoney` stays `en-US` unless given a `locale` (amounts look the same in
+  every language for now).
 - No DOM or browser globals; `Intl` only. Coverage threshold 90% (`vitest.config.ts`).
