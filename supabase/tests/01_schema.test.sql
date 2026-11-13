@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(119);
+select plan(120);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -251,6 +251,10 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'purge-invite-sends' and schedule = '20 3 * * *'),
   'the invite log is trimmed daily'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'purge-import-batches' and schedule = '*/15 * * * *'),
+  'unfinished imports are cleared every quarter hour'
 );
 
 -- Grants: clients never write money tables directly.

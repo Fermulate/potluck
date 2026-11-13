@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(63);
+select plan(74);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -309,6 +309,54 @@ select throws_ok(
   '23514', 'fx_rate_unavailable', 'without one, an expense before the first known rate fails'
 );
 
+-- A rate a row brings is bounded.
+create function pg_temp.museum(amount bigint, extra jsonb) returns jsonb language sql as $$
+  select jsonb_build_array(pg_temp.expense('Museum', amount,
+    jsonb_build_array(pg_temp.cents('ava', amount, 'paid_cents')),
+    jsonb_build_array(pg_temp.cents('ava', amount, 'share_cents')), extra))
+$$;
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000, '{"currency": "XYZ", "fx_rate": "1.0"}')) $$,
+  '22023', 'invalid_currency', 'a currency Potluck has no rates for is refused, even with a rate'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000, '{"currency": "EUR", "fx_rate": "10"}')) $$,
+  '23514', 'fx_rate_out_of_range', 'a rate over five times the nearest stored one is refused'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000, '{"currency": "EUR", "fx_rate": "0.2"}')) $$,
+  '23514', 'fx_rate_out_of_range', 'so is one under a fifth of it'
+);
+-- 3 EUR at 999,999,999,999 would be 3 trillion dollars.
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(300, '{"currency": "EUR", "fx_rate": "999999999999"}')) $$,
+  '23514', 'fx_rate_out_of_range', '3 euros at a wild rate is refused'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(300,
+       '{"currency": "EUR", "fx_rate": "999999999999", "fx_rate_confirmed": true}')) $$,
+  '22023', 'invalid_amount', 'and stays refused when confirmed: it would come to more than the cap'
+);
+select is(
+  public.import_expenses(tests.id('g'), pg_temp.museum(1000,
+    '{"currency": "EUR", "fx_rate": "10", "fx_rate_confirmed": true}')),
+  '{"expenses": 1, "payments": 0}'::jsonb,
+  'a far rate goes in once the person confirms it'
+);
+reset role;
+insert into public.fx_rates (base, quote, day, rate) values ('GBP', 'EUR', '2026-01-01', 1.15);
+select tests.login('ava');
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000, '{"currency": "GBP", "fx_rate": "1.3"}')) $$,
+  '23514', 'fx_rate_out_of_range', 'with nothing to compare a rate to, it has to be confirmed'
+);
+select is(
+  public.import_expenses(tests.id('g'), pg_temp.museum(1000,
+    '{"currency": "GBP", "fx_rate": "1.3", "fx_rate_confirmed": true}')),
+  '{"expenses": 1, "payments": 0}'::jsonb,
+  'and goes in when it is'
+);
+
 -- A file sent in parts -----------------------------------------------------------------------
 
 select tests.remember('batch', gen_random_uuid());
@@ -373,6 +421,28 @@ select throws_ok(
   '42501', null, 'anon cannot send parts'
 );
 reset role;
+
+-- Parts nobody finished are cleared away.
+insert into private.import_batches (id, group_id, created_by, created_at)
+values (gen_random_uuid(), tests.id('g'), tests.uid('ben'), now() - interval '2 hours');
+select tests.login('ava');
+select public.import_stage(gen_random_uuid(), tests.id('g'), jsonb_build_array(pg_temp.payment('ben', 'ava', 1)))
+from generate_series(1, 4);
+reset role;
+select is(
+  (select count(*)::int from private.import_batches where created_by = tests.uid('ben')),
+  0,
+  'parts older than an hour go when anyone starts an import'
+);
+select is(
+  (select count(*)::int from private.import_batches where created_by = tests.uid('ava')),
+  3,
+  'nobody keeps more than three unfinished imports'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'purge-import-batches'),
+  'a job clears unfinished imports'
+);
 
 -- People who left ----------------------------------------------------------------------------
 

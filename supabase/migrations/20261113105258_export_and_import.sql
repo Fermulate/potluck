@@ -13,6 +13,10 @@
 -- group currency for the day. Payments are checked like settle_up, but between any two members
 -- and on the day the file gives. A row may carry `fx_rate` (the rate a Potluck file was written
 -- with, or one the person typed); otherwise the day's stored rate is used, as for any expense.
+-- A rate a row brings is bounded: its currency must be one Potluck has rates for, it must lie
+-- between a fifth and five times the nearest stored rate for the pair (or carry
+-- `fx_rate_confirmed`, which the app sets only after the person says the outlier is right), and
+-- no row may come to more than 100,000,000,000 minor units in the group currency.
 -- The first failing row stops everything; the error keeps save_expense's code and carries the row
 -- in its hint (`import_row:<n>`, counting from 1).
 --
@@ -167,6 +171,7 @@ create unlogged table private.import_input (
   is_refund boolean,
   rate_given boolean,
   rate numeric,
+  rate_confirmed boolean,
   from_user uuid,
   to_user uuid,
   payers jsonb,
@@ -197,6 +202,8 @@ create unlogged table private.import_rates (
   currency text not null,
   day date not null,
   rate numeric,
+  near numeric,
+  known boolean not null,
   primary key (run, currency, day)
 );
 
@@ -204,7 +211,8 @@ revoke all on private.import_input, private.import_people, private.import_payer,
   from public, anon, authenticated;
 
 -- Adds up to 2,000 rows to a batch the caller started in this group. Nothing is written to the
--- group until import_expenses names the batch. Batches older than a day are dropped.
+-- group until import_expenses names the batch. Batches older than an hour are dropped (also by the
+-- purge-import-batches job), and starting a fourth drops the caller's oldest.
 create or replace function public.import_stage(batch_id uuid, group_id uuid, rows jsonb)
 returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -229,7 +237,15 @@ begin
   perform private.require_member(import_stage.group_id);
   perform private.require_unarchived(import_stage.group_id);
 
-  delete from private.import_batches b where b.created_at < now() - interval '1 day';
+  delete from private.import_batches b where b.created_at < now() - interval '1 hour';
+  if not exists (select 1 from private.import_batches b where b.id = import_stage.batch_id) then
+    delete from private.import_batches b
+    where b.created_by = uid
+      and b.id not in (
+        select x.id from private.import_batches x where x.created_by = uid
+        order by x.created_at desc, x.id limit 2
+      );
+  end if;
   insert into private.import_batches (id, group_id, created_by)
   values (import_stage.batch_id, import_stage.group_id, uid)
   on conflict (id) do nothing;
@@ -254,6 +270,10 @@ end;
 $$;
 
 revoke execute on function public.import_stage(uuid, uuid, jsonb) from public, anon;
+
+-- Parts of an import nobody finished (a closed tab, a lost connection) go after an hour.
+select cron.schedule('purge-import-batches', '*/15 * * * *',
+  $$delete from private.import_batches where created_at < now() - interval '1 hour'$$);
 grant execute on function public.import_stage(uuid, uuid, jsonb) to authenticated, service_role;
 
 -- Import -------------------------------------------------------------------------------------
@@ -321,7 +341,7 @@ begin
   -- Every row read once.
   insert into private.import_input (
     run, ord, kind, day, description, amount, currency, category, notes, note, is_refund,
-    rate_given, rate, from_user, to_user, payers, splits, eid
+    rate_given, rate, rate_confirmed, from_user, to_user, payers, splits, eid
   )
   select
     v_run,
@@ -337,6 +357,7 @@ begin
     coalesce(jsonb_typeof(e.elem -> 'is_refund') = 'boolean' and (e.elem -> 'is_refund') = 'true'::jsonb, false) as is_refund,
     coalesce(jsonb_typeof(e.elem -> 'fx_rate'), 'null') <> 'null' as rate_given,
     private.import_rate(e.elem ->> 'fx_rate') as rate,
+    coalesce(jsonb_typeof(e.elem -> 'fx_rate_confirmed') = 'boolean' and (e.elem -> 'fx_rate_confirmed') = 'true'::jsonb, false) as rate_confirmed,
     private.import_uuid(e.elem ->> 'from_user') as from_user,
     private.import_uuid(e.elem ->> 'to_user') as to_user,
     e.elem -> 'payers' as payers,
@@ -374,11 +395,20 @@ begin
 
   -- The rate each row is converted at: 1 in the group currency, else the one the row carries,
   -- else the stored rate for its day (one lookup per currency and day).
-  insert into private.import_rates (run, currency, day, rate)
-  select v_run, d.currency, d.day, private.fx_rate(d.currency::char(3), g.currency, d.day)
+  insert into private.import_rates (run, currency, day, rate, near, known)
+  select v_run, d.currency, d.day,
+         private.fx_rate(d.currency::char(3), g.currency, d.day),
+         (select n.rate from (
+            select f.rate, f.day from public.fx_rates f
+            where f.base = d.currency and f.quote = g.currency
+            union all
+            select round(1 / f.rate, 12), f.day from public.fx_rates f
+            where f.base = g.currency and f.quote = d.currency
+          ) n order by abs(n.day - d.day), n.day desc limit 1),
+         exists (select 1 from public.fx_rates f where f.base = d.currency or f.quote = d.currency)
   from (
     select distinct i.currency, i.day from private.import_input i
-    where i.run = v_run and i.currency ~ '^[A-Z]{3}$' and i.currency <> g.currency and i.day is not null and not i.rate_given
+    where i.run = v_run and i.currency ~ '^[A-Z]{3}$' and i.currency <> g.currency and i.day is not null
   ) d;
 
   -- The first row that fails, checked in the order save_expense and settle_up check.
@@ -402,7 +432,8 @@ begin
            p.total as paid_total, p.positive as payer_positive, p.outsiders as payer_outsiders,
            s.n as share_n, s.invalid as share_invalid, s.distinct_users as share_distinct,
            s.total as share_total, s.outsiders as share_outsiders,
-           r.rate as stored_rate
+           r.rate as stored_rate, r.near as near_rate, coalesce(r.known, true) as known,
+           case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end as fx
     from private.import_input i
     left join people p on p.ord = i.ord and p.role = 'payer'
     left join people s on s.ord = i.ord and s.role = 'share'
@@ -423,7 +454,7 @@ begin
     where kind in ('expense', 'payment') and amount is null
     union all
     select ord, 5, 'invalid_currency', 'Unknown currency code', '22023' from checked
-    where kind in ('expense', 'payment') and currency !~ '^[A-Z]{3}$'
+    where kind in ('expense', 'payment') and (currency !~ '^[A-Z]{3}$' or not known)
     union all
     select ord, 6, 'invalid_recipient', 'Say who paid whom', '22023' from checked
     where kind = 'payment' and (from_user is null or to_user is null or from_user = to_user)
@@ -462,9 +493,24 @@ begin
     select ord, 16, 'invalid_import', 'The rate is not valid', '22023' from checked
     where kind in ('expense', 'payment') and rate_given and rate is null
     union all
-    select ord, 17, 'fx_rate_unavailable', format('No exchange rate from %s to %s yet', currency, g.currency), '23514'
+    select ord, 17, 'fx_rate_out_of_range',
+      case when near_rate is null
+        then format('Potluck has no %s to %s rate to compare %s with', currency, g.currency, rate)
+        else format('The rate %s is far from %s, the nearest rate Potluck has', rate, trim_scale(near_rate)) end,
+      '23514'
+    from checked where kind in ('expense', 'payment') and currency <> g.currency and rate_given
+      and rate is not null and not rate_confirmed
+      and (near_rate is null or rate < near_rate * 0.2 or rate > near_rate * 5)
+    union all
+    select ord, 18, 'fx_rate_unavailable', format('No exchange rate from %s to %s yet', currency, g.currency), '23514'
     from checked where kind in ('expense', 'payment') and currency ~ '^[A-Z]{3}$' and currency <> g.currency
       and day is not null and not rate_given and stored_rate is null
+    union all
+    select ord, 19, 'invalid_amount', format('%s %s is too much in %s', amount, currency, g.currency), '22023'
+    from checked where kind in ('expense', 'payment') and amount is not null and fx is not null
+      -- As private.convert_minor, without its bigint cast (a wild rate would overflow it).
+      and amount * fx * power(10::numeric, private.minor_units(g.currency) - private.minor_units(currency))
+        > 100000000000
   )
   select f.ord, f.code, f.detail, f.state into bad from failures f order by f.ord, f.step limit 1;
 
