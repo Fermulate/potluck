@@ -29,6 +29,7 @@ export const help = {
     calendarFeed: 'Cómo funciona el feed de calendario',
     push: 'Configurar las notificaciones push',
     deleteAccount: 'Qué pasa con tus grupos',
+    twoFactor: 'Cómo funciona el inicio de sesión en dos pasos',
     recurringEdit: 'Cambiar un gasto que se repite',
   },
   tips: {

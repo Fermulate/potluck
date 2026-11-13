@@ -1,29 +1,18 @@
-import { DEFAULT_LOCALE, formatTime, t } from '@potluck/i18n'
+import { formatTime, localDateFormat, t } from '@potluck/i18n'
 import type { GridModel } from './grid'
 
-export const weekday = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  weekday: 'short',
-  timeZone: 'UTC',
-})
-export const dayNum = new Intl.DateTimeFormat(DEFAULT_LOCALE, { day: 'numeric', timeZone: 'UTC' })
-export const month = new Intl.DateTimeFormat(DEFAULT_LOCALE, { month: 'short', timeZone: 'UTC' })
-export const fullDay = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+export const weekday = localDateFormat({ weekday: 'short', timeZone: 'UTC' })
+export const dayNum = localDateFormat({ day: 'numeric', timeZone: 'UTC' })
+export const month = localDateFormat({ month: 'short', timeZone: 'UTC' })
+export const fullDay = localDateFormat({
   weekday: 'long',
   month: 'long',
   day: 'numeric',
   timeZone: 'UTC',
 })
 
-const zonedFormats = new Map<string, Intl.DateTimeFormat>()
-
 function zonedFormat(timeZone: string, options: Intl.DateTimeFormatOptions) {
-  const key = `${timeZone}|${JSON.stringify(options)}`
-  let format = zonedFormats.get(key)
-  if (!format) {
-    format = new Intl.DateTimeFormat(DEFAULT_LOCALE, { ...options, timeZone })
-    zonedFormats.set(key, format)
-  }
-  return format
+  return localDateFormat({ ...options, timeZone })
 }
 
 /**

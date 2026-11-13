@@ -1,4 +1,5 @@
 import { t } from '@potluck/i18n'
+import { toast } from '@potluck/ui'
 import { screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
@@ -70,5 +71,27 @@ describe('AuthCallbackPage', () => {
     expect(
       await screen.findByRole('heading', { name: t('auth.callback.failed') }),
     ).toBeInTheDocument()
+  })
+
+  it('says what is left after the first of two email change links', async () => {
+    arriveAt(
+      '/auth/callback#message=Confirmation+link+accepted.+Please+proceed+to+confirm+link+sent+to+the+other+email',
+      '/me',
+    )
+    expect(
+      await screen.findByRole('heading', { name: t('security.email.halfConfirmed') }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('nav.me') })).toHaveAttribute('href', '/me')
+    expect(authCallsTo('getSession')).toEqual([])
+  })
+
+  it('lands on Me with the new address after the second link', async () => {
+    const moved = { user: { ...onboarded.user, email: 'ava@new.test' } }
+    respondAuth('getSession', { data: { session: moved } })
+    const success = vi.spyOn(toast, 'success')
+    const { router } = arriveAt('/auth/callback#access_token=x&type=email_change', '/me')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    expect(success).toHaveBeenCalledWith(t('security.email.changed', { email: 'ava@new.test' }))
+    success.mockRestore()
   })
 })

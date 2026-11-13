@@ -7,6 +7,7 @@ import {
   formatDate,
   intlLocale,
   isLocale,
+  localDateFormat,
   LOCALE_CODES,
   matchLocale,
   onLocaleChange,
@@ -73,7 +74,11 @@ describe('switching language', () => {
   })
 
   it('formats dates in the active language unless told otherwise', async () => {
+    const weekday = localDateFormat({ weekday: 'long', timeZone: 'UTC' })
+    const friday = new Date('2026-06-12T12:00:00Z')
+    expect(weekday.format(friday)).toBe('Friday')
     await setLocale('es')
+    expect(weekday.format(friday)).toBe('viernes')
     expect(formatDate('2026-06-12', { timeZone: 'UTC', style: 'long' })).toBe('12 de junio de 2026')
     expect(formatDate('2026-06-12', { timeZone: 'UTC', style: 'long', locale: 'en-US' })).toBe(
       'June 12, 2026',

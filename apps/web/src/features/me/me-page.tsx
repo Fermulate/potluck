@@ -47,11 +47,14 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
+import { AboutSection } from '@/features/account/about-section'
+import { LanguageField } from '@/features/account/language-field'
+import { SecuritySection } from '@/features/account/security-section'
 import { Help } from '@/features/help/help'
 import { HELP_PAGES } from '@/features/help/topics'
 import { useUnreadCount } from '@/features/notifications/use-notifications'
 import { copyText } from '@/features/invites/share'
-import { signOut, useSession, useUserId } from '@/lib/auth'
+import { signOut, useUserId } from '@/lib/auth'
 import { docsUrl, REPORT_PROBLEM_URL } from '@/lib/docs'
 import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
@@ -110,7 +113,6 @@ function useProfilePatch(userId: string) {
 }
 
 function ProfileSection({ profile }: { profile: ProfileRow }) {
-  const session = useSession()
   const patch = useProfilePatch(profile.id)
   const [name, setName] = useState(profile.display_name)
   const dirty = name.trim() !== profile.display_name
@@ -162,12 +164,6 @@ function ProfileSection({ profile }: { profile: ProfileRow }) {
           {t('common.save')}
         </Button>
       </form>
-      {session?.user.email && (
-        <div className="grid gap-1">
-          <span className="text-sm font-semibold">{t('settings.profile.email')}</span>
-          <span className="text-[0.9375rem] text-mute">{session.user.email}</span>
-        </div>
-      )}
     </Section>
   )
 }
@@ -181,6 +177,7 @@ function PreferencesSection({ profile }: { profile: ProfileRow }) {
 
   return (
     <Section id="me-preferences" title={t('settings.preferences.title')}>
+      <LanguageField userId={profile.id} />
       <div className="grid gap-2">
         <TimezoneField
           label={t('settings.preferences.timezone')}
@@ -520,9 +517,11 @@ export function MePage() {
         <div className="grid gap-8 lg:block lg:columns-2 lg:gap-10 lg:[&>*]:mb-8 lg:[&>*]:break-inside-avoid">
           <ProfileSection key={profile.updated_at} profile={profile} />
           <PreferencesSection profile={profile} />
+          <SecuritySection />
           <NotificationsSection />
           <CalendarSection />
           <HelpSection />
+          <AboutSection />
           <AccountSection />
         </div>
       )}

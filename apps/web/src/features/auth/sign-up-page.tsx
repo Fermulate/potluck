@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { t } from '@potluck/i18n'
+import { currentLocale, t } from '@potluck/i18n'
 import { Button, Field, Input, toast } from '@potluck/ui'
 import { useState, type FormEvent } from 'react'
 import { authCallbackUrl, safeRedirect } from '@/lib/auth'
@@ -37,6 +37,7 @@ export function SignUpPage({ redirect, notice }: AuthPageProps) {
           data: {
             display_name: name.trim(),
             timezone: detectTimezone(),
+            locale: currentLocale(),
           },
         },
       })

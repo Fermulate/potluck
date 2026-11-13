@@ -116,14 +116,20 @@ export function useUserId(): string {
 /**
  * Ends the session. This browser's push registration goes first so the next account on the
  * device does not get this one's notifications; sign out proceeds even if that fails.
+ * `global` also revokes every other device's session.
  */
-export async function signOut() {
+export async function signOut(scope: 'local' | 'global' = 'local') {
   const userId = current?.user.id ?? lastUserId
   if (userId) {
     const { forgetPushSubscription } = await import('./web-push')
     await forgetPushSubscription(userId).catch(() => undefined)
   }
   const supabase = await loadSupabase()
+  if (scope === 'global') {
+    const { error } = await supabase.auth.signOut({ scope: 'global' })
+    if (error) throw error
+    return
+  }
   await supabase.auth.signOut()
 }
 
@@ -143,6 +149,29 @@ export function authCallbackUrl(next?: string): string {
   const url = new URL('/auth/callback', window.location.origin)
   if (next) url.searchParams.set('redirect', next)
   return url.toString()
+}
+
+/** The `aal` claim of a session's access token: `aal2` once a second factor was checked. */
+export function assuranceLevel(session: Session): string {
+  try {
+    const payload = session.access_token.split('.')[1] ?? ''
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    const aal = (JSON.parse(json) as { aal?: unknown }).aal
+    return typeof aal === 'string' ? aal : 'aal1'
+  } catch {
+    return 'aal1'
+  }
+}
+
+/**
+ * Whether the person still owes the two-step code: they have a verified authenticator and this
+ * session has not been stepped up yet. The database refuses such a session anyway (ADR 11);
+ * this only decides where to send them.
+ */
+export function needsSecondFactor(session: Session | null): boolean {
+  if (!session) return false
+  const verified = session.user.factors?.some((f) => f.status === 'verified') ?? false
+  return verified && assuranceLevel(session) !== 'aal2'
 }
 
 /**

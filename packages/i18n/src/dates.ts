@@ -47,6 +47,16 @@ function dateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions) {
   return format
 }
 
+/**
+ * An `Intl.DateTimeFormat` in the active language, for formats kept in module scope: each
+ * `format` call picks up a language switch. Pass `timeZone` in `options`.
+ */
+export function localDateFormat(options: Intl.DateTimeFormatOptions): {
+  format: (date: Date) => string
+} {
+  return { format: (date) => dateTimeFormat(intlLocale(), options).format(date) }
+}
+
 const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   short: { dateStyle: 'short' },
   medium: { dateStyle: 'medium' },

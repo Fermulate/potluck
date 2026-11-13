@@ -4,6 +4,10 @@ export const DEFAULT_DOCS_URL = 'https://docs.potluck.fermulate.com'
 /** Where people report bugs and ask for things. */
 export const REPORT_PROBLEM_URL = 'https://github.com/Fermulate/potluck/issues/new/choose'
 
+/** Ideas and wishes: the feature request form. */
+export const FEEDBACK_URL =
+  'https://github.com/Fermulate/potluck/issues/new?template=feature_request.yml'
+
 /** Base URL of the user guide, without a trailing slash. */
 export function docsOrigin(configured: string | undefined = import.meta.env.VITE_DOCS_URL): string {
   const base = configured?.trim() || DEFAULT_DOCS_URL

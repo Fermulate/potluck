@@ -184,26 +184,40 @@ function channel(topic: string) {
   return ch
 }
 
-const auth = new Proxy(
-  {},
-  {
-    get(_target, method) {
-      if (typeof method !== 'string') return undefined
-      if (method === 'onAuthStateChange') {
-        return (listener: (event: string, session: unknown) => void) => {
-          authListeners.add(listener)
-          return { data: { subscription: { unsubscribe: () => authListeners.delete(listener) } } }
+/** `supabase.auth.mfa.<method>()` is recorded and answered as `mfa.<method>`. */
+function authMethods(prefix: string): object {
+  return new Proxy(
+    {},
+    {
+      get(_target, method) {
+        if (typeof method !== 'string') return undefined
+        if (method === 'mfa' && !prefix) return authMethods('mfa.')
+        if (method === 'onAuthStateChange' && !prefix) {
+          return (listener: (event: string, session: unknown) => void) => {
+            authListeners.add(listener)
+            return {
+              data: { subscription: { unsubscribe: () => authListeners.delete(listener) } },
+            }
+          }
         }
-      }
-      return async (...args: unknown[]) => {
-        authCalls.push({ method, args })
-        const result = authResults.get(method)
-        if (typeof result === 'function') return result()
-        return { data: {}, error: null, ...result }
-      }
+        const name = prefix + method
+        return async (...args: unknown[]) => {
+          authCalls.push({ method: name, args })
+          const result = authResults.get(name)
+          if (typeof result === 'function') return result()
+          return { data: {}, error: null, ...result }
+        }
+      },
     },
-  },
-)
+  )
+}
+
+/** Stands in for `isolatedClient()`: its auth calls are recorded as `isolated.<method>`. */
+export function isolatedClient() {
+  return { auth: authMethods('isolated.') }
+}
+
+const auth = authMethods('')
 
 export const supabase = new Proxy(
   {},

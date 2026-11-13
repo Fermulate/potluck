@@ -255,6 +255,7 @@ export const security = {
     sent: 'Links sent. Open both inboxes to finish.',
     pending: 'Waiting for you to confirm {email} from both inboxes.',
     changed: 'Your email is now {email}.',
+    halfConfirmed: 'One down. Now open the link we sent to your other address.',
   },
   password: {
     label: 'Password',
@@ -324,6 +325,7 @@ export const security = {
     useRecovery: 'Use a recovery code',
     useApp: 'Use my authenticator app',
     recoveryCode: 'Recovery code',
+    recoveryPlaceholder: 'XXXXX-XXXXX',
     recoveryBody:
       'Enter one of the codes you saved. Two-step sign in turns off so you can set it up on your new phone.',
     recovered: 'You are in. Two-step sign in is off for now, so set it up again from Me.',

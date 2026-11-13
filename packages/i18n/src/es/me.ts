@@ -163,6 +163,7 @@ export const security = {
     sent: 'Enlaces enviados. Abre las dos bandejas para terminar.',
     pending: 'Esperando a que confirmes {email} desde las dos bandejas.',
     changed: 'Tu correo ahora es {email}.',
+    halfConfirmed: 'Uno listo. Ahora abre el enlace que enviamos a tu otra dirección.',
   },
   password: {
     label: 'Contraseña',
@@ -232,6 +233,7 @@ export const security = {
     useRecovery: 'Usar un código de recuperación',
     useApp: 'Usar mi app de autenticación',
     recoveryCode: 'Código de recuperación',
+    recoveryPlaceholder: 'XXXXX-XXXXX',
     recoveryBody:
       'Introduce uno de los códigos que guardaste. El inicio de sesión en dos pasos se desactiva para que puedas configurarlo en tu nuevo teléfono.',
     recovered:
