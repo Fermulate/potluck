@@ -31,6 +31,10 @@ export const help = {
     deleteAccount: 'O que acontece com seus grupos',
     twoFactor: 'Como funciona a entrada em duas etapas',
     recurringEdit: 'Alterar uma despesa recorrente',
+    splitAdjustment: 'Como funcionam os ajustes',
+    payers: 'Quando várias pessoas pagaram',
+    refunds: 'Como funcionam os reembolsos',
+    defaultSplit: 'Sobre a divisão padrão',
   },
   tips: {
     simplifiedDebts:

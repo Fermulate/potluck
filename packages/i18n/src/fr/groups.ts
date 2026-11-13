@@ -90,6 +90,19 @@ export const groups = {
     leaveLastActive: 'Tous les autres membres ont fermé leur compte. Partir supprime le groupe.',
     leaveLastActiveConfirm:
       'Partir et supprimer {group} ? Ses dépenses et paiements partent avec lui, sans retour possible.',
+    defaultSplit: {
+      title: 'Partage par défaut',
+      hint: 'Les nouvelles dépenses ici démarrent avec ce partage. Tout le monde dans le groupe peut le changer.',
+      equalAll: 'À parts égales entre tout le monde',
+      equalSome: 'À parts égales entre {people}',
+      percent: 'En pourcentages : {people}',
+      shares: 'En parts : {people}',
+      change: 'Changer',
+      save: 'Enregistrer le partage par défaut',
+      clear: 'Revenir à parts égales',
+      saved: 'Enregistré. Les nouvelles dépenses démarrent avec ce partage.',
+      cleared: 'Les nouvelles dépenses sont de nouveau partagées à parts égales.',
+    },
   },
 } satisfies Translation<typeof en.groups>
 

@@ -16,7 +16,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0010](0010-custom-domains.md)                             | Custom domains on fermulate.com                             |
 | [0011](0011-notification-prefs-and-email.md)               | Notification settings per category, email from the database |
 | [0012](0012-several-payers-refunds-and-stored-items.md)    | Several payers, refunds and stored line items               |
-| [0013](0013-two-step-sign-in-enforced-in-the-database.md)  | Two-step sign in is enforced in the database        |
+| [0013](0013-two-step-sign-in-enforced-in-the-database.md)  | Two-step sign in is enforced in the database                |
 
 ## Writing a new one
 

@@ -230,7 +230,16 @@ export const errors = {
     no_items: 'Añade al menos un artículo.',
     item_no_users: 'Cada artículo necesita al menos una persona.',
     invalid_item_amount: 'Los precios de los artículos deben ser cero o más.',
-    invalid_extra: 'Los impuestos y la propina deben ser cero o más.',
+    invalid_extra:
+      'Los impuestos, la propina y el descuento deben ser cero o más, y el descuento no puede superar la cuenta.',
+    adjustments_exceed_total: 'Los ajustes suman más que el total.',
+    negative_share: 'Un ajuste negativo deja a alguien por debajo de cero.',
+  },
+  payers: {
+    no_payers: 'Alguien tiene que haber pagado.',
+    duplicate_payer: 'Alguien está dos veces entre quienes pagaron.',
+    invalid_paid_amount: 'Lo pagado debe ser cero o más.',
+    payers_sum_mismatch: 'Lo que pagó cada uno tiene que sumar el total.',
   },
   validation: {
     required: 'Obligatorio.',
@@ -242,6 +251,9 @@ export const errors = {
     duplicate_split_user: 'Alguien está dos veces en este reparto.',
     percent_sum: 'Los porcentajes tienen que sumar 100%.',
     shares_required: 'Todos en el reparto necesitan al menos alguna parte.',
+    duplicate_payer: 'Alguien está dos veces entre quienes pagaron.',
+    payers_sum_mismatch: 'Lo que pagó cada uno tiene que sumar el total.',
+    items_need_itemized: 'Los artículos solo van con un reparto por artículo.',
     invalid_slot_size: 'Elige franjas de 15, 30 o 60 minutos.',
     window_end_before_start: 'El último día va antes del primero.',
     window_too_long: 'Limita el periodo a unos dos meses.',

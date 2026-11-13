@@ -232,7 +232,16 @@ export const errors = {
     no_items: 'Ajoute au moins un article.',
     item_no_users: "Chaque article a besoin d'au moins une personne.",
     invalid_item_amount: 'Les prix des articles doivent être positifs ou nuls.',
-    invalid_extra: 'Les taxes et le pourboire doivent être positifs ou nuls.',
+    invalid_extra:
+      "Les taxes, le pourboire et la remise doivent être positifs ou nuls, et la remise ne peut pas dépasser l'addition.",
+    adjustments_exceed_total: 'Les ajustements dépassent le total.',
+    negative_share: "Un ajustement en moins fait passer quelqu'un sous zéro.",
+  },
+  payers: {
+    no_payers: "Quelqu'un doit avoir payé.",
+    duplicate_payer: "Quelqu'un apparaît deux fois parmi les payeurs.",
+    invalid_paid_amount: 'Les montants payés doivent être positifs ou nuls.',
+    payers_sum_mismatch: 'Ce que chacun a payé doit égaler le total.',
   },
   validation: {
     required: 'Obligatoire.',
@@ -244,6 +253,9 @@ export const errors = {
     duplicate_split_user: "Quelqu'un apparaît deux fois dans ce partage.",
     percent_sum: 'Les pourcentages doivent faire 100 %.',
     shares_required: "Chaque personne du partage a besoin d'au moins une part.",
+    duplicate_payer: "Quelqu'un apparaît deux fois parmi les payeurs.",
+    payers_sum_mismatch: 'Ce que chacun a payé doit égaler le total.',
+    items_need_itemized: "Les articles ne vont qu'avec un partage par article.",
     invalid_slot_size: 'Choisis des créneaux de 15, 30 ou 60 minutes.',
     window_end_before_start: 'Le dernier jour tombe avant le premier.',
     window_too_long: 'Limite la période à environ deux mois.',

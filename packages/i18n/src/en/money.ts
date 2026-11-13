@@ -304,6 +304,13 @@ export const expenses = {
     updated: '{name} edited it',
     deleted: '{name} deleted it',
     restored: '{name} brought it back',
+    /** When the viewer made the change. */
+    self: {
+      created: 'You added it',
+      updated: 'You edited it',
+      deleted: 'You deleted it',
+      restored: 'You brought it back',
+    },
     amountChanged: '{from} to {to}',
     none: 'nothing',
     splitSide: '{type}, {shares}',
@@ -461,6 +468,7 @@ export const activity = {
     group: {
       created: 'You started {group}',
       updated: 'You updated the group settings',
+      default_split: 'You changed where new expenses start',
     },
     member: {
       joined: 'You joined the group',

@@ -90,6 +90,19 @@ export const groups = {
     leaveLastActive: 'Todos los demás cerraron su cuenta. Si sales, se elimina el grupo.',
     leaveLastActiveConfirm:
       '¿Salir y eliminar {group}? Sus gastos y pagos se van con él, y no se puede deshacer.',
+    defaultSplit: {
+      title: 'Reparto predeterminado',
+      hint: 'Los gastos nuevos de aquí empiezan con este reparto. Cualquiera del grupo puede cambiarlo.',
+      equalAll: 'A partes iguales entre todos',
+      equalSome: 'A partes iguales entre {people}',
+      percent: 'Por porcentaje: {people}',
+      shares: 'Por partes: {people}',
+      change: 'Cambiar',
+      save: 'Guardar reparto predeterminado',
+      clear: 'Volver a partes iguales',
+      saved: 'Guardado. Los gastos nuevos empiezan con este reparto.',
+      cleared: 'Los gastos nuevos vuelven a dividirse a partes iguales.',
+    },
   },
 } satisfies Translation<typeof en.groups>
 

@@ -288,6 +288,24 @@ $$;
 ALTER FUNCTION "private"."check_group_has_owner"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."check_request"() RETURNS "void"
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO ''
+    AS $$
+begin
+  if not private.mfa_satisfied() then
+    raise exception using
+      message = 'mfa_required',
+      detail = 'Finish two-step sign in first',
+      errcode = '42501';
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."check_request"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."comments_activity"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1767,6 +1785,22 @@ $$;
 ALTER FUNCTION "private"."member_event"("eid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."mfa_satisfied"() RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select (select auth.uid()) is null
+    or coalesce((select auth.jwt() ->> 'aal'), 'aal1') = 'aal2'
+    or not exists (
+      select 1 from auth.mfa_factors f
+      where f.user_id = (select auth.uid()) and f.status = 'verified'
+    );
+$$;
+
+
+ALTER FUNCTION "private"."mfa_satisfied"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "date") RETURNS "jsonb"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -1989,6 +2023,20 @@ $$;
 
 
 ALTER FUNCTION "private"."random_code"("bytes" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recovery_code_hash"("code" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select encode(
+    extensions.digest(upper(regexp_replace(code, '[^A-Za-z0-9]', '', 'g')), 'sha256'),
+    'hex'
+  );
+$$;
+
+
+ALTER FUNCTION "private"."recovery_code_hash"("code" "text") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
@@ -3327,6 +3375,29 @@ $$;
 ALTER FUNCTION "public"."cancel_event"("event_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."clear_mfa_recovery_codes"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := private.require_user();
+  removed int;
+begin
+  if exists (
+    select 1 from auth.mfa_factors f where f.user_id = uid and f.status = 'verified'
+  ) then
+    return 0;
+  end if;
+  delete from private.mfa_recovery_codes r where r.user_id = uid;
+  get diagnostics removed = row_count;
+  return removed;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."clear_mfa_recovery_codes"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."create_expense"("payload" "jsonb") RETURNS "public"."expenses"
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3499,6 +3570,43 @@ $$;
 
 
 ALTER FUNCTION "public"."create_invite"("group_id" "uuid", "role" "public"."group_role", "max_uses" integer, "expires_at" timestamp with time zone, "email" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_mfa_recovery_codes"() RETURNS SETOF "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := private.require_user();
+  -- 32 symbols without 0, O, 1 and I, so a byte modulo 32 picks each one equally often.
+  alphabet constant text := '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  bytes bytea;
+  code text;
+begin
+  if coalesce(auth.jwt() ->> 'aal', 'aal1') <> 'aal2' then
+    raise exception using
+      message = 'mfa_required',
+      detail = 'Recovery codes need a two-step sign in',
+      errcode = '42501';
+  end if;
+
+  delete from private.mfa_recovery_codes where user_id = uid;
+  for i in 1..10 loop
+    bytes := extensions.gen_random_bytes(10);
+    code := '';
+    for j in 0..9 loop
+      code := code || substr(alphabet, get_byte(bytes, j) % 32 + 1, 1);
+    end loop;
+    insert into private.mfa_recovery_codes (user_id, code_hash)
+    values (uid, private.recovery_code_hash(code))
+    on conflict do nothing;
+    return next substr(code, 1, 5) || '-' || substr(code, 6, 5);
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_mfa_recovery_codes"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."delete_expense"("id" "uuid") RETURNS "public"."expenses"
@@ -3842,6 +3950,17 @@ $$;
 ALTER FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") RETURNS "void"
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  delete from private.mfa_recovery_codes r where r.user_id = target;
+$$;
+
+
+ALTER FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4015,6 +4134,31 @@ $$;
 ALTER FUNCTION "public"."leave_group"("group_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select exists (
+    select 1 from private.mfa_recovery_codes r
+    where r.user_id = target and r.code_hash = private.recovery_code_hash(code)
+  );
+$$;
+
+
+ALTER FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."mfa_recovery_codes_left"() RETURNS integer
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select count(*)::int from private.mfa_recovery_codes r where r.user_id = (select auth.uid());
+$$;
+
+
+ALTER FUNCTION "public"."mfa_recovery_codes_left"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."my_notification_prefs"() RETURNS TABLE("category" "text", "push" boolean, "email" boolean, "push_allowed" boolean, "email_allowed" boolean)
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4092,6 +4236,43 @@ $_$;
 
 
 ALTER FUNCTION "public"."my_timeline"("from" timestamp with time zone, "to" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."notify_mfa_recovered"("target" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform private.notify(array[target], 'account.mfa_removed', '{}'::jsonb, null);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."notify_mfa_recovered"("target" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  recent int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('mfa_recover:' || target::text, 0));
+  delete from private.mfa_recover_attempts a
+  where a.user_id = target and a.attempted_at < now() - interval '1 day';
+  select count(*) into recent from private.mfa_recover_attempts a
+  where a.user_id = target and a.attempted_at > now() - interval '15 minutes';
+  if recent >= 5 then
+    return false;
+  end if;
+  insert into private.mfa_recover_attempts (user_id) values (target);
+  return true;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") RETURNS "void"
@@ -4739,6 +4920,33 @@ CREATE TABLE IF NOT EXISTS "private"."former_members" (
 ALTER TABLE "private"."former_members" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "private"."mfa_recover_attempts" (
+    "user_id" "uuid" NOT NULL,
+    "attempted_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."mfa_recover_attempts" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."mfa_recover_attempts" IS 'One row per recovery code tried, kept a day, for the five per fifteen minutes limit.';
+
+
+
+CREATE TABLE IF NOT EXISTS "private"."mfa_recovery_codes" (
+    "user_id" "uuid" NOT NULL,
+    "code_hash" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."mfa_recovery_codes" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."mfa_recovery_codes" IS 'SHA-256 of each unused two-step recovery code. Codes are random, so no salt is needed.';
+
+
+
 CREATE TABLE IF NOT EXISTS "private"."notification_categories" (
     "category" "text" NOT NULL,
     "position" integer NOT NULL,
@@ -5248,6 +5456,11 @@ ALTER TABLE ONLY "private"."former_members"
 
 
 
+ALTER TABLE ONLY "private"."mfa_recovery_codes"
+    ADD CONSTRAINT "mfa_recovery_codes_pkey" PRIMARY KEY ("user_id", "code_hash");
+
+
+
 ALTER TABLE ONLY "private"."notification_categories"
     ADD CONSTRAINT "notification_categories_pkey" PRIMARY KEY ("category");
 
@@ -5431,6 +5644,10 @@ CREATE INDEX "email_outbox_user_id_idx" ON "private"."email_outbox" USING "btree
 
 
 CREATE INDEX "former_members_user_id_idx" ON "private"."former_members" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "mfa_recover_attempts_user_time_idx" ON "private"."mfa_recover_attempts" USING "btree" ("user_id", "attempted_at");
 
 
 
@@ -5819,6 +6036,16 @@ ALTER TABLE ONLY "private"."former_members"
 
 
 
+ALTER TABLE ONLY "private"."mfa_recover_attempts"
+    ADD CONSTRAINT "mfa_recover_attempts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."mfa_recovery_codes"
+    ADD CONSTRAINT "mfa_recovery_codes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "private"."notification_types"
     ADD CONSTRAINT "notification_types_category_fkey" FOREIGN KEY ("category") REFERENCES "private"."notification_categories"("category");
 
@@ -6109,6 +6336,10 @@ CREATE POLICY "activity: members read" ON "public"."activity" FOR SELECT TO "aut
 
 
 
+CREATE POLICY "activity: two-step sign in done" ON "public"."activity" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."app_config" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6120,6 +6351,10 @@ ALTER TABLE "public"."availability" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "availability: members read" ON "public"."availability" FOR SELECT TO "authenticated" USING (("event_id" = ANY (ARRAY( SELECT "private"."my_event_ids"() AS "my_event_ids"))));
+
+
+
+CREATE POLICY "availability: two-step sign in done" ON "public"."availability" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
 
 
 
@@ -6208,6 +6443,10 @@ CREATE POLICY "event_rsvps: rsvp for self" ON "public"."event_rsvps" FOR INSERT 
 
 
 
+CREATE POLICY "event_rsvps: two-step sign in done" ON "public"."event_rsvps" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."events" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6224,6 +6463,10 @@ CREATE POLICY "events: members create" ON "public"."events" FOR INSERT TO "authe
 
 
 CREATE POLICY "events: members read" ON "public"."events" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+CREATE POLICY "events: two-step sign in done" ON "public"."events" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
 
 
 
@@ -6254,10 +6497,18 @@ CREATE POLICY "expense_splits: members read" ON "public"."expense_splits" FOR SE
 
 
 
+CREATE POLICY "expense_splits: two-step sign in done" ON "public"."expense_splits" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."expenses" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "expenses: members read" ON "public"."expenses" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+CREATE POLICY "expenses: two-step sign in done" ON "public"."expenses" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
 
 
 
@@ -6301,6 +6552,10 @@ CREATE POLICY "group_members: members read" ON "public"."group_members" FOR SELE
 
 
 
+CREATE POLICY "group_members: two-step sign in done" ON "public"."group_members" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."groups" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6331,6 +6586,10 @@ CREATE POLICY "notifications: mark own read" ON "public"."notifications" FOR UPD
 
 
 CREATE POLICY "notifications: read own" ON "public"."notifications" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
+CREATE POLICY "notifications: two-step sign in done" ON "public"."notifications" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
 
 
 
@@ -6401,6 +6660,10 @@ CREATE POLICY "settlements: members read" ON "public"."settlements" FOR SELECT T
 
 
 
+CREATE POLICY "settlements: two-step sign in done" ON "public"."settlements" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 GRANT USAGE ON SCHEMA "private" TO "anon";
 GRANT USAGE ON SCHEMA "private" TO "authenticated";
 GRANT USAGE ON SCHEMA "private" TO "service_role";
@@ -6420,6 +6683,13 @@ REVOKE ALL ON FUNCTION "private"."blocked_in_group"("gid" "uuid", "uid" "uuid") 
 
 GRANT ALL ON FUNCTION "private"."can_manage_event"("eid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."can_manage_event"("eid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."check_request"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."check_request"() TO "anon";
+GRANT ALL ON FUNCTION "private"."check_request"() TO "authenticated";
+GRANT ALL ON FUNCTION "private"."check_request"() TO "service_role";
 
 
 
@@ -6598,6 +6868,13 @@ REVOKE ALL ON FUNCTION "private"."member_event"("eid" "uuid") FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."mfa_satisfied"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."mfa_satisfied"() TO "anon";
+GRANT ALL ON FUNCTION "private"."mfa_satisfied"() TO "authenticated";
+GRANT ALL ON FUNCTION "private"."mfa_satisfied"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "date") FROM PUBLIC;
 
 
@@ -6631,6 +6908,10 @@ REVOKE ALL ON FUNCTION "private"."push_notification"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."queue_email"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recovery_code_hash"("code" "text") FROM PUBLIC;
 
 
 
@@ -6756,6 +7037,12 @@ GRANT ALL ON FUNCTION "public"."cancel_event"("event_id" "uuid") TO "service_rol
 
 
 
+REVOKE ALL ON FUNCTION "public"."clear_mfa_recovery_codes"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."clear_mfa_recovery_codes"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."clear_mfa_recovery_codes"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "service_role";
@@ -6826,6 +7113,12 @@ GRANT ALL ON FUNCTION "public"."create_invite"("group_id" "uuid", "role" "public
 
 
 
+REVOKE ALL ON FUNCTION "public"."create_mfa_recovery_codes"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_mfa_recovery_codes"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_mfa_recovery_codes"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."delete_expense"("id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."delete_expense"("id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."delete_expense"("id" "uuid") TO "service_role";
@@ -6867,6 +7160,11 @@ GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "tex
 
 
 
+REVOKE ALL ON FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "service_role";
@@ -6886,6 +7184,17 @@ GRANT ALL ON FUNCTION "public"."leave_group"("group_id" "uuid") TO "service_role
 
 
 
+REVOKE ALL ON FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."mfa_recovery_codes_left"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."mfa_recovery_codes_left"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."mfa_recovery_codes_left"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."my_notification_prefs"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."my_notification_prefs"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."my_notification_prefs"() TO "service_role";
@@ -6895,6 +7204,16 @@ GRANT ALL ON FUNCTION "public"."my_notification_prefs"() TO "service_role";
 REVOKE ALL ON FUNCTION "public"."my_timeline"("from" timestamp with time zone, "to" timestamp with time zone) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."my_timeline"("from" timestamp with time zone, "to" timestamp with time zone) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."my_timeline"("from" timestamp with time zone, "to" timestamp with time zone) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."notify_mfa_recovered"("target" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."notify_mfa_recovered"("target" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") TO "service_role";
 
 
 

@@ -507,7 +507,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 onChange={setPayers}
                 totalCents={total}
                 currency={currency}
-                locale={DEFAULT_LOCALE}
+                locale={intlLocale()}
                 refund={refund}
                 disabled={locked}
               />

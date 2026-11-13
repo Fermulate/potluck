@@ -91,6 +91,19 @@ export const groups = {
       'Alle anderen hier haben ihr Konto geschlossen. Wenn du gehst, wird die Gruppe gelöscht.',
     leaveLastActiveConfirm:
       '{group} verlassen und löschen? Ausgaben und Zahlungen verschwinden mit, und das lässt sich nicht rückgängig machen.',
+    defaultSplit: {
+      title: 'Standardaufteilung',
+      hint: 'Neue Ausgaben hier starten mit dieser Aufteilung. Alle in der Gruppe können sie ändern.',
+      equalAll: 'Gleichmäßig auf alle',
+      equalSome: 'Gleichmäßig: {people}',
+      percent: 'Nach Prozent: {people}',
+      shares: 'Nach Anteilen: {people}',
+      change: 'Ändern',
+      save: 'Standardaufteilung speichern',
+      clear: 'Zurück zu gleichmäßig',
+      saved: 'Gespeichert. Neue Ausgaben starten mit dieser Aufteilung.',
+      cleared: 'Neue Ausgaben werden wieder gleichmäßig aufgeteilt.',
+    },
   },
 } satisfies Translation<typeof en.groups>
 

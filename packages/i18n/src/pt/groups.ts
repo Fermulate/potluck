@@ -90,6 +90,19 @@ export const groups = {
     leaveLastActive: 'Todos os outros aqui encerraram a conta. Sair exclui o grupo.',
     leaveLastActiveConfirm:
       'Sair e excluir {group}? As despesas e os pagamentos vão junto, e não dá para desfazer.',
+    defaultSplit: {
+      title: 'Divisão padrão',
+      hint: 'As despesas novas aqui começam com esta divisão. Qualquer pessoa do grupo pode alterá-la.',
+      equalAll: 'Em partes iguais entre todos',
+      equalSome: 'Em partes iguais entre {people}',
+      percent: 'Por porcentagem: {people}',
+      shares: 'Por cotas: {people}',
+      change: 'Alterar',
+      save: 'Salvar divisão padrão',
+      clear: 'Voltar para partes iguais',
+      saved: 'Salvo. As despesas novas começam com esta divisão.',
+      cleared: 'As despesas novas voltam a ser divididas em partes iguais.',
+    },
   },
 } satisfies Translation<typeof en.groups>
 

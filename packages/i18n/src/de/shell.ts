@@ -232,7 +232,16 @@ export const errors = {
     no_items: 'Füge mindestens einen Posten hinzu.',
     item_no_users: 'Jeder Posten braucht mindestens eine Person.',
     invalid_item_amount: 'Preise der Posten müssen null oder mehr sein.',
-    invalid_extra: 'Steuer und Trinkgeld müssen null oder mehr sein.',
+    invalid_extra:
+      'Steuer, Trinkgeld und Rabatt müssen null oder mehr sein, und der Rabatt darf die Rechnung nicht übersteigen.',
+    adjustments_exceed_total: 'Die Anpassungen sind zusammen größer als die Summe.',
+    negative_share: 'Ein Abzug bringt jemanden unter null.',
+  },
+  payers: {
+    no_payers: 'Jemand muss bezahlt haben.',
+    duplicate_payer: 'Jemand steht doppelt bei den Zahlenden.',
+    invalid_paid_amount: 'Bezahlte Beträge müssen null oder mehr sein.',
+    payers_sum_mismatch: 'Was alle bezahlt haben, muss die Summe ergeben.',
   },
   validation: {
     required: 'Pflichtfeld.',
@@ -244,6 +253,9 @@ export const errors = {
     duplicate_split_user: 'Jemand ist doppelt in dieser Aufteilung.',
     percent_sum: 'Die Prozente müssen zusammen 100 % ergeben.',
     shares_required: 'Alle in der Aufteilung brauchen mindestens ein paar Anteile.',
+    duplicate_payer: 'Jemand steht doppelt bei den Zahlenden.',
+    payers_sum_mismatch: 'Was alle bezahlt haben, muss die Summe ergeben.',
+    items_need_itemized: 'Posten gibt es nur bei der Aufteilung nach Posten.',
     invalid_slot_size: 'Wähle Zeitfenster von 15, 30 oder 60 Minuten.',
     window_end_before_start: 'Der letzte Tag liegt vor dem ersten.',
     window_too_long: 'Halte den Zeitraum bei etwa zwei Monaten.',
