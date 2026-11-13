@@ -213,9 +213,9 @@ sequenceDiagram
   O->>W: Settings, Delete group, confirm
   W->>DB: rpc delete_group(group_id)
   DB->>DB: require_member (owner), lock group row
-  Note over DB: group_has_balances unless every balance is zero
+  Note over DB: direct groups raise direct_group_not_deletable;<br/>group_has_balances while any balance or pairwise debt remains
   DB->>DB: groups.deleted_at = now(), deleted_by
-  DB->>DB: open group_invites revoked_at = same now()
+  DB->>DB: open group_invites and event_guest_links revoked_at = same now()
   DB->>DB: activity group.deleted
   DB->>DB: notify other members group.deleted (deleted_group_id, group_name)
   DB-->>W: ok
@@ -228,13 +228,14 @@ sequenceDiagram
   M->>W: Restore
   W->>DB: rpc restore_group(group_id)
   DB->>DB: caller is in group_members, lock group row
-  DB->>DB: reopen invites revoked at deleted_at
+  Note over DB: group_not_found once deleted 30 days ago or more
+  DB->>DB: reopen invites and guest links revoked at deleted_at
   DB->>DB: deleted_at = null, activity group.restored, notify group.restored
   DB-->>W: groups row
   W-->>M: opens the group
 
   C->>DB: 03:20 UTC private.purge_deleted_groups()
-  DB->>DB: delete groups deleted more than 30 days ago (cascade)
+  DB->>DB: delete groups still deleted more than 30 days ago (cascade)
 ```
 
 ## Group notes
