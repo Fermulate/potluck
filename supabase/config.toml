@@ -440,8 +440,14 @@ verify_jwt = true
 project_id = "mzotlkpghnrwbezcazld"
 
 [remotes.production.auth]
-site_url = "https://potluck.potluck-web.workers.dev"
-additional_redirect_urls = ["https://potluck.potluck-web.workers.dev/**", "https://*-potluck.potluck-web.workers.dev/**", "http://localhost:5173/**"]
+site_url = "https://potluck.fermulate.com"
+# The custom domain, the old workers.dev URL (still served), PR previews, and local dev.
+additional_redirect_urls = [
+  "https://potluck.fermulate.com/**",
+  "https://potluck.potluck-web.workers.dev/**",
+  "https://*-potluck.potluck-web.workers.dev/**",
+  "http://localhost:5173/**",
+]
 minimum_password_length = 8
 
 [remotes.production.auth.email]

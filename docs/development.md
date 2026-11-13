@@ -30,13 +30,13 @@ pnpm dev                      # http://localhost:5173
 
 The web app reads `.env.local` from the repo root (`envDir` in `apps/web/vite.config.ts`). Only `VITE_*` variables reach the browser, and everything in them is public.
 
-| Variable                        | Local value                                        | What it is                                                                                                      |
-| ------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                                                                                |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do                                                              |
-| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects) and for the social preview tags in `index.html`          |
-| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally                                                       |
-| `VITE_DOCS_URL`                 | empty                                              | user guide that help links open. Empty means the public guide at `https://potluck-docs.potluck-web.workers.dev` |
+| Variable                        | Local value                                        | What it is                                                                                             |
+| ------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `VITE_SUPABASE_URL`             | `http://127.0.0.1:54321`                           | Supabase API URL                                                                                       |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | printed by `pnpm db:start` (`npx supabase status`) | publishable (anon) key. RLS decides what it can do                                                     |
+| `VITE_APP_URL`                  | `http://localhost:5173`                            | base URL for links the app builds (invites, redirects) and for the social preview tags in `index.html` |
+| `VITE_VAPID_PUBLIC_KEY`         | empty, or your own key                             | web push public key. Leave empty to turn push off locally                                              |
+| `VITE_DOCS_URL`                 | empty                                              | user guide that help links open. Empty means the public guide at `https://docs.potluck.fermulate.com`  |
 
 `pnpm build` (a production build) stops with an error when `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` or `VITE_APP_URL` is missing, so a deploy can never ship pointing at a local Supabase or with a literal `%VITE_APP_URL%` in `index.html`. `pnpm dev` and the unit tests keep working without them.
 

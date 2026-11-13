@@ -1,5 +1,5 @@
 /** The public user guide, used when `VITE_DOCS_URL` is not set. */
-export const DEFAULT_DOCS_URL = 'https://potluck-docs.potluck-web.workers.dev'
+export const DEFAULT_DOCS_URL = 'https://docs.potluck.fermulate.com'
 
 /** Where people report bugs and ask for things. */
 export const REPORT_PROBLEM_URL = 'https://github.com/Fermulate/potluck/issues/new/choose'

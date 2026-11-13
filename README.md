@@ -2,7 +2,7 @@
 
 Free, open source expense splitting and group event planning. Track who paid for what, settle up in as few payments as possible, and find a time that works for everyone.
 
-Live at https://potluck.potluck-web.workers.dev. Early development: expect rough edges.
+Live at https://potluck.fermulate.com (user guide at https://docs.potluck.fermulate.com). Early development: expect rough edges.
 
 ## Features
 

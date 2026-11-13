@@ -13,6 +13,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0007](0007-agpl-with-app-store-exception.md)              | AGPL-3.0 with an App Store exception                |
 | [0008](0008-additive-migrations-and-versioned-rpcs.md)     | Additive migrations and versioned RPCs              |
 | [0009](0009-i18n-strings-split-per-feature.md)             | i18n strings split per feature                      |
+| [0010](0010-custom-domains.md)                             | Custom domains on fermulate.com                     |
 
 ## Writing a new one
 

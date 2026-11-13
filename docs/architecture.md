@@ -729,6 +729,6 @@ There is no `og-invite` function yet. Invite links render the SPA, so link previ
 
 ## Hosting
 
-- Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.potluck-web.workers.dev (no custom domain yet). PR previews are worker versions with a `pr-<number>` alias.
+- Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.fermulate.com (custom domain, [ADR 10](adr/0010-custom-domains.md)); https://potluck.potluck-web.workers.dev still serves the same worker. PR previews are worker versions with a `pr-<number>` alias. User guide: https://docs.potluck.fermulate.com (repo `Fermulate/potluck-docs`).
 - Backend: Supabase project `mzotlkpghnrwbezcazld`.
-- Email: Supabase built-in SMTP for now (rate-limited). Swap to Resend when a domain exists.
+- Email: Supabase built-in SMTP for now (rate-limited). Swap to Resend with a sender on `fermulate.com`.

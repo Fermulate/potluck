@@ -8,7 +8,7 @@ Potluck runs on two free tiers: Cloudflare serves the static web app, and one Su
 | ----------- | ---------------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- |
 | Local       | http://localhost:5173 (`pnpm dev`)                                           | local Supabase in Docker                | you                                    |
 | Preview     | `https://pr-<number>-potluck.potluck-web.workers.dev` (worker version alias) | **production** Supabase project         | `deploy.yml` on every pull request     |
-| Production  | https://potluck.potluck-web.workers.dev                                      | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` after CI passes on `main` |
+| Production  | https://potluck.fermulate.com (also https://potluck.potluck-web.workers.dev) | Supabase project `mzotlkpghnrwbezcazld` | `deploy.yml` after CI passes on `main` |
 
 Previews are web-only. They build with the same `VITE_*` variables as production, so a preview signs in against production data and runs whatever migrations production already has. A PR that needs a new migration cannot be fully tested on its preview: test it locally.
 
@@ -20,15 +20,15 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 
 ### Variables
 
-| Name                            | Example                                        | Used for                                                                            |
-| ------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co`     | baked into the web build                                                            |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                           | baked into the web build. Public by design, RLS guards data                         |
-| `VITE_APP_URL`                  | `https://potluck.potluck-web.workers.dev`      | baked into the build, and the smoke test URL                                        |
-| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                           | web push subscription in the browser                                                |
-| `VITE_DOCS_URL`                 | `https://potluck-docs.potluck-web.workers.dev` | user guide that in-app help links open. Optional: the app falls back to the example |
-| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                                   | `wrangler deploy` and `versions upload`                                             |
-| `SUPABASE_PROJECT_REF`          | `mzotlkpghnrwbezcazld`                         | `supabase link`. The workflow falls back to this ref if unset                       |
+| Name                            | Example                                    | Used for                                                                            |
+| ------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`             | `https://mzotlkpghnrwbezcazld.supabase.co` | baked into the web build                                                            |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...`                       | baked into the web build. Public by design, RLS guards data                         |
+| `VITE_APP_URL`                  | `https://potluck.fermulate.com`            | baked into the build, and the smoke test URL                                        |
+| `VITE_VAPID_PUBLIC_KEY`         | base64url public key                       | web push subscription in the browser                                                |
+| `VITE_DOCS_URL`                 | `https://docs.potluck.fermulate.com`       | user guide that in-app help links open. Optional: the app falls back to the example |
+| `CLOUDFLARE_ACCOUNT_ID`         | 32 hex chars                               | `wrangler deploy` and `versions upload`                                             |
+| `SUPABASE_PROJECT_REF`          | `mzotlkpghnrwbezcazld`                     | `supabase link`. The workflow falls back to this ref if unset                       |
 
 ### Secrets
 
@@ -55,7 +55,7 @@ A push to `main` runs `ci.yml` first. When that run finishes, `deploy.yml` start
    supabase config push --yes           # auth, storage and pooler settings
    supabase functions deploy            # every function in supabase/functions
    ```
-2. **web**, only if `migrate` succeeded or was skipped: `pnpm turbo run build --filter=@potluck/web`, then `wrangler deploy` from `apps/web`.
+2. **web**, only if `migrate` succeeded or was skipped: `pnpm turbo run build --filter=@potluck/web`, then `wrangler deploy` from `apps/web`. `wrangler.jsonc` lists `potluck.fermulate.com` as a custom domain route, so a deploy keeps it attached, and sets `workers_dev` and `preview_urls` so the workers.dev URL and PR previews stay up.
 3. **smoke test**: `GET $VITE_APP_URL/groups` up to six times, 10 seconds apart. Anything other than a 200 fails the run. `/groups` is a client route, so a 200 proves the SPA fallback works too.
 
 Migrations go first so the database is never behind the client. Because migrations are additive ([ADR 8](adr/0008-additive-migrations-and-versioned-rpcs.md)), the old client keeps working in the minutes before the new one is live.
@@ -64,7 +64,7 @@ Migrations go first so the database is never behind the client. Because migratio
 
 `supabase/config.toml` holds local settings at the top and production overrides under `[remotes.production]`. `supabase config push` applies the overrides when the linked project's ref matches `remotes.production.project_id`. Production differs from local in:
 
-- `auth.site_url` and `additional_redirect_urls`: the workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
+- `auth.site_url` is the custom domain. `additional_redirect_urls`: the custom domain, the old workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
 - `minimum_password_length = 8`, email confirmations on, one email per 60 s per address.
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.
@@ -81,16 +81,16 @@ npx supabase secrets set --project-ref <ref> \
   VAPID_PRIVATE_KEY=... \
   VAPID_SUBJECT=mailto:you@example.com \
   EDGE_SECRET=$(openssl rand -base64 48 | tr -d '\n') \
-  APP_URL=https://potluck.potluck-web.workers.dev
+  APP_URL=https://potluck.fermulate.com
 ```
 
-| Secret              | Read by              | Notes                                                                                |
-| ------------------- | -------------------- | ------------------------------------------------------------------------------------ |
-| `VAPID_PUBLIC_KEY`  | `notify`             | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                   |
-| `VAPID_PRIVATE_KEY` | `notify`             | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`          |
-| `VAPID_SUBJECT`     | `notify`             | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`         |
-| `EDGE_SECRET`       | `notify`, `fx-sync`  | shared with the database. Must equal the Vault `edge_secret`                         |
-| `APP_URL`           | `notify`, `ics-feed` | base for links in push messages and calendar events. Defaults to the workers.dev URL |
+| Secret              | Read by              | Notes                                                                                          |
+| ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`  | `notify`             | same value as the `VITE_VAPID_PUBLIC_KEY` variable                                             |
+| `VAPID_PRIVATE_KEY` | `notify`             | without the key pair `notify` answers `{ skipped: 'vapid_not_configured' }`                    |
+| `VAPID_SUBJECT`     | `notify`             | a `mailto:` or https URL for push services to contact. Defaults to `APP_URL`                   |
+| `EDGE_SECRET`       | `notify`, `fx-sync`  | shared with the database. Must equal the Vault `edge_secret`                                   |
+| `APP_URL`           | `notify`, `ics-feed` | base for links in push messages and calendar events. Defaults to https://potluck.fermulate.com |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are provided by the platform. Generate VAPID keys with `npx web-push generate-vapid-keys`.
 
@@ -142,8 +142,8 @@ You can run your own Potluck on your own Supabase project and Cloudflare account
 
 1. **Fork** the repository.
 2. **Create a Supabase project.** Note its ref, database password and URL. Create a personal access token.
-3. **Edit `supabase/config.toml`.** Set `[remotes.production] project_id` to your ref, and replace `potluck.potluck-web.workers.dev` in the auth URLs with your domain. If the ref does not match, `config push` applies the local settings (localhost redirects, no email confirmation, 6 character passwords) to your project.
-4. **Edit `apps/web/wrangler.jsonc`** if you want a different worker name. The URL is `https://<name>.<your-subdomain>.workers.dev`.
+3. **Edit `supabase/config.toml`.** Set `[remotes.production] project_id` to your ref, and replace `potluck.fermulate.com` and the `potluck-web.workers.dev` URLs in the auth URLs with your own. If the ref does not match, `config push` applies the local settings (localhost redirects, no email confirmation, 6 character passwords) to your project.
+4. **Edit `apps/web/wrangler.jsonc`**: change or remove the `potluck.fermulate.com` custom domain route (the deploy fails on a zone your account does not own), and the worker name if you want. The workers.dev URL is `https://<name>.<your-subdomain>.workers.dev`.
 5. **Add the GitHub variables and secrets** listed above, with your values. `SUPABASE_PROJECT_REF` is required, otherwise the workflow links the upstream project and fails.
 6. **Set edge function secrets and Vault entries** as above, with your URLs.
 7. **Push to `main`.** Once CI is green, the deploy workflow applies migrations, pushes auth config, deploys functions and the web app, and smoke tests it.
