@@ -455,6 +455,22 @@ describe('rollups', () => {
     expect(spendingByMonth([])).toEqual([])
   })
 
+  it('rolls subcategories up into their category, keeping other values as they are', () => {
+    expect(
+      spendingByCategory([
+        row({ category: 'taxi', shareCents: 1200 }),
+        row({ category: 'flights', shareCents: 3000 }),
+        row({ category: 'transport', shareCents: 300 }),
+        row({ category: 'coffee', shareCents: 450 }),
+        row({ category: 'crypto', shareCents: 10 }),
+      ]).map((b) => [b.key, b.totals.shareCents]),
+    ).toEqual([
+      ['transport', 4500],
+      ['food', 450],
+      ['crypto', 10],
+    ])
+  })
+
   it('totals by category, largest first, payments left out', () => {
     expect(spendingByCategory(rows).map((b) => [b.key, b.totals.shareCents])).toEqual([
       ['lodging', 5500],

@@ -1,7 +1,7 @@
 -- Groups (20261113213126_group_types_restore_and_whiteboard, ADR 20): type and trip dates,
 -- delete that can be undone for 30 days and the purge after it, cover storage, whiteboard.
 begin;
-select plan(89);
+select plan(94);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -430,6 +430,45 @@ select lives_ok(
   format($$ update public.groups set cover_path = %L where id = %L $$, tests.id('ring') || '/cover-x1.webp', tests.id('ring')),
   'one file in the group folder is fine'
 );
+
+-- Guest links, exports and imports (20261113213127) --------------------------------------------
+
+reset role;
+select tests.remember('gx', tests.group_with('owner', array['member'], '{}', 'Guests crew'));
+insert into public.events (id, group_id, title, created_by)
+values (gen_random_uuid(), tests.id('gx'), 'Brunch', tests.uid('owner'))
+returning tests.remember('gx_ev', id);
+insert into public.event_guest_links (id, event_id, group_id, created_by, max_guests, expires_at)
+values (gen_random_uuid(), tests.id('gx_ev'), tests.id('gx'), tests.uid('owner'), 5, now() + interval '7 days')
+returning tests.remember('gx_link', id);
+select set_config('tests.gx_code_text', (select code from public.event_guest_links where id = tests.id('gx_link')), true);
+
+select tests.login_anon();
+select isnt((select status from public.guest_link_preview(current_setting('tests.gx_code_text'))), 'revoked',
+  'a guest link is open while its group is there');
+select tests.login('owner');
+select public.delete_group(tests.id('gx'));
+select tests.login_anon();
+select is((select status from public.guest_link_preview(current_setting('tests.gx_code_text'))), 'revoked',
+  'deleting the group closes its guest links');
+
+select tests.login('owner');
+select is(
+  jsonb_path_exists(public.export_my_data(), '$.groups[*] ? (@.id == $id)',
+    jsonb_build_object('id', tests.id('gx'))),
+  false,
+  'a backup leaves deleted groups out'
+);
+select throws_ok(
+  format($$ select public.import_expenses(%L, jsonb_build_array(jsonb_build_object('description', 'Late'))) $$, tests.id('gx')),
+  'PT404', 'group_deleted', 'nothing is imported into a deleted group'
+);
+
+select tests.login('member');
+select public.restore_group(tests.id('gx'));
+select tests.login_anon();
+select isnt((select status from public.guest_link_preview(current_setting('tests.gx_code_text'))), 'revoked',
+  'restoring reopens the links the delete closed');
 
 select * from finish();
 rollback;

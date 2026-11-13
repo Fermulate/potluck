@@ -21,6 +21,11 @@
 --    balances tab shows) has rows; friend_balances and settle_with_friend skip deleted groups
 --    (bodies as in 20261113115301_group_debts_and_bulk_settle.sql plus `deleted_at is null`), and
 --    no payment can land in a deleted group (require_live_group on settlements).
+-- 8. Guest links close with the group: delete_group revokes them with the delete timestamp and
+--    restore_group reopens exactly those (guest_link_preview then says revoked, and guests cannot
+--    answer). export_my_data leaves deleted groups out: body as in
+--    20261113204239_export_and_import.sql plus `g.deleted_at is null`. import_expenses already
+--    refuses through require_member (group_deleted).
 
 -- 1. Event helpers -----------------------------------------------------------------------------
 
@@ -208,6 +213,8 @@ begin
   update public.groups x set deleted_at = stamp, deleted_by = uid where x.id = delete_group.group_id;
   update public.group_invites i set revoked_at = stamp
   where i.group_id = delete_group.group_id and i.revoked_at is null;
+  update public.event_guest_links l set revoked_at = stamp
+  where l.group_id = delete_group.group_id and l.revoked_at is null;
   perform private.log_activity(delete_group.group_id, uid, 'group.deleted', delete_group.group_id,
     jsonb_build_object('name', g.name));
   perform private.notify(
@@ -241,6 +248,8 @@ begin
 
   update public.group_invites i set revoked_at = null
   where i.group_id = g.id and i.revoked_at = g.deleted_at;
+  update public.event_guest_links l set revoked_at = null
+  where l.group_id = g.id and l.revoked_at = g.deleted_at;
   update public.groups x set deleted_at = null, deleted_by = null
   where x.id = g.id
   returning * into g;
@@ -435,3 +444,78 @@ end;
 $$;
 
 revoke execute on function public.settle_with_friend(uuid, date, text, jsonb) from public, anon;
+
+-- 8. Guest links and exports -----------------------------------------------------------------
+
+create or replace function public.export_my_data()
+returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  uid uuid := private.require_user();
+  gids uuid[];
+  v_groups jsonb;
+begin
+  select coalesce(array_agg(m.group_id), '{}') into gids
+  from public.group_members m where m.user_id = uid;
+  select coalesce(jsonb_agg(private.export_group(g.id) order by g.created_at, g.id), '[]'::jsonb)
+    into v_groups
+  from public.groups g where g.id = any (gids) and g.deleted_at is null;
+
+  return jsonb_build_object(
+    'format', 'potluck-backup',
+    'version', 1,
+    'exported_at', now(),
+    'profile', (
+      select jsonb_build_object(
+        'id', p.id,
+        'display_name', p.display_name,
+        'email', (select u.email from auth.users u where u.id = p.id),
+        'avatar_path', p.avatar_path,
+        'timezone', p.timezone,
+        'default_currency', p.default_currency,
+        'locale', p.locale,
+        'created_at', p.created_at
+      )
+      from public.profiles p where p.id = uid
+    ),
+    'payment_methods', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', pm.kind, 'handle', pm.handle, 'updated_at', pm.updated_at)
+                       order by pm.kind)
+      from public.payment_methods pm where pm.user_id = uid
+    ), '[]'::jsonb),
+    -- Everyone the file mentions, so names survive people leaving or closing their account.
+    'people', coalesce((
+      select jsonb_agg(jsonb_build_object('id', p.id, 'display_name', p.display_name,
+                         'deleted', p.deleted_at is not null,
+                         'placeholder', p.is_placeholder) order by p.id)
+      from public.profiles p
+      where p.id in (
+        select (v #>> '{}')::uuid
+        from unnest(array[
+          '$[*].created_by', '$[*].members[*].user_id',
+          '$[*].expenses[*].created_by', '$[*].expenses[*].payers[*].user_id',
+          '$[*].expenses[*].splits[*].user_id', '$[*].expenses[*].items[*].user_ids[*]',
+          '$[*].expenses[*].comments[*].author_id',
+          '$[*].payments[*].from_user', '$[*].payments[*].to_user', '$[*].payments[*].created_by',
+          '$[*].payments[*].comments[*].author_id',
+          '$[*].recurring[*].created_by', '$[*].recurring[*].paid_by',
+          '$[*].recurring[*].payers[*].user_id', '$[*].recurring[*].splits[*].user_id',
+          '$[*].recurring[*].items[*].user_ids[*]',
+          '$[*].plans[*].created_by', '$[*].plans[*].rsvps[*].user_id',
+          '$[*].plans[*].availability[*].user_id', '$[*].plans[*].comments[*].author_id'
+        ]::jsonpath[]) k (path),
+             jsonb_path_query(v_groups, k.path) v
+        -- Templates keep their payers, splits and items as sent: only real ids count.
+        where jsonb_typeof(v) = 'string' and pg_input_is_valid(v #>> '{}', 'uuid')
+        union select f.friend_id from public.friendships f where f.user_id = uid
+        union select uid
+      )
+    ), '[]'::jsonb),
+    'friends', coalesce((
+      select jsonb_agg(f.friend_id order by f.friend_id)
+      from public.friendships f where f.user_id = uid
+    ), '[]'::jsonb),
+    'groups', v_groups
+  );
+end;
+$$;

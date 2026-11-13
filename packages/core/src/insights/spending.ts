@@ -1,3 +1,4 @@
+import { isSubcategory, parentCategory } from '../categories'
 import { convert, crossRate } from '../currency'
 import { allocate } from '../money/allocate'
 
@@ -371,7 +372,10 @@ export function spendingByMonth(rows: readonly SpendingRow[]): Bucket<string>[] 
   return out
 }
 
-/** Totals per expense category, largest share first (payments are left out). */
+/**
+ * Totals per expense category, largest share first (payments are left out). Subcategories count
+ * toward their parent (a taxi is Transport); other stored values keep their own bucket.
+ */
 export function spendingByCategory(
   rows: readonly SpendingRow[],
   measure: 'shareCents' | 'spendCents' = 'shareCents',
@@ -379,8 +383,9 @@ export function spendingByCategory(
   const categories = new Map<string, SpendingTotals>()
   for (const row of rows) {
     if (row.category === null) continue
-    let totals = categories.get(row.category)
-    if (!totals) categories.set(row.category, (totals = emptyTotals()))
+    const key = isSubcategory(row.category) ? parentCategory(row.category) : row.category
+    let totals = categories.get(key)
+    if (!totals) categories.set(key, (totals = emptyTotals()))
     addRow(totals, row)
   }
   return [...categories.entries()]
