@@ -73,6 +73,30 @@ test.describe('accessibility', () => {
     await audit(page, testInfo)
   })
 
+  test('group totals and charts', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}/totals`)
+    await expect(page.getByRole('region', { name: t('insights.totals.label') })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('spending across groups', async ({ newUser, openAs }, testInfo) => {
+    const { me } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto('/insights')
+    await expect(page.getByRole('list', { name: t('insights.byGroup.title') })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('search with results', async ({ newUser, openAs }, testInfo) => {
+    const { me } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto('/search?q=Snacks')
+    await expect(page.getByRole('link', { name: /Snacks/ })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
   test('add expense', async ({ newUser, openAs }, testInfo) => {
     const { me, group } = await setup(newUser)
     const page = await openAs(me)

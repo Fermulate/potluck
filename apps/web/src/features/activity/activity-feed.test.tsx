@@ -101,6 +101,52 @@ describe('ActivityFeed', () => {
     expect(await screen.findByRole('link', { name: /Ben added "Tacos"/ })).toBeInTheDocument()
   })
 
+  it('narrows to one group, or to one person, with a way back to everything', async () => {
+    resetDb({ tables: { activity: [], groups: [{ ...hike, group_members: [] }] } })
+    const { unmount } = renderWithProviders(<ActivityFeed groupId="g-hike" />, {
+      path: '/activity',
+      client: seededClient(),
+    })
+    expect(
+      await screen.findByText(t('activityFilter.group', { group: 'Hike crew' })),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('activityFilter.clear') })).toHaveAttribute(
+      'href',
+      '/activity',
+    )
+    await waitFor(() =>
+      expect(argsOf(db().queries('activity')[0]!, 'eq')).toEqual([['group_id', 'g-hike']]),
+    )
+    unmount()
+
+    // With a friend: what involves both of you, from friend_activity.
+    resetDb({ tables: { activity: [], groups: [{ ...hike, group_members: [] }] } }).respond(
+      'rpc:friend_activity',
+      {
+        data: [
+          {
+            ...activity('f1', '2026-11-04T18:00:00Z', {
+              verb: 'settlement.created',
+              actor_id: ME,
+              data: { from_user: ME, to_user: BEN, amount_cents: 7500, currency: 'USD' },
+            }),
+            actor: undefined,
+            group: undefined,
+            actor_info: { id: ME, display_name: 'Ava Chen', avatar_path: null },
+            group_info: direct,
+          },
+        ],
+      },
+    )
+    renderWithProviders(<ActivityFeed person={BEN} />, {
+      path: '/activity',
+      client: seededClient(),
+    })
+    expect(await screen.findByText(t('activityFilter.person', { name: 'Ben' }))).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /You paid Ben/ })).toBeInTheDocument()
+    expect(db().rpcArgs('friend_activity')[0]).toMatchObject({ friend: BEN })
+  })
+
   it("listens only to the viewer's groups", async () => {
     renderFeed([])
     await waitFor(() =>

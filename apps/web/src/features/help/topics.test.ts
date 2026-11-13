@@ -17,6 +17,7 @@ const GUIDE_PAGES = new Set([
   '/expenses/recurring/',
   '/expenses/receipts/',
   '/expenses/editing/',
+  '/expenses/search-and-totals/',
   '/balances/',
   '/balances/settle-up/',
   '/plans/',

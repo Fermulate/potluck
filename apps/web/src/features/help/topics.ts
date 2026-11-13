@@ -40,6 +40,9 @@ export const HELP_TOPICS = {
   push: '/notifications/#turn-on-push-notifications',
   deleteAccount: '/account/#what-happens-to-shared-tabs',
   twoFactor: '/account/#two-step-sign-in',
+  search: '/expenses/search-and-totals/#search-everything',
+  totals: '/expenses/search-and-totals/#totals-and-charts',
+  restore: '/expenses/editing/#undo-and-restore',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

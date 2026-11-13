@@ -49,6 +49,7 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   `/payments/$paymentId/edit`), the payment page `/payments/$paymentId` (restore, comments through
   `CommentThread` from `features/expenses/comments.tsx`), pay links, reminders and "Settle
   everything". Cross-group settle is on the Friends page. Pay links never move money (ADR 15).
+- Search, filters, Totals, charts and Recently deleted: `src/features/insights/` (ADR 17).
 
 ## Tests
 

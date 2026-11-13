@@ -4,12 +4,14 @@ import { formatDate, formatTime, greeting, t } from '@potluck/i18n'
 import { Badge, Button, Card, cn, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { CalendarHeart, ChevronRight, Plus } from 'lucide-react'
+import { CalendarHeart, ChartColumn, ChevronRight, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { RecentActivityRow } from '@/features/activity/activity-link'
 import { InboxBell } from '@/features/notifications/inbox-bell'
+import { NavRow } from '@/features/insights/nav-row'
+import { SearchIconLink } from '@/features/insights/search-link'
 import { useNow } from '@/features/plans/use-now'
 import { useTimelineRange } from '@/features/plans/use-range'
 import { useRsvp } from '@/features/plans/use-rsvp'
@@ -97,7 +99,10 @@ export function HomeDashboard() {
                 : t('home.summary.none')}
           </p>
         </div>
-        <InboxBell className="self-start lg:hidden" />
+        <div className="flex items-center gap-2 self-start lg:hidden">
+          <SearchIconLink />
+          <InboxBell />
+        </div>
       </header>
 
       <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start">
@@ -196,7 +201,13 @@ export function HomeDashboard() {
             )}
           </Appear>
 
-          <Appear index={4}>
+          <Appear index={4} className="flex flex-col gap-3">
+            <NavRow
+              to="/insights"
+              icon={<ChartColumn />}
+              title={t('insights.open')}
+              hint={t('insights.openHint')}
+            />
             <RecentActivityRow />
           </Appear>
         </div>

@@ -14,14 +14,15 @@ import {
 } from '@potluck/ui'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Plus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { dayLabel, groupByDay } from '@/features/expenses/format'
 import { useNameOf, usePeople, useTimeZone } from '@/features/expenses/money-data'
-import { useMyGroupsRealtime } from '@/features/groups/use-groups'
+import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
+import { groupTitle } from '@/features/expenses/format'
 import { describeActivity, type ActivityView } from './describe-activity'
 
 const toneClass: Record<ActivityView['tone'], string> = {
@@ -39,15 +40,29 @@ function useActivityRealtime() {
   useMyGroupsRealtime('activity-feed', ACTIVITY_TABLES, activityKeys)
 }
 
-/** Everything that happened across the viewer's groups, newest first, grouped by day. */
-export function ActivityFeed() {
+/**
+ * Everything that happened across the viewer's groups, newest first, grouped by day. With
+ * `groupId`, only that group; with `person`, only what involves both the viewer and that friend.
+ */
+export function ActivityFeed({ groupId, person }: { groupId?: string; person?: string } = {}) {
   useActivityRealtime()
   const me = useUserId()
   const people = usePeople()
   const nameOf = useNameOf()
   const timeZone = useTimeZone()
   const reduced = usePrefersReducedMotion()
-  const feed = useInfiniteQuery(activityInfiniteQueryOptions(supabase))
+  const groups = useMyGroups()
+  const feed = useInfiniteQuery(
+    activityInfiniteQueryOptions(supabase, { groupId, friendId: person }),
+  )
+  const filterGroup = groupId ? groups.data?.find((g) => g.id === groupId) : undefined
+  const filterLabel = groupId
+    ? filterGroup
+      ? t('activityFilter.group', { group: groupTitle(filterGroup, me) })
+      : null
+    : person
+      ? t('activityFilter.person', { name: nameOf(person) })
+      : null
 
   const sections = useMemo(() => {
     // The hidden 1:1 groups are an implementation detail; their creation is not news.
@@ -60,6 +75,22 @@ export function ActivityFeed() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
       <PageHeader title={t('activity.title')} />
+      {(groupId || person) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {filterLabel && (
+            <span className="inline-flex h-9 items-center rounded-pill bg-ink px-3.5 text-sm font-medium text-paper">
+              {filterLabel}
+            </span>
+          )}
+          <Link
+            to="/activity"
+            className="inline-flex h-9 items-center gap-1.5 rounded-pill border border-line-strong bg-card px-3.5 text-sm font-medium hover:border-ink/40"
+          >
+            <X aria-hidden className="size-4" />
+            {t('activityFilter.clear')}
+          </Link>
+        </div>
+      )}
       {feed.isPending ? (
         <div
           aria-busy="true"

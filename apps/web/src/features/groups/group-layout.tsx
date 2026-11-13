@@ -11,9 +11,10 @@ import {
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
-import { ChevronLeft, UserPlus } from 'lucide-react'
+import { ChevronLeft, History, UserPlus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useId, useRef, useState } from 'react'
+import { recallGroupFilters } from '@/features/insights/group-filters'
 import { InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
@@ -24,6 +25,7 @@ import { useGroup, useGroupsRealtime } from './use-groups'
 type TabPath =
   | '/groups/$groupId'
   | '/groups/$groupId/balances'
+  | '/groups/$groupId/totals'
   | '/groups/$groupId/plans'
   | '/groups/$groupId/members'
   | '/groups/$groupId/settings'
@@ -39,6 +41,7 @@ function tabsFor(group: GroupDetail): Tab[] {
   const tabs: Tab[] = [
     { to: '/groups/$groupId', label: t('groups.tabs.expenses'), segment: '' },
     { to: '/groups/$groupId/balances', label: t('groups.tabs.balances'), segment: 'balances' },
+    { to: '/groups/$groupId/totals', label: t('insights.tab'), segment: 'totals' },
   ]
   if (group.is_direct) return tabs
   return [
@@ -86,12 +89,15 @@ function GroupTabs({ group }: { group: GroupDetail }) {
     >
       <ul className="flex min-w-max gap-1 border-b border-line">
         {tabsFor(group).map((tab) => {
-          const active = tab.segment === rest
+          // Recently deleted opens from Totals, so Totals stays lit there.
+          const active = tab.segment === (rest === 'deleted' ? 'totals' : rest)
           return (
             <li key={tab.to} className="relative">
               <Link
                 to={tab.to}
                 params={{ groupId: group.id }}
+                // Back to Expenses with the filters last used there.
+                search={tab.segment === '' ? recallGroupFilters(group.id) : undefined}
                 // The index tab is a prefix of every other tab: match it exactly, or the router
                 // marks it as the current page everywhere in the group.
                 activeOptions={{ exact: tab.segment === '' }}
@@ -221,6 +227,14 @@ function DirectHeader({ group }: { group: GroupDetail }) {
         >
           {line}
         </p>
+        <Link
+          to="/activity"
+          search={{ person: friend.id }}
+          className="mt-1 -ml-1 inline-flex min-h-11 items-center gap-1.5 rounded-pill px-1 text-sm font-semibold text-mute hover:text-ink"
+        >
+          <History aria-hidden className="size-4" />
+          {t('activityFilter.personLink', { name: firstName(friend) })}
+        </Link>
       </div>
     </header>
   )

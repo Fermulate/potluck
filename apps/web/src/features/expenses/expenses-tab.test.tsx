@@ -52,13 +52,11 @@ describe('ExpensesTab', () => {
     expect(within(firewood).getByText('not involved')).toBeInTheDocument()
   })
 
-  it('links to the activity feed from the toolbar', async () => {
+  it('links to the group activity from the toolbar', async () => {
     setup()
     await screen.findByText('Tacos')
-    expect(screen.getByRole('link', { name: t('activity.recent') })).toHaveAttribute(
-      'href',
-      '/activity',
-    )
+    const link = screen.getByRole('link', { name: t('insights.links.activity') })
+    expect(link.getAttribute('href')).toMatch(/^\/activity\?groupId=/)
   })
 
   it('links each row to the expense', async () => {
@@ -83,6 +81,74 @@ describe('ExpensesTab', () => {
     fireEvent.click(screen.getByRole('button', { name: /Gas/ }))
     expect(await screen.findByText('Gas for two cars')).toBeInTheDocument()
     expect(screen.queryByText('Tacos')).not.toBeInTheDocument()
+  })
+
+  it('filters by person and dates from the sheet, with a matching total', async () => {
+    setup()
+    await screen.findByText('Tacos')
+    fireEvent.click(screen.getByRole('button', { name: t('filters.open') }))
+    const sheet = await screen.findByRole('dialog', { name: t('filters.title') })
+    // Ben paid for the gas and is in the split for the tacos and the firewood.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Ben Okafor' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: t('filters.custom') }))
+    fireEvent.change(within(sheet).getByLabelText(t('filters.from')), {
+      target: { value: '2026-11-03' },
+    })
+    fireEvent.change(within(sheet).getByLabelText(t('filters.to')), {
+      target: { value: '2026-11-04' },
+    })
+    fireEvent.click(within(sheet).getByRole('button', { name: t('filters.done') }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await waitFor(() => expect(screen.queryByText('Firewood')).not.toBeInTheDocument())
+    expect(screen.getByText('Tacos')).toBeInTheDocument()
+    expect(screen.getByText('Gas for two cars')).toBeInTheDocument()
+    expect(
+      screen.getByText(t('filters.summary', { count: 2, total: '$60.00' })),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('filters.yourShare', { amount: '$20.00' }))).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: t('filters.openActive', { count: 2 }) }),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('filters.remove', { filter: 'Ben' }) }))
+    expect(
+      await screen.findByText(t('filters.summary', { count: 2, total: '$60.00' })),
+    ).toBeInTheDocument()
+  })
+
+  it('says payments are hidden while a filter is on, and takes filters from the caller', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [expense({ id: 'e1', description: 'Tacos' })])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [
+        {
+          id: 's1',
+          group_id: GROUP_ID,
+          from_user: BEN,
+          to_user: ME,
+          amount_cents: 1000,
+          currency: 'USD',
+          fx_rate: '1.000000000000',
+          note: null,
+          settled_at: '2026-11-04T10:00:00Z',
+          created_by: BEN,
+          created_at: '2026-11-04T10:00:00Z',
+          deleted_at: null,
+        },
+      ])
+    })
+    const changes: unknown[] = []
+    renderInRouter(
+      <ExpensesTab
+        groupId={GROUP_ID}
+        filters={{ person: BEN }}
+        onFiltersChange={(next) => changes.push(next)}
+      />,
+      client,
+    )
+    expect(await screen.findByText(t('filters.paymentsHidden'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('filters.remove', { filter: 'Ben' }) }))
+    expect(changes).toEqual([{ person: null }])
   })
 
   it('shows the empty state when nothing has been added yet', async () => {

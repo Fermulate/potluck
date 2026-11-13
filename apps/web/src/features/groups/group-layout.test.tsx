@@ -41,6 +41,7 @@ describe('GroupLayout', () => {
     ).toEqual([
       t('groups.tabs.expenses'),
       t('groups.tabs.balances'),
+      t('insights.tab'),
       t('groups.tabs.plans'),
       t('groups.tabs.members'),
       t('groups.tabs.settings'),
@@ -100,8 +101,11 @@ describe('GroupLayout', () => {
       await screen.findByRole('heading', { name: t('groups.header.withFriend', { name: 'Ben' }) }),
     ).toBeInTheDocument()
     expect(screen.getByText('Ben owes you $25.00')).toBeInTheDocument()
-    expect(tabs().getAllByRole('link')).toHaveLength(2)
+    expect(tabs().getAllByRole('link')).toHaveLength(3)
     expect(screen.getByRole('link', { name: t('nav.friends') })).toHaveAttribute('href', '/friends')
+    expect(
+      screen.getByRole('link', { name: t('activityFilter.personLink', { name: 'Ben' }) }),
+    ).toHaveAttribute('href', '/activity?person=u-ben')
   })
 
   it('says who owes whom in either direction, or all square', async () => {

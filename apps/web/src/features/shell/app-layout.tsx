@@ -9,13 +9,14 @@ import {
   type RenderNavLink,
 } from '@potluck/ui'
 import { Link, Outlet, useParams, useRouterState } from '@tanstack/react-router'
-import { Bell, BookOpen, CalendarHeart, House, Plus, User, Users } from 'lucide-react'
+import { Bell, BookOpen, CalendarHeart, House, Plus, Search, User, Users } from 'lucide-react'
 import { useState } from 'react'
 import { useProfileLanguage } from '@/features/account/use-profile-language'
 import {
   useNotificationsRealtime,
   useUnreadCount,
 } from '@/features/notifications/use-notifications'
+import { useSearchShortcut } from '@/features/insights/use-search-shortcut'
 import { useUserId } from '@/lib/auth'
 import { docsUrl } from '@/lib/docs'
 import { profileAvatar, useMyProfile } from '@/lib/queries'
@@ -28,7 +29,7 @@ const renderLink: RenderNavLink = ({ href, children, ...props }) => (
   </Link>
 )
 
-type TabId = 'home' | 'groups' | 'plans' | 'notifications' | 'me'
+type TabId = 'home' | 'search' | 'groups' | 'plans' | 'notifications' | 'me'
 
 function useActiveTab(): TabId {
   const path = useRouterState({ select: (s) => s.location.pathname })
@@ -37,6 +38,7 @@ function useActiveTab(): TabId {
     return 'groups'
   if (path.startsWith('/plans') || path.startsWith('/new/plan')) return 'plans'
   if (path.startsWith('/notifications')) return 'notifications'
+  if (path.startsWith('/search')) return 'search'
   if (path.startsWith('/me')) return 'me'
   return 'home'
 }
@@ -75,9 +77,16 @@ export function AppLayout() {
   const { data: unread = 0 } = useUnreadCount()
   useNotificationsRealtime()
   useProfileLanguage()
+  useSearchShortcut()
 
   const home: NavItem = { id: 'home', label: t('nav.home'), icon: <House />, href: '/home' }
   const groups: NavItem = { id: 'groups', label: t('nav.groups'), icon: <Users />, href: '/groups' }
+  const search: NavItem = {
+    id: 'search',
+    label: t('search.title'),
+    icon: <Search />,
+    href: '/search',
+  }
   const plans: NavItem = {
     id: 'plans',
     label: t('nav.plans'),
@@ -102,7 +111,7 @@ export function AppLayout() {
         {t('app.skipToContent')}
       </a>
       <SideRail
-        items={[home, groups, plans, inbox, me]}
+        items={[home, search, groups, plans, inbox, me]}
         activeId={active}
         renderLink={renderLink}
         label={t('nav.main')}
@@ -133,7 +142,7 @@ export function AppLayout() {
       </main>
       <BottomTabBar
         items={[home, groups, plans, { ...me, badge: unread }]}
-        activeId={active === 'notifications' ? 'me' : active}
+        activeId={active === 'notifications' ? 'me' : active === 'search' ? 'home' : active}
         renderLink={renderLink}
         label={t('nav.main')}
         centerAction={
