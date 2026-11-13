@@ -4,6 +4,8 @@
 // with no cookies or headers we could check, so the signed token in the query string is the
 // only credential. This function holds no privilege: it calls the anon-callable
 // public.email_unsubscribe(token) RPC with the publishable key, and Postgres checks the token.
+// This is the only path that unsubscribes without a click: mail clients send it, link
+// scanners do not POST.
 // A GET (a person opening the header link, or a link scanner) changes nothing here and
 // redirects to the web app's /unsubscribe page.
 
@@ -49,9 +51,12 @@ export function rpcUnsubscribe(
         Authorization: `Bearer ${publishableKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, action: 'unsubscribe' }),
     })
-    if (res.ok) return { ok: true, category: String(await res.json()) }
+    if (res.ok) {
+      const body = (await res.json()) as { category?: unknown }
+      return { ok: true, category: String(body.category) }
+    }
     const body = (await res.json().catch(() => ({}))) as { message?: string }
     return {
       ok: false,

@@ -1,21 +1,81 @@
 // Run with `pnpm test:functions` (Node's test runner; the module has no Deno imports).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { deliverEmails } from './deliver.ts'
-import { senderFromEnv, type EmailSender, type OutgoingEmail } from './sender.ts'
+import { backoffMs, deliverBatch, type BatchReport } from './deliver.ts'
+import {
+  EmailSendError,
+  isRetryable,
+  senderFromEnv,
+  type EmailSender,
+  type OutgoingEmail,
+} from './sender.ts'
 
 const links = {
   appUrl: 'https://potluck.example',
   oneClickUrl: 'https://db.example/functions/v1/unsubscribe',
 }
 
-function recordingFetch(status = 200) {
+function recordingFetch(...responses: { status: number; headers?: Record<string, string> }[]) {
   const calls: { url: string; init: RequestInit }[] = []
   const fetchFn = async (url: string, init: RequestInit) => {
     calls.push({ url, init })
-    return new Response(status === 200 ? '{"id":"r1"}' : 'nope', { status })
+    const r = responses.length > 1 ? responses.shift()! : (responses[0] ?? { status: 200 })
+    return new Response(r.status === 200 ? '{"data":[]}' : 'nope', {
+      status: r.status,
+      headers: r.headers,
+    })
   }
   return { calls, fetchFn }
+}
+
+const email = (to: string): OutgoingEmail => ({
+  to,
+  subject: 'Hi',
+  text: 'text',
+  html: '<p>html</p>',
+  headers: { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+})
+
+const job = (id: string, to = `${id}@example.com`) => ({
+  id,
+  type: 'expense.created',
+  category: 'expense_added',
+  to,
+  unsubscribe: `${id}.expense_added.sig`,
+  unsubscribe_all: `${id}.all.sig`,
+  data: { expense_id: 'x1', description: 'Pizza', actor_name: 'Ava' },
+})
+
+function recordingSender(failures: unknown[] = [], maxBatch = 100) {
+  const calls: { emails: OutgoingEmail[]; key: string }[] = []
+  const sender: EmailSender = {
+    provider: 'test',
+    maxBatch,
+    async sendBatch(emails, key) {
+      calls.push({ emails, key })
+      const failure = failures.shift()
+      if (failure) throw failure
+    },
+  }
+  return { calls, sender }
+}
+
+function harness() {
+  const reports: BatchReport[] = []
+  const waits: number[] = []
+  return {
+    reports,
+    waits,
+    options: {
+      links,
+      report: async (r: BatchReport) => {
+        reports.push(r)
+      },
+      sleep: async (ms: number) => {
+        waits.push(ms)
+      },
+    },
+  }
 }
 
 test('no sender until a key and a from address are configured', () => {
@@ -36,8 +96,8 @@ test('no sender until a key and a from address are configured', () => {
   )
 })
 
-test('resend gets the message, the unsubscribe headers and an idempotency key', async () => {
-  const { calls, fetchFn } = recordingFetch()
+test('resend gets the whole batch in one call with the idempotency key', async () => {
+  const { calls, fetchFn } = recordingFetch({ status: 200 })
   const sender = senderFromEnv(
     {
       RESEND_API_KEY: 're_secret',
@@ -46,21 +106,15 @@ test('resend gets the message, the unsubscribe headers and an idempotency key', 
     },
     fetchFn,
   )!
-  const email: OutgoingEmail = {
-    to: 'ben@example.com',
-    subject: 'Hi',
-    text: 'text',
-    html: '<p>html</p>',
-    headers: { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
-    idempotencyKey: 'notification-n1',
-  }
-  await sender.send(email)
+  await sender.sendBatch([email('ben@example.com'), email('cleo@example.com')], 'batch-b1')
   assert.equal(calls.length, 1)
-  assert.equal(calls[0]!.url, 'https://api.resend.com/emails')
+  assert.equal(calls[0]!.url, 'https://api.resend.com/emails/batch')
   const headers = calls[0]!.init.headers as Record<string, string>
   assert.equal(headers.Authorization, 'Bearer re_secret')
-  assert.equal(headers['Idempotency-Key'], 'notification-n1')
-  assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), {
+  assert.equal(headers['Idempotency-Key'], 'batch-b1')
+  const body = JSON.parse(String(calls[0]!.init.body))
+  assert.equal(body.length, 2)
+  assert.deepEqual(body[0], {
     from: 'Potluck <hello@example.com>',
     to: ['ben@example.com'],
     subject: 'Hi',
@@ -71,50 +125,99 @@ test('resend gets the message, the unsubscribe headers and an idempotency key', 
   })
 })
 
-test('a provider error is thrown with its status', async () => {
-  const { fetchFn } = recordingFetch(422)
+test('a provider error carries its status and Retry-After', async () => {
+  const { fetchFn } = recordingFetch({ status: 429, headers: { 'Retry-After': '3' } })
   const sender = senderFromEnv({ RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c' }, fetchFn)!
   await assert.rejects(
-    sender.send({
-      to: 'x@y.z',
-      subject: 's',
-      text: 't',
-      html: 'h',
-      headers: {},
-      idempotencyKey: 'k',
-    }),
-    (err: Error & { status?: number }) => err.status === 422,
+    sender.sendBatch([email('x@y.z')], 'k'),
+    (err: EmailSendError) => err.status === 429 && err.retryAfter === 3,
+  )
+  assert.equal(isRetryable(new EmailSendError('rate', 429)), true)
+  assert.equal(isRetryable(new EmailSendError('down', 503)), true)
+  assert.equal(isRetryable(new EmailSendError('bad from', 422)), false)
+  assert.equal(isRetryable(new TypeError('network')), true)
+})
+
+test('a batch goes out in one call and is reported delivered, malformed jobs rejected', async () => {
+  const { calls, sender } = recordingSender()
+  const h = harness()
+  const result = await deliverBatch(
+    'b1',
+    [job('n1'), job('n2'), { id: 'n3' }, null],
+    sender,
+    h.options,
+  )
+  assert.deepEqual(result, { sent: 2, failed: 0, invalid: 2 })
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0]!.key, 'batch-b1')
+  assert.equal(calls[0]!.emails[0]!.subject, 'Ava added "Pizza"')
+  assert.match(calls[0]!.emails[0]!.headers['List-Unsubscribe']!, /token=n1\.expense_added\.sig/)
+  assert.deepEqual(h.reports, [{ batch: 'b1', delivered: true, rejected: ['n3'] }])
+})
+
+test('rate limits back off and retry with the same key, honoring Retry-After', async () => {
+  const { calls, sender } = recordingSender([
+    new EmailSendError('slow down', 429, 2),
+    new EmailSendError('busy', 503),
+  ])
+  const h = harness()
+  const result = await deliverBatch('b2', [job('n1')], sender, h.options)
+  assert.deepEqual(result, { sent: 1, failed: 0, invalid: 0 })
+  assert.deepEqual(
+    calls.map((c) => c.key),
+    ['batch-b2', 'batch-b2', 'batch-b2'],
+  )
+  assert.deepEqual(h.waits, [2000, 1000])
+  assert.equal(h.reports[0]!.delivered, true)
+})
+
+test('a batch that keeps failing is reported failed so the outbox retries it later', async () => {
+  const down = () => new EmailSendError('down', 500)
+  const { calls, sender } = recordingSender([down(), down(), down(), down()])
+  const h = harness()
+  const result = await deliverBatch('b3', [job('n1'), job('n2')], sender, {
+    ...h.options,
+    tries: 4,
+  })
+  assert.deepEqual(result, { sent: 0, failed: 2, invalid: 0 })
+  assert.equal(calls.length, 4)
+  assert.deepEqual(h.waits, [500, 1000, 2000])
+  assert.deepEqual(h.reports, [{ batch: 'b3', delivered: false, error: 'down', rejected: [] }])
+})
+
+test('a permanent error is not retried', async () => {
+  const { calls, sender } = recordingSender([new EmailSendError('bad from', 422)])
+  const h = harness()
+  await deliverBatch('b4', [job('n1')], sender, h.options)
+  assert.equal(calls.length, 1)
+  assert.equal(h.reports[0]!.delivered, false)
+})
+
+test('a provider that takes fewer emails per call gets several keyed calls', async () => {
+  const { calls, sender } = recordingSender([], 2)
+  const h = harness()
+  await deliverBatch('b5', [job('n1'), job('n2'), job('n3')], sender, h.options)
+  assert.deepEqual(
+    calls.map((c) => [c.key, c.emails.length]),
+    [
+      ['batch-b5-0', 2],
+      ['batch-b5-1', 1],
+    ],
   )
 })
 
-test('a batch sends one email per job, counts failures and skips malformed jobs', async () => {
-  const sent: OutgoingEmail[] = []
-  const sender: EmailSender = {
-    provider: 'test',
-    async send(email) {
-      if (email.to === 'broken@example.com') throw new Error('mailbox on fire')
-      sent.push(email)
-    },
-  }
-  const job = (id: string, to: string) => ({
-    id,
-    type: 'expense.created',
-    category: 'expense_added',
-    to,
-    unsubscribe: `${id}.expense_added.sig`,
-    unsubscribe_all: `${id}.all.sig`,
-    data: { expense_id: 'x1', description: 'Pizza', actor_name: 'Ava' },
-  })
-  const logged: string[] = []
-  const result = await deliverEmails(
-    [job('n1', 'ava@example.com'), job('n2', 'broken@example.com'), { id: 'n3' }, null],
-    sender,
-    links,
-    (line) => logged.push(line),
+test('a batch with nothing sendable is still reported, so its rows do not hang', async () => {
+  const { calls, sender } = recordingSender()
+  const h = harness()
+  await deliverBatch('b6', [{ id: 'n9', to: 'not-an-address' }], sender, h.options)
+  assert.equal(calls.length, 0)
+  assert.deepEqual(h.reports, [{ batch: 'b6', delivered: true, rejected: ['n9'] }])
+})
+
+test('backoff doubles and is capped by what the provider asks', () => {
+  assert.deepEqual(
+    [0, 1, 2, 3].map((a) => backoffMs(a)),
+    [500, 1000, 2000, 4000],
   )
-  assert.deepEqual(result, { sent: 1, failed: 1, invalid: 2 })
-  assert.equal(sent[0]!.idempotencyKey, 'notification-n1')
-  assert.equal(sent[0]!.subject, 'Ava added "Pizza"')
-  assert.match(sent[0]!.headers['List-Unsubscribe']!, /token=n1\.expense_added\.sig/)
-  assert.match(logged[0]!, /n2 \(expense\.created\) failed: mailbox on fire/)
+  assert.equal(backoffMs(0, 90), 30_000)
 })

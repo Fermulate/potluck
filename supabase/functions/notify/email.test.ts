@@ -152,10 +152,30 @@ test('names and descriptions are escaped in the HTML', () => {
 })
 
 test('unknown types fall back to a generic email, and a missing name to a plain greeting', () => {
-  const e = renderEmail(job('debt.reminder', {}, { name: null, category: 'reminders' }), links)
+  const e = renderEmail(job('something.new', {}, { name: null, category: 'reminders' }), links)
   assert.equal(e.subject, 'Something new in Potluck')
   assert.match(e.text, /^Hi,/)
   assert.match(e.text, /emails about reminders are on/)
+})
+
+test('payment edits, deletions, restores and debt reminders from settle up have their own copy', () => {
+  const data = { actor_name: 'Ben', group_name: 'Flat', amount_cents: 2500, currency: 'USD' }
+  const payments = { category: 'payments' }
+  assert.equal(
+    renderEmail(job('settlement.updated', data, payments), links).subject,
+    'Ben changed a payment in Flat',
+  )
+  assert.match(
+    renderEmail(job('settlement.deleted', data, payments), links).text,
+    /Ben deleted a payment of \$25\.00 in Flat\./,
+  )
+  assert.equal(
+    renderEmail(job('settlement.restored', data, payments), links).subject,
+    'Ben restored a payment in Flat',
+  )
+  const nudge = renderEmail(job('debt.reminder', data, { category: 'reminders' }), links)
+  assert.equal(nudge.subject, 'Ben sent you a reminder')
+  assert.match(nudge.text, /Ben is waiting on \$25\.00 in Flat\./)
 })
 
 test('money keeps every minor digit for 0, 2 and 3 digit currencies', () => {

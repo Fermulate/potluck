@@ -4,7 +4,7 @@
 //   1. function secrets RESEND_API_KEY and EMAIL_FROM ("Potluck <hello@fermulate.com>"),
 //      optionally EMAIL_REPLY_TO;
 //   2. update public.app_config set value = 'true' where key = 'email_notifications'.
-// Without a key there is no sender and notify answers { skipped: 'email_not_configured' }.
+// Without a key there is no sender and notify reports the batch as failed.
 // Another provider is one more branch in senderFromEnv returning an EmailSender.
 
 export interface OutgoingEmail {
@@ -13,13 +13,17 @@ export interface OutgoingEmail {
   text: string
   html: string
   headers: Record<string, string>
-  /** Same key, same email: lets the provider drop a retried send. */
-  idempotencyKey: string
 }
 
 export interface EmailSender {
   provider: string
-  send(email: OutgoingEmail): Promise<void>
+  /** Most emails one call takes. */
+  maxBatch: number
+  /**
+   * Sends every email in one call, all or nothing. Same key, same batch: the provider drops a
+   * repeat of a batch it already accepted.
+   */
+  sendBatch(emails: OutgoingEmail[], idempotencyKey: string): Promise<void>
 }
 
 export type Env = Record<string, string | undefined>
@@ -27,13 +31,22 @@ type Fetch = (input: string, init: RequestInit) => Promise<Response>
 
 export class EmailSendError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** Seconds the provider asked us to wait (Retry-After), if any. */
+  retryAfter: number | undefined
+  constructor(message: string, status: number, retryAfter?: number) {
     super(message)
     this.status = status
+    this.retryAfter = retryAfter
   }
 }
 
-/** Resend's HTTP API (https://resend.com/docs/api-reference/emails/send-email). */
+/** Rate limits, server errors and dropped connections are worth another try. */
+export function isRetryable(err: unknown): boolean {
+  if (err instanceof EmailSendError) return err.status === 429 || err.status >= 500
+  return true
+}
+
+/** Resend's batch API (https://resend.com/docs/api-reference/emails/send-batch-emails). */
 export function resendSender(
   apiKey: string,
   from: string,
@@ -42,26 +55,34 @@ export function resendSender(
 ): EmailSender {
   return {
     provider: 'resend',
-    async send(email) {
-      const res = await fetchFn('https://api.resend.com/emails', {
+    maxBatch: 100,
+    async sendBatch(emails, idempotencyKey) {
+      const res = await fetchFn('https://api.resend.com/emails/batch', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'Idempotency-Key': email.idempotencyKey,
+          'Idempotency-Key': idempotencyKey,
         },
-        body: JSON.stringify({
-          from,
-          to: [email.to],
-          subject: email.subject,
-          text: email.text,
-          html: email.html,
-          headers: email.headers,
-          ...(replyTo ? { reply_to: replyTo } : {}),
-        }),
+        body: JSON.stringify(
+          emails.map((email) => ({
+            from,
+            to: [email.to],
+            subject: email.subject,
+            text: email.text,
+            html: email.html,
+            headers: email.headers,
+            ...(replyTo ? { reply_to: replyTo } : {}),
+          })),
+        ),
       })
       if (!res.ok) {
-        throw new EmailSendError(`resend answered ${res.status}: ${await res.text()}`, res.status)
+        const wait = Number(res.headers.get('retry-after'))
+        throw new EmailSendError(
+          `resend answered ${res.status}: ${await res.text()}`,
+          res.status,
+          Number.isFinite(wait) && wait > 0 ? wait : undefined,
+        )
       }
     },
   }

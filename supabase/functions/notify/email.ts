@@ -183,6 +183,37 @@ function copyFor(job: EmailJob): Copy {
         lines: ['Your balances are up to date.'],
         cta: 'See balances',
       }
+    case 'settlement.updated':
+    case 'payment.updated':
+      return {
+        subject: `${actor} changed a payment${inGroup}`,
+        heading: `${actor} changed a payment${amount ? ` (now ${amount})` : ''}${inGroup}.`,
+        lines: ['Your balances are up to date.'],
+        cta: 'See the payment',
+      }
+    case 'settlement.deleted':
+    case 'payment.deleted':
+      return {
+        subject: `${actor} deleted a payment${inGroup}`,
+        heading: `${actor} deleted a payment${amount ? ` of ${amount}` : ''}${inGroup}.`,
+        lines: ['It no longer counts toward your balances.'],
+        cta: 'See balances',
+      }
+    case 'settlement.restored':
+    case 'payment.restored':
+      return {
+        subject: `${actor} restored a payment${inGroup}`,
+        heading: `${actor} restored a payment${amount ? ` of ${amount}` : ''}${inGroup}.`,
+        lines: ['It counts toward your balances again.'],
+        cta: 'See the payment',
+      }
+    case 'debt.reminder':
+      return {
+        subject: `${actor} sent you a reminder`,
+        heading: `${actor} is waiting on ${amount ?? 'a payment'}${inGroup}.`,
+        lines: ['Settle up when you get a moment.'],
+        cta: 'Settle up',
+      }
     case 'comment.created':
       return {
         subject: `${actor} left a comment${inGroup}`,

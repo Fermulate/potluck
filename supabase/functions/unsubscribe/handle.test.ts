@@ -75,12 +75,20 @@ test('the RPC call goes to PostgREST as anon with the publishable key', async ()
   const calls: { url: string; init: RequestInit }[] = []
   const call = rpcUnsubscribe('https://db.example/', 'sb_publishable_x', async (u, init) => {
     calls.push({ url: u, init })
-    return new Response(JSON.stringify('payments'), { status: 200 })
+    return new Response(
+      JSON.stringify({ category: 'payments', email: 'a***@x.y', subscribed: false }),
+      {
+        status: 200,
+      },
+    )
   })
   assert.deepEqual(await call('u1.payments.sig'), { ok: true, category: 'payments' })
   assert.equal(calls[0]!.url, 'https://db.example/rest/v1/rpc/email_unsubscribe')
   assert.equal((calls[0]!.init.headers as Record<string, string>).apikey, 'sb_publishable_x')
-  assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), { token: 'u1.payments.sig' })
+  assert.deepEqual(JSON.parse(String(calls[0]!.init.body)), {
+    token: 'u1.payments.sig',
+    action: 'unsubscribe',
+  })
 
   const refused = rpcUnsubscribe(
     'https://db.example',
