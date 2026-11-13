@@ -32,6 +32,7 @@ import { supabase } from '@/lib/supabase'
 import { AvailabilityHeatmap, type HeatRow } from '@/features/availability/availability-heatmap'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
 import { GuestLinksPanel } from '@/features/guests/guest-links-panel'
+import { GuestAnswers } from '@/features/guests/guest-list'
 import { buildGridModel, busySlots, slotKey, type GridModel } from '@/features/availability/grid'
 import { BackToPlans } from './back-link'
 import { BestTimes } from './best-times'
@@ -253,6 +254,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
                 timeZone={timeZone}
               />
             )}
+            <GuestAnswers eventId={event.id} />
             <PlanExpenses groupId={event.group_id} eventId={event.id} />
             {event.status !== 'cancelled' && (
               <a
@@ -274,10 +276,10 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
             )}
             {comments}
           </div>
-          <aside className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4">
             <div className="hidden lg:block">{details}</div>
             {cancelButton}
-          </aside>
+          </div>
         </div>
       )}
 
@@ -599,7 +601,7 @@ function PollingBody({
         <div className="flex flex-col gap-4 lg:hidden">{aside}</div>
         {comments}
       </div>
-      <aside className="hidden flex-col gap-4 lg:flex">
+      <div className="hidden flex-col gap-4 lg:flex">
         {desktop && best}
         <NudgeBlock
           event={event}
@@ -611,7 +613,7 @@ function PollingBody({
         />
         {guestPanel}
         {aside}
-      </aside>
+      </div>
     </div>
   )
 }
