@@ -11,6 +11,10 @@ export const HELP_TOPICS = {
   splitPercent: '/expenses/splits/#percent',
   splitShares: '/expenses/splits/#shares',
   splitItemized: '/expenses/splits/#by-item',
+  splitAdjustment: '/expenses/splits/#adjustment',
+  defaultSplit: '/expenses/splits/#default-split',
+  payers: '/expenses/#several-people-paid',
+  refunds: '/expenses/#refunds',
   rounding: '/expenses/splits/#how-rounding-works',
   currencies: '/expenses/currencies/#add-an-expense-in-another-currency',
   exchangeRates: '/expenses/currencies/#where-the-rates-come-from',
@@ -43,6 +47,7 @@ export const SPLIT_HELP: Record<SplitTypeValue, HelpTopic> = {
   exact: 'splitExact',
   percent: 'splitPercent',
   shares: 'splitShares',
+  adjustment: 'splitAdjustment',
   itemized: 'splitItemized',
 }
 

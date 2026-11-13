@@ -37,7 +37,7 @@ export function PlanExpenses({ groupId, eventId }: { groupId: string; eventId: s
         <ul className="divide-y divide-line">
           {linked.map((expense) => (
             <li key={expense.id}>
-              <ExpenseRow expense={expense} viewerId={me} payerName={nameOf(expense.paid_by)} />
+              <ExpenseRow expense={expense} viewerId={me} nameOf={(id) => nameOf(id)} />
             </li>
           ))}
         </ul>

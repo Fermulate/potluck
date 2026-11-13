@@ -1,19 +1,79 @@
 import type { ExpenseWithSplits, MoneyMember, Settlement } from '@potluck/api'
-import { convert, minorUnits } from '@potluck/core'
+import { convert, minorUnits, type BalanceExpense } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
+import { joinNames } from '@/features/plans/format'
 import { categoryLabel } from './format'
 
 export type ViewerLine =
   { kind: 'lent'; cents: number } | { kind: 'borrowed'; cents: number } | { kind: 'none' }
 
-/** What an expense means for the viewer, in the expense currency. */
+/** Everyone who paid and how much; an expense read without payers had one, `paid_by`. */
+export function payersOf(
+  expense: Pick<ExpenseWithSplits, 'paid_by' | 'amount_cents'> &
+    Partial<Pick<ExpenseWithSplits, 'expense_payers'>>,
+): { user_id: string; paid_cents: number }[] {
+  const payers = expense.expense_payers ?? []
+  return payers.length > 0
+    ? [...payers].sort((a, b) => b.paid_cents - a.paid_cents)
+    : [{ user_id: expense.paid_by, paid_cents: expense.amount_cents }]
+}
+
+/**
+ * What an expense means for the viewer, in the expense currency: what they paid minus their
+ * share. A refund flips it (the payers received the money). "lent" means the group owes them.
+ */
 export function viewerLine(expense: ExpenseWithSplits, viewerId: string): ViewerLine {
   const mine = expense.expense_splits.find((s) => s.user_id === viewerId)?.share_cents ?? 0
-  if (expense.paid_by === viewerId) {
-    const lent = expense.amount_cents - mine
-    return lent > 0 ? { kind: 'lent', cents: lent } : { kind: 'none' }
+  const paid = payersOf(expense).find((p) => p.user_id === viewerId)?.paid_cents ?? 0
+  const net = (expense.is_refund ? -1 : 1) * (paid - mine)
+  return net > 0
+    ? { kind: 'lent', cents: net }
+    : net < 0
+      ? { kind: 'borrowed', cents: -net }
+      : { kind: 'none' }
+}
+
+/**
+ * "Ava paid $90.00", "You and Ben paid $90.00", or for a refund "Ava got back $40.00".
+ * `nameOf` gives "You" for the viewer.
+ */
+export function paidSummary(
+  expense: ExpenseWithSplits,
+  viewerId: string,
+  nameOf: (id: string) => string,
+  locale?: string,
+): string {
+  const amount = formatMoney(expense.amount_cents, expense.currency, { locale })
+  const ids = payersOf(expense).map((p) => p.user_id)
+  if (ids.length > 1) {
+    const names = joinNames(ids.map(nameOf), 2)
+    return expense.is_refund
+      ? t('expenses.refund.gotBackMany', { names, amount })
+      : t('expenses.payers.paidMany', { names, amount })
   }
-  return mine > 0 ? { kind: 'borrowed', cents: mine } : { kind: 'none' }
+  const [only] = ids
+  if (only === viewerId) {
+    return expense.is_refund
+      ? t('expenses.refund.youGotBack', { amount })
+      : t('expenses.youPaid', { amount })
+  }
+  return expense.is_refund
+    ? t('expenses.refund.gotBack', { name: nameOf(only!), amount })
+    : t('expenses.paidSummary', { name: nameOf(only!), amount })
+}
+
+/** An expense as core's balance functions take it (every payer, refund sign). */
+export function toBalanceExpense(expense: ExpenseWithSplits): BalanceExpense {
+  return {
+    paidBy: expense.paid_by,
+    payers: payersOf(expense).map((p) => ({ userId: p.user_id, paidCents: p.paid_cents })),
+    isRefund: expense.is_refund,
+    amountCents: expense.amount_cents,
+    currency: expense.currency,
+    fxRate: expense.fx_rate,
+    splits: expense.expense_splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
+    deletedAt: expense.deleted_at,
+  }
 }
 
 /**
@@ -22,12 +82,14 @@ export function viewerLine(expense: ExpenseWithSplits, viewerId: string): Viewer
  * will not delete it, so screens lock those parts.
  */
 export function departedMembers(
-  expense: Pick<ExpenseWithSplits, 'paid_by' | 'expense_splits'>,
+  expense: Pick<ExpenseWithSplits, 'paid_by' | 'expense_splits'> &
+    Partial<Pick<ExpenseWithSplits, 'expense_payers'>>,
   memberIds: readonly string[],
 ): string[] {
   const members = new Set(memberIds)
   const involved = [
     expense.paid_by,
+    ...(expense.expense_payers ?? []).map((p) => p.user_id),
     ...expense.expense_splits.filter((s) => s.share_cents > 0).map((s) => s.user_id),
   ]
   return [...new Set(involved)].filter((id) => !members.has(id))
@@ -55,7 +117,11 @@ function cell(value: string | number | null | undefined): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
 }
 
-/** A spreadsheet-friendly export: one row per expense, one share column per member. */
+/**
+ * A spreadsheet-friendly export: one row per expense, one share column per member. With several
+ * payers the payer cell lists each one and what they paid. Refunds are negative (amount, group
+ * amount and shares), so summing a column gives what was really spent.
+ */
 export function expensesToCsv(
   expenses: readonly ExpenseWithSplits[],
   members: readonly MoneyMember[],
@@ -86,19 +152,25 @@ export function expensesToCsv(
       (a, b) => a.spent_at.localeCompare(b.spent_at) || a.created_at.localeCompare(b.created_at),
     )
     .map((e) => {
+      const sign = e.is_refund ? -1 : 1
       const converted = convert(e.amount_cents, e.fx_rate, { from: e.currency, to: groupCurrency })
+      const payers = payersOf(e)
       return [
         e.spent_at,
         e.description,
         categoryLabel(e.category),
-        nameOf(e.paid_by),
-        decimal(e.amount_cents, e.currency),
+        payers.length > 1
+          ? payers
+              .map((p) => `${nameOf(p.user_id)} ${decimal(p.paid_cents, e.currency)}`)
+              .join('; ')
+          : nameOf(payers[0]!.user_id),
+        decimal(sign * e.amount_cents, e.currency),
         e.currency,
         String(Number(e.fx_rate)),
-        decimal(converted, groupCurrency),
+        decimal(sign * converted, groupCurrency),
         ...ids.map((id) => {
           const share = e.expense_splits.find((s) => s.user_id === id)
-          return share ? decimal(share.share_cents, e.currency) : ''
+          return share ? decimal(sign * share.share_cents, e.currency) : ''
         }),
         e.notes ?? '',
       ]

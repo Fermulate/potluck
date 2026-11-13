@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { decimal, departedMembers, expensesToCsv, viewerLine } from './expense-math'
+import { computeBalances } from '@potluck/core'
+import { t } from '@potluck/i18n'
+import {
+  decimal,
+  departedMembers,
+  expensesToCsv,
+  paidSummary,
+  toBalanceExpense,
+  viewerLine,
+} from './expense-math'
 import { BEN, CLEO, ME, expense, members } from './test-utils'
 
 describe('viewerLine', () => {
@@ -10,7 +19,9 @@ describe('viewerLine', () => {
       viewerLine(
         expense({
           paid_by: BEN,
-          expense_splits: [{ user_id: CLEO, share_cents: 3000, weight: null }],
+          expense_splits: [
+            { user_id: CLEO, share_cents: 3000, weight: null, adjustment_cents: null },
+          ],
         }),
         ME,
       ),
@@ -26,8 +37,8 @@ describe('departedMembers', () => {
     expect(departedMembers(expense({}), ids)).toEqual([])
     expect(departedMembers(expense({ paid_by: GONE }), ids)).toEqual([GONE])
     const split = [
-      { user_id: ME, share_cents: 1000, weight: null },
-      { user_id: GONE, share_cents: 2000, weight: null },
+      { user_id: ME, share_cents: 1000, weight: null, adjustment_cents: null },
+      { user_id: GONE, share_cents: 2000, weight: null, adjustment_cents: null },
     ]
     expect(departedMembers(expense({ expense_splits: split }), ids)).toEqual([GONE])
     expect(departedMembers(expense({ paid_by: GONE, expense_splits: split }), ids)).toEqual([GONE])
@@ -35,8 +46,8 @@ describe('departedMembers', () => {
 
   it('ignores someone who left with a zero share', () => {
     const split = [
-      { user_id: ME, share_cents: 3000, weight: 1 },
-      { user_id: GONE, share_cents: 0, weight: 0 },
+      { user_id: ME, share_cents: 3000, weight: 1, adjustment_cents: null },
+      { user_id: GONE, share_cents: 0, weight: 0, adjustment_cents: null },
     ]
     expect(departedMembers(expense({ expense_splits: split }), ids)).toEqual([])
   })
@@ -57,8 +68,8 @@ describe('expensesToCsv', () => {
           paid_by: BEN,
           notes: '=SUM(A1)',
           expense_splits: [
-            { user_id: ME, share_cents: 500, weight: null },
-            { user_id: BEN, share_cents: 500, weight: null },
+            { user_id: ME, share_cents: 500, weight: null, adjustment_cents: null },
+            { user_id: BEN, share_cents: 500, weight: null, adjustment_cents: null },
           ],
         }),
       ],
@@ -98,5 +109,83 @@ describe('expensesToCsv', () => {
     expect(decimal(1234, 'USD')).toBe('12.34')
     expect(decimal(-5, 'USD')).toBe('-0.05')
     expect(decimal(1234, 'KWD')).toBe('1.234')
+  })
+})
+
+describe('several payers and refunds', () => {
+  // 90 paid 60 by Ava (me) and 30 by Ben, split equally between three.
+  const dinner = expense({
+    amount_cents: 9000,
+    paid_by: ME,
+    expense_payers: [
+      { user_id: BEN, paid_cents: 3000 },
+      { user_id: ME, paid_cents: 6000 },
+    ],
+    expense_splits: [
+      { user_id: ME, share_cents: 3000, weight: null, adjustment_cents: null },
+      { user_id: BEN, share_cents: 3000, weight: null, adjustment_cents: null },
+      { user_id: CLEO, share_cents: 3000, weight: null, adjustment_cents: null },
+    ],
+  })
+  // A 40 refund received by Ava (me), split between Ava and Ben.
+  const refund = expense({
+    amount_cents: 4000,
+    is_refund: true,
+    expense_splits: [
+      { user_id: ME, share_cents: 2000, weight: null, adjustment_cents: null },
+      { user_id: BEN, share_cents: 2000, weight: null, adjustment_cents: null },
+    ],
+  })
+  const nameOf = (id: string) => (id === ME ? 'You' : id === BEN ? 'Ben' : 'Cleo')
+
+  it('nets what each person paid against their share', () => {
+    expect(viewerLine(dinner, ME)).toEqual({ kind: 'lent', cents: 3000 })
+    expect(viewerLine(dinner, BEN)).toEqual({ kind: 'none' })
+    expect(viewerLine(dinner, CLEO)).toEqual({ kind: 'borrowed', cents: 3000 })
+    expect(viewerLine(refund, ME)).toEqual({ kind: 'borrowed', cents: 2000 })
+    expect(viewerLine(refund, BEN)).toEqual({ kind: 'lent', cents: 2000 })
+  })
+
+  it('agrees with core balances to the cent', () => {
+    expect(computeBalances([toBalanceExpense(dinner), toBalanceExpense(refund)])).toEqual({
+      [ME]: 3000 - 2000,
+      [BEN]: 0 + 2000,
+      [CLEO]: -3000,
+    })
+  })
+
+  it('says who paid', () => {
+    expect(paidSummary(dinner, ME, nameOf)).toBe('You and Ben paid $90.00')
+    expect(paidSummary(refund, ME, nameOf)).toBe(
+      t('expenses.refund.youGotBack', { amount: '$40.00' }),
+    )
+    expect(paidSummary(expense({ paid_by: BEN, is_refund: true }), ME, nameOf)).toBe(
+      t('expenses.refund.gotBack', { name: 'Ben', amount: '$30.00' }),
+    )
+    expect(paidSummary({ ...dinner, is_refund: true }, ME, nameOf)).toBe(
+      t('expenses.refund.gotBackMany', { names: 'You and Ben', amount: '$90.00' }),
+    )
+  })
+
+  it('counts a payer who left as departed', () => {
+    const GONE = 'dddddddd-0000-4000-8000-000000000004'
+    expect(
+      departedMembers(
+        { ...dinner, expense_payers: [...dinner.expense_payers, { user_id: GONE, paid_cents: 1 }] },
+        [ME, BEN, CLEO],
+      ),
+    ).toEqual([GONE])
+  })
+
+  it('lists every payer in the CSV and makes refunds negative', () => {
+    const rows = expensesToCsv(
+      [dinner, { ...refund, spent_at: '2026-11-05' }],
+      members,
+      'USD',
+    ).split('\r\n')
+    expect(rows[1]).toBe(
+      '2026-11-04,Tacos,Food,Ava Chen 60.00; Ben Okafor 30.00,90.00,USD,1,90.00,30.00,30.00,30.00,',
+    )
+    expect(rows[2]).toBe('2026-11-05,Tacos,Food,Ava Chen,-40.00,USD,1,-40.00,-20.00,-20.00,,')
   })
 })

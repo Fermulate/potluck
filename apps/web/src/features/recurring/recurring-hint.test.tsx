@@ -15,6 +15,7 @@ const rent: RecurringExpense = {
   amount_cents: 145000,
   currency: 'USD',
   paid_by: ME,
+  payers: null,
   split_type: 'equal',
   category: 'rent',
   splits: [],

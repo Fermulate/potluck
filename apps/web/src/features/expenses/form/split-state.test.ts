@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   FULL,
+  defaultFromDraft,
   draftFromExpense,
   evenPercent,
   formerParticipants,
   initialDraft,
+  itemsPayload,
+  matchesDefault,
   moveBoundary,
   previewSplit,
   roundingExtras,
@@ -154,8 +157,8 @@ describe('split previews and payloads', () => {
       {
         split_type: 'percent',
         expense_splits: [
-          { user_id: B, share_cents: 300, weight: 30 },
-          { user_id: A, share_cents: 700, weight: 70 },
+          { user_id: B, share_cents: 300, weight: 30, adjustment_cents: null },
+          { user_id: A, share_cents: 700, weight: 70, adjustment_cents: null },
         ],
       },
       ids,
@@ -171,8 +174,8 @@ describe('editing a split with someone who left the group', () => {
   const saved = {
     split_type: 'exact' as const,
     expense_splits: [
-      { user_id: A, share_cents: 600, weight: null },
-      { user_id: GONE, share_cents: 400, weight: null },
+      { user_id: A, share_cents: 600, weight: null, adjustment_cents: null },
+      { user_id: GONE, share_cents: 400, weight: null, adjustment_cents: null },
     ],
   }
 
@@ -207,8 +210,8 @@ describe('editing a split with someone who left the group', () => {
       {
         split_type: 'percent',
         expense_splits: [
-          { user_id: A, share_cents: 700, weight: 70 },
-          { user_id: B, share_cents: 300, weight: 30 },
+          { user_id: A, share_cents: 700, weight: 70, adjustment_cents: null },
+          { user_id: B, share_cents: 300, weight: 30, adjustment_cents: null },
         ],
       },
       ids,
@@ -217,6 +220,132 @@ describe('editing a split with someone who left the group', () => {
     expect(sameSplit(pct, { ...pct })).toBe(true)
     const shares = { ...pct, mode: 'shares' as const, shares: { [A]: 1, [B]: 2 } }
     expect(sameSplit(shares, { ...shares, shares: { [A]: 2, [B]: 2 } })).toBe(false)
+  })
+})
+
+describe('adjustment split', () => {
+  it('previews, sends and reopens the adjustments', () => {
+    const draft = { ...initialDraft(ids), mode: 'adjustment' as const, adjust: { [A]: 1000 } }
+    expect(previewSplit(draft, 10000)).toEqual({
+      ok: true,
+      shares: { [A]: 4000, [B]: 3000, [C]: 3000 },
+    })
+    expect(splitsPayload(draft, 10000)).toEqual([
+      { user_id: A, adjustment_cents: 1000 },
+      { user_id: B, adjustment_cents: 0 },
+      { user_id: C, adjustment_cents: 0 },
+    ])
+    const reopened = draftFromExpense(
+      {
+        split_type: 'adjustment',
+        expense_splits: [
+          { user_id: A, share_cents: 4000, weight: null, adjustment_cents: 1000 },
+          { user_id: B, share_cents: 3000, weight: null, adjustment_cents: 0 },
+          { user_id: C, share_cents: 3000, weight: null, adjustment_cents: 0 },
+        ],
+      },
+      ids,
+    )
+    expect(reopened.mode).toBe('adjustment')
+    expect(reopened.adjust).toEqual({ [A]: 1000, [B]: 0, [C]: 0 })
+    expect(sameSplit(reopened, { ...reopened })).toBe(true)
+    expect(sameSplit(reopened, { ...reopened, adjust: { [A]: 500 } })).toBe(false)
+  })
+
+  it('names who rounds up in the equal part only', () => {
+    const draft = { ...initialDraft(ids), mode: 'adjustment' as const, adjust: { [B]: -100 } }
+    expect(roundingExtras(draft, previewSplit(draft, 1000))).toEqual([A, B])
+  })
+})
+
+describe('default split', () => {
+  it('starts a new expense from the group default, ignoring people who left', () => {
+    const GONE = 'dddddddd-0000-4000-8000-000000000004'
+    const shares = initialDraft(ids, {
+      split_type: 'shares',
+      splits: [
+        { user_id: A, weight: 2 },
+        { user_id: B, weight: 1 },
+        { user_id: GONE, weight: 1 },
+      ],
+    })
+    expect(shares.mode).toBe('shares')
+    expect(shares.participants).toEqual([A, B])
+    expect(previewSplit(shares, 900)).toEqual({ ok: true, shares: { [A]: 600, [B]: 300 } })
+
+    // A percent default that lost someone no longer adds up: equal between who is left.
+    const percent = initialDraft(ids, {
+      split_type: 'percent',
+      splits: [
+        { user_id: A, weight: 50 },
+        { user_id: GONE, weight: 50 },
+      ],
+    })
+    expect(percent.mode).toBe('equal')
+    expect(percent.participants).toEqual([A])
+    expect(
+      initialDraft(ids, { split_type: 'equal', splits: [{ user_id: GONE, weight: null }] })
+        .participants,
+    ).toEqual(ids)
+  })
+
+  it('turns a draft into a default and recognizes it', () => {
+    const draft = {
+      ...initialDraft(ids),
+      mode: 'percent' as const,
+      percent: { [A]: 6000, [B]: 4000, [C]: 0 },
+    }
+    const saved = defaultFromDraft(draft)
+    expect(saved).toEqual({
+      split_type: 'percent',
+      splits: [
+        { user_id: A, weight: 60 },
+        { user_id: B, weight: 40 },
+      ],
+    })
+    expect(matchesDefault(initialDraft(ids, saved), saved)).toBe(true)
+    expect(matchesDefault(initialDraft(ids), saved)).toBe(false)
+    expect(defaultFromDraft({ ...draft, mode: 'exact' })).toBeNull()
+    expect(defaultFromDraft(initialDraft(ids))?.split_type).toBe('equal')
+  })
+})
+
+describe('stored items', () => {
+  it('sends the bill as entered, and reopens it', () => {
+    const draft = {
+      ...initialDraft(ids),
+      mode: 'itemized' as const,
+      items: [
+        { id: '1', name: ' Noodles ', amountCents: 1000, userIds: [A] },
+        { id: '2', name: '', amountCents: null, userIds: [A, B] },
+      ],
+      taxCents: 120,
+      tipCents: 0,
+      discountCents: 20,
+    }
+    expect(itemsPayload(draft)).toEqual({
+      items: [{ description: 'Noodles', amount_cents: 1000, user_ids: [A] }],
+      tax_cents: 120,
+      tip_cents: null,
+      discount_cents: 20,
+    })
+    expect(previewSplit(draft, 1100)).toEqual({ ok: true, shares: { [A]: 1100 } })
+    const reopened = draftFromExpense(
+      {
+        split_type: 'itemized',
+        expense_splits: [{ user_id: A, share_cents: 1100, weight: null, adjustment_cents: null }],
+        expense_items: [{ position: 0, description: 'Noodles', amount_cents: 1000, user_ids: [A] }],
+        tax_cents: 120,
+        tip_cents: null,
+        discount_cents: 20,
+      },
+      ids,
+    )
+    expect(reopened.mode).toBe('itemized')
+    expect(reopened.items.map((i) => [i.name, i.amountCents, i.userIds])).toEqual([
+      ['Noodles', 1000, [A]],
+    ])
+    expect([reopened.taxCents, reopened.tipCents, reopened.discountCents]).toEqual([120, null, 20])
   })
 })
 

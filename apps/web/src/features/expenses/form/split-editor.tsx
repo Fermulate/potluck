@@ -4,12 +4,22 @@ import { firstName, SPLIT_TYPES } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, IconButton, SegmentedControl, cn } from '@potluck/ui'
 import { Money } from '../money'
-import { Check, Equal, Layers, Minus, PencilLine, Percent, Plus, ReceiptText } from 'lucide-react'
+import {
+  Check,
+  Diff,
+  Equal,
+  Layers,
+  Minus,
+  PencilLine,
+  Percent,
+  Plus,
+  ReceiptText,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { SPLIT_HELP } from '@/features/help/topics'
 import { joinNames } from '@/features/plans/format'
-import { CompactMoneyInput, PercentInput } from './compact-inputs'
+import { CompactMoneyInput, PercentInput, SignedMoneyInput } from './compact-inputs'
 import { ItemizedEditor } from './itemized-editor'
 import { PercentSlider } from './percent-slider'
 import {
@@ -18,6 +28,7 @@ import {
   previewSplit,
   roundingExtras,
   setPercent,
+  splitErrorText,
   toggleParticipant,
   type SplitDraft,
 } from './split-state'
@@ -27,6 +38,7 @@ const MODE_ICONS: Record<SplitTypeValue, ReactNode> = {
   exact: <PencilLine />,
   percent: <Percent />,
   shares: <Layers />,
+  adjustment: <Diff />,
   itemized: <ReceiptText />,
 }
 
@@ -195,6 +207,32 @@ export function SplitEditor({
         </Button>
       </div>
     )
+  } else if (draft.mode === 'adjustment') {
+    body = participants.map((m) => (
+      <li key={m.id} className="flex items-center gap-3 py-1.5">
+        {personCell(m)}
+        <SignedMoneyInput
+          currency={currency}
+          locale={locale}
+          value={draft.adjust[m.id] ?? null}
+          onValueChange={(cents) =>
+            onChange({ ...draft, adjust: { ...draft.adjust, [m.id]: cents } })
+          }
+          minusLabel={t('expenses.adjust.minusOf', { name: displayName(m, viewerId) })}
+          aria-label={t('expenses.adjust.of', { name: displayName(m, viewerId) })}
+          className="w-32"
+        />
+        {shareCell(m.id)}
+      </li>
+    ))
+    const adjusted = participants.reduce((a, m) => a + (draft.adjust[m.id] ?? 0), 0)
+    const rest = amountCents - adjusted
+    status =
+      amountCents > 0 ? (
+        <StatusPill tone={result.ok ? 'ok' : 'over'}>
+          {result.ok ? t('expenses.adjust.rest', { amount: money(rest) }) : splitErrorText(result)}
+        </StatusPill>
+      ) : null
   } else if (draft.mode === 'shares') {
     body = participants.map((m) => {
       const count = draft.shares[m.id] ?? 0

@@ -62,6 +62,8 @@ describe('ExpenseForm', () => {
       amount_cents: 9000,
       currency: 'USD',
       paid_by: ME,
+      payers: [{ user_id: ME, paid_cents: 9000 }],
+      is_refund: false,
       split_type: 'equal',
       splits: [{ user_id: ME }, { user_id: BEN }, { user_id: CLEO }],
       category: 'food',
@@ -164,6 +166,11 @@ describe('ExpenseForm', () => {
       { user_id: ME, share_cents: 1800 },
       { user_id: BEN, share_cents: 1800 },
     ])
+    // The bill is stored as entered, so editing reopens it.
+    expect(payload.items).toEqual([
+      { description: 'Dumplings', amount_cents: 3000, user_ids: [ME, BEN] },
+    ])
+    expect(payload).toMatchObject({ tax_cents: null, tip_cents: 600, discount_cents: null })
   })
 
   it('fills the tip from a percent of the subtotal', async () => {
@@ -243,8 +250,8 @@ describe('ExpenseForm', () => {
         amount_cents: 9000,
         split_type: 'exact',
         expense_splits: [
-          { user_id: ME, share_cents: 6000, weight: null },
-          { user_id: GONE, share_cents: 3000, weight: null },
+          { user_id: ME, share_cents: 6000, weight: null, adjustment_cents: null },
+          { user_id: GONE, share_cents: 3000, weight: null, adjustment_cents: null },
         ],
       })
       const { onDone } = edit(saved)
@@ -280,13 +287,13 @@ describe('ExpenseForm', () => {
         description: 'Fuel',
         paid_by: GONE,
         expense_splits: [
-          { user_id: ME, share_cents: 1500, weight: null },
-          { user_id: BEN, share_cents: 1500, weight: null },
+          { user_id: ME, share_cents: 1500, weight: null, adjustment_cents: null },
+          { user_id: BEN, share_cents: 1500, weight: null, adjustment_cents: null },
         ],
       })
       const { onDone } = edit(saved)
-      expect(screen.getByRole('combobox', { name: 'Paid by' })).toBeDisabled()
-      expect(screen.getByRole('combobox', { name: 'Paid by' })).toHaveTextContent('Dana Gone')
+      expect(screen.getByRole('button', { name: 'Paid by' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Paid by' })).toHaveTextContent('Dana')
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
       await waitFor(() => expect(onDone).toHaveBeenCalled())
       expect(update.mock.calls[0]![2]).not.toHaveProperty('paid_by')
@@ -296,13 +303,13 @@ describe('ExpenseForm', () => {
     it('leaves everything editable when nobody who left has money on it', async () => {
       const saved = expense({
         expense_splits: [
-          { user_id: ME, share_cents: 1500, weight: null },
-          { user_id: BEN, share_cents: 1500, weight: null },
+          { user_id: ME, share_cents: 1500, weight: null, adjustment_cents: null },
+          { user_id: BEN, share_cents: 1500, weight: null, adjustment_cents: null },
         ],
       })
       edit(saved)
       expect(screen.getByRole('textbox', { name: 'Amount' })).toBeInTheDocument()
-      expect(screen.getByRole('combobox', { name: 'Paid by' })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Paid by' })).not.toBeDisabled()
       expect(screen.queryByText(/has left the group/)).not.toBeInTheDocument()
     })
   })

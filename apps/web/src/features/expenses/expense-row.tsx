@@ -5,7 +5,7 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { settlementText, viewerLine } from './expense-math'
+import { paidSummary, settlementText, viewerLine } from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -64,20 +64,20 @@ const rowClass =
 export function ExpenseRow({
   expense,
   viewerId,
-  payerName,
+  nameOf,
   locale,
 }: {
   expense: ExpenseWithSplits
   viewerId: string
-  payerName: string
+  /** First name, or "You" for the viewer. */
+  nameOf: (id: string) => string
   locale?: string
 }) {
   const line = viewerLine(expense, viewerId)
-  const total = formatMoney(expense.amount_cents, expense.currency, { locale })
-  const subtitle =
-    expense.paid_by === viewerId
-      ? t('expenses.youPaid', { amount: total })
-      : t('expenses.paidSummary', { name: payerName, amount: total })
+  const subtitle = paidSummary(expense, viewerId, nameOf, locale)
+  const refund = expense.is_refund
+  const lineAmount =
+    line.kind === 'none' ? '' : formatMoney(line.cents, expense.currency, { locale })
 
   return (
     <Link
@@ -90,6 +90,11 @@ export function ExpenseRow({
         title={
           <>
             {expense.description}
+            {refund && (
+              <span className="ml-2 inline-flex -translate-y-px items-center rounded-pill bg-olive-soft px-2 py-0.5 align-middle text-[0.6875rem] font-bold text-olive-ink">
+                {t('expenses.refund.badge')}
+              </span>
+            )}
             {expense.recurring_id && (
               <Repeat
                 aria-hidden
@@ -112,7 +117,13 @@ export function ExpenseRow({
                   line.kind === 'lent' ? 'text-saffron-ink' : 'text-tomato-ink',
                 )}
               >
-                {line.kind === 'lent' ? t('expenses.youLentLabel') : t('expenses.youBorrowedLabel')}
+                {line.kind === 'lent'
+                  ? refund
+                    ? t('expenses.refund.youGetBackLabel')
+                    : t('expenses.youLentLabel')
+                  : refund
+                    ? t('expenses.refund.youOweLabel')
+                    : t('expenses.youBorrowedLabel')}
               </span>
               <Money
                 cents={line.cents}
@@ -122,12 +133,12 @@ export function ExpenseRow({
                 className="text-[0.9375rem] font-bold"
                 srLabel={
                   line.kind === 'lent'
-                    ? t('expenses.youLent', {
-                        amount: formatMoney(line.cents, expense.currency, { locale }),
-                      })
-                    : t('expenses.youBorrowed', {
-                        amount: formatMoney(line.cents, expense.currency, { locale }),
-                      })
+                    ? refund
+                      ? t('expenses.refund.youGetBack', { amount: lineAmount })
+                      : t('expenses.youLent', { amount: lineAmount })
+                    : refund
+                      ? t('expenses.refund.youOwe', { amount: lineAmount })
+                      : t('expenses.youBorrowed', { amount: lineAmount })
                 }
               />
             </>

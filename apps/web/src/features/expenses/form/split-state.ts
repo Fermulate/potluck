@@ -1,6 +1,13 @@
-import type { ExpenseSplitInput, ExpenseWithSplits, SplitTypeValue } from '@potluck/api'
+import type {
+  DefaultSplit,
+  ExpenseItemInput,
+  ExpenseSplitInput,
+  ExpenseWithSplits,
+  SplitTypeValue,
+} from '@potluck/api'
 import {
   roundedUp,
+  splitAdjustment,
   splitEqual,
   splitExact,
   splitItemized,
@@ -36,9 +43,12 @@ export interface SplitDraft {
   percent: Record<string, number>
   /** Share counts per participant. */
   shares: Record<string, number>
+  /** Adjustment mode: +/- in minor units on top of an equal share. Missing means none. */
+  adjust: Record<string, number | null>
   items: ItemDraft[]
   taxCents: number | null
   tipCents: number | null
+  discountCents: number | null
   /** A tip shortcut that was picked; the tip follows the subtotal until a tip is typed. */
   tipPercent: number | null
 }
@@ -62,24 +72,99 @@ export function evenPercent(ids: readonly string[]): Record<string, number> {
   return out
 }
 
-export function initialDraft(memberIds: readonly string[]): SplitDraft {
+/**
+ * Where a new expense starts: equal between everyone, or the group's saved default split
+ * (people who have since left are dropped; a percent split that no longer adds up falls back to
+ * equal between the people still in it).
+ */
+export function initialDraft(
+  memberIds: readonly string[],
+  defaultSplit?: DefaultSplit | null,
+): SplitDraft {
   const participants = [...memberIds]
-  return {
+  const base: SplitDraft = {
     mode: 'equal',
     participants,
     exact: {},
     percent: evenPercent(participants),
     shares: Object.fromEntries(participants.map((id) => [id, 1])),
+    adjust: {},
     items: [newItem([...memberIds])],
     taxCents: null,
     tipCents: null,
+    discountCents: null,
     tipPercent: null,
+  }
+  if (!defaultSplit) return base
+  const weights = new Map(defaultSplit.splits.map((s) => [s.user_id, s.weight ?? 0]))
+  const people = memberIds.filter((id) => weights.has(id))
+  if (people.length === 0) return base
+  const withPeople: SplitDraft = {
+    ...base,
+    participants: people,
+    percent: evenPercent(people),
+    shares: { ...base.shares, ...Object.fromEntries(people.map((id) => [id, weights.get(id)!])) },
+  }
+  if (defaultSplit.split_type === 'shares') return { ...withPeople, mode: 'shares' }
+  if (defaultSplit.split_type === 'percent') {
+    const percent = Object.fromEntries(people.map((id) => [id, Math.round(weights.get(id)! * 100)]))
+    const total = Object.values(percent).reduce((a, b) => a + b, 0)
+    return total === FULL ? { ...withPeople, mode: 'percent', percent } : withPeople
+  }
+  return withPeople
+}
+
+/** The draft as a group default split, or null for modes that cannot be one. */
+export function defaultFromDraft(draft: SplitDraft): DefaultSplit | null {
+  switch (draft.mode) {
+    case 'equal':
+      return {
+        split_type: 'equal',
+        splits: draft.participants.map((user_id) => ({ user_id, weight: null })),
+      }
+    case 'percent':
+      return {
+        split_type: 'percent',
+        splits: draft.participants
+          .filter((id) => (draft.percent[id] ?? 0) > 0)
+          .map((user_id) => ({ user_id, weight: (draft.percent[user_id] ?? 0) / 100 })),
+      }
+    case 'shares':
+      return {
+        split_type: 'shares',
+        splits: draft.participants
+          .filter((id) => (draft.shares[id] ?? 0) > 0)
+          .map((user_id) => ({ user_id, weight: draft.shares[user_id] ?? 0 })),
+      }
+    default:
+      return null
   }
 }
 
-/** Rebuild a draft from a saved expense (for editing). Itemized opens as exact amounts. */
+/** Whether the draft splits the same way as the saved default (same people and weights). */
+export function matchesDefault(
+  draft: SplitDraft,
+  defaultSplit: DefaultSplit | null | undefined,
+): boolean {
+  const current = defaultFromDraft(draft)
+  if (!current || !defaultSplit || current.split_type !== defaultSplit.split_type) return false
+  const key = (d: DefaultSplit) =>
+    d.splits
+      .map((s) => `${s.user_id}:${d.split_type === 'equal' ? '' : Number(s.weight ?? 0)}`)
+      .sort()
+      .join(',')
+  return key(current) === key(defaultSplit)
+}
+
+/**
+ * Rebuild a draft from a saved expense (for editing). A by-item expense reopens with its stored
+ * items, tax, tip and discount; one saved before items were kept opens as exact amounts.
+ */
 export function draftFromExpense(
-  expense: Pick<ExpenseWithSplits, 'split_type' | 'expense_splits'>,
+  expense: Pick<ExpenseWithSplits, 'split_type' | 'expense_splits'> &
+    Partial<
+      Pick<ExpenseWithSplits, 'expense_items' | 'tax_cents' | 'tip_cents' | 'discount_cents'>
+    >,
   memberIds: readonly string[],
 ): SplitDraft {
   const base = initialDraft(memberIds)
@@ -95,9 +180,12 @@ export function draftFromExpense(
   const percentOk =
     expense.split_type === 'percent' && Object.values(percent).reduce((a, b) => a + b, 0) === FULL
 
+  const items = [...(expense.expense_items ?? [])].sort((a, b) => a.position - b.position)
+  const reopenItems = expense.split_type === 'itemized' && items.length > 0
+
   return {
     ...base,
-    mode: expense.split_type === 'itemized' ? 'exact' : expense.split_type,
+    mode: expense.split_type === 'itemized' && !reopenItems ? 'exact' : expense.split_type,
     participants,
     exact: Object.fromEntries(participants.map((id) => [id, byUser.get(id)?.share_cents ?? 0])),
     percent: percentOk ? percent : evenPercent(participants),
@@ -107,6 +195,21 @@ export function draftFromExpense(
         expense.split_type === 'shares' ? (byUser.get(id)?.weight ?? 1) : 1,
       ]),
     ),
+    adjust: Object.fromEntries(
+      participants.map((id) => [id, byUser.get(id)?.adjustment_cents ?? null]),
+    ),
+    ...(reopenItems
+      ? {
+          items: items.map((i) => ({
+            ...newItem([...i.user_ids]),
+            name: i.description,
+            amountCents: i.amount_cents,
+          })),
+          taxCents: expense.tax_cents ?? null,
+          tipCents: expense.tip_cents ?? null,
+          discountCents: expense.discount_cents ?? null,
+        }
+      : {}),
   }
 }
 
@@ -131,7 +234,14 @@ export function sameSplit(a: SplitDraft, b: SplitDraft): boolean {
   if (a.participants.length !== people.size || a.participants.some((id) => !people.has(id))) {
     return false
   }
-  const values = a.mode === 'exact' ? 'exact' : a.mode === 'equal' ? null : a.mode
+  const values =
+    a.mode === 'exact'
+      ? 'exact'
+      : a.mode === 'equal'
+        ? null
+        : a.mode === 'adjustment'
+          ? 'adjust'
+          : a.mode
   if (!values) return true
   return a.participants.every((id) => (a[values][id] ?? 0) === (b[values][id] ?? 0))
 }
@@ -236,8 +346,16 @@ export function withTip(draft: SplitDraft): SplitDraft {
   return { ...draft, tipCents: tipFor(itemsSubtotal(draft.items), draft.tipPercent) }
 }
 
-export function itemsTotal(draft: Pick<SplitDraft, 'items' | 'taxCents' | 'tipCents'>): number {
-  return itemsSubtotal(draft.items) + (draft.taxCents ?? 0) + (draft.tipCents ?? 0)
+export function itemsTotal(
+  draft: Pick<SplitDraft, 'items' | 'taxCents' | 'tipCents'> &
+    Partial<Pick<SplitDraft, 'discountCents'>>,
+): number {
+  return (
+    itemsSubtotal(draft.items) +
+    (draft.taxCents ?? 0) +
+    (draft.tipCents ?? 0) -
+    (draft.discountCents ?? 0)
+  )
 }
 
 /** Items that count toward the bill: anything with a price or a name. */
@@ -265,13 +383,22 @@ export function previewSplit(draft: SplitDraft, amountCents: number): SplitResul
         amountCents,
         Object.fromEntries(draft.participants.map((id) => [id, draft.shares[id] ?? 0])),
       )
+    case 'adjustment':
+      return splitAdjustment(
+        amountCents,
+        Object.fromEntries(draft.participants.map((id) => [id, draft.adjust[id] ?? 0])),
+      )
     case 'itemized': {
       return splitItemized(
         billedItems(draft.items).map((i) => ({
           amountCents: i.amountCents ?? 0,
           userIds: i.userIds,
         })),
-        { taxCents: draft.taxCents ?? 0, tipCents: draft.tipCents ?? 0 },
+        {
+          taxCents: draft.taxCents ?? 0,
+          tipCents: draft.tipCents ?? 0,
+          discountCents: draft.discountCents ?? 0,
+        },
       )
     }
   }
@@ -294,6 +421,16 @@ export function roundingExtras(draft: SplitDraft, result: SplitResult): string[]
       return roundedUp({ mode: 'percent', percents: weightsOf(draft.percent, 100) }, result.shares)
     case 'shares':
       return roundedUp({ mode: 'shares', shareCounts: weightsOf(draft.shares) }, result.shares)
+    case 'adjustment':
+      return roundedUp(
+        {
+          mode: 'adjustment',
+          adjustments: Object.fromEntries(
+            draft.participants.map((id) => [id, draft.adjust[id] ?? 0]),
+          ),
+        },
+        result.shares,
+      )
     case 'itemized':
       return roundedUp(
         {
@@ -330,6 +467,11 @@ export function splitsPayload(draft: SplitDraft, amountCents: number): ExpenseSp
       return draft.participants
         .filter((id) => (draft.shares[id] ?? 0) > 0)
         .map((user_id) => ({ user_id, weight: draft.shares[user_id] ?? 0 }))
+    case 'adjustment':
+      return draft.participants.map((user_id) => ({
+        user_id,
+        adjustment_cents: draft.adjust[user_id] ?? 0,
+      }))
     case 'exact':
     case 'itemized': {
       const result = previewSplit(draft, amountCents)
@@ -338,5 +480,27 @@ export function splitsPayload(draft: SplitDraft, amountCents: number): ExpenseSp
         .filter(([, cents]) => cents > 0)
         .map(([user_id, share_cents]) => ({ user_id, share_cents }))
     }
+  }
+}
+
+/**
+ * The bill as entered, for a by-item expense: the server stores it and works out the shares from
+ * it (the same `splitItemized` rule), so editing reopens the same items.
+ */
+export function itemsPayload(draft: SplitDraft): {
+  items: ExpenseItemInput[]
+  tax_cents: number | null
+  tip_cents: number | null
+  discount_cents: number | null
+} {
+  return {
+    items: billedItems(draft.items).map((i) => ({
+      description: i.name.trim(),
+      amount_cents: i.amountCents ?? 0,
+      user_ids: i.userIds,
+    })),
+    tax_cents: draft.taxCents || null,
+    tip_cents: draft.tipCents || null,
+    discount_cents: draft.discountCents || null,
   }
 }

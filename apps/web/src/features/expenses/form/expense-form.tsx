@@ -1,6 +1,9 @@
 import { avatarSrc } from '@/lib/queries'
 import {
   createExpense,
+  moneyKeys,
+  moneyQueries,
+  setDefaultSplit,
   updateExpense,
   uploadReceipt,
   type ExpensePayload,
@@ -14,11 +17,13 @@ import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
   Button,
+  Checkbox,
   Field,
   Input,
   MoneyInput,
   Select,
   Skeleton,
+  Switch,
   TextArea,
   cn,
   toast,
@@ -26,7 +31,7 @@ import {
 import { Help } from '@/features/help/help'
 import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarHeart } from 'lucide-react'
 import { useId, useState, type FormEvent } from 'react'
 import { useUserId } from '@/lib/auth'
@@ -44,14 +49,27 @@ import {
 } from '../money-data'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
+import { PayersField } from './payers-sheet'
+import {
+  checkDraftPayers,
+  payerIds,
+  payersErrorText,
+  payersFromExpense,
+  payersPayload,
+  type PayersDraft,
+} from './payers-state'
+import { QuickSplit } from './quick-split'
 import { receiptExtension, receiptType } from './receipt'
 import { ReceiptField, type ReceiptValue } from './receipt-field'
 import { SplitEditor } from './split-editor'
 import {
+  defaultFromDraft,
   draftFromExpense,
   effectiveAmount,
   formerParticipants,
   initialDraft,
+  itemsPayload,
+  matchesDefault,
   previewSplit,
   sameSplit,
   splitErrorText,
@@ -76,10 +94,16 @@ export type ExpenseFormProps =
 
 export function ExpenseForm(props: ExpenseFormProps) {
   const groupId = props.mode === 'create' ? props.groupId : props.expense.group_id
+  const me = useUserId()
   const group = useMoneyGroup(groupId)
+  // A new expense starts in the currency the viewer last used in this group.
+  const lastCurrency = useQuery({
+    ...moneyQueries.lastCurrency(supabase, groupId, me),
+    enabled: props.mode === 'create',
+  })
   const title = props.mode === 'create' ? t('expenses.form.newTitle') : t('expenses.form.editTitle')
 
-  if (!group.data) {
+  if (!group.data || (props.mode === 'create' && lastCurrency.isPending)) {
     return (
       <MoneyPageShell title={title} onClose={props.onClose} width="lg">
         <div
@@ -94,12 +118,16 @@ export function ExpenseForm(props: ExpenseFormProps) {
       </MoneyPageShell>
     )
   }
-  return <LoadedExpenseForm {...props} group={group.data} />
+  return (
+    <LoadedExpenseForm {...props} group={group.data} lastCurrency={lastCurrency.data ?? null} />
+  )
 }
 
 type Recurrence = RecurrenceValue | 'none'
 
-function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
+function LoadedExpenseForm(
+  props: ExpenseFormProps & { group: MoneyGroup; lastCurrency: string | null },
+) {
   const { group } = props
   const editing = props.mode === 'edit' ? props.expense : null
   const me = useUserId()
@@ -121,12 +149,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   }
 
   const [amount, setAmount] = useState<number | null>(editing?.amount_cents ?? null)
-  const [currency, setCurrency] = useState(editing?.currency ?? group.currency)
+  const [currency, setCurrency] = useState(
+    editing?.currency ?? props.lastCurrency ?? group.currency,
+  )
   const [description, setDescription] = useState(editing?.description ?? '')
   const [category, setCategory] = useState<string | null>(editing?.category ?? null)
-  const [paidBy, setPaidBy] = useState(
-    editing?.paid_by ?? (memberIds.includes(me) ? me : (memberIds[0] ?? me)),
+  const [payers, setPayers] = useState<PayersDraft>(() =>
+    editing
+      ? payersFromExpense(editing)
+      : { mode: 'single', paidBy: memberIds.includes(me) ? me : (memberIds[0] ?? me) },
   )
+  const [refund, setRefund] = useState(editing?.is_refund ?? false)
   const [spentAt, setSpentAt] = useState(editing?.spent_at ?? todayIn(timeZone))
   const [notes, setNotes] = useState(editing?.notes ?? '')
   const [receipt, setReceipt] = useState<ReceiptValue>({
@@ -135,14 +168,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   })
   const [recurrence, setRecurrence] = useState<Recurrence>('none')
   const [savedDraft] = useState<SplitDraft>(() =>
-    editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds),
+    editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
   const [draft, setDraft] = useState<SplitDraft>(savedDraft)
+  const [saveDefault, setSaveDefault] = useState(false)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
   const total = effectiveAmount(draft, amount)
   const preview = previewSplit(draft, total)
+  const payersCheck = checkDraftPayers(payers, total)
   const descriptionError =
     submitted && !description.trim() ? t('expenses.form.descriptionRequired') : undefined
   const amountError = submitted && total <= 0 ? t('expenses.form.amountRequired') : undefined
@@ -159,12 +194,26 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       : null
   // Someone who left still has money on this expense: only the details can change.
   const locked = !!editing && departedMembers(editing, memberIds).length > 0
+  const payersError = submitted && total > 0 && !locked ? payersErrorText(payersCheck) : null
   const splitError =
     submitted && total > 0 && !locked ? (splitErrorText(preview) ?? formerError) : null
   const splitMembers = [
     ...group.members,
     ...formerParticipants(savedDraft, memberIds).map(formerMember),
   ]
+  const formerPayers = editing
+    ? payerIds(payersFromExpense(editing)).filter((id) => !memberIds.includes(id))
+    : []
+  const payerMembers = [...group.members, ...formerPayers.map(formerMember)]
+  const defaultSplit = defaultFromDraft(draft)
+  const isDefault = matchesDefault(draft, group.default_split)
+  // Equal between everyone is where every group starts, so there is nothing to save.
+  const plainEqual =
+    draft.mode === 'equal' &&
+    draft.participants.length === memberIds.length &&
+    memberIds.every((id) => draft.participants.includes(id))
+  const canSaveDefault =
+    !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
   const save = useMutation({
     mutationFn: async () => {
@@ -183,9 +232,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         description: description.trim(),
         amount_cents: total,
         currency,
-        paid_by: paidBy,
+        ...payersPayload(payers, total),
+        is_refund: refund,
         split_type: draft.mode,
         splits: splitsPayload(draft, total),
+        ...(draft.mode === 'itemized' ? itemsPayload(draft) : {}),
         category,
         notes: notes.trim() || null,
         spent_at: spentAt,
@@ -209,26 +260,37 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         ...payload,
         group_id: group.id,
         ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
-        ...(recurrence !== 'none' ? { recurrence } : {}),
+        ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
       })
     },
-    onSuccess: (expense) => {
+    onSuccess: async (expense) => {
       invalidateMoney(queryClient, group.id, expense.id)
       // Say what was added and what it means for you, not just that something happened.
       const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
       toast.success(
         editing
           ? t('expenses.updated', { description: description.trim() })
-          : mine > 0
-            ? t('expenses.saved', {
-                description: description.trim(),
-                share: formatMoney(mine, currency),
-              })
-            : t('expenses.savedNotIn', {
-                description: description.trim(),
-                amount: formatMoney(total, currency),
-              }),
+          : refund
+            ? t('expenses.refund.savedToast', { description: description.trim() })
+            : mine > 0
+              ? t('expenses.saved', {
+                  description: description.trim(),
+                  share: formatMoney(mine, currency),
+                })
+              : t('expenses.savedNotIn', {
+                  description: description.trim(),
+                  amount: formatMoney(total, currency),
+                }),
       )
+      if (saveDefault && canSaveDefault && defaultSplit) {
+        try {
+          await setDefaultSplit(supabase, group.id, plainEqual ? null : defaultSplit)
+          void queryClient.invalidateQueries({ queryKey: moneyKeys.groupInfo(group.id) })
+          toast.success(t('expenses.defaultSplit.saved'))
+        } catch (error) {
+          toast.error(moneyErrorMessage(error))
+        }
+      }
       props.onDone(expense.id)
     },
     onError: (error) => {
@@ -240,21 +302,22 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
   })
 
+  const clearDefault = useMutation({
+    mutationFn: () => setDefaultSplit(supabase, group.id, null),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.groupInfo(group.id) })
+      toast.success(t('expenses.defaultSplit.cleared'))
+    },
+    onError: (error) => toast.error(moneyErrorMessage(error)),
+  })
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
     if (!description.trim()) return
-    if (!locked && (total <= 0 || !preview.ok || formerError)) return
+    if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
     save.mutate()
   }
-
-  const formerPayer = editing && !memberIds.includes(editing.paid_by) ? editing.paid_by : null
-  const payers = formerPayer ? [...group.members, formerMember(formerPayer)] : group.members
-  const payerOptions = payers.map((m) => ({
-    value: m.id,
-    label: m.id === me ? t('common.you') : m.display_name,
-    icon: <Avatar name={m.display_name} seed={m.id} src={avatarSrc(m.avatar_path)} size="xs" />,
-  }))
 
   return (
     <MoneyPageShell
@@ -269,9 +332,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       }
       footer={
         <div className="flex items-center justify-end gap-3">
-          {submitted && (descriptionError || amountError || splitError) && (
+          {submitted && (descriptionError || amountError || payersError || splitError) && (
             <p role="alert" className="mr-auto text-sm font-medium text-tomato-ink">
-              {descriptionError ?? amountError ?? splitError}
+              {descriptionError ?? amountError ?? payersError ?? splitError}
             </p>
           )}
           <Button
@@ -293,7 +356,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 px-4 py-6 md:px-8 md:py-8 lg:grid-cols-2 lg:grid-rows-[auto_1fr]"
       >
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
-          <div className="flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5">
+          <div
+            className={cn(
+              'flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5 transition-colors',
+              refund && 'bg-olive-soft/60',
+            )}
+          >
+            {refund && (
+              <span className="inline-flex items-center rounded-pill bg-olive px-3 py-1 text-xs font-bold text-on-olive">
+                {t('expenses.refund.badge')}
+              </span>
+            )}
             {locked ? (
               <>
                 <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
@@ -383,11 +456,19 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           </fieldset>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={t('expenses.fields.paidBy')}>
-              <Select
-                value={paidBy}
-                onValueChange={setPaidBy}
-                options={payerOptions}
+            <Field
+              label={refund ? t('expenses.payers.receivedBy') : t('expenses.fields.paidBy')}
+              error={payersError ?? undefined}
+            >
+              <PayersField
+                members={payerMembers}
+                viewerId={me}
+                value={payers}
+                onChange={setPayers}
+                totalCents={total}
+                currency={currency}
+                locale={DEFAULT_LOCALE}
+                refund={refund}
                 disabled={locked}
               />
             </Field>
@@ -414,7 +495,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           <h2 id={`${formId}-split`} className="font-display text-2xl leading-tight">
             {t('expenses.fields.splitBetween')}
           </h2>
-          {editing?.split_type === 'itemized' && (
+          {editing?.split_type === 'itemized' && editing.expense_items.length === 0 && (
             <p className="text-sm text-mute">{t('expenses.form.itemizedEditNote')}</p>
           )}
           {locked && editing ? (
@@ -450,6 +531,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                   {t('expenses.form.formerNote', { names: formerNames })}
                 </p>
               )}
+              <QuickSplit
+                members={group.members}
+                viewerId={me}
+                payers={payers}
+                draft={draft}
+                onPick={(nextPayers, nextDraft) => {
+                  setPayers(nextPayers)
+                  setDraft(nextDraft)
+                }}
+              />
               <SplitEditor
                 members={splitMembers}
                 viewerId={me}
@@ -459,11 +550,47 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 currency={currency}
                 locale={DEFAULT_LOCALE}
               />
+              {group.default_split && isDefault ? (
+                <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">
+                  <span>{t('expenses.defaultSplit.active')}</span>
+                  <span className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      loading={clearDefault.isPending}
+                      onClick={() => clearDefault.mutate()}
+                    >
+                      {t('expenses.defaultSplit.clear')}
+                    </Button>
+                    <Help topic="defaultSplit" />
+                  </span>
+                </p>
+              ) : canSaveDefault ? (
+                <div className="flex items-center justify-between gap-3">
+                  <Checkbox
+                    label={t('expenses.defaultSplit.save')}
+                    checked={saveDefault}
+                    onCheckedChange={(v) => setSaveDefault(v === true)}
+                  />
+                  <Help topic="defaultSplit" />
+                </div>
+              ) : null}
             </>
           )}
         </section>
 
         <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
+          <div className="flex items-start justify-between gap-3">
+            <Switch
+              label={t('expenses.refund.label')}
+              description={t('expenses.refund.hint')}
+              checked={refund}
+              onCheckedChange={setRefund}
+              disabled={locked}
+              className="flex-1"
+            />
+            <Help topic="refunds" className="mt-0.5" />
+          </div>
           <Field label={t('expenses.fields.notes')} hint={t('common.optional')}>
             <TextArea
               value={notes}
@@ -474,7 +601,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             />
           </Field>
           <ReceiptField value={receipt} onChange={setReceipt} />
-          {!editing && (
+          {!editing && !refund && (
             <Field
               label={t('expenses.fields.recurring')}
               hint={recurrence !== 'none' ? t('expenses.recurring.hint') : undefined}

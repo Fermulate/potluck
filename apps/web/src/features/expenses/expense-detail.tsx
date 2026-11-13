@@ -1,11 +1,8 @@
-import { avatarSrc } from '@/lib/queries'
 import { moneyQueries, restoreExpense } from '@potluck/api'
 import { can, convert } from '@potluck/core'
-import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
+import { formatDate, formatMoney, t } from '@potluck/i18n'
 import {
-  Avatar,
   Button,
-  Card,
   ConfirmDialog,
   EmptyState,
   IconButton,
@@ -21,6 +18,7 @@ import { useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { ExpenseComments } from './comments'
+import { ExpenseHistory, ItemsCard, PayersLine, SplitCard } from './expense-detail-parts'
 import { CategoryTile } from './expense-row'
 import { categoryLabel } from './format'
 import { Money } from './money'
@@ -75,7 +73,8 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
 
   const e = expense.data
   const role = group.data?.members.find((m) => m.id === me)?.role
-  const isOwn = e.created_by === me || e.paid_by === me
+  const isOwn =
+    e.created_by === me || e.paid_by === me || e.expense_payers.some((p) => p.user_id === me)
   const mayEdit = can(role, 'expense.edit', { isOwn })
   const mayDelete = can(role, 'expense.delete', { isOwn })
   const deleted = !!e.deleted_at
@@ -89,10 +88,6 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const groupCurrency = group.data?.currency ?? e.currency
   const foreign = e.currency !== groupCurrency
   const isPdf = e.receipt_path?.toLowerCase().endsWith('.pdf')
-  const payer = people.get(e.paid_by)
-  const splits = [...e.expense_splits].sort((a, b) =>
-    a.user_id === me ? -1 : b.user_id === me ? 1 : b.share_cents - a.share_cents,
-  )
 
   const onDelete = async () => {
     const ok = await deleteExpense(e)
@@ -172,6 +167,11 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               <CategoryTile category={e.category} size="xl" className="rotate-[-4deg]" />
               <div className="min-w-0 pt-1">
                 <p className="text-sm font-semibold text-mute">
+                  {e.is_refund && (
+                    <span className="mr-2 inline-flex items-center rounded-pill bg-olive-soft px-2 py-0.5 text-xs font-bold text-olive-ink">
+                      {t('expenses.refund.badge')}
+                    </span>
+                  )}
                   {categoryLabel(e.category)}
                   {e.recurring_id && (
                     <Repeat aria-hidden className="ml-1.5 inline size-3.5" strokeWidth={2.5} />
@@ -199,87 +199,19 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               </p>
             )}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.9375rem]">
-              <span className="inline-flex items-center gap-2 font-semibold">
-                <Avatar
-                  name={payer?.display_name ?? nameOf(e.paid_by)}
-                  seed={e.paid_by}
-                  src={avatarSrc(payer?.avatar_path)}
-                  size="sm"
-                />
-                {e.paid_by === me
-                  ? t('expenses.detail.youPaid')
-                  : t('expenses.detail.paidBy', { name: nameOf(e.paid_by) })}
-              </span>
+              <PayersLine expense={e} me={me} people={people} nameOf={(id) => nameOf(id)} />
               <time dateTime={e.spent_at} className="text-mute">
                 {formatDate(e.spent_at, { timeZone, style: 'full' })}
               </time>
             </div>
           </header>
 
-          <Card padding="none" className="overflow-hidden">
-            <h2 className="border-b border-line px-4 py-3 text-sm font-bold text-mute">
-              {t('expenses.detail.split', {
-                type: t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase(),
-              })}
-            </h2>
-            <ul className="divide-y divide-line">
-              {splits.map((s) => {
-                const person = people.get(s.user_id)
-                const isMe = s.user_id === me
-                const paid = s.user_id === e.paid_by
-                return (
-                  <li
-                    key={s.user_id}
-                    className={cn(
-                      'flex items-center gap-3 px-4 py-3',
-                      isMe && 'bg-saffron-soft/50',
-                    )}
-                  >
-                    <Avatar
-                      name={person?.display_name ?? nameOf(s.user_id)}
-                      seed={s.user_id}
-                      src={avatarSrc(person?.avatar_path)}
-                      size="md"
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-semibold">{nameOf(s.user_id)}</span>
-                      <span className="text-sm text-mute">
-                        {paid
-                          ? t('expenses.detail.paidAndOwes', {
-                              amount: formatMoney(s.share_cents, e.currency),
-                            })
-                          : t('expenses.detail.owes', {
-                              amount: formatMoney(s.share_cents, e.currency),
-                            })}
-                        {e.split_type === 'percent' && s.weight != null && ` (${s.weight}%)`}
-                        {e.split_type === 'shares' &&
-                          s.weight != null &&
-                          ` (${t('expenses.shareCount', { count: Number(s.weight) })})`}
-                      </span>
-                    </span>
-                    <span className="text-lg font-bold">
-                      <Money
-                        cents={s.share_cents}
-                        currency={e.currency}
-                        tone={paid ? 'owed' : isMe ? 'owe' : 'neutral'}
-                      />
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </Card>
-          {e.created_by && (
-            <p className="text-sm text-mute">
-              {t('expenses.createdBy', {
-                name: nameOf(e.created_by),
-                when: formatRelative(e.created_at, { timeZone }),
-              })}
-            </p>
-          )}
+          <SplitCard expense={e} me={me} people={people} nameOf={(id) => nameOf(id)} />
+          <ExpenseHistory expense={e} timeZone={timeZone} nameOf={nameOf} />
         </div>
 
         <div className="flex flex-col gap-8">
+          <ItemsCard expense={e} nameOf={(id) => nameOf(id)} />
           {e.receipt_path && (
             <section aria-labelledby="receipt-title" className="flex flex-col gap-3">
               <h2 id="receipt-title" className="font-display text-2xl">
