@@ -96,8 +96,10 @@ function GroupTabs({ group }: { group: GroupDetail }) {
               <Link
                 to={tab.to}
                 params={{ groupId: group.id }}
-                // Back to Expenses with the filters last used there.
-                search={tab.segment === '' ? recallGroupFilters(group.id) : undefined}
+                // Back to Expenses with the filters last used there; on Expenses, the ones in use.
+                search={
+                  tab.segment !== '' ? undefined : rest === '' ? true : recallGroupFilters(group.id)
+                }
                 // The index tab is a prefix of every other tab: match it exactly, or the router
                 // marks it as the current page everywhere in the group.
                 activeOptions={{ exact: tab.segment === '' }}
