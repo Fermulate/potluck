@@ -3,14 +3,12 @@ import { moneyQueries, type ExpenseWithSplits, type MoneyPerson } from '@potluck
 import { formatMoney, formatRelative, t } from '@potluck/i18n'
 import { Avatar, AvatarStack, Card, cn } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
-import { joinNames } from '@/features/plans/format'
 import { supabase } from '@/lib/supabase'
 import { Money } from './money'
-import { payersOf } from './expense-math'
+import { namesOf, payersOf, type NameOf } from './expense-math'
+import { describeChanges } from './history'
 
-type NameOf = (id: string) => string
-
-/** "Paid by Ava", "Paid by Ava and Ben", "Refund to you", with their faces. */
+/** "Paid by Ava", "Paid by you and Ben", "Refund to you", with their faces. */
 export function PayersLine({
   expense: e,
   me,
@@ -23,8 +21,12 @@ export function PayersLine({
   nameOf: NameOf
 }) {
   const payers = payersOf(e)
-  const ids = payers.map((p) => p.user_id)
-  const names = joinNames(ids.map(nameOf), 2)
+  // The viewer first, so the faces read in the same order as the names.
+  const ids = [
+    ...payers.filter((p) => p.user_id === me),
+    ...payers.filter((p) => p.user_id !== me),
+  ].map((p) => p.user_id)
+  const names = namesOf(ids, me, nameOf, { start: false })
   const text =
     ids.length > 1
       ? e.is_refund
@@ -90,6 +92,14 @@ export function SplitCard({
   )
   const money = (cents: number) => formatMoney(cents, e.currency)
   const type = t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase()
+  const sign = e.is_refund ? -1 : 1
+  // Payers (and you) are coloured by where the expense leaves them: owed or owing. A refund
+  // flips it, since the payers received the money.
+  const toneOf = (id: string, paid: number | undefined, share: number) => {
+    if (paid === undefined && id !== me) return 'neutral' as const
+    const net = sign * ((paid ?? 0) - share)
+    return net > 0 ? ('owed' as const) : net < 0 ? ('owe' as const) : ('neutral' as const)
+  }
 
   return (
     <Card padding="none" className="overflow-hidden">
@@ -144,11 +154,7 @@ export function SplitCard({
                 </span>
               </span>
               <span className="text-lg font-bold">
-                <Money
-                  cents={share}
-                  currency={e.currency}
-                  tone={paid !== undefined ? 'owed' : isMe ? 'owe' : 'neutral'}
-                />
+                <Money cents={share} currency={e.currency} tone={toneOf(id, paid, share)} />
               </span>
             </li>
           )
@@ -159,7 +165,15 @@ export function SplitCard({
 }
 
 /** The bill as it was entered: items, who had each, then tax, tip and discount. */
-export function ItemsCard({ expense: e, nameOf }: { expense: ExpenseWithSplits; nameOf: NameOf }) {
+export function ItemsCard({
+  expense: e,
+  me,
+  nameOf,
+}: {
+  expense: ExpenseWithSplits
+  me: string
+  nameOf: NameOf
+}) {
   if (e.expense_items.length === 0) return null
   const items = [...e.expense_items].sort((a, b) => a.position - b.position)
   const extras = [
@@ -182,7 +196,7 @@ export function ItemsCard({ expense: e, nameOf }: { expense: ExpenseWithSplits; 
                 </span>
                 <span className="text-sm text-mute">
                   {t('expenses.detail.itemPeople', {
-                    names: joinNames(item.user_ids.map(nameOf), 3),
+                    names: namesOf(item.user_ids, me, nameOf, { start: false, max: 3 }),
                   })}
                 </span>
               </span>
@@ -214,17 +228,20 @@ const HISTORY_VERBS = ['created', 'updated', 'deleted', 'restored'] as const
 type HistoryVerb = (typeof HISTORY_VERBS)[number]
 
 /**
- * Who added the expense and every later change, oldest first, from the activity log. An edit
- * that changed the amount says from what to what.
+ * Who added the expense and every later change, oldest first, from the activity log. Each edit
+ * lists the fields it changed with their old and new values; edits logged before those were
+ * kept fall back to the amount change, when there was one.
  */
 export function ExpenseHistory({
   expense: e,
+  me,
   timeZone,
   nameOf,
 }: {
   expense: ExpenseWithSplits
+  me: string
   timeZone: string
-  nameOf: (id: string | null | undefined) => string
+  nameOf: NameOf
 }) {
   const history = useQuery(moneyQueries.history(supabase, e.id))
   const entries = (history.data ?? []).filter((h) =>
@@ -253,9 +270,17 @@ export function ExpenseHistory({
       <ol className="relative flex flex-col gap-3 border-l-2 border-line pl-4">
         {entries.map((entry, index) => {
           const verb = entry.verb.replace('expense.', '') as HistoryVerb
+          const lines =
+            verb === 'updated' ? describeChanges(entry.data, { viewerId: me, nameOf }) : []
           const amount = amounts[index]
           const from = amounts.slice(0, index).findLast((a) => a !== null) ?? null
-          const changed = verb === 'updated' && from && amount && from !== amount
+          const legacyAmount =
+            verb === 'updated' &&
+            lines.length === 0 &&
+            !entry.data.changes &&
+            from &&
+            amount &&
+            from !== amount
           return (
             <li key={entry.id} className="relative text-sm">
               <span
@@ -266,9 +291,9 @@ export function ExpenseHistory({
                 )}
               />
               <span className="font-semibold text-ink">
-                {t(`expenses.history.${verb}`, { name: nameOf(entry.actor_id) })}
+                {t(`expenses.history.${verb}`, { name: nameOf(entry.actor_id ?? '') })}
               </span>
-              {changed && (
+              {legacyAmount && (
                 <span className="text-mute">
                   {' '}
                   ({t('expenses.history.amountChanged', { from: from!, to: amount })})
@@ -279,6 +304,15 @@ export function ExpenseHistory({
                   {formatRelative(entry.created_at, { timeZone })}
                 </time>
               </span>
+              {lines.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-0.5 text-ink/80">
+                  {lines.map((line) => (
+                    <li key={line} className="break-words">
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </li>
           )
         })}

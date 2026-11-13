@@ -102,7 +102,7 @@ describe('ExpenseDetail', () => {
       ],
     })
     expect(
-      await screen.findByText(t('expenses.detail.paidByMany', { names: 'You and Ben' })),
+      await screen.findByText(t('expenses.detail.paidByMany', { names: 'you and Ben' })),
     ).toBeVisible()
     expect(
       screen.getByText(t('expenses.detail.paidAndShare', { paid: '$60.00', share: '$45.00' })),
@@ -143,7 +143,7 @@ describe('ExpenseDetail', () => {
     ).toEqual([expect.stringContaining('Noodles'), expect.stringContaining('Dumplings')])
     expect(within(items).getByText(t('expenses.itemized.discount'))).toBeVisible()
     expect(
-      within(items).getByText(t('expenses.detail.itemPeople', { names: 'You and Ben' })),
+      within(items).getByText(t('expenses.detail.itemPeople', { names: 'you and Ben' })),
     ).toBeVisible()
   })
 
@@ -197,6 +197,56 @@ describe('ExpenseDetail', () => {
     expect(within(history).getByText(t('expenses.history.created', { name: 'Ben' }))).toBeVisible()
     expect(within(history).getByText(t('expenses.history.updated', { name: 'You' }))).toBeVisible()
     expect(within(history).getByText(/\$20\.00 to \$30\.00/)).toBeVisible()
+  })
+
+  it('lists what each edit changed, old and new', async () => {
+    resetDb({
+      tables: {
+        activity: [
+          {
+            id: 'a1',
+            subject_id: ID,
+            actor_id: BEN,
+            verb: 'expense.updated',
+            data: {
+              amount_cents: 3000,
+              currency: 'USD',
+              changes: {
+                description: { from: 'Taco', to: 'Tacos' },
+                payers: { from: { [ME]: 3000 }, to: { [ME]: 2000, [BEN]: 1000 } },
+              },
+            },
+            created_at: '2026-11-05T18:00:00Z',
+          },
+        ],
+      },
+    })
+    renderDetail()
+    const history = await screen.findByRole('region', { name: t('expenses.history.title') })
+    expect(within(history).getByText(t('expenses.history.updated', { name: 'Ben' }))).toBeVisible()
+    expect(
+      within(history).getByText(
+        t('expenses.history.change.description', { from: 'Taco', to: 'Tacos' }),
+      ),
+    ).toBeVisible()
+    expect(
+      within(history).getByText(
+        t('expenses.history.change.payers', { from: 'you', to: 'you $20.00 and Ben $10.00' }),
+      ),
+    ).toBeVisible()
+  })
+
+  it('colours payers by where the expense leaves them', async () => {
+    renderDetail({
+      amount_cents: 3000,
+      paid_by: BEN,
+      expense_payers: [{ user_id: BEN, paid_cents: 3000 }],
+    })
+    const ben = await screen.findByText(
+      t('expenses.detail.paidAndShare', { paid: '$30.00', share: '$10.00' }),
+    )
+    // Ben is owed, I owe: the shares carry those tones.
+    expect(ben.closest('li')!.querySelector('[data-tone="owed"]')).not.toBeNull()
   })
 
   it('hides edit and delete from people who neither added nor paid it', async () => {

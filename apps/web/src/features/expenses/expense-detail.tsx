@@ -199,19 +199,19 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               </p>
             )}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.9375rem]">
-              <PayersLine expense={e} me={me} people={people} nameOf={(id) => nameOf(id)} />
+              <PayersLine expense={e} me={me} people={people} nameOf={nameOf} />
               <time dateTime={e.spent_at} className="text-mute">
                 {formatDate(e.spent_at, { timeZone, style: 'full' })}
               </time>
             </div>
           </header>
 
-          <SplitCard expense={e} me={me} people={people} nameOf={(id) => nameOf(id)} />
-          <ExpenseHistory expense={e} timeZone={timeZone} nameOf={nameOf} />
+          <SplitCard expense={e} me={me} people={people} nameOf={nameOf} />
+          <ExpenseHistory expense={e} me={me} timeZone={timeZone} nameOf={nameOf} />
         </div>
 
         <div className="flex flex-col gap-8">
-          <ItemsCard expense={e} nameOf={(id) => nameOf(id)} />
+          <ItemsCard expense={e} me={me} nameOf={nameOf} />
           {e.receipt_path && (
             <section aria-labelledby="receipt-title" className="flex flex-col gap-3">
               <h2 id="receipt-title" className="font-display text-2xl">
