@@ -63,7 +63,11 @@ const URL_PREFIX: Partial<Record<PaymentKind, RegExp>> = {
 export function normalizeHandle(kind: PaymentKind, raw: string): string {
   let handle = raw.trim()
   const prefix = URL_PREFIX[kind]
-  if (prefix) handle = handle.replace(prefix, '').replace(/[/?#].*$/, '')
+  if (prefix) {
+    handle = handle.replace(prefix, '')
+    const cut = handle.search(/[/?#]/)
+    if (cut >= 0) handle = handle.slice(0, cut)
+  }
   if (kind === 'venmo' || kind === 'paypal' || kind === 'revolut' || kind === 'monzo') {
     handle = handle.replace(/^@/, '')
   }
