@@ -233,6 +233,15 @@ export function SearchScreen({ search }: { search: MoneySearch }) {
   const reduced = usePrefersReducedMotion()
   const today = todayIn(timeZone)
   const [text, setText] = useState(search.q ?? '')
+  const [seenQ, setSeenQ] = useState(search.q)
+  const [wroteQ, setWroteQ] = useState(search.q)
+  if (search.q !== seenQ) {
+    setSeenQ(search.q)
+    if (search.q !== wroteQ) {
+      setWroteQ(search.q)
+      setText(search.q ?? '')
+    }
+  }
   const [sheetOpen, setSheetOpen] = useState(false)
   const filters = useMemo(() => toFilters(search), [search])
 
@@ -240,13 +249,18 @@ export function SearchScreen({ search }: { search: MoneySearch }) {
   useEffect(() => {
     if (text.trim() === (search.q ?? '').trim()) return
     const timer = setTimeout(() => {
-      void navigate({ to: '/search', search: toSearch(text, filters), replace: true })
+      const next = toSearch(text, filters)
+      setWroteQ(next.q)
+      void navigate({ to: '/search', search: next, replace: true })
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [text, search.q, filters, navigate])
 
-  const setFilters = (next: MoneyFilters) =>
-    void navigate({ to: '/search', search: toSearch(text, next), replace: true })
+  const setFilters = (next: MoneyFilters) => {
+    const address = toSearch(text, next)
+    setWroteQ(address.q)
+    void navigate({ to: '/search', search: address, replace: true })
+  }
 
   const query: SearchFilters = {
     query: search.q,
@@ -388,6 +402,7 @@ export function SearchScreen({ search }: { search: MoneySearch }) {
                 leadingIcon={<X />}
                 onClick={() => {
                   setText('')
+                  setWroteQ(undefined)
                   void navigate({ to: '/search', search: {}, replace: true })
                 }}
               >

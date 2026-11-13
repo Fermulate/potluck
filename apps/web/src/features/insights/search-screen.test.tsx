@@ -1,7 +1,8 @@
 import { groupKeys, SEARCH_PAGE_SIZE } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { onlineManager } from '@tanstack/react-query'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { useRouterState } from '@tanstack/react-router'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb } from '@/test/supabase'
@@ -130,6 +131,30 @@ describe('SearchScreen', () => {
     const { router } = renderSearch({}, [])
     fireEvent.change(await screen.findByRole('searchbox'), { target: { value: 'rent' } })
     await waitFor(() => expect(router.state.location.search).toMatchObject({ q: 'rent' }))
+  })
+
+  it('empties the box when the address loses its query from outside, without writing it back', async () => {
+    resetDb().respond('rpc:search_money', { data: [hit({})] })
+    function Live() {
+      const search = useRouterState({ select: (s) => s.location.search }) as MoneySearch
+      return <SearchScreen search={search} />
+    }
+    const client = seededClient((c) => c.setQueryData(groupKeys.list(ME), []))
+    const { router } = renderWithProviders(<Live />, {
+      path: '/search',
+      url: '/search?q=taco&cats=food',
+      client,
+    })
+    const box = await screen.findByRole('searchbox')
+    expect(box).toHaveValue('taco')
+    // The side nav's Search link: bare /search.
+    await act(() => router.navigate({ to: '/search' }))
+    await waitFor(() => expect(box).toHaveValue(''))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 400)))
+    expect(router.state.location.search).toEqual({})
+    // Back to the old address brings the query back into the box.
+    await act(() => router.navigate({ to: '/search', search: { q: 'taco' } }))
+    await waitFor(() => expect(box).toHaveValue('taco'))
   })
 
   it('filters from the sheet and shows each filter as a removable chip', async () => {
