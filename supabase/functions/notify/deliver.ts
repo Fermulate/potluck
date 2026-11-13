@@ -6,7 +6,7 @@
 // If notify dies before reporting, the database re-sends the same batch after 10 minutes, and
 // the batch id doubles as the provider's idempotency key so it is not delivered twice.
 import { renderEmail, type EmailJob, type EmailLinks } from './email.ts'
-import { isRetryable, type EmailSender, type OutgoingEmail } from './sender.ts'
+import { alreadySent, isRetryable, type EmailSender, type OutgoingEmail } from './sender.ts'
 
 export interface BatchReport {
   batch: string
@@ -103,6 +103,11 @@ export async function deliverBatch(
         lastError = undefined
         break
       } catch (err) {
+        if (alreadySent(err)) {
+          log(`batch ${batch}: key already used, the provider has this batch`)
+          lastError = undefined
+          break
+        }
         lastError = err
         log(`batch ${batch} try ${attempt + 1} failed: ${(err as Error).message}`)
         if (!isRetryable(err) || attempt === tries - 1) break

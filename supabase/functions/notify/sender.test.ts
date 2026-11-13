@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { backoffMs, deliverBatch, type BatchReport } from './deliver.ts'
 import {
+  alreadySent,
   EmailSendError,
   isRetryable,
   senderFromEnv,
@@ -220,4 +221,33 @@ test('backoff doubles and is capped by what the provider asks', () => {
     [500, 1000, 2000, 4000],
   )
   assert.equal(backoffMs(0, 90), 30_000)
+})
+
+test('a 409 for a key resend already accepted counts as sent; one still in flight is retried', async () => {
+  const fetchFn = async () =>
+    new Response(JSON.stringify({ statusCode: 409, name: 'invalid_idempotent_request' }), {
+      status: 409,
+    })
+  const resend = senderFromEnv({ RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c' }, fetchFn)!
+  const err = await resend.sendBatch([email('x@y.z')], 'k').catch((e: unknown) => e)
+  assert.equal((err as EmailSendError).code, 'invalid_idempotent_request')
+  assert.equal(alreadySent(err), true)
+  assert.equal(isRetryable(err), false)
+
+  const same = recordingSender([err])
+  const h1 = harness()
+  const result = await deliverBatch('b7', [job('n1')], same.sender, h1.options)
+  assert.equal(same.calls.length, 1)
+  assert.deepEqual(result, { sent: 1, failed: 0, invalid: 0 })
+  assert.deepEqual(h1.reports, [{ batch: 'b7', delivered: true, rejected: [] }])
+
+  const busy = new EmailSendError('busy', 409, undefined, 'concurrent_idempotent_requests')
+  assert.equal(isRetryable(busy), true)
+  assert.equal(alreadySent(busy), false)
+  const inFlight = recordingSender([busy])
+  const h2 = harness()
+  await deliverBatch('b8', [job('n1')], inFlight.sender, h2.options)
+  assert.equal(inFlight.calls.length, 2)
+  assert.equal(h2.reports[0]!.delivered, true)
+  assert.equal(isRetryable(new EmailSendError('conflict', 409)), false)
 })

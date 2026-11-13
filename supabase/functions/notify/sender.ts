@@ -33,16 +33,36 @@ export class EmailSendError extends Error {
   status: number
   /** Seconds the provider asked us to wait (Retry-After), if any. */
   retryAfter: number | undefined
-  constructor(message: string, status: number, retryAfter?: number) {
+  /** The provider's error name, e.g. Resend's `invalid_idempotent_request`. */
+  code: string | undefined
+  constructor(message: string, status: number, retryAfter?: number, code?: string) {
     super(message)
     this.status = status
     this.retryAfter = retryAfter
+    this.code = code
   }
 }
 
-/** Rate limits, server errors and dropped connections are worth another try. */
+/**
+ * Resend answers 409 `invalid_idempotent_request` when a key it already accepted comes back
+ * with a different body. The outbox reuses a key only for exactly the same emails (the text may
+ * have been rendered again), so that batch already went out.
+ */
+export function alreadySent(err: unknown): boolean {
+  return (
+    err instanceof EmailSendError && err.status === 409 && err.code === 'invalid_idempotent_request'
+  )
+}
+
+/**
+ * Rate limits, server errors, dropped connections, and a 409 for the same key still being
+ * processed (`concurrent_idempotent_requests`) are worth another try.
+ */
 export function isRetryable(err: unknown): boolean {
-  if (err instanceof EmailSendError) return err.status === 429 || err.status >= 500
+  if (err instanceof EmailSendError) {
+    if (err.status === 409) return err.code === 'concurrent_idempotent_requests'
+    return err.status === 429 || err.status >= 500
+  }
   return true
 }
 
@@ -78,10 +98,19 @@ export function resendSender(
       })
       if (!res.ok) {
         const wait = Number(res.headers.get('retry-after'))
+        const text = await res.text()
+        let code: string | undefined
+        try {
+          const name = (JSON.parse(text) as { name?: unknown }).name
+          code = typeof name === 'string' ? name : undefined
+        } catch {
+          code = undefined
+        }
         throw new EmailSendError(
-          `resend answered ${res.status}: ${await res.text()}`,
+          `resend answered ${res.status}: ${text}`,
           res.status,
           Number.isFinite(wait) && wait > 0 ? wait : undefined,
+          code,
         )
       }
     },
