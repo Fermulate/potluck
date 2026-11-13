@@ -137,6 +137,9 @@ describe('GuestPage', () => {
     expect(screen.getByText(t('guests.page.cellCount', { count: 3, total: 3 }))).toBeInTheDocument()
     fireEvent.focus(cell(slot('19:30')))
     expect(screen.getByText(t('guests.page.cellCount', { count: 0, total: 3 }))).toBeInTheDocument()
+    // Off the grid, the readout goes back to the warmest cell.
+    fireEvent.pointerLeave(screen.getByRole('grid', { name: /How everyone looks/ }))
+    expect(screen.getByText(t('guests.page.cellCount', { count: 3, total: 3 }))).toBeInTheDocument()
   })
 
   it('says why a save was refused', async () => {

@@ -109,7 +109,8 @@ export function GuestHeatmap({
         model={model}
         label={label}
         onKeyDown={onKeyDown}
-
+        // Back to the warmest cell once the pointer is off the grid.
+        onPointerLeave={() => setActive(null)}
         renderCell={(slot, row, col) => {
           const cell = cells.get(slot)!
           return (
