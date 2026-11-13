@@ -48,11 +48,8 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   whether they all still belong" is `private.recurring_departed` / `recurring_blocked`, shared by the job, the heads-up and
   the resume trigger; who may change one is `private.recurring_involves` (RPCs and policies alike). The
   heads-up job runs at :05 and :35, per person (`profiles.timezone`), deduplicated by `private.recurring_heads_ups`. Edits go through `update_recurring_expense`, never new direct grants.
-- Anon-callable RPCs: only `invite_preview`, `email_unsubscribe` and the guest link pair (`guest_link_preview`,
-  `set_guest_availability`). Guests are rows in `event_guests`, never auth users; they prove an answer is
-  theirs with a token whose sha256 is stored. Anything a guest may see goes through the preview's fixed
-  columns ([ADR 16](../docs/adr/0016-guest-availability-links.md)). Code that reads availability
-  (`best_slots`, heat) must count `event_guest_availability` too.
+- Guests ([ADR 16](../docs/adr/0016-guest-availability-links.md)) are rows, not users: availability
+  reads (`best_slots`, heat) count `event_guest_availability` too.
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
 - Two-step sign in ([ADR 13](../docs/adr/0013-two-step-sign-in-enforced-in-the-database.md)):
