@@ -37,6 +37,11 @@ export interface PlanMember {
   displayName: string
   avatarPath: string | null
   deleted: boolean
+  /**
+   * Someone who answered through a guest link, not a member. Screens that rank or show
+   * availability add guests next to members; `userId` is then the guest id.
+   */
+  guest?: boolean
 }
 
 export interface PlanGroup {
@@ -511,4 +516,261 @@ export async function addEventComment(
     .single()
   if (error) fail(error)
   return data
+}
+
+// Guest links -----------------------------------------------------------------
+// People without an account add their times through a shareable link (ADR 10). Members read
+// links, guests and guest slots straight from the tables; guests go through two anon RPCs.
+
+export type GuestLink = Tables['event_guest_links']['Row']
+export type GuestLinkTtl = '24h' | '7d' | '30d'
+export type GuestSlotRow = Tables['event_guest_availability']['Row']
+
+/** Someone who answered through a guest link, as members see them (never the token hash). */
+export interface EventGuest {
+  id: string
+  link_id: string
+  display_name: string
+  created_at: string
+}
+
+export type GuestLinkStatus = 'open' | 'full' | 'revoked' | 'expired' | 'archived' | 'closed'
+
+/** One cell of the heatmap a guest sees: counts only, never who. */
+export interface GuestHeatCell {
+  slot_start: string
+  yes: number
+  maybe: number
+}
+
+// A type, not an interface, so it fits the Json argument of the RPC.
+export type GuestSlot = {
+  slot_start: string
+  level: AvailabilityLevelDb
+}
+
+/** The plan as a guest link shows it. `plan` is null unless the link is open or full. */
+export interface GuestLinkPreview {
+  status: GuestLinkStatus
+  plan: {
+    title: string
+    emoji: string | null
+    groupEmoji: string | null
+    hostName: string | null
+    timezone: string
+    window_start: string
+    window_end: string
+    day_start_minute: number
+    day_end_minute: number
+    slot_minutes: number
+    duration_minutes: number
+    expiresAt: string
+    maxGuests: number
+    guestCount: number
+  } | null
+  /** People who have answered so far (members and guests); null unless open. */
+  respondents: number | null
+  /** The visitor's own answer when their token matches a guest of this link. */
+  mine: { name: string; slots: GuestSlot[] } | null
+  /** Counts per slot from everyone; null unless open. */
+  heat: GuestHeatCell[] | null
+}
+
+const GUEST_STATUSES: readonly GuestLinkStatus[] = [
+  'open',
+  'full',
+  'revoked',
+  'expired',
+  'archived',
+  'closed',
+]
+
+export const guestKeys = {
+  links: (eventId: string) => [...plansKeys.event(eventId), 'guest-links'] as const,
+  guests: (eventId: string) => [...plansKeys.event(eventId), 'guests'] as const,
+  slots: (eventId: string) => [...plansKeys.event(eventId), 'guest-slots'] as const,
+  preview: (code: string) => ['potluck', 'guest-link', code] as const,
+}
+
+/** Links on a plan that still work (not revoked, not expired), newest first. */
+export async function fetchGuestLinks(
+  client: PotluckClient,
+  eventId: string,
+  now: Date = new Date(),
+): Promise<GuestLink[]> {
+  const { data, error } = await client
+    .from('event_guest_links')
+    .select('*')
+    .eq('event_id', eventId)
+    .is('revoked_at', null)
+    .gt('expires_at', now.toISOString())
+    .order('created_at', { ascending: false })
+  if (error) fail(error)
+  return data ?? []
+}
+
+export async function fetchEventGuests(
+  client: PotluckClient,
+  eventId: string,
+): Promise<EventGuest[]> {
+  const { data, error } = await client
+    .from('event_guests')
+    .select('id, link_id, display_name, created_at')
+    .eq('event_id', eventId)
+    .order('created_at')
+    .order('id')
+  if (error) fail(error)
+  return data ?? []
+}
+
+export async function fetchGuestSlots(
+  client: PotluckClient,
+  eventId: string,
+): Promise<GuestSlotRow[]> {
+  return fetchAllPages((from, to) =>
+    client
+      .from('event_guest_availability')
+      .select('guest_id, event_id, slot_start, level')
+      .eq('event_id', eventId)
+      .order('guest_id')
+      .order('slot_start')
+      .range(from, to),
+  ).catch(fail)
+}
+
+export async function createGuestLink(
+  client: PotluckClient,
+  input: { eventId: string; ttl: GuestLinkTtl; maxGuests: number },
+): Promise<GuestLink> {
+  const { data, error } = await client.rpc('create_guest_link', {
+    event_id: input.eventId,
+    ttl: input.ttl,
+    max_guests: input.maxGuests,
+  })
+  if (error) fail(error)
+  return data
+}
+
+export async function revokeGuestLink(client: PotluckClient, linkId: string): Promise<void> {
+  const { error } = await client.rpc('revoke_guest_link', { link_id: linkId })
+  if (error) fail(error)
+}
+
+export async function removeGuestAnswer(client: PotluckClient, guestId: string): Promise<void> {
+  const { error } = await client.rpc('remove_guest_answer', { guest_id: guestId })
+  if (error) fail(error)
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+function guestSlots(value: unknown): GuestSlot[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => {
+    const s = record(item)
+    return { slot_start: String(s.slot_start), level: s.level === 'maybe' ? 'maybe' : 'yes' }
+  })
+}
+
+function heatCells(value: unknown): GuestHeatCell[] | null {
+  if (!Array.isArray(value)) return null
+  return value.map((item) => {
+    const c = record(item)
+    return {
+      slot_start: String(c.slot_start),
+      yes: Number(c.yes) || 0,
+      maybe: Number(c.maybe) || 0,
+    }
+  })
+}
+
+/** Public: works signed out. Throws `guest_link_not_found` for an unknown code. */
+export async function fetchGuestLinkPreview(
+  client: PotluckClient,
+  code: string,
+  token: string | null,
+): Promise<GuestLinkPreview> {
+  const { data, error } = await client.rpc('guest_link_preview', {
+    code,
+    ...(token ? { token } : {}),
+  })
+  if (error) fail(error)
+  const row = data?.[0]
+  if (!row) throw new PlanError('guest_link_not_found')
+  const status = GUEST_STATUSES.find((s) => s === row.status) ?? 'closed'
+  // Closed links come back with every plan column null, whatever the generated type says.
+  const plan =
+    (status === 'open' || status === 'full') && row.title
+      ? {
+          title: row.title,
+          emoji: row.emoji ?? null,
+          groupEmoji: row.group_emoji ?? null,
+          hostName: row.host_name ?? null,
+          timezone: row.timezone,
+          window_start: row.window_start,
+          window_end: row.window_end,
+          day_start_minute: row.day_start_minute,
+          day_end_minute: row.day_end_minute,
+          slot_minutes: row.slot_minutes,
+          duration_minutes: row.duration_minutes,
+          expiresAt: row.expires_at,
+          maxGuests: row.max_guests,
+          guestCount: row.guest_count,
+        }
+      : null
+  return {
+    status,
+    plan,
+    respondents: row.respondents ?? null,
+    mine: row.my_name ? { name: row.my_name, slots: guestSlots(row.my_slots) } : null,
+    heat: heatCells(row.heat),
+  }
+}
+
+/**
+ * Adds or replaces a guest's answer. With no token (or one the link does not know) the server
+ * makes a new guest and returns their token; keep it to edit later.
+ */
+export async function setGuestAvailability(
+  client: PotluckClient,
+  input: { code: string; name: string; token: string | null; slots: GuestSlot[] },
+): Promise<{ token: string; saved: number }> {
+  const { data, error } = await client.rpc('set_guest_availability', {
+    code: input.code,
+    name: input.name,
+    // An empty token is one the link does not know, so the server makes a new guest.
+    token: input.token ?? '',
+    slots: input.slots,
+  })
+  if (error) fail(error)
+  const row = data?.[0]
+  if (!row) throw new PlanError('unknown')
+  return { token: row.guest_token, saved: row.saved }
+}
+
+export const guestQueries = {
+  links: (client: PotluckClient, eventId: string) =>
+    queryOptions({
+      queryKey: guestKeys.links(eventId),
+      queryFn: () => fetchGuestLinks(client, eventId),
+    }),
+  guests: (client: PotluckClient, eventId: string) =>
+    queryOptions({
+      queryKey: guestKeys.guests(eventId),
+      queryFn: () => fetchEventGuests(client, eventId),
+    }),
+  slots: (client: PotluckClient, eventId: string) =>
+    queryOptions({
+      queryKey: guestKeys.slots(eventId),
+      queryFn: () => fetchGuestSlots(client, eventId),
+    }),
+  preview: (client: PotluckClient, code: string, token: string | null) =>
+    queryOptions({
+      queryKey: [...guestKeys.preview(code), token ?? ''] as const,
+      queryFn: () => fetchGuestLinkPreview(client, code, token),
+      // An unknown code stays unknown.
+      retry: (count: number, error: unknown) =>
+        !(error instanceof PlanError && error.code === 'guest_link_not_found') && count < 2,
+    }),
 }
