@@ -55,6 +55,7 @@ export const expenses = {
   recurrence: {
     none: 'Does not repeat',
     weekly: 'Every week',
+    biweekly: 'Every 2 weeks',
     monthly: 'Every month',
     yearly: 'Every year',
     nextOn: 'Next on {date}',
@@ -176,8 +177,51 @@ export const expenses = {
     removedToast: '"{description}" will not repeat again.',
     every: {
       weekly: 'Weekly',
+      biweekly: 'Every 2 weeks',
       monthly: 'Monthly',
       yearly: 'Yearly',
+    },
+    /** What the first copy of a new repeating expense will be. */
+    firstOn: 'The next one goes in on {date}.',
+    actions: 'Repeating expense actions',
+    /** The editor for a repeating expense (the same form as an expense). */
+    editTitle: 'Edit repeating expense',
+    futureOnly: 'Changes start with the next one. Expenses already added stay exactly as they are.',
+    nextLabel: 'Next one',
+    remindLabel: 'Heads-up the day before',
+    remindHint: 'Everyone in it hears at 9 in the morning, their time, the day before it goes in.',
+    savedToast: 'Saved. The next "{description}" uses the new numbers.',
+    pausedNote: 'Paused. Nothing goes in until you resume it.',
+    formerNote: '{names} left the group. Take them out of the split, then resume it.',
+    resumeBlocked: 'Take {names} out of the split first, then resume it.',
+    blockedActive: '{names} left the group. Nothing goes in until they are out of the split.',
+    pausedLeft: 'Paused: {names} left',
+    left: '{names} left',
+    readOnly: 'Only the people in it or an admin can change this one.',
+    skipLabel: 'Skip the next "{description}"',
+    yourShare: 'Your share each time: {amount}',
+    notFound: 'That repeating expense was stopped.',
+    skip: 'Skip next',
+    skipTitle: 'Skip the next one?',
+    skipConfirm:
+      'Nothing goes in for "{description}" on {date}. The one after that comes on {next}.',
+    skippedToast: 'Skipped. The next "{description}" is on {date}.',
+    /** On a posted expense. */
+    card: {
+      title: 'Repeats',
+      next: '{every}. Next one on {date}.',
+      paused: '{every}. Paused for now.',
+      edit: 'Edit repeat',
+      view: 'Details',
+    },
+    /** Making an expense that already happened repeat. */
+    make: {
+      action: 'Make it repeat',
+      title: 'Repeat this expense',
+      hint: 'A copy with the same amount, payers and split goes in on each date. Change or stop it any time.',
+      first: 'First copy on {date}.',
+      confirm: 'Repeat it',
+      doneToast: '"{description}" repeats now. Next one on {date}.',
     },
   },
   detail: {
@@ -249,6 +293,9 @@ export const expenses = {
     negative_share: 'A minus adjustment takes someone below zero.',
     items_required: 'Add at least one item.',
     invalid_items: 'One of the items is not right. Check the prices and who had them.',
+    recurring_not_found: 'That repeating expense was stopped.',
+    already_recurring: 'This expense already repeats.',
+    invalid_next_run: 'Pick today or a later date for the next one.',
   },
   /** Several people paid (or, for a refund, got the money). */
   payers: {
@@ -584,6 +631,12 @@ export const activity = {
     comment: {
       created: 'You commented on {subject}',
     },
+    recurring: {
+      created: 'You set "{description}" to repeat',
+      updated: 'You changed the repeating "{description}"',
+      skipped: 'You skipped the next "{description}"',
+      paused: '"{description}" is paused: {name} left the group',
+    },
   },
   /** Someone else's action done to the viewer ("{name}" would be "you"). */
   toYou: {
@@ -596,6 +649,9 @@ export const activity = {
       deleted: '{actor} deleted a payment to you',
       updated: '{actor} changed a payment to you',
       restored: '{actor} restored a payment to you',
+    },
+    recurring: {
+      paused: '"{description}" is paused: you left the group',
     },
   },
   group: {
@@ -631,5 +687,11 @@ export const activity = {
   },
   comment: {
     created: '{actor} commented on {subject}',
+  },
+  recurring: {
+    created: '{actor} set "{description}" to repeat',
+    updated: '{actor} changed the repeating "{description}"',
+    skipped: '{actor} skipped the next "{description}"',
+    paused: '"{description}" is paused: {name} left the group',
   },
 } as const

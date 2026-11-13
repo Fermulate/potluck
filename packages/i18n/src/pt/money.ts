@@ -58,6 +58,7 @@ export const expenses = {
   recurrence: {
     none: 'Não se repete',
     weekly: 'Toda semana',
+    biweekly: 'A cada 2 semanas',
     monthly: 'Todo mês',
     yearly: 'Todo ano',
     nextOn: 'Próxima em {date}',
@@ -181,8 +182,46 @@ export const expenses = {
     removedToast: '"{description}" não vai se repetir mais.',
     every: {
       weekly: 'Semanal',
+      biweekly: 'A cada 2 semanas',
       monthly: 'Mensal',
       yearly: 'Anual',
+    },
+    firstOn: 'A próxima entra em {date}.',
+    actions: 'Ações da despesa recorrente',
+    editTitle: 'Editar despesa recorrente',
+    futureOnly: 'As mudanças começam na próxima. As despesas já lançadas ficam como estão.',
+    nextLabel: 'A próxima',
+    remindLabel: 'Aviso na véspera',
+    remindHint: 'Todos os envolvidos são avisados às 9 da manhã, no horário deles, na véspera.',
+    savedToast: 'Salvo. A próxima "{description}" usa os novos valores.',
+    pausedNote: 'Pausada. Nada entra até você retomar.',
+    formerNote: '{names} saiu do grupo. Tire da divisão e depois retome.',
+    resumeBlocked: 'Tire {names} da divisão primeiro e depois retome.',
+    blockedActive: '{names} saiu do grupo. Nada entra até sair da divisão.',
+    pausedLeft: 'Pausada: {names} saiu',
+    left: '{names} saiu',
+    readOnly: 'Só quem participa ou um admin pode alterar.',
+    yourShare: 'Sua parte a cada vez: {amount}',
+    skipLabel: 'Pular a próxima "{description}"',
+    notFound: 'Essa despesa recorrente foi encerrada.',
+    skip: 'Pular a próxima',
+    skipTitle: 'Pular a próxima?',
+    skipConfirm: 'Nada entra para "{description}" em {date}. A seguinte vem em {next}.',
+    skippedToast: 'Pulada. A próxima "{description}" é em {date}.',
+    card: {
+      title: 'Repete',
+      next: '{every}. Próxima em {date}.',
+      paused: '{every}. Pausada por enquanto.',
+      edit: 'Editar repetição',
+      view: 'Detalhes',
+    },
+    make: {
+      action: 'Fazer repetir',
+      title: 'Repetir esta despesa',
+      hint: 'Uma cópia com o mesmo valor, pagadores e divisão entra em cada data. Altere ou encerre quando quiser.',
+      first: 'Primeira cópia em {date}.',
+      confirm: 'Repetir',
+      doneToast: '"{description}" agora se repete. Próxima em {date}.',
     },
   },
   detail: {
@@ -248,6 +287,9 @@ export const expenses = {
     negative_share: 'Um ajuste negativo deixa alguém abaixo de zero.',
     items_required: 'Adicione pelo menos um item.',
     invalid_items: 'Um dos itens não está certo. Confira os preços e quem consumiu.',
+    recurring_not_found: 'Essa despesa recorrente foi encerrada.',
+    already_recurring: 'Esta despesa já se repete.',
+    invalid_next_run: 'Escolha hoje ou uma data posterior para a próxima.',
     invalid_parties: 'Escolha duas pessoas diferentes.',
     not_a_party: 'Só donos e admins podem registrar um pagamento entre duas outras pessoas.',
     note_too_long: 'Mantenha a nota com menos de 500 caracteres.',
@@ -582,6 +624,12 @@ export const activity = {
     comment: {
       created: 'Você comentou em {subject}',
     },
+    recurring: {
+      created: 'Você fez "{description}" se repetir',
+      updated: 'Você alterou a despesa recorrente "{description}"',
+      skipped: 'Você pulou a próxima "{description}"',
+      paused: '"{description}" está pausada: {name} saiu do grupo',
+    },
   },
   toYou: {
     member: {
@@ -593,6 +641,9 @@ export const activity = {
       deleted: '{actor} excluiu um pagamento para você',
       updated: '{actor} alterou um pagamento para você',
       restored: '{actor} restaurou um pagamento para você',
+    },
+    recurring: {
+      paused: '"{description}" está pausada: você saiu do grupo',
     },
   },
   group: {
@@ -630,4 +681,10 @@ export const activity = {
     created: '{actor} comentou em {subject}',
   },
   aPayment: 'um pagamento',
+  recurring: {
+    created: '{actor} fez "{description}" se repetir',
+    updated: '{actor} alterou a despesa recorrente "{description}"',
+    skipped: '{actor} pulou a próxima "{description}"',
+    paused: '"{description}" está pausada: {name} saiu do grupo',
+  },
 } satisfies Translation<typeof en.activity>

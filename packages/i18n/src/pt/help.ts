@@ -59,7 +59,7 @@ export const help = {
     you: 'você',
   },
   recurringEdit:
-    'Para alterar o valor ou a divisão, pare a repetição e adicione de novo com os novos números.',
+    'Toque em uma para mudar valor, divisão ou frequência. As despesas já lançadas ficam como estão.',
   section: {
     title: 'Ajuda',
     intro: 'O guia passa por todas as telas. Ele abre numa nova aba.',

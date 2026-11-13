@@ -59,7 +59,7 @@ export const help = {
     you: 'ti',
   },
   recurringEdit:
-    'Para cambiar el importe o el reparto, detenlo y vuelve a añadirlo con los números nuevos.',
+    'Toca uno para cambiar su importe, reparto o calendario. Los gastos ya añadidos se quedan como están.',
   section: {
     title: 'Ayuda',
     intro: 'La guía recorre cada pantalla. Se abre en una pestaña nueva.',

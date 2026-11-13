@@ -233,3 +233,46 @@ test('money keeps every minor digit for 0, 2 and 3 digit currencies', () => {
   assert.equal(formatMoney(1250, 'BHD'), 'BHD 1.250')
   assert.equal(formatMoney(100, 'NOPE'), '100 NOPE')
 })
+
+test('a repeating expense heads-up says the date it goes in, until when it can change, and links to it', () => {
+  const e = renderEmail(
+    job(
+      'recurring.upcoming',
+      {
+        recurring_id: 'r1',
+        group_id: 'g1',
+        group_name: 'Flat',
+        description: 'Rent',
+        amount_cents: 150000,
+        currency: 'USD',
+        share_cents: 50000,
+        posts_on: '2026-12-01',
+        deadline: '2026-12-01T00:10:00+00:00',
+      },
+      { category: 'reminders' },
+    ),
+    links,
+  )
+  assert.equal(e.subject, '"Rent" goes in on Tue, Dec 1 in Flat')
+  // America/New_York: 00:10 UTC on the 1st is the evening of November 30.
+  assert.match(e.text, /You can until Monday, November 30 at 7:10 PM EST\./)
+  assert.match(e.text, /Total: \$1,500\.00\./)
+  assert.match(e.text, /Your share: \$500\.00\./)
+  assert.match(e.text, /https:\/\/potluck\.example\/recurring\/r1/)
+  assert.match(e.text, /reminders/)
+})
+
+test('a repeating expense the job paused says why', () => {
+  const e = renderEmail(
+    job(
+      'recurring.paused',
+      { recurring_id: 'r1', group_name: 'Flat', description: 'Internet' },
+      {
+        category: 'expense_changed',
+      },
+    ),
+    links,
+  )
+  assert.equal(e.subject, '"Internet" is paused in Flat')
+  assert.match(e.text, /Someone in it left the group/)
+})

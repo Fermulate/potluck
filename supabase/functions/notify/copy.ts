@@ -41,6 +41,14 @@ export interface PushCopy {
   paymentRestoredBody: string
   nudge: string
   nudgeBody: string
+  /** Repeating expenses. {what} is the description, {date} the posting day, {deadline} when it posts. */
+  recurring: string
+  recurringOn: string
+  recurringSoon: string
+  recurringBy: string
+  recurringByBare: string
+  recurringPaused: string
+  recurringPausedBody: string
   other: string
 }
 
@@ -83,6 +91,14 @@ const en: PushCopy = {
   paymentRestoredBody: 'A payment with you is back.',
   nudge: 'A friendly nudge',
   nudgeBody: 'Someone is waiting on a payment from you.',
+  recurring: 'A repeating expense',
+  recurringOn: '{what} goes in on {date}',
+  recurringSoon: '{what} goes in soon',
+  recurringBy: 'Skip or change it before {deadline}.',
+  recurringByBare: 'Skip or change it before it goes in.',
+  recurringPaused: '"{what}" is paused',
+  recurringPausedBody:
+    'Someone in it left the group. Take them out of the split to start it again.',
   other: 'Something new is waiting for you.',
 }
 
@@ -126,6 +142,14 @@ const es: PushCopy = {
   paymentRestoredBody: 'Un pago contigo ha vuelto.',
   nudge: 'Un recordatorio amistoso',
   nudgeBody: 'Alguien está esperando un pago tuyo.',
+  recurring: 'Un gasto recurrente',
+  recurringOn: '{what} se añade el {date}',
+  recurringSoon: '{what} se añade pronto',
+  recurringBy: 'Sáltalo o cámbialo antes del {deadline}.',
+  recurringByBare: 'Sáltalo o cámbialo antes de que se añada.',
+  recurringPaused: '"{what}" está en pausa',
+  recurringPausedBody:
+    'Alguien que participa dejó el grupo. Quítalo del reparto para que vuelva a funcionar.',
   other: 'Tienes algo nuevo esperándote.',
 }
 
@@ -169,6 +193,14 @@ const fr: PushCopy = {
   paymentRestoredBody: 'Un paiement avec toi est de retour.',
   nudge: 'Un petit rappel',
   nudgeBody: "Quelqu'un attend un paiement de ta part.",
+  recurring: 'Une dépense récurrente',
+  recurringOn: '{what} est ajoutée le {date}',
+  recurringSoon: '{what} est ajoutée bientôt',
+  recurringBy: 'Saute-la ou modifie-la avant le {deadline}.',
+  recurringByBare: "Saute-la ou modifie-la avant qu'elle soit ajoutée.",
+  recurringPaused: '« {what} » est en pause',
+  recurringPausedBody:
+    'Quelqu’un a quitté le groupe. Retire cette personne du partage pour la relancer.',
   other: "Quelque chose de nouveau t'attend.",
 }
 
@@ -212,6 +244,14 @@ const de: PushCopy = {
   paymentRestoredBody: 'Eine Zahlung mit dir ist wieder da.',
   nudge: 'Eine freundliche Erinnerung',
   nudgeBody: 'Jemand wartet auf eine Zahlung von dir.',
+  recurring: 'Eine wiederkehrende Ausgabe',
+  recurringOn: '{what} kommt am {date} dazu',
+  recurringSoon: '{what} kommt bald dazu',
+  recurringBy: 'Überspring oder ändere sie vor {deadline}.',
+  recurringByBare: 'Überspring oder ändere sie, bevor sie dazukommt.',
+  recurringPaused: '„{what}“ ist pausiert',
+  recurringPausedBody:
+    'Jemand ist aus der Gruppe ausgetreten. Nimm die Person aus der Aufteilung, um sie wieder zu starten.',
   other: 'Etwas Neues wartet auf dich.',
 }
 
@@ -254,6 +294,13 @@ const pt: PushCopy = {
   paymentRestoredBody: 'Um pagamento com você voltou.',
   nudge: 'Um lembrete amigável',
   nudgeBody: 'Alguém está esperando um pagamento seu.',
+  recurring: 'Uma despesa recorrente',
+  recurringOn: '{what} entra em {date}',
+  recurringSoon: '{what} entra em breve',
+  recurringBy: 'Pule ou altere antes de {deadline}.',
+  recurringByBare: 'Pule ou altere antes de entrar.',
+  recurringPaused: '"{what}" está pausada',
+  recurringPausedBody: 'Alguém saiu do grupo. Tire da divisão para voltar a funcionar.',
   other: 'Tem novidade esperando por você.',
 }
 

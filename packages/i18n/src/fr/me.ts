@@ -107,6 +107,19 @@ export const notifications = {
         bodyWithNote: '{actor} dit que tu dois {amount} dans {group} : "{note}"',
       },
     },
+    recurring: {
+      upcoming: {
+        title: '{description} est ajoutée le {date}',
+        share: 'Ta part sera de {share} sur {amount} dans {group}.',
+        payer: 'Tu couvres les {amount} dans {group}.',
+        plain: '{amount} dans {group}.',
+        deadline: 'Saute-la ou modifie-la avant le {deadline}.',
+      },
+      paused: {
+        title: '« {description} » est en pause',
+        body: '{name} a quitté {group}. Retire cette personne du partage pour la relancer.',
+      },
+    },
   },
 } satisfies Translation<typeof en.notifications>
 

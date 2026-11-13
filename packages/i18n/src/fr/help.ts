@@ -59,7 +59,7 @@ export const help = {
     you: 'toi',
   },
   recurringEdit:
-    'Pour changer le montant ou le partage, arrête-la et ajoute-la de nouveau avec les nouveaux chiffres.',
+    'Touche-en une pour changer son montant, son partage ou son rythme. Les dépenses déjà ajoutées ne bougent pas.',
   section: {
     title: 'Aide',
     intro: "Le guide passe en revue chaque écran. Il s'ouvre dans un nouvel onglet.",

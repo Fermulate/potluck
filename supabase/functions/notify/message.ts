@@ -8,6 +8,47 @@ export interface NotificationRow {
   data: Record<string, string | number | null | undefined>
 }
 
+/** Fill `{name}` placeholders in a copy line. */
+function fill(text: string, values: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match)
+}
+
+/** An Intl locale for a profile locale: en-US for English, the bare language otherwise. */
+function intl(locale: string | null | undefined): string {
+  const base = (locale ?? 'en').toLowerCase().split(/[-_]/)[0] ?? 'en'
+  return base === 'en' ? 'en-US' : base
+}
+
+/** A calendar date (`YYYY-MM-DD`) as "Thu, Jan 10". Calendar dates are the same everywhere. */
+export function postingDay(day: string, locale?: string | null): string {
+  const date = new Date(`${day}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return day
+  return new Intl.DateTimeFormat(intl(locale), {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
+/** An instant as "Wed, Jan 9, 7:10 PM" in `timeZone` (UTC when the zone is unknown). */
+export function localMoment(iso: string, timeZone: string, locale?: string | null): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }
+  try {
+    return new Intl.DateTimeFormat(intl(locale), { ...options, timeZone }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat(intl(locale), { ...options, timeZone: 'UTC' }).format(date)
+  }
+}
+
 /**
  * Push copy and the in-app path it opens, per notification type, in the recipient's language
  * (`profiles.locale`; English when missing or unknown).
@@ -94,6 +135,27 @@ export function message(
       return { title: c.rsvp, body: title(c.rsvpBody), url: event }
     case 'account.mfa_removed':
       return { title: c.mfaRemoved, body: c.mfaRemovedBody, url: '/me' }
+    case 'recurring.upcoming': {
+      const what = String(d.description ?? c.recurring)
+      const by =
+        typeof d.deadline === 'string'
+          ? localMoment(d.deadline, typeof d.timezone === 'string' ? d.timezone : 'UTC', locale)
+          : null
+      return {
+        title:
+          typeof d.posts_on === 'string'
+            ? fill(c.recurringOn, { what, date: postingDay(d.posts_on, locale) })
+            : fill(c.recurringSoon, { what }),
+        body: by ? fill(c.recurringBy, { deadline: by }) : c.recurringByBare,
+        url: d.recurring_id ? `/recurring/${d.recurring_id}` : group,
+      }
+    }
+    case 'recurring.paused':
+      return {
+        title: fill(c.recurringPaused, { what: String(d.description ?? c.recurring) }),
+        body: c.recurringPausedBody,
+        url: d.recurring_id ? `/recurring/${d.recurring_id}` : group,
+      }
     default:
       return { title: 'Potluck', body: c.other, url: '/notifications' }
   }
