@@ -16,6 +16,8 @@ Participants used throughout:
 - [Join through an invite link](#join-through-an-invite-link)
 - [Add an expense](#add-an-expense)
 - [Settle up](#settle-up)
+- [Settle with a friend across groups](#settle-with-a-friend-across-groups)
+- [Remind someone who owes you](#remind-someone-who-owes-you)
 - [Simplified debts](#simplified-debts)
 - [Plan an event](#plan-an-event)
 - [Request availability](#request-availability)
@@ -186,23 +188,30 @@ The service worker shows the message. The PWA is built with `vite-plugin-pwa` in
 
 ## Settle up
 
-The payer is always the caller, and `settled_at` is now. When the payment is in another currency the server snapshots today's FX rate.
+A member records a payment they are part of, in either direction ("I paid Ben", "Ben paid me"); owners and admins also between two others. The day defaults to today; a past day keeps that day's FX rate. If the recipient saved payment methods, the payer can open their app first (ADR 11): Potluck builds the link on the client and records nothing until the payer confirms.
 
 ```mermaid
 sequenceDiagram
   autonumber
   actor P as Payer
   participant W as Web
+  participant App as Payment app
   participant DB as DB
   participant E as Edge notify
 
-  W->>DB: rpc simplified_debts(group_id)
+  W->>DB: rpc simplified_debts(group_id) (or pairwise in core)
   DB-->>W: suggested payments
-  P->>W: pay Ben 42.50
-  W->>DB: rpc settle_up(group_id, to_user, amount_cents, currency, note)
-  DB->>DB: share lock the group row, require_member,<br/>both people in group, amount > 0
-  DB->>DB: fx = private.fx_rate(currency, group currency, current_date)
-  DB->>DB: insert settlements (from_user = caller)
+  W->>DB: select payment_methods where user_id = Ben<br/>(RLS: shares a group, no block)
+  opt pay with an app
+    P->>W: Pay with PayPal
+    W->>App: open paypal.me/ben/42.50USD (built by paymentAction)
+    P->>W: "Did it go through?" yes
+  end
+  W->>DB: rpc settle_up_v2(group_id, from_user, to_user,<br/>amount_cents, currency, note, settled_on)
+  DB->>DB: share lock the group row, require_member, require_unarchived
+  DB->>DB: private.check_payment: amount, two people,<br/>members only for themselves, both in group
+  DB->>DB: fx = private.fx_rate(currency, group currency, settled_on or today)
+  DB->>DB: insert settlements (settled_at: now, or noon UTC of settled_on)
   DB->>DB: trigger: activity settlement.created
   DB->>DB: trigger: notifications settlement.created<br/>to from_user and to_user, minus the actor
   DB->>E: notify (push)
@@ -211,7 +220,57 @@ sequenceDiagram
   W->>DB: refetch group_balances
 ```
 
-To undo a mistaken payment, call `delete_settlement(id)`. It is a soft delete open to the payer, the recipient, whoever recorded it, or an admin, and refused once either side has left the group (`member_not_in_group`).
+`update_settlement(id, payload)` edits a payment and `delete_settlement(id)` soft deletes it; `restore_settlement(id)` brings it back. All three are open to the payer, the recipient, whoever recorded it, or an admin. Anything that would move the balance of someone who has left is refused (`member_not_in_group`); the note stays editable. Each change logs `settlement.updated`, `settlement.deleted` or `settlement.restored` and notifies both people.
+
+## Settle with a friend across groups
+
+One tap squares two people in every group they share (ADR 11). Each group keeps its own payment in its own currency, so balances stay per group.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava
+  participant W as Web (Friends)
+  participant DB as DB
+
+  W->>DB: rpc friend_balances()
+  DB->>DB: for each of Ava's groups, private.group_debts(group)<br/>(simplified_debts or pairwise_debts, as the group says)
+  DB-->>W: (friend_id, group_id, currency, net_cents, archived) rows
+  W->>W: friendTotals(): per friend and currency
+  A->>W: Settle up with Ben, Record 3 payments
+  W->>DB: rpc settle_with_friend(ben, settled_on, note)
+  DB->>DB: share lock every shared group row, in id order
+  loop each shared group, open, both still members
+    DB->>DB: debt between Ava and Ben from private.group_debts
+    DB->>DB: insert settlements (group currency, rate 1)
+  end
+  DB-->>W: the payments made
+```
+
+`settle_all(group_id)` does the same inside one group for every debt the caller is in ("Settle everything" on the Balances tab).
+
+## Remind someone who owes you
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava (owed)
+  participant W as Web (Balances)
+  participant DB as DB
+  participant E as Edge notify
+
+  A->>W: Remind Ben
+  W->>DB: rpc remind_debt(group_id, ben)
+  DB->>DB: require_member, require_group_open,<br/>Ben owes Ava per private.group_debts
+  DB->>DB: insert debt_reminders on conflict do nothing<br/>(unique group, pair, UTC day)
+  alt already sent today
+    DB-->>W: already_reminded
+  else first today
+    DB->>DB: notifications debt.reminder to Ben
+    DB->>E: notify (push, opens settle up with Ava picked)
+    DB-->>W: reminder row
+  end
+```
 
 ## Simplified debts
 
