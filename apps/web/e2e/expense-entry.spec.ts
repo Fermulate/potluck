@@ -190,11 +190,42 @@ test.describe('expense entry', () => {
   test('an archived group is read only', async ({ newUser, openAs }) => {
     const me = await newUser({ name: unique('Ava') })
     const group = await groupWith(me)
+    const old = await addEqualExpense(me, group, [me], 1200, unique('Ferry'))
     await updateGroup(me.client, group.id, { archived_at: new Date().toISOString() })
     const page = await openAs(me)
     await page.goto(`/new/expense?groupId=${group.id}`)
     await expect(page.getByText(t('expenses.form.archivedTitle'))).toBeVisible()
     await expect(page.getByRole('textbox', { name: t('expenses.fields.amount') })).toHaveCount(0)
+
+    // The expense page: no edit, delete or comment box, and the same notice.
+    await page.goto(`/expenses/${old.id}`)
+    await expect(page.getByText(t('expenses.form.archived', { group: group.name }))).toBeVisible()
+    await expect(page.getByRole('link', { name: t('common.edit') })).toHaveCount(0)
+    await expect(
+      page.getByRole('textbox', { name: t('expenses.comments.placeholder') }),
+    ).toHaveCount(0)
+  })
+
+  test('a slow last currency never changes what was typed', async ({ newUser, openAs }) => {
+    const me = await newUser({ name: unique('Ava') })
+    const group = await groupWith(me)
+    // Last time I paid in euros.
+    await addEqualExpense(me, group, [me], 1000, unique('Gelato'), { currency: 'EUR' })
+    const page = await openAs(me)
+    await page.route('**/rest/v1/expenses?select=currency*', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2500))
+      await route.continue()
+    })
+    const description = unique('Bus')
+    await page.goto(`/new/expense?groupId=${group.id}`)
+    await page.getByRole('textbox', { name: t('expenses.fields.amount') }).fill('25')
+    await page.getByRole('textbox', { name: t('expenses.fields.description') }).fill(description)
+    await page.waitForTimeout(3000)
+    await expect(
+      page.getByRole('button', { name: `${t('expenses.fields.currency')}, USD` }),
+    ).toBeVisible()
+    await save(page, group)
+    await expect(page.getByRole('link', { name: new RegExp(description) })).toContainText(usd(2500))
   })
 
   test('two people: one tap says who owes it all', async ({ newUser, openAs }) => {
