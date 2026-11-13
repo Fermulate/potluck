@@ -59,6 +59,7 @@ import { avatarSrc, useFlag, useMyProfile } from '@/lib/queries'
 import { supabase, supabaseUrl } from '@/lib/supabase'
 import { useTheme } from '@/styles/use-theme'
 import { AvatarPicker } from './avatar-picker'
+import { NotificationPrefs } from './notification-prefs'
 import { CurrencyField, TimezoneField } from './profile-fields'
 import { useWebPush } from './use-web-push'
 
@@ -274,7 +275,7 @@ function NotificationsSection() {
           }
         }}
       />
-      <p className="text-sm text-mute">{t('settings.notifications.inApp')}</p>
+      <NotificationPrefs />
     </Section>
   )
 }

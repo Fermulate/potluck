@@ -125,6 +125,13 @@ test.describe('accessibility', () => {
     const page = await openAs(await newUser())
     await page.goto('/me')
     await expect(page.getByRole('textbox', { name: t('settings.calendar.feed') })).toBeVisible()
+    await expect(page.getByRole('switch').nth(1)).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('unsubscribe link that does not work', async ({ page }, testInfo) => {
+    await page.goto('/unsubscribe?token=not-a-token')
+    await expect(page.getByRole('heading', { name: t('unsubscribe.invalidTitle') })).toBeVisible()
     await audit(page, testInfo)
   })
 })
