@@ -24,8 +24,6 @@ function invalidReason(status: FriendInvitePreview['status'] | 'not_found'): str
       return t('invites.invalid.used')
     case 'revoked':
       return t('invites.invalid.revoked')
-    case 'blocked':
-      return t('errors.codes.blocked')
     default:
       return t('invites.invalid.notFound')
   }
@@ -73,7 +71,7 @@ export function FriendJoinPage({ code }: { code: string }) {
       const friendId = await acceptFriendInvite(supabase, code)
       setBurst((n) => n + 1)
       await queryClient.invalidateQueries({ queryKey: groupKeys.all })
-      toast.success(t('people.friendJoin.welcome', { name: preview.data.name }))
+      toast.success(t('people.friendJoin.welcome', { name: preview.data.name ?? '' }))
       window.setTimeout(
         () => void navigate({ to: '/friends/$friendId', params: { friendId }, replace: true }),
         reduced ? 0 : 650,
@@ -126,7 +124,7 @@ export function FriendJoinPage({ code }: { code: string }) {
     )
   }
 
-  const inviter = preview.data
+  const inviter = { ...preview.data, name: preview.data.name ?? '' }
   return (
     <Frame>
       <Confetti fire={burst} origin={{ x: 0.5, y: 0.3 }} haptic />

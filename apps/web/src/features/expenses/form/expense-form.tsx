@@ -33,6 +33,7 @@ import {
   toast,
   useMediaQuery,
 } from '@potluck/ui'
+import { AddPlaceholderSheet } from '@/features/groups/placeholders'
 import { Help } from '@/features/help/help'
 import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
@@ -241,6 +242,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
   const [draft, setDraft] = useState<SplitDraft>(savedDraft)
+  const [addingPerson, setAddingPerson] = useState(false)
   const [saveDefault, setSaveDefault] = useState(false)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -706,7 +708,22 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 amountCents={total}
                 currency={currency}
                 locale={intlLocale()}
+                onAddPerson={group.is_direct ? undefined : () => setAddingPerson(true)}
               />
+              {!group.is_direct && (
+                <AddPlaceholderSheet
+                  group={group}
+                  open={addingPerson}
+                  onOpenChange={setAddingPerson}
+                  onAdded={(id) =>
+                    setDraft((d) =>
+                      d.participants.includes(id)
+                        ? d
+                        : { ...d, participants: [...d.participants, id] },
+                    )
+                  }
+                />
+              )}
               {group.default_split && isDefault ? (
                 <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">
                   <span>{t('expenses.defaultSplit.active')}</span>

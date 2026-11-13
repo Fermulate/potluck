@@ -55,6 +55,8 @@ export interface SplitEditorProps {
   modes?: readonly SplitTypeValue[]
   /** Show each person's amount; off when there is no amount yet (the group's default split). */
   showAmounts?: boolean
+  /** Offers to add someone not on Potluck yet; the form puts them in the split once added. */
+  onAddPerson?: () => void
 }
 
 function displayName(member: MoneyMember, viewerId: string) {
@@ -71,6 +73,7 @@ export function SplitEditor({
   locale,
   modes = SPLIT_TYPES,
   showAmounts = true,
+  onAddPerson,
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
   const modesRef = useRef<HTMLDivElement>(null)
@@ -381,6 +384,16 @@ export function SplitEditor({
                 </button>
               )
             })}
+            {onAddPerson && (
+              <button
+                type="button"
+                onClick={onAddPerson}
+                className="inline-flex h-10 items-center gap-1.5 rounded-pill border border-dashed border-line-strong px-3.5 text-sm font-semibold text-mute transition-colors hover:border-ink/40 hover:text-ink"
+              >
+                <Plus aria-hidden className="size-4" />
+                {t('people.placeholder.addToSplit')}
+              </button>
+            )}
           </div>
 
           {participants.length === 0 ? (

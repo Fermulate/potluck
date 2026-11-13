@@ -1,5 +1,6 @@
 import {
   addPlaceholderMember,
+  fetchProfilesByIds,
   groupKeys,
   peopleKeys,
   remindPlaceholder,
@@ -13,7 +14,7 @@ import { t } from '@potluck/i18n'
 import { Avatar, Button, Field, Input, Sheet, SheetContent, toast } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { BellRing, Pencil, Plus, Share2, UserMinus } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
@@ -47,55 +48,71 @@ export function AddSeatRow({ onClick }: { onClick: () => void }) {
 
 const ADD_FORM = 'add-placeholder-form'
 
-/** Add someone by name (and maybe email): they are in the group and can be split with at once. */
+/**
+ * Add someone by name (and maybe email): they are in the group and can be split with at once.
+ * An email that already has an account adds that account instead. `onAdded` gets the new
+ * member's id (the expense form puts them straight into the split).
+ */
 export function AddPlaceholderSheet({
   group,
   open,
   onOpenChange,
+  onAdded,
 }: {
-  group: GroupDetail
+  group: { id: string; name: string }
   open: boolean
   onOpenChange: (open: boolean) => void
+  onAdded?: (id: string) => void
 }) {
   const queryClient = useQueryClient()
+  const nameRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'add' | 'again' | null>(null)
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault()
+  async function add(again: boolean) {
     const parsed = placeholderSchema.safeParse({ display_name: name, email })
     if (!parsed.success) {
       setEmailError(name.trim() ? t('errors.validation.invalidEmail') : null)
       return
     }
-    setBusy(true)
+    setBusy(again ? 'again' : 'add')
     try {
-      await addPlaceholderMember(supabase, {
+      const id = await addPlaceholderMember(supabase, {
         groupId: group.id,
         displayName: parsed.data.display_name,
         email: parsed.data.email,
       })
+      const [person] = await fetchProfilesByIds(supabase, [id])
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: groupKeys.all }),
         queryClient.invalidateQueries({ queryKey: peopleKeys.placeholders(group.id) }),
         queryClient.invalidateQueries({ queryKey: ['potluck', 'money'] }),
       ])
       toast.success(
-        parsed.data.email
-          ? t('people.placeholder.addedInvited', { name: parsed.data.display_name })
-          : t('people.placeholder.added', { name: parsed.data.display_name }),
+        person && !person.is_placeholder
+          ? t('people.placeholder.addedExisting', { name: person.display_name })
+          : parsed.data.email
+            ? t('people.placeholder.addedInvited', { name: parsed.data.display_name })
+            : t('people.placeholder.added', { name: parsed.data.display_name }),
       )
+      onAdded?.(id)
       setName('')
       setEmail('')
       setEmailError(null)
-      onOpenChange(false)
+      if (again) nameRef.current?.focus()
+      else onOpenChange(false)
     } catch (error) {
       toast.error(errorMessage(error))
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
+  }
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault()
+    void add(false)
   }
 
   return (
@@ -106,16 +123,28 @@ export function AddPlaceholderSheet({
         closeLabel={t('common.close')}
         size="sm"
         footer={
-          <Button
-            type="submit"
-            form={ADD_FORM}
-            block
-            size="lg"
-            loading={busy}
-            disabled={!name.trim()}
-          >
-            {t('people.placeholder.submit', { group: group.name })}
-          </Button>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+            <Button
+              type="button"
+              size="lg"
+              variant="secondary"
+              loading={busy === 'again'}
+              disabled={!name.trim() || !!busy}
+              onClick={() => void add(true)}
+            >
+              {t('people.placeholder.addAnother')}
+            </Button>
+            <Button
+              type="submit"
+              form={ADD_FORM}
+              block
+              size="lg"
+              loading={busy === 'add'}
+              disabled={!name.trim() || !!busy}
+            >
+              {t('people.placeholder.submit', { group: group.name })}
+            </Button>
+          </div>
         }
       >
         <form id={ADD_FORM} className="grid gap-5 pt-2" onSubmit={onSubmit} noValidate>
@@ -128,6 +157,7 @@ export function AddPlaceholderSheet({
             />
             <Field label={t('people.placeholder.nameLabel')} className="flex-1">
               <Input
+                ref={nameRef}
                 required
                 autoFocus
                 maxLength={80}
@@ -165,14 +195,19 @@ export function AddPlaceholderSheet({
 
 const EDIT_FORM = 'edit-placeholder-form'
 
-/** Rename a placeholder, or change (or clear) where its invite goes. */
+/**
+ * Rename a placeholder, or change where its invite goes (only whoever added them or an admin,
+ * `canChangeEmail`).
+ */
 export function EditPlaceholderSheet({
   member,
   info,
+  canChangeEmail,
   onOpenChange,
 }: {
   member: GroupMember | null
   info: Placeholder | undefined
+  canChangeEmail: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const queryClient = useQueryClient()
@@ -190,7 +225,7 @@ export function EditPlaceholderSheet({
       return
     }
     const newName = parsed.data.display_name !== member.display_name
-    const newEmail = parsed.data.email ?? undefined
+    const newEmail = canChangeEmail ? (parsed.data.email ?? undefined) : undefined
     setBusy(true)
     try {
       await updatePlaceholder(supabase, member.id, {
@@ -216,7 +251,7 @@ export function EditPlaceholderSheet({
       {member && (
         <SheetContent
           title={t('people.placeholder.editTitle', { name: member.display_name })}
-          description={t('people.placeholder.editBody')}
+          description={canChangeEmail ? t('people.placeholder.editBody') : undefined}
           closeLabel={t('common.close')}
           size="sm"
           footer={
@@ -242,28 +277,30 @@ export function EditPlaceholderSheet({
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <Field
-              label={t('people.placeholder.emailLabel')}
-              hint={
-                info?.email_hint
-                  ? t('people.placeholder.waitingFor', { email: info.email_hint })
-                  : t('people.placeholder.emailHint')
-              }
-              error={emailError ?? undefined}
-            >
-              <Input
-                type="email"
-                inputMode="email"
-                autoComplete="off"
-                maxLength={254}
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value)
-                  setEmailError(null)
-                }}
-                placeholder={info?.email_hint ?? t('people.placeholder.emailPlaceholder')}
-              />
-            </Field>
+            {canChangeEmail && (
+              <Field
+                label={t('people.placeholder.emailLabel')}
+                hint={
+                  info?.email_hint
+                    ? t('people.placeholder.waitingFor', { email: info.email_hint })
+                    : t('people.placeholder.emailHint')
+                }
+                error={emailError ?? undefined}
+              >
+                <Input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="off"
+                  maxLength={254}
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    setEmailError(null)
+                  }}
+                  placeholder={info?.email_hint ?? t('people.placeholder.emailPlaceholder')}
+                />
+              </Field>
+            )}
           </form>
         </SheetContent>
       )}

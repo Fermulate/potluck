@@ -261,6 +261,16 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         target: friendId ? { to: '/friends/$friendId', params: { friendId } } : { to: '/friends' },
       }
     }
+    case 'member.invite_changed':
+      return {
+        title: t('notifications.types.member.invite_changed.title', { group }),
+        body: t('notifications.types.member.invite_changed.body', {
+          actor,
+          name: firstNameOf(ctx.people.get(str(d.user_id) ?? '')) ?? t('notifications.someone'),
+        }),
+        kind: 'people',
+        target: toGroup('members'),
+      }
     case 'member.added':
       return {
         title: t('notifications.types.member.added.title', { group }),

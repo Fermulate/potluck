@@ -19,7 +19,7 @@ import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { GroupTile } from '@/features/groups/group-bits'
 import { Wordmark } from '@/features/shell/brand'
-import { needsOnboarding, useSession } from '@/lib/auth'
+import { needsOnboarding, signOut, useSession } from '@/lib/auth'
 import { errorMessage, isNotFoundError } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 
@@ -192,7 +192,7 @@ export function JoinPage({ code }: { code: string }) {
             <p className="text-[0.9375rem]">
               {t('people.claim.seatFor', { host: host ?? group.name, name: seat })}
             </p>
-            {group.email_hint && !group.is_member && (
+            {group.email_hint && !group.is_member && group.email_matches !== false && (
               <p className="text-sm text-mute">
                 {t('people.claim.emailNote', { email: group.email_hint })}
               </p>
@@ -217,6 +217,22 @@ export function JoinPage({ code }: { code: string }) {
               <Link to="/groups/$groupId" params={{ groupId: group.group_id }}>
                 {t('invites.join.open')}
               </Link>
+            </Button>
+          </>
+        ) : seat && session && group.email_matches === false ? (
+          <>
+            <p className="text-sm text-pretty text-mute">
+              {t('people.claim.wrongEmail', { email: group.email_hint ?? '' })}
+            </p>
+            <Button
+              size="lg"
+              block
+              onClick={async () => {
+                await signOut()
+                await navigate({ to: '/sign-in', search: { redirect: here } })
+              }}
+            >
+              {t('people.claim.switchAccount')}
             </Button>
           </>
         ) : session && !needsOnboarding(session) ? (

@@ -74,6 +74,8 @@ export function placeholderActions(
         membersCanInvite: group.members_can_invite,
         isCreator,
       }),
+    /** Where the invite goes: whoever added them or an admin (`update_placeholder`). */
+    editEmail: open && (isCreator || group.my_role === 'owner' || group.my_role === 'admin'),
     remove: open && can(group.my_role, 'placeholder.remove', { netCents: 0, isCreator }),
     removable:
       open && can(group.my_role, 'placeholder.remove', { netCents: member.net_cents, isCreator }),

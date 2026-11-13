@@ -271,6 +271,8 @@ export function MembersPage({ groupId }: { groupId: string }) {
     !lastMember &&
     group.members.every((m) => m.id === viewerId || Boolean(m.deleted_at) || m.is_placeholder)
   const ownerClosesGroup = me?.role === 'owner' && onlyClosedLeft
+  // Who is left decides the wording: saved seats are not closed accounts.
+  const seatsLeft = group.members.some((m) => m.is_placeholder)
   const canLeave = me
     ? can(me.role, 'group.leave', { netCents: me.net_cents }) ||
       (me.role === 'owner' && lastMember && me.net_cents === 0) ||
@@ -279,7 +281,9 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const leaveNote = !me
     ? undefined
     : ownerClosesGroup
-      ? t('groups.settings.leaveLastActive')
+      ? seatsLeft
+        ? t('people.placeholder.leaveOnlySeats')
+        : t('groups.settings.leaveLastActive')
       : me.net_cents !== 0
         ? t('groups.settings.leaveBlocked')
         : me.role === 'owner' && !lastMember
@@ -369,7 +373,9 @@ export function MembersPage({ groupId }: { groupId: string }) {
         return {
           title: t('groups.settings.leave'),
           description: ownerClosesGroup
-            ? t('groups.settings.leaveLastActiveConfirm', { group: group!.name })
+            ? seatsLeft
+              ? t('people.placeholder.leaveOnlySeatsConfirm', { group: group!.name })
+              : t('groups.settings.leaveLastActiveConfirm', { group: group!.name })
             : t('groups.settings.leaveConfirm', { group: group!.name }),
           confirm: t('members.leave'),
           tone: 'danger' as const,
@@ -533,6 +539,10 @@ export function MembersPage({ groupId }: { groupId: string }) {
         key={editing?.id ?? 'none'}
         member={editing}
         info={editing ? placeholders?.get(editing.id) : undefined}
+        canChangeEmail={
+          !!editing &&
+          placeholderActions(group, editing, placeholders?.get(editing.id), viewerId).editEmail
+        }
         onOpenChange={(open) => !open && setEditing(null)}
       />
     </div>

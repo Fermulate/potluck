@@ -4,7 +4,6 @@ import {
   getOrCreateDirectGroup,
   groupKeys,
   moneyKeys,
-  moneyQueries,
   peopleKeys,
   profilesByIdsQueryOptions,
   removeFriend,
@@ -13,8 +12,8 @@ import {
   type GroupDetail,
   type Settlement,
 } from '@potluck/api'
-import { dayKey, expenseInvolvesBoth, netBetween, settlementBetween } from '@potluck/core'
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { dayKey, expenseInvolvesBoth, settlementBetween } from '@potluck/core'
+import { formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Amount,
   Avatar,
@@ -30,7 +29,7 @@ import {
   TextArea,
   toast,
 } from '@potluck/ui'
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowRightLeft,
@@ -48,6 +47,13 @@ import { dayLabel, groupByDay } from '@/features/expenses/format'
 import { useNameOf, useTimeZone } from '@/features/expenses/money-data'
 import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
+import {
+  standingsWith,
+  toBalanceSettlement,
+  totals,
+  useLedgers,
+  type Standing,
+} from './friend-ledger'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
@@ -57,15 +63,9 @@ type HistoryItem =
   | { kind: 'expense'; day: string; at: string; group: GroupDetail; expense: ExpenseWithSplits }
   | { kind: 'settlement'; day: string; at: string; group: GroupDetail; settlement: Settlement }
 
-interface Standing {
-  group: GroupDetail
-  /** Positive: the friend owes the viewer, in the group currency. */
-  net: number
-}
-
 /**
- * Everything the viewer and a friend share: where they stand in each group (pairwise, the same
- * rule as the balances tab with simplify off) and every expense and payment between them.
+ * Everything the viewer and a friend share: where they stand in each group (`standingsWith`, the
+ * same numbers as the friends list) and every expense and payment between them.
  */
 function useSharedLedger(friendId: string) {
   const me = useUserId()
@@ -75,84 +75,40 @@ function useSharedLedger(friendId: string) {
     () => (groups ?? []).filter((g) => g.members.some((m) => m.id === friendId)),
     [groups, friendId],
   )
-  const expenses = useQueries({
-    queries: shared.map((g) => moneyQueries.expenses(supabase, g.id)),
-  })
-  const settlements = useQueries({
-    queries: shared.map((g) => moneyQueries.settlements(supabase, g.id)),
-  })
-  const pending =
-    groupsPending || expenses.some((q) => q.isPending) || settlements.some((q) => q.isPending)
+  const { pending: ledgersPending, byGroup } = useLedgers(shared)
+  const pending = groupsPending || ledgersPending
 
   return useMemo(() => {
-    const standings: Standing[] = []
+    if (pending) return { pending, shared, standings: [] as Standing[], sections: [] }
     const items: HistoryItem[] = []
-    if (pending) return { pending, shared, standings, sections: [] }
-    shared.forEach((group, i) => {
-      const groupExpenses = (expenses[i]?.data ?? []).map((e) => ({
-        row: e,
-        balance: toBalanceExpense(e),
-      }))
-      const groupSettlements = (settlements[i]?.data ?? []).map((s) => ({
-        row: s,
-        balance: {
-          fromUser: s.from_user,
-          toUser: s.to_user,
-          amountCents: s.amount_cents,
-          currency: s.currency,
-          fxRate: s.fx_rate,
-          deletedAt: s.deleted_at,
-        },
-      }))
-      standings.push({
-        group,
-        net: netBetween(
-          groupExpenses.map((e) => e.balance),
-          groupSettlements.map((s) => s.balance),
-          me,
-          friendId,
-          { groupCurrency: group.currency },
-        ),
-      })
-      for (const e of groupExpenses) {
-        if (expenseInvolvesBoth(e.balance, me, friendId)) {
-          items.push({
-            kind: 'expense',
-            day: e.row.spent_at,
-            at: e.row.created_at,
-            group,
-            expense: e.row,
-          })
+    for (const group of shared) {
+      const ledger = byGroup.get(group.id)!
+      for (const e of ledger.expenses) {
+        if (expenseInvolvesBoth(toBalanceExpense(e), me, friendId)) {
+          items.push({ kind: 'expense', day: e.spent_at, at: e.created_at, group, expense: e })
         }
       }
-      for (const s of groupSettlements) {
-        if (!s.row.deleted_at && settlementBetween(s.balance, me, friendId)) {
+      for (const s of ledger.settlements) {
+        if (!s.deleted_at && settlementBetween(toBalanceSettlement(s), me, friendId)) {
           items.push({
             kind: 'settlement',
-            day: dayKey(s.row.settled_at, timeZone),
-            at: s.row.settled_at,
+            day: dayKey(s.settled_at, timeZone),
+            at: s.settled_at,
             group,
-            settlement: s.row,
+            settlement: s,
           })
         }
       }
-    })
+    }
     items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
-    standings.sort(
+    const standings = standingsWith(shared, byGroup, me, friendId).sort(
       (a, b) =>
         Number(b.group.is_direct) - Number(a.group.is_direct) ||
         Math.abs(b.net) - Math.abs(a.net) ||
         a.group.name.localeCompare(b.group.name),
     )
     return { pending, shared, standings, sections: groupByDay(items, (item) => item.day) }
-  }, [pending, shared, expenses, settlements, me, friendId, timeZone])
-}
-
-/** Net per currency across every shared group. */
-function totals(standings: Standing[]) {
-  const sums = new Map<string, number>()
-  for (const s of standings) sums.set(s.group.currency, (sums.get(s.group.currency) ?? 0) + s.net)
-  return [...sums].filter(([, net]) => net !== 0)
+  }, [pending, shared, byGroup, me, friendId, timeZone])
 }
 
 function StandingLine({ net, currency, name }: { net: number; currency: string; name: string }) {
@@ -173,7 +129,7 @@ function StandingLine({ net, currency, name }: { net: number; currency: string; 
       <Amount
         cents={Math.abs(net)}
         currency={currency}
-        locale={DEFAULT_LOCALE}
+        locale={intlLocale()}
         tone={net > 0 ? 'owed' : 'owe'}
         className="text-[0.9375rem] font-bold"
         srLabel=""
@@ -379,7 +335,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
                   <Amount
                     cents={Math.abs(net)}
                     currency={currency}
-                    locale={DEFAULT_LOCALE}
+                    locale={intlLocale()}
                     tone={net > 0 ? 'owed' : 'owe'}
                     className="text-2xl font-extrabold"
                     srLabel=""
@@ -485,14 +441,14 @@ export function FriendPage({ friendId }: { friendId: string }) {
                             viewerId={me}
                             nameOf={nameOf}
                             groupCurrency={item.group.currency}
-                            locale={DEFAULT_LOCALE}
+                            locale={intlLocale()}
                           />
                         ) : (
                           <SettlementRow
                             settlement={item.settlement}
                             viewerId={me}
                             nameOf={nameOf}
-                            locale={DEFAULT_LOCALE}
+                            locale={intlLocale()}
                           />
                         )}
                       </li>
