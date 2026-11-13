@@ -4,17 +4,18 @@ What is live, what still needs a person with the right account, and how to finis
 
 ## Live now
 
-| Piece          | Where                                                                                                                            |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Web app (PWA)  | https://potluck.potluck-web.workers.dev (Cloudflare Workers static assets, `apps/web/wrangler.jsonc`)                            |
-| User guide     | https://potluck-docs.potluck-web.workers.dev (repo `Fermulate/potluck-docs`)                                                     |
-| Database       | Supabase project `mzotlkpghnrwbezcazld`, every migration in `supabase/migrations` applied                                        |
-| Auth settings  | Site URL and redirect URLs pushed with `supabase config push` (`[remotes.production]` in `supabase/config.toml`)                 |
-| Edge functions | `notify`, `fx-sync`, `ics-feed`, `delete-account`, with their secrets set                                                        |
-| Vault entries  | `project_url` and `edge_secret`, so push notifications and the daily FX job fire                                                 |
-| FX rates       | Backfilled from 2026-08-01, refreshed daily by pg_cron at 16:30 UTC                                                              |
-| GitHub         | Branch protection on `main`, CODEOWNERS review, secret scanning with push protection, Dependabot security updates                |
-| Keepalive      | `keepalive.yml` pings the REST API daily (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` secrets) so the free project does not pause |
+| Piece          | Where                                                                                                                                                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Web app (PWA)  | https://potluck.fermulate.com (Cloudflare Workers static assets, `apps/web/wrangler.jsonc`)                                                                                                                                                                      |
+| User guide     | https://docs.potluck.fermulate.com (repo `Fermulate/potluck-docs`)                                                                                                                                                                                               |
+| Custom domains | `potluck.fermulate.com` and `docs.potluck.fermulate.com` attached to the `potluck` and `potluck-docs` Workers, pinned as `custom_domain` routes in each `wrangler.jsonc`. The `*.potluck-web.workers.dev` URLs still work ([ADR 10](adr/0010-custom-domains.md)) |
+| Database       | Supabase project `mzotlkpghnrwbezcazld`, every migration in `supabase/migrations` applied                                                                                                                                                                        |
+| Auth settings  | Site URL and redirect URLs pushed with `supabase config push` (`[remotes.production]` in `supabase/config.toml`)                                                                                                                                                 |
+| Edge functions | `notify`, `fx-sync`, `ics-feed`, `delete-account`, with their secrets set                                                                                                                                                                                        |
+| Vault entries  | `project_url` and `edge_secret`, so push notifications and the daily FX job fire                                                                                                                                                                                 |
+| FX rates       | Backfilled from 2026-08-01, refreshed daily by pg_cron at 16:30 UTC                                                                                                                                                                                              |
+| GitHub         | Branch protection on `main`, CODEOWNERS review, secret scanning with push protection, Dependabot security updates                                                                                                                                                |
+| Keepalive      | `keepalive.yml` pings the REST API daily (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` secrets) so the free project does not pause                                                                                                                                 |
 
 ## Needs a person
 
@@ -23,7 +24,7 @@ What is live, what still needs a person with the right account, and how to finis
 The deploy workflow builds on every push but only deploys when `CLOUDFLARE_API_TOKEN` exists.
 
 1. Cloudflare dashboard, My Profile, API Tokens, Create Token, template "Edit Cloudflare Workers".
-2. Scope it to the account that owns `potluck-web.workers.dev`.
+2. Scope it to the account that owns `potluck-web.workers.dev`, with the `fermulate.com` zone included under Zone Resources: deploys manage the custom domain routes, which needs Workers Routes edit on that zone.
 3. Add it as a repository secret named `CLOUDFLARE_API_TOKEN` in both `Fermulate/potluck` and `Fermulate/potluck-docs`.
 
 `CLOUDFLARE_ACCOUNT_ID` is already set as a repository variable.
@@ -37,7 +38,7 @@ The `migrate` job skips until both secrets exist.
 
 ### 3. Email
 
-Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production, so sign-ups beyond the limit wait. When there is a domain:
+Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production, so sign-ups beyond the limit wait. To send from `fermulate.com`:
 
 1. Create a Resend (or other SMTP) account and verify the domain.
 2. Supabase dashboard, Authentication, SMTP settings: enter the SMTP details.
@@ -64,15 +65,7 @@ Both buttons are hidden behind `app_config` flags (`google_auth`, `apple_auth`).
 
 `calendar_import` is off. It needs Google and Microsoft OAuth apps with calendar read scopes and a sync function that fills `busy_blocks`. The schema and the UI legend are ready.
 
-### 6. Custom domain (optional)
-
-If a domain is bought:
-
-1. Add it to the `potluck` and `potluck-docs` Workers as custom domains in Cloudflare.
-2. Update `VITE_APP_URL` and `VITE_DOCS_URL` repository variables, the `site` in the guide's `astro.config.mjs`, `[remotes.production.auth]` URLs in `supabase/config.toml`, then run `supabase config push`.
-3. Update the `APP_URL` edge function secret.
-
-### 7. PR preview data
+### 6. PR preview data
 
 PR previews build against the production Supabase project. Before inviting outside contributors, create a separate Supabase project for previews and point a `preview` GitHub environment's variables at it.
 

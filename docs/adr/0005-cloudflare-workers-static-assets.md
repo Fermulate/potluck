@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-11-05
+- Note (2026-11-12): production now serves at https://potluck.fermulate.com, with the workers.dev URLs below kept as secondary origins. See [ADR 10](0010-custom-domains.md).
 
 ## Context
 
