@@ -15,6 +15,7 @@ function row(type: string, data: Record<string, unknown>): NotificationRow {
     type,
     data: data as NotificationRow['data'],
     read_at: null,
+    channels: [],
     created_at: '2026-11-05T12:00:00Z',
   }
 }
@@ -113,5 +114,68 @@ describe('describeNotification', () => {
     const view = describeNotification(row('something.new', {}), ctx)
     expect(view.kind).toBe('other')
     expect(view.target).toEqual({ to: '/notifications' })
+  })
+})
+
+describe('deletions, being added, and the monthly summary', () => {
+  it('says who deleted or restored an expense and still links to it', () => {
+    const data = { actor_id: 'u-ben', group_id: 'g-1', expense_id: 'e-9', description: 'Gas' }
+    const deleted = describeNotification(row('expense.deleted', data), ctx)
+    expect(deleted.title).toBe('Expense deleted')
+    expect(deleted.body).toBe('Ben deleted Gas in Hike crew')
+    expect(deleted.target).toEqual({ to: '/expenses/$expenseId', params: { expenseId: 'e-9' } })
+    expect(describeNotification(row('expense.restored', data), ctx).body).toBe(
+      'Ben brought back Gas in Hike crew',
+    )
+  })
+
+  it('welcomes someone added to a group and opens it', () => {
+    const view = describeNotification(
+      row('member.added', { actor_id: 'u-ben', group_id: 'g-1' }),
+      ctx,
+    )
+    expect(view.title).toBe('Welcome to Hike crew')
+    expect(view.body).toBe('Ben added you. Pull up a chair.')
+    expect(view.kind).toBe('people')
+    expect(view.target).toEqual({ to: '/groups/$groupId', params: { groupId: 'g-1' } })
+  })
+
+  it('sums up the month: the two biggest balances, then a count of the rest', () => {
+    const view = describeNotification(
+      row('summary.monthly', {
+        month: '2026-10-01',
+        groups: [
+          { group_id: 'g-1', name: 'Old name', currency: 'USD', net_cents: 1250 },
+          { group_id: 'g-2', name: 'Tokyo', currency: 'JPY', net_cents: -4500 },
+          { group_id: 'g-3', name: 'Books', currency: 'EUR', net_cents: 0 },
+          { group_id: 'g-4', name: 'Rent', currency: 'USD', net_cents: -100 },
+          { group_id: 'g-5', name: 'Gym', currency: 'USD', net_cents: 300 },
+        ],
+      }),
+      ctx,
+    )
+    expect(view.title).toBe('Your month in Potluck')
+    expect(view.body).toBe(
+      'Hike crew: you are owed $12.50, Tokyo: you owe ¥4,500 and 2 more groups',
+    )
+    expect(view.kind).toBe('summary')
+    expect(view.target).toEqual({ to: '/home' })
+  })
+
+  it('a month where everything is settled says so', () => {
+    expect(describeNotification(row('summary.monthly', { groups: [] }), ctx).body).toBe(
+      'All settled up. Nice work.',
+    )
+    expect(describeNotification(row('summary.monthly', {}), ctx).body).toBe(
+      'All settled up. Nice work.',
+    )
+    expect(
+      describeNotification(
+        row('summary.monthly', {
+          groups: [{ name: 'Solo', currency: 'USD', net_cents: 500 }, null],
+        }),
+        ctx,
+      ).body,
+    ).toBe('Solo: you are owed $5.00')
   })
 })

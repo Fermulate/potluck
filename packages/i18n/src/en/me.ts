@@ -15,9 +15,21 @@ export const notifications = {
   earlier: 'Earlier',
   new: 'New',
   types: {
+    summary: {
+      monthly: { title: 'Your month in Potluck', settled: 'All settled up. Nice work.' },
+      owed: '{group}: you are owed {amount}',
+      owe: '{group}: you owe {amount}',
+      more_one: 'and {count} more group',
+      more_other: 'and {count} more groups',
+    },
     expense: {
       created: { title: 'New expense in {group}', body: '{actor} added {description}: {amount}' },
       updated: { title: 'Expense updated', body: '{actor} changed {description} in {group}' },
+      deleted: { title: 'Expense deleted', body: '{actor} deleted {description} in {group}' },
+      restored: {
+        title: 'Expense restored',
+        body: '{actor} brought back {description} in {group}',
+      },
     },
     settlement: {
       created: { title: 'You got paid', body: '{payer} paid you {amount}' },
@@ -29,6 +41,7 @@ export const notifications = {
     },
     member: {
       joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
+      added: { title: 'Welcome to {group}', body: '{actor} added you. Pull up a chair.' },
     },
     event: {
       created: { title: 'Something is cooking', body: '{actor} is planning {event}' },
@@ -122,6 +135,57 @@ export const settings = {
     license: 'Free software under the AGPL-3.0',
     feedback: 'Send feedback',
   },
+  notificationPrefs: {
+    title: 'What to hear about',
+    hint: 'Your inbox gets everything. Pick what also pings your devices or lands in your email.',
+    push: 'Push',
+    email: 'Email',
+    channel: '{category}: {channel}',
+    emailSoon: 'Email notifications are on their way. Until then, your inbox has it all.',
+    failed: 'That setting did not save. Try again?',
+    categories: {
+      expense_added: {
+        label: 'New expenses',
+        hint: 'Someone adds an expense you are in.',
+        about: 'new expenses',
+      },
+      expense_changed: {
+        label: 'Edits and deletions',
+        hint: 'An expense you are in is changed, deleted or restored.',
+        about: 'expense edits and deletions',
+      },
+      payments: {
+        label: 'Payments',
+        hint: 'Someone pays you or records a payment with you.',
+        about: 'payments',
+      },
+      comments: {
+        label: 'Comments',
+        hint: 'New comments on expenses and plans you are part of.',
+        about: 'comments',
+      },
+      groups: {
+        label: 'Groups',
+        hint: 'You are added to a group, or someone joins one you run.',
+        about: 'group updates',
+      },
+      plans: {
+        label: 'Plans',
+        hint: 'New plans, locked in times, cancellations and availability requests.',
+        about: 'plans',
+      },
+      reminders: {
+        label: 'Reminders',
+        hint: 'Plans coming up and RSVPs you still owe.',
+        about: 'reminders',
+      },
+      monthly_summary: {
+        label: 'Monthly summary',
+        hint: 'Your balances, on the first of each month.',
+        about: 'the monthly summary',
+      },
+    },
+  },
 } as const
 
 export const account = {
@@ -144,5 +208,24 @@ export const account = {
     ready: 'Your export is ready.',
   },
 }
+
+/** The page an email's unsubscribe link opens. Works signed out. */
+export const unsubscribe = {
+  title: 'Email settings',
+  working: 'Updating your email settings...',
+  done: 'You are off the list',
+  doneOne: 'No more emails about {what}. Everything still shows up in your Potluck inbox.',
+  doneAll: 'No more email from Potluck. Everything still shows up in your Potluck inbox.',
+  undo: 'Keep sending them',
+  undone: 'You are back on the list',
+  undoneBody: 'These emails will keep coming. Change your mind any time on the Me page.',
+  manage: 'All notification settings',
+  invalidTitle: 'This link does not work',
+  invalidBody:
+    'It may have been cut off when it was copied. Try the link in your latest Potluck email, or change your settings on the Me page.',
+  failed: 'Your settings did not update. Check your connection and try again.',
+  retry: 'Try again',
+  everything: 'everything',
+} as const
 
 /** Empty states: serif italic headline, one line, one clear action. */

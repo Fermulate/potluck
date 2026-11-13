@@ -10,6 +10,7 @@ import {
   CheckCheck,
   MessageCircle,
   Receipt,
+  ScrollText,
   UserPlus,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -28,6 +29,7 @@ const kindStyle: Record<NotificationKind, { icon: ReactNode; tile: string }> = {
   people: { icon: <UserPlus />, tile: 'bg-plum-soft text-plum-ink' },
   plan: { icon: <CalendarHeart />, tile: 'bg-saffron-soft text-saffron-ink' },
   comment: { icon: <MessageCircle />, tile: 'bg-sunken text-ink' },
+  summary: { icon: <ScrollText />, tile: 'bg-olive-soft text-olive-ink' },
   other: { icon: <Bell />, tile: 'bg-sunken text-ink' },
 }
 
