@@ -1,8 +1,16 @@
-import type { ExpenseWithSplits, MoneyMember, Settlement } from '@potluck/api'
-import { convert, expenseEffect, minorUnits, type BalanceExpense } from '@potluck/core'
+import type { ExpenseWithSplits, MoneyGroup, MoneyPerson, Settlement } from '@potluck/api'
+import {
+  expenseEffect,
+  ledgerCsv,
+  ledgerPeople,
+  utcDay,
+  type BalanceExpense,
+  type LedgerExpense,
+  type LedgerPayment,
+} from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
+import { ledgerLabels } from '@/features/export-import/labels'
 import { joinNames } from '@/features/plans/format'
-import { categoryLabel } from './format'
 
 /** What an expense does to the viewer's balance, in the group currency. */
 export type ViewerLine =
@@ -121,88 +129,86 @@ export function departedMembers(
   return [...new Set(involved)].filter((id) => !members.has(id))
 }
 
-/** Plain decimal for a CSV cell: 1234 USD cents -> "12.34", 1500 JPY -> "1500". */
-export function decimal(cents: number, currency: string): string {
-  const digits = minorUnits(currency)
-  if (digits === 0) return String(cents)
-  const sign = cents < 0 ? '-' : ''
-  const abs = Math.abs(cents)
-  const scale = 10 ** digits
-  return `${sign}${Math.floor(abs / scale)}.${String(abs % scale).padStart(digits, '0')}`
+/** An expense as the spreadsheet export takes it. */
+export function toLedgerExpense(e: ExpenseWithSplits): LedgerExpense {
+  return {
+    description: e.description,
+    category: e.category,
+    notes: e.notes,
+    spentAt: e.spent_at,
+    createdAt: e.created_at,
+    amountCents: e.amount_cents,
+    currency: e.currency,
+    fxRate: e.fx_rate,
+    isRefund: e.is_refund,
+    payers: payersOf(e).map((p) => ({ userId: p.user_id, paidCents: p.paid_cents })),
+    splits: e.expense_splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
+    items: [...(e.expense_items ?? [])]
+      .sort((a, b) => a.position - b.position)
+      .map((i) => ({
+        description: i.description,
+        amountCents: i.amount_cents,
+        userIds: i.user_ids,
+      })),
+    taxCents: e.tax_cents,
+    tipCents: e.tip_cents,
+    discountCents: e.discount_cents,
+  }
 }
 
-/** Leading characters that make Excel, Sheets or LibreOffice treat a cell as a formula. */
-const FORMULA_START = /^[=+\-@\t\r]/
-const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
-
-function cell(value: string | number | null | undefined): string {
-  const text = value == null ? '' : String(value)
-  // Neutralize spreadsheet formulas (a plain negative number is fine); quote anything with
-  // separators, quotes or newlines.
-  const safe = FORMULA_START.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text
-  return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
+/** A payment as the spreadsheet export takes it, dated the UTC day its rate is from. */
+export function toLedgerPayment(s: Settlement): LedgerPayment {
+  return {
+    fromUser: s.from_user,
+    toUser: s.to_user,
+    amountCents: s.amount_cents,
+    currency: s.currency,
+    fxRate: s.fx_rate,
+    note: s.note,
+    day: utcDay(s.settled_at),
+    settledAt: s.settled_at,
+  }
 }
 
 /**
- * A spreadsheet-friendly export: one row per expense, one share column per member. With several
- * payers the payer cell lists each one and what they paid. Refunds are negative (amount, group
- * amount and shares), so summing a column gives what was really spent.
+ * A group as a spreadsheet (core `ledgerCsv`): every expense and payment, a paid, share and
+ * balance column per person (members first, then anyone who has left), and a balance row that
+ * matches the balances screen to the cent. Column names follow the app's language.
  */
-export function expensesToCsv(
+export function groupCsv(
+  group: Pick<MoneyGroup, 'name' | 'currency' | 'members'>,
   expenses: readonly ExpenseWithSplits[],
-  members: readonly MoneyMember[],
-  groupCurrency: string,
+  settlements: readonly Settlement[],
+  people: ReadonlyMap<string, Pick<MoneyPerson, 'display_name'>>,
 ): string {
-  const nameOf = (id: string) => members.find((m) => m.id === id)?.display_name ?? id
-  // Former members who still appear in splits get a column too.
-  const ids = [...members.map((m) => m.id)]
-  for (const e of expenses) {
-    for (const s of e.expense_splits) if (!ids.includes(s.user_id)) ids.push(s.user_id)
-  }
-
-  const header = [
-    t('expenses.csv.date'),
-    t('expenses.csv.description'),
-    t('expenses.csv.category'),
-    t('expenses.csv.paidBy'),
-    t('expenses.csv.amount'),
-    t('expenses.csv.currency'),
-    t('expenses.csv.rate'),
-    t('expenses.csv.groupAmount', { currency: groupCurrency }),
-    ...ids.map((id) => t('expenses.csv.shareOf', { name: nameOf(id) })),
-    t('expenses.csv.notes'),
+  const fullName = (id: string) => people.get(id)?.display_name ?? t('activity.someone')
+  const involved = [
+    ...expenses.flatMap((e) => [
+      ...payersOf(e).map((p) => p.user_id),
+      ...e.expense_splits.map((s) => s.user_id),
+    ]),
+    ...settlements.flatMap((s) => [s.from_user, s.to_user]),
   ]
-
-  const rows = [...expenses]
-    .sort(
-      (a, b) => a.spent_at.localeCompare(b.spent_at) || a.created_at.localeCompare(b.created_at),
-    )
-    .map((e) => {
-      const sign = e.is_refund ? -1 : 1
-      const converted = convert(e.amount_cents, e.fx_rate, { from: e.currency, to: groupCurrency })
-      const payers = payersOf(e)
-      return [
-        e.spent_at,
-        e.description,
-        categoryLabel(e.category),
-        payers.length > 1
-          ? payers
-              .map((p) => `${nameOf(p.user_id)} ${decimal(p.paid_cents, e.currency)}`)
-              .join('; ')
-          : nameOf(payers[0]!.user_id),
-        decimal(sign * e.amount_cents, e.currency),
-        e.currency,
-        String(Number(e.fx_rate)),
-        decimal(sign * converted, groupCurrency),
-        ...ids.map((id) => {
-          const share = e.expense_splits.find((s) => s.user_id === id)
-          return share ? decimal(sign * share.share_cents, e.currency) : ''
-        }),
-        e.notes ?? '',
-      ]
-    })
-
-  return [header, ...rows].map((row) => row.map(cell).join(',')).join('\r\n') + '\r\n'
+  return ledgerCsv(
+    [
+      {
+        name: group.name,
+        currency: group.currency,
+        expenses: expenses.map(toLedgerExpense),
+        payments: settlements.map(toLedgerPayment),
+      },
+    ],
+    {
+      labels: ledgerLabels(),
+      people: ledgerPeople(
+        group.members.map((m) => ({ id: m.id, name: m.display_name })),
+        involved,
+        fullName,
+      ),
+      paymentText: (from, to) =>
+        t('transfer.import.rowPayment', { from: fullName(from), to: fullName(to) }),
+    },
+  )
 }
 
 /** "You paid Kai $20.00", "Kai paid you $20.00" or "Kai paid Lena $20.00". */

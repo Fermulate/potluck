@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { computeBalances } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import {
-  decimal,
   departedMembers,
-  expensesToCsv,
+  groupCsv,
   paidSummary,
   toBalanceExpense,
   viewerLine,
@@ -82,9 +81,13 @@ describe('departedMembers', () => {
   })
 })
 
-describe('expensesToCsv', () => {
-  it('writes one row per expense with a share column per member, oldest first', () => {
-    const csv = expensesToCsv(
+describe('groupCsv', () => {
+  const people = new Map(members.map((m) => [m.id, m]))
+  const trip = { name: 'Trip', currency: 'USD', members }
+
+  it('writes one row per expense, oldest first, with paid, share and balance per member', () => {
+    const csv = groupCsv(
+      trip,
       [
         expense({ description: 'Tacos', spent_at: '2026-11-04' }),
         expense({
@@ -102,42 +105,52 @@ describe('expensesToCsv', () => {
           ],
         }),
       ],
-      members,
-      'USD',
+      [],
+      people,
     )
-    expect(csv.split('\r\n')).toEqual([
-      'Date,Description,Category,Paid by,Amount,Currency,Rate,Amount in USD,Ava Chen share,Ben Okafor share,Cleo Park share,Notes',
-      `2026-10-07,"Pasteis, ""the good ones""",Food,Ben Okafor,10.00,EUR,1.1,11.00,5.00,5.00,,'=SUM(A1)`,
-      '2026-11-04,Tacos,Food,Ava Chen,30.00,USD,1,30.00,10.00,10.00,10.00,',
-      '',
-    ])
+    const rows = csv.split('\r\n')
+    expect(rows[0]).toBe(
+      'Date,Group,Type,Description,Category,Amount,Currency,Rate,Group currency,Amount in group currency,Paid by,' +
+        'Ava Chen paid,Ava Chen share,Ava Chen balance,Ben Okafor paid,Ben Okafor share,Ben Okafor balance,' +
+        'Cleo Park paid,Cleo Park share,Cleo Park balance,Notes,Items',
+    )
+    expect(rows[1]).toBe(
+      `2026-10-07,Trip,Expense,"Pasteis, ""the good ones""",Food,10.00,EUR,1.1,USD,11.00,Ben Okafor,,5.00,-5.50,10.00,5.00,5.50,,,,'=SUM(A1),`,
+    )
+    expect(rows[2]).toBe(
+      '2026-11-04,Trip,Expense,Tacos,Food,30.00,USD,1,USD,30.00,Ava Chen,30.00,10.00,20.00,,10.00,-10.00,,10.00,-10.00,,',
+    )
+    expect(rows[3]).toBe(',Trip,Balance,,,,,,USD,,,,,14.50,,,-4.50,,,-10.00,,')
   })
 
-  it('neutralizes anything a spreadsheet would run as a formula, but not plain numbers', () => {
-    const notesCell = (notes: string) => {
-      const csv = expensesToCsv([expense({ notes })], members, 'USD')
-      return csv.slice(csv.indexOf('\r\n') + 2).replace(/^(?:[^,]*,){11}/, '')
-    }
-    // Leading minus followed by a digit used to slip through as "a negative number".
-    expect(notesCell('-1+1|cmd')).toBe(`'-1+1|cmd\r\n`)
-    expect(notesCell(`-2+3+cmd|' /C calc'!A0`)).toBe(`'-2+3+cmd|' /C calc'!A0\r\n`)
-    expect(notesCell('=1+1')).toBe(`'=1+1\r\n`)
-    expect(notesCell('+1+1')).toBe(`'+1+1\r\n`)
-    expect(notesCell('@SUM(A1)')).toBe(`'@SUM(A1)\r\n`)
-    expect(notesCell('\t=1+1')).toBe(`'\t=1+1\r\n`)
-    expect(notesCell('\r=1+1')).toBe(`"'\r=1+1"\r\n`)
-    // Real numbers stay numbers.
-    expect(notesCell('-5')).toBe('-5\r\n')
-    expect(notesCell('-12.50')).toBe('-12.50\r\n')
-    expect(notesCell('42')).toBe('42\r\n')
-    expect(notesCell('Split 3 ways')).toBe('Split 3 ways\r\n')
-  })
-
-  it('formats amounts by the currency minor unit', () => {
-    expect(decimal(1500, 'JPY')).toBe('1500')
-    expect(decimal(1234, 'USD')).toBe('12.34')
-    expect(decimal(-5, 'USD')).toBe('-0.05')
-    expect(decimal(1234, 'KWD')).toBe('1.234')
+  it('lists payments and anyone who has left', () => {
+    const GONE = 'dddddddd-0000-4000-8000-000000000004'
+    const csv = groupCsv(
+      trip,
+      [],
+      [
+        {
+          id: 's1',
+          group_id: 'g',
+          from_user: GONE,
+          to_user: ME,
+          amount_cents: 500,
+          currency: 'USD',
+          fx_rate: '1.000000000000',
+          note: null,
+          settled_at: '2026-11-05T12:00:00Z',
+          created_by: GONE,
+          created_at: '2026-11-05T12:00:00Z',
+          deleted_at: null,
+        },
+      ],
+      new Map<string, { display_name: string }>([...people, [GONE, { display_name: 'Dee Gone' }]]),
+    )
+    const rows = csv.split('\r\n')
+    expect(rows[0]).toContain('Dee Gone paid')
+    expect(rows[1]).toMatch(
+      /^2026-11-05,Trip,Payment,Dee Gone paid Ava Chen,,5.00,USD,1,USD,5.00,Dee Gone,/,
+    )
   })
 })
 
@@ -207,14 +220,17 @@ describe('several payers and refunds', () => {
   })
 
   it('lists every payer in the CSV and makes refunds negative', () => {
-    const rows = expensesToCsv(
+    const rows = groupCsv(
+      { name: 'Trip', currency: 'USD', members },
       [dinner, { ...refund, spent_at: '2026-11-05' }],
-      members,
-      'USD',
+      [],
+      new Map(members.map((m) => [m.id, m])),
     ).split('\r\n')
-    expect(rows[1]).toBe(
-      '2026-11-04,Tacos,Food,Ava Chen 60.00; Ben Okafor 30.00,90.00,USD,1,90.00,30.00,30.00,30.00,',
+    expect(rows[1]).toContain(
+      '"Ava Chen 60.00; Ben Okafor 30.00",60.00,30.00,30.00,30.00,30.00,0.00',
     )
-    expect(rows[2]).toBe('2026-11-05,Tacos,Food,Ava Chen,-40.00,USD,1,-40.00,-20.00,-20.00,,')
+    expect(rows[2]).toContain(
+      'Refund,Tacos,Food,-40.00,USD,1,USD,-40.00,Ava Chen,-40.00,-20.00,-20.00,,-20.00,20.00',
+    )
   })
 })

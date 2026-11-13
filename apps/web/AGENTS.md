@@ -37,6 +37,9 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   a template opens in the expense form (`ExpenseForm mode="recurring"`, route `/recurring/$recurringId`)
   through `templateAsExpense()`, so payers, adjustments and items work as for an expense. Skip, pause and
   stop live in `useTemplateActions`; the expense page shows `RepeatCard`.
+- Export and import live in `features/export-import` ([ADR 13](../../docs/adr/0013-export-backup-and-import.md)):
+  every spreadsheet goes through `groupCsv` / core `ledgerCsv` with `ledgerLabels()`, files are saved with
+  `saveFile`, and import files are read by `readFile` (a worker for large files) then planned in core.
 - UI copy: `t()` keys only. Visual rules: [docs/design.md](../../docs/design.md).
 - Language: `src/lib/language.ts` starts the app in the remembered (or browser) language before the
   first render; the root keys its outlet by language, so a switch redraws every screen. The profile's

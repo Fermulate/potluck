@@ -15,7 +15,6 @@ import {
   IconButton,
   Input,
   Skeleton,
-  toast,
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
@@ -26,9 +25,10 @@ import { useUserId } from '@/lib/auth'
 import { ActivityIconLink } from '@/features/activity/activity-link'
 import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
 import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
+import { useGroupExport } from '@/features/export-import/use-exports'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
-import { expensesToCsv, payersOf, settlementText } from './expense-math'
+import { payersOf, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
 import { categoryEmoji, categoryLabel, dayLabel, groupByDay, todayIn } from './format'
 import {
@@ -178,22 +178,7 @@ export function ExpensesTab({
         c === null || (filters.categories?.length === 1 && filters.categories[0] === c) ? [] : [c],
     })
 
-  const exportCsv = () => {
-    if (!group.data || !expenses.data) return
-    const csv = expensesToCsv(expenses.data, group.data.members, group.data.currency)
-    const slug = group.data.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-    const file = `${slug || 'expenses'}-${new Date().toISOString().slice(0, 10)}.csv`
-    const url = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = file
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success(t('expenses.exported', { file }))
-  }
+  const { exportGroup, busy: exporting } = useGroupExport(groupId)
 
   if (empty) {
     return (
@@ -237,8 +222,8 @@ export function ExpensesTab({
           label={t('expenses.exportCsv')}
           icon={<Download />}
           variant="secondary"
-          onClick={exportCsv}
-          disabled={loading || !expenses.data?.length}
+          onClick={exportGroup}
+          disabled={loading || exporting || !expenses.data?.length}
         />
         <ActivityIconLink groupId={groupId} />
         <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">

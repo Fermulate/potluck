@@ -50,6 +50,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { AboutSection } from '@/features/account/about-section'
 import { LanguageField } from '@/features/account/language-field'
 import { SecuritySection } from '@/features/account/security-section'
+import { YourDataSection } from '@/features/export-import/your-data-section'
 import { Help } from '@/features/help/help'
 import { HELP_PAGES } from '@/features/help/topics'
 import { useUnreadCount } from '@/features/notifications/use-notifications'
@@ -524,6 +525,7 @@ export function MePage() {
           <NotificationsSection />
           <CalendarSection />
           <BlockedPeopleSection />
+          <YourDataSection />
           <HelpSection />
           <AboutSection />
           <AccountSection />

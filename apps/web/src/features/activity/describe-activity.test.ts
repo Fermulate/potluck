@@ -58,6 +58,21 @@ describe('describeActivity', () => {
     expect(claimed.emoji).toBe('👋')
   })
 
+  it('sums up an import in one line', () => {
+    const imported = (data: Record<string, unknown>, actor = 'ben') =>
+      describeActivity(
+        item({ verb: 'expenses.imported', actor_id: actor, subject_id: null, data }),
+        ctx,
+      )
+    const both = imported({ expenses: 12, payments: 1, source: 'splitwise' })
+    expect(both.text).toBe('Ben imported 12 expenses and 1 payment')
+    expect(both.emoji).toBe('📥')
+    expect(both.link).toEqual({ to: '/groups/$groupId', params: { groupId: 'g1' } })
+    expect(imported({ expenses: 1, payments: 0 }, ME).text).toBe('You imported 1 expense')
+    expect(imported({ payments: 3 }).text).toBe('Ben imported 3 payments')
+    expect(imported({}).text).toBe('Ben imported 0 expenses')
+  })
+
   it('renders expense verbs with the amount and links to the expense', () => {
     const view = describeActivity(
       item({ data: { description: 'Tacos', amount_cents: 4500, currency: 'USD' } }),
