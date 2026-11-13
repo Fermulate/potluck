@@ -5,6 +5,9 @@
 export const LOCALES = {
   en: { name: 'English', intl: 'en-US' },
   es: { name: 'Español', intl: 'es-ES' },
+  fr: { name: 'Français', intl: 'fr-FR' },
+  de: { name: 'Deutsch', intl: 'de-DE' },
+  pt: { name: 'Português', intl: 'pt-BR' },
 } as const
 
 export type Locale = keyof typeof LOCALES

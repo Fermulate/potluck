@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import { Amount, cn } from '@potluck/ui'
 import type { CSSProperties } from 'react'
 import { DEFAULT_GROUP_EMOJI, groupTone } from '@/lib/group-colors'
@@ -86,7 +86,7 @@ export function ViewerBalance({
     <Amount
       cents={Math.abs(cents)}
       currency={currency}
-      locale={DEFAULT_LOCALE}
+      locale={intlLocale()}
       tone={cents > 0 ? 'owed' : 'owe'}
       className={stacked ? 'text-xl font-extrabold' : 'font-bold'}
     />

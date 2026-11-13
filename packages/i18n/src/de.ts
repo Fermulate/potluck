@@ -1,0 +1,46 @@
+import type { Dictionary } from './en'
+import type { Translation } from './locales'
+import { app, toast, common, nav, empty, errors } from './de/shell'
+import { auth, onboarding } from './de/auth'
+import { groups, members, roles, invites, friends } from './de/groups'
+import { expenses, categories, splitTypes, balances, settle, activity } from './de/money'
+import { events, availability, bestTime, rsvp, timeline, home } from './de/plans'
+import { notifications, settings, account, security } from './de/me'
+import { help } from './de/help'
+
+/**
+ * German (du). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
+ * by `setLocale('de')`.
+ */
+export const de = {
+  app,
+  toast,
+  common,
+  nav,
+  auth,
+  onboarding,
+  home,
+  groups,
+  members,
+  roles,
+  invites,
+  friends,
+  expenses,
+  categories,
+  splitTypes,
+  balances,
+  settle,
+  events,
+  availability,
+  bestTime,
+  rsvp,
+  timeline,
+  activity,
+  notifications,
+  settings,
+  account,
+  security,
+  help,
+  empty,
+  errors,
+} satisfies Translation<Dictionary>

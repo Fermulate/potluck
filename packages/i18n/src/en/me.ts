@@ -256,6 +256,8 @@ export const security = {
     pending: 'Waiting for you to confirm {email} from both inboxes.',
     changed: 'Your email is now {email}.',
     halfConfirmed: 'One down. Now open the link we sent to your other address.',
+    cancel: 'Cancel the change',
+    cancelled: 'Change cancelled. Your email stays {email}.',
   },
   password: {
     label: 'Password',
@@ -271,6 +273,10 @@ export const security = {
     submit: 'Save password',
     saved: 'Password saved. Your other devices are signed out.',
     forgot: 'Forgot it?',
+    reauthTitle: 'Check your email',
+    reauthBody:
+      'You signed in a while ago, so we sent a code to {email}. Enter it to save the new password.',
+    reauthCode: 'Code from the email',
   },
   sessions: {
     label: 'Devices',
@@ -292,7 +298,7 @@ export const security = {
     enabled: 'Two-step sign in is on.',
     disabled: 'Two-step sign in is off.',
     wrongCode: 'That code did not work. Check the app and try again.',
-    code: '6-digit code',
+    code: '6‑digit code',
     setup: {
       title: 'Set up two-step sign in',
       scan: 'Scan this with an authenticator app like 1Password, Google Authenticator or Authy.',
@@ -320,7 +326,7 @@ export const security = {
   },
   challenge: {
     title: 'One more step',
-    body: 'Open your authenticator app and enter the 6-digit code for Potluck.',
+    body: 'Open your authenticator app and enter the 6‑digit code for Potluck.',
     submit: 'Verify',
     useRecovery: 'Use a recovery code',
     useApp: 'Use my authenticator app',
@@ -349,6 +355,8 @@ export const security = {
     insufficient_aal: 'Finish two-step sign in first.',
     reauthentication_needed: 'For safety, sign out and back in before changing this.',
     invalid_recovery_code: 'That recovery code did not work.',
+    too_many_attempts: 'Too many tries. Wait 15 minutes, then try again.',
+    reauthentication_not_valid: 'That code did not work. Check the email and try again.',
   },
 } as const
 

@@ -6,7 +6,7 @@ import {
   type Friend,
 } from '@potluck/api'
 import { can } from '@potluck/core'
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import {
   Amount,
   Avatar,
@@ -49,7 +49,7 @@ function FriendBalance({ friend }: { friend: Friend }) {
       <Amount
         cents={Math.abs(friend.net_cents)}
         currency={friend.currency}
-        locale={DEFAULT_LOCALE}
+        locale={intlLocale()}
         tone={friend.net_cents > 0 ? 'owed' : 'owe'}
         className="text-[0.9375rem] font-bold"
         srLabel=""

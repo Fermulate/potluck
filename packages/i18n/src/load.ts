@@ -5,6 +5,9 @@ import { activateLocale, currentLocale } from './translate'
 /** English ships with every screen; other languages download the first time they are used. */
 const loaders: Record<Exclude<Locale, 'en'>, () => Promise<Translation<Dictionary>>> = {
   es: () => import('./es').then((m) => m.es),
+  fr: () => import('./fr').then((m) => m.fr),
+  de: () => import('./de').then((m) => m.de),
+  pt: () => import('./pt').then((m) => m.pt),
 }
 
 let latest = 0

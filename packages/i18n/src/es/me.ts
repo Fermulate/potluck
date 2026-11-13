@@ -164,6 +164,8 @@ export const security = {
     pending: 'Esperando a que confirmes {email} desde las dos bandejas.',
     changed: 'Tu correo ahora es {email}.',
     halfConfirmed: 'Uno listo. Ahora abre el enlace que enviamos a tu otra dirección.',
+    cancel: 'Cancelar el cambio',
+    cancelled: 'Cambio cancelado. Tu correo sigue siendo {email}.',
   },
   password: {
     label: 'Contraseña',
@@ -179,6 +181,10 @@ export const security = {
     submit: 'Guardar contraseña',
     saved: 'Contraseña guardada. Se cerró la sesión en tus otros dispositivos.',
     forgot: '¿La olvidaste?',
+    reauthTitle: 'Revisa tu correo',
+    reauthBody:
+      'Iniciaste sesión hace tiempo, así que enviamos un código a {email}. Introdúcelo para guardar la nueva contraseña.',
+    reauthCode: 'Código del correo',
   },
   sessions: {
     label: 'Dispositivos',
@@ -200,7 +206,7 @@ export const security = {
     enabled: 'El inicio de sesión en dos pasos está activado.',
     disabled: 'El inicio de sesión en dos pasos está desactivado.',
     wrongCode: 'Ese código no funcionó. Revisa la app e inténtalo de nuevo.',
-    code: 'Código de 6 dígitos',
+    code: 'Código de 6 dígitos',
     setup: {
       title: 'Configura el inicio de sesión en dos pasos',
       scan: 'Escanéalo con una app de autenticación como 1Password, Google Authenticator o Authy.',
@@ -228,7 +234,7 @@ export const security = {
   },
   challenge: {
     title: 'Un paso más',
-    body: 'Abre tu app de autenticación e introduce el código de 6 dígitos de Potluck.',
+    body: 'Abre tu app de autenticación e introduce el código de 6 dígitos de Potluck.',
     submit: 'Verificar',
     useRecovery: 'Usar un código de recuperación',
     useApp: 'Usar mi app de autenticación',
@@ -259,5 +265,7 @@ export const security = {
     reauthentication_needed:
       'Por seguridad, cierra sesión y vuelve a entrar antes de cambiar esto.',
     invalid_recovery_code: 'Ese código de recuperación no funcionó.',
+    too_many_attempts: 'Demasiados intentos. Espera 15 minutos y vuelve a probar.',
+    reauthentication_not_valid: 'Ese código no funcionó. Revisa el correo e inténtalo de nuevo.',
   },
 } satisfies Translation<typeof en.security>

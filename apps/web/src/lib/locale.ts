@@ -1,3 +1,5 @@
+import { intlLocale } from '@potluck/i18n'
+
 /** Currencies offered first in pickers. Anything else from Intl follows. */
 const COMMON = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'MXN', 'CHF', 'SEK', 'NZD', 'SGD']
 
@@ -16,9 +18,10 @@ export function currencyCodes(): string[] {
   return cachedCurrencies
 }
 
+/** "EUR (Euro)", with the name in the app's language. */
 export function currencyLabel(code: string): string {
   try {
-    const name = new Intl.DisplayNames(['en'], { type: 'currency' }).of(code)
+    const name = new Intl.DisplayNames([intlLocale()], { type: 'currency' }).of(code)
     return name && name !== code ? `${code} (${name})` : code
   } catch {
     return code

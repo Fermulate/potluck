@@ -1,8 +1,11 @@
 import { minorUnits } from '@potluck/core'
+import { intlLocale } from './translate'
 
+/** English as the app writes it; screens that must not follow the language (the landing demo). */
 export const DEFAULT_LOCALE = 'en-US'
 
 export interface MoneyFormatOptions {
+  /** Intl tag; defaults to the active language (`setLocale`), so 12,50 € in German. */
   locale?: string
   /** `symbol` (default) keeps CA$ and A$ distinct; `narrowSymbol` shows plain $. */
   currencyDisplay?: 'symbol' | 'narrowSymbol' | 'code' | 'name'
@@ -12,7 +15,7 @@ export interface MoneyFormatOptions {
 const cache = new Map<string, Intl.NumberFormat>()
 
 function formatter(currency: string, options: MoneyFormatOptions): Intl.NumberFormat {
-  const locale = options.locale ?? DEFAULT_LOCALE
+  const locale = options.locale ?? intlLocale()
   const currencyDisplay = options.currencyDisplay ?? 'symbol'
   const signDisplay = options.signDisplay ?? 'auto'
   const key = `${locale}|${currency}|${currencyDisplay}|${signDisplay}`

@@ -58,7 +58,10 @@ async function sendPush(n: NotificationRow) {
     .eq('platform', 'web')
   if (error) return json({ error: error.message }, 500)
 
-  const m = message(n)
+  if (!tokens?.length) return json({ sent: 0 })
+  // In the recipient's language; English if the profile cannot be read.
+  const { data: profile } = await db.from('profiles').select('locale').eq('id', n.user_id).single()
+  const m = message(n, profile?.locale)
   const payload = JSON.stringify({
     ...m,
     url: new URL(m.url, appUrl).toString(),

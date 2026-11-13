@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import { Amount } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
@@ -27,7 +27,7 @@ function GroupLinks({ summary }: { summary: BalanceSummary }) {
             <Amount
               cents={g.netCents}
               currency={summary.currency}
-              locale={DEFAULT_LOCALE}
+              locale={intlLocale()}
               surface="hero"
               sign="never"
               srLabel={
@@ -83,7 +83,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
           <Amount
             cents={Math.abs(net)}
             currency={currency}
-            locale={DEFAULT_LOCALE}
+            locale={intlLocale()}
             surface="hero"
             tone={net > 0 ? 'owed' : 'owe'}
             split
@@ -101,7 +101,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
             <Amount
               cents={-summary.owe}
               currency={currency}
-              locale={DEFAULT_LOCALE}
+              locale={intlLocale()}
               surface="hero"
               tone="owe"
             />
@@ -113,7 +113,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
             <Amount
               cents={summary.owed}
               currency={currency}
-              locale={DEFAULT_LOCALE}
+              locale={intlLocale()}
               surface="hero"
               tone="owed"
             />
