@@ -53,7 +53,7 @@ A push to `main` runs `ci.yml` first. When that run finishes, `deploy.yml` start
    supabase link --project-ref $SUPABASE_PROJECT_REF
    supabase db push --remote --yes      # new migrations only
    supabase config push --yes           # auth, storage and pooler settings
-   supabase functions deploy            # every function in supabase/functions
+   supabase functions deploy --use-api  # every function in supabase/functions
    ```
 2. **web**, only if `migrate` succeeded or was skipped: `pnpm turbo run build --filter=@potluck/web`, then `wrangler deploy` from `apps/web`. `wrangler.jsonc` lists `potluck.fermulate.com` as a custom domain route, so a deploy keeps it attached, and sets `workers_dev` and `preview_urls` so the workers.dev URL and PR previews stay up.
 3. **smoke test**: `GET $VITE_APP_URL/groups` up to six times, 10 seconds apart. Anything other than a 200 fails the run. `/groups` is a client route, so a 200 proves the SPA fallback works too.
