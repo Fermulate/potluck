@@ -196,15 +196,19 @@ describe('fetchGuestLinkPreview', () => {
       endsAt: '2026-06-01T11:00:00+00:00',
       myName: 'Ana',
     })
-    const anon = fakeSupabase().respond('rpc:guest_link_preview', {
-      data: [{ ...row, emoji: '🧺', group_emoji: '🌳', host_name: null, my_name: null }],
+    const hostless = fakeSupabase().respond('rpc:guest_link_preview', {
+      data: [{ ...row, emoji: '🧺', group_emoji: '🌳', host_name: null }],
     })
-    expect((await fetchGuestLinkPreview(anon.client, 'abc', null)).scheduled).toMatchObject({
+    expect((await fetchGuestLinkPreview(hostless.client, 'abc', 'tok')).scheduled).toMatchObject({
       emoji: '🧺',
       groupEmoji: '🌳',
       hostName: null,
-      myName: null,
+      myName: 'Ana',
     })
+    const unanswered = fakeSupabase().respond('rpc:guest_link_preview', {
+      data: [{ ...row, my_name: null }],
+    })
+    expect((await fetchGuestLinkPreview(unanswered.client, 'abc', null)).scheduled).toBeNull()
   })
 
   it('reads a removed answer as its own status', async () => {

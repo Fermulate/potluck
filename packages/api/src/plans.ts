@@ -575,7 +575,7 @@ export interface GuestLinkPreview {
   mine: { name: string; slots: GuestSlot[] } | null
   /** Counts per slot from everyone; null unless open. */
   heat: GuestHeatCell[] | null
-  /** The time the group picked, when the status is `scheduled`. */
+  /** The time the group picked, when the status is `scheduled` (only for a guest who answered). */
   scheduled: {
     title: string
     emoji: string | null
@@ -584,8 +584,8 @@ export interface GuestLinkPreview {
     timezone: string
     startsAt: string
     endsAt: string
-    /** The visitor's name when they answered through this link. */
-    myName: string | null
+    /** The visitor's name as they answered through this link. */
+    myName: string
   } | null
 }
 
@@ -741,7 +741,7 @@ export async function fetchGuestLinkPreview(
     mine: plan && row.my_name ? { name: row.my_name, slots: guestSlots(row.my_slots) } : null,
     heat: heatCells(row.heat),
     scheduled:
-      status === 'scheduled' && row.title && row.starts_at && row.ends_at
+      status === 'scheduled' && row.title && row.starts_at && row.ends_at && row.my_name
         ? {
             title: row.title,
             emoji: row.emoji ?? null,
@@ -750,7 +750,7 @@ export async function fetchGuestLinkPreview(
             timezone: row.timezone,
             startsAt: row.starts_at,
             endsAt: row.ends_at,
-            myName: row.my_name ?? null,
+            myName: row.my_name,
           }
         : null,
   }

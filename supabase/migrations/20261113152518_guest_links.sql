@@ -102,6 +102,20 @@ create policy "event_guest_availability: members read" on public.event_guest_ava
   for select to authenticated
   using (event_id = any (array(select private.my_event_ids())));
 
+-- ADR 13: Realtime skips private.check_request(), so a session that still owes its two-step code
+-- reads nothing here.
+create policy "event_guest_links: two-step sign in done" on public.event_guest_links
+  as restrictive for select to authenticated
+  using ((select private.mfa_satisfied()));
+
+create policy "event_guests: two-step sign in done" on public.event_guests
+  as restrictive for select to authenticated
+  using ((select private.mfa_satisfied()));
+
+create policy "event_guest_availability: two-step sign in done" on public.event_guest_availability
+  as restrictive for select to authenticated
+  using ((select private.mfa_satisfied()));
+
 alter publication supabase_realtime add table public.event_guest_availability;
 
 -- Helpers -----------------------------------------------------------------------------------------
@@ -312,11 +326,18 @@ declare
 begin
   perform private.require_user();
   select * into guest from public.event_guests g where g.id = remove_guest_answer.guest_id;
-  if guest.id is null or guest.removed_at is not null then
+  if guest.id is null then
     raise exception using message = 'guest_not_found', detail = 'That guest answer is already gone', errcode = 'PT404';
   end if;
+  -- The link row lock serializes with set_guest_availability, so no save lands after the removal.
+  -- Link before event, the order set_guest_availability takes them in.
+  perform 1 from public.event_guest_links l where l.id = guest.link_id for update;
   -- Organizer or group admin, group not archived.
   perform private.manageable_event(guest.event_id);
+  select * into guest from public.event_guests g where g.id = guest.id;
+  if guest.removed_at is not null then
+    raise exception using message = 'guest_not_found', detail = 'That guest answer is already gone', errcode = 'PT404';
+  end if;
   -- Keep the row so the guest's token cannot answer again; the slots go and the seat frees up.
   delete from public.event_guest_availability ga where ga.guest_id = guest.id;
   update public.event_guests g set removed_at = now(), updated_at = now() where g.id = guest.id;
@@ -331,8 +352,8 @@ grant execute on function public.remove_guest_answer(uuid) to authenticated, ser
 -- What a guest link shows. status is one of:
 --   open       answers welcome: the plan, the grid, aggregated heat, the visitor's own answer
 --   full       every seat taken (a guest who already answered still sees open): the plan only
---   scheduled  the plan has a time: title, emojis, host, starts_at and ends_at. Shown while the
---              link has not expired, or to a guest who answered through it
+--   scheduled  the plan has a time: title, emojis, host, starts_at and ends_at. Only for a guest
+--              who answered through this link
 --   removed    the organizer removed this visitor's answer
 --   revoked, expired, archived, closed (cancelled, or no longer polling): nothing else
 -- heat is [{slot_start, yes, maybe}] from members and guests, never names or ids.
@@ -393,7 +414,7 @@ begin
     when link.revoked_at is not null then 'revoked'
     when grp.archived_at is not null then 'archived'
     when me.removed_at is not null then 'removed'
-    when ev.status in ('scheduled', 'done') and (link.expires_at > now() or answered) then 'scheduled'
+    when ev.status in ('scheduled', 'done') and answered then 'scheduled'
     when link.expires_at <= now() then 'expired'
     when ev.status <> 'polling' then 'closed'
     when not answered and guests >= link.max_guests then 'full'
@@ -404,7 +425,7 @@ begin
     return query select st, ev.title, ev.emoji, grp.emoji, host, ev.timezone,
       null::date, null::date, null::int, null::int, null::int, null::int,
       null::timestamptz, null::int, null::int, null::int,
-      case when answered then me.display_name end, null::jsonb, null::jsonb,
+      me.display_name, null::jsonb, null::jsonb,
       ev.starts_at, ev.ends_at;
     return;
   end if;
@@ -426,6 +447,7 @@ begin
     union all
     select ga.guest_id, ga.slot_start, ga.level
     from public.event_guest_availability ga
+    join public.event_guests g on g.id = ga.guest_id and g.removed_at is null
     where ga.event_id = ev.id
   )
   select

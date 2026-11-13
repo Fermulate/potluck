@@ -274,11 +274,9 @@ function ScheduledPlan({ plan, unsaved }: { plan: Scheduled; unsaved: boolean })
             {t('guests.closed.unsaved')}
           </p>
         )}
-        {plan.myName && (
-          <p className="max-w-xs text-pretty">
-            {t('guests.scheduled.thanks', { name: plan.myName })}
-          </p>
-        )}
+        <p className="max-w-xs text-pretty">
+          {t('guests.scheduled.thanks', { name: plan.myName })}
+        </p>
         <NextSteps />
       </div>
     </Frame>

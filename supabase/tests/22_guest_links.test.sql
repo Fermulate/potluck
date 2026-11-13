@@ -2,7 +2,7 @@
 -- revocation, the guest cap, rate limits, who can read what, removing a guest's answer, and
 -- best_slots counting guests (the same case as the guest test in packages/core rank-slots).
 begin;
-select plan(88);
+select plan(93);
 
 select tests.create_user('owner');
 select tests.create_user('m1');
@@ -284,6 +284,18 @@ select tests.login('stranger');
 select is((select count(*)::int from public.event_guests), 0, 'outsiders see no guests');
 select is((select count(*)::int from public.event_guest_availability), 0, 'outsiders see no guest slots');
 
+-- Two-step sign in (ADR 13): with a verified factor, a password-only (aal1) session reads nothing,
+-- which is what Realtime checks before it sends guest slot changes.
+reset role;
+insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at, secret)
+values (gen_random_uuid(), tests.uid('m1'), 'phone', 'totp', 'verified', now(), now(), 'secret');
+select tests.login('m1');
+select is((select count(*)::int from public.event_guest_links), 0, 'aal1 sees no guest links');
+select is((select count(*)::int from public.event_guests), 0, 'aal1 sees no guests');
+select is((select count(*)::int from public.event_guest_availability), 0, 'aal1 sees no guest slots');
+reset role;
+delete from auth.mfa_factors where user_id = tests.uid('m1');
+
 -- best_slots with guests ------------------------------------------------------------------------
 
 select tests.login('m1');
@@ -373,6 +385,19 @@ select ok(
   ),
   'best_slots forgets a removed guest'
 );
+
+-- Even a slot left behind by a removed guest stays out of what guests see.
+reset role;
+insert into public.event_guest_availability (guest_id, event_id, slot_start)
+select ben.id, tests.id('ev'), ((current_date + 1) + '11:00'::time) at time zone 'UTC' from ben;
+select tests.login_anon();
+select results_eq(
+  $$ select respondents, jsonb_array_length(heat) from public.guest_link_preview(pg_temp.code(), pg_temp.tok('ana')) $$,
+  $$ values (2, 2) $$,
+  'the preview counts no slots of a removed guest'
+);
+reset role;
+delete from public.event_guest_availability ga using ben where ga.guest_id = ben.id;
 
 -- Ben's token is blocked, but his seat freed up for someone new.
 select tests.login_anon();
@@ -538,13 +563,22 @@ update public.groups set archived_at = null where id = tests.id('g');
 
 -- Scheduled plans -------------------------------------------------------------------------------
 
+select tests.login_anon();
+insert into tok
+select 'gil', guest_token from public.set_guest_availability(
+  (select code from busy), 'Gil', null, jsonb_build_array(pg_temp.slot(1, '10:00')));
 select tests.login('m1');
 select schedule_event(tests.id('ev'), ((current_date + 1) + '10:00'::time) at time zone 'UTC');
 select tests.login_anon();
 select results_eq(
-  $$ select status, title, starts_at, window_start from public.guest_link_preview((select code from busy)) $$,
-  $$ values ('scheduled', 'Guest hike', ((current_date + 1) + '10:00'::time) at time zone 'UTC', null::date) $$,
-  'once the plan is scheduled its links close and show the time picked'
+  $$ select status, title, my_name, starts_at, window_start from public.guest_link_preview((select code from busy), pg_temp.tok('gil')) $$,
+  $$ values ('scheduled', 'Guest hike', 'Gil', ((current_date + 1) + '10:00'::time) at time zone 'UTC', null::date) $$,
+  'once the plan is scheduled a guest who answered sees the time picked'
+);
+select results_eq(
+  $$ select status, title, starts_at from public.guest_link_preview((select code from busy)) $$,
+  $$ values ('closed', null::text, null::timestamptz) $$,
+  'anyone else holding the link sees it closed, without the time'
 );
 select is(
   (select status from public.guest_link_preview((select code from l3))),
