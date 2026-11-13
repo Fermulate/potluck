@@ -50,6 +50,28 @@ function balanced(text, start) {
   throw new Error('unbalanced parenthesis')
 }
 
+/** Splits a list at commas outside parentheses and quotes. */
+function topLevel(text) {
+  const parts = []
+  let depth = 0
+  let quote = null
+  let start = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (quote) {
+      if (c === quote) quote = null
+    } else if (c === "'" || c === '"') quote = c
+    else if (c === '(') depth++
+    else if (c === ')') depth--
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts
+}
+
 /** Every `raise exception using message = '<code>' ... errcode = '<state>'` in a body. */
 function raised(body) {
   return [...body.matchAll(/raise\s+exception\s+using\s+([\s\S]*?);/gi)]
@@ -91,7 +113,9 @@ function functions() {
     const attrs = afterArgs.slice(0, afterArgs.indexOf(tag))
     const line = schema.slice(0, m.index).split('\n').length
     // ACL lines name the argument types only, so match them by name and argument list.
-    const aclArgs = args.replace(/\s+DEFAULT [^,]+(?=,|$)/g, '')
+    const aclArgs = topLevel(args)
+      .map((arg) => arg.replace(/\s+DEFAULT [\s\S]*$/, ''))
+      .join(',')
     const acl = (verb) =>
       [
         ...schema.matchAll(

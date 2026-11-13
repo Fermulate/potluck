@@ -1217,7 +1217,7 @@
       "args": "month date DEFAULT ((date_trunc('month'::text, now()) - '1 mon'::interval))::date",
       "returns": "integer",
       "securityDefiner": true,
-      "execute": ["PUBLIC"],
+      "execute": [],
       "raises": [],
       "snapshotLine": 2439,
       "definedIn": "supabase/migrations/20261113062656_notification_prefs_and_email.sql"
