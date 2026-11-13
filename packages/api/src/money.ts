@@ -76,6 +76,8 @@ export interface MoneyPerson {
   display_name: string
   avatar_path: string | null
   deleted_at: string | null
+  /** Added by name, not on Potluck yet (ADR 19). */
+  is_placeholder?: boolean
 }
 
 export interface MoneyMember extends MoneyPerson {
@@ -91,6 +93,7 @@ export interface MoneyGroup {
   simplify_debts: boolean
   is_direct: boolean
   archived_at: string | null
+  members_can_invite: boolean
   default_split: DefaultSplit | null
   members: MoneyMember[]
 }
@@ -263,7 +266,7 @@ function unwrap<T>(result: { data: T | null; error: unknown }): T {
   return result.data as T
 }
 
-const PERSON = 'id, display_name, avatar_path, deleted_at'
+const PERSON = 'id, display_name, avatar_path, deleted_at, is_placeholder'
 
 // Reads ---------------------------------------------------------------------------------------
 
@@ -277,7 +280,7 @@ type GroupSelectRow = Omit<MoneyGroup, 'members'> & {
 }
 
 const GROUP_SELECT = `id, name, emoji, color, currency, simplify_debts, is_direct, archived_at,
-  default_split, group_members (role, profiles (${PERSON}))`
+  members_can_invite, default_split, group_members (role, profiles (${PERSON}))`
 
 function toGroup(row: GroupSelectRow): MoneyGroup {
   const { group_members, ...group } = row

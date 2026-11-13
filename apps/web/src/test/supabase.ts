@@ -64,6 +64,11 @@ export function rowsOf(table: string): Row[] {
 
 const WRITES = ['insert', 'upsert', 'update', 'delete']
 
+/** Column defaults a screen reads back after inserting (Postgres fills them in). */
+const INSERT_DEFAULTS: Record<string, () => Row> = {
+  comments: () => ({ created_at: new Date().toISOString(), deleted_at: null }),
+}
+
 /**
  * The api fake only reads seeded tables. Writes to a seeded table (with no canned answer) are
  * applied here instead: filters pick the rows, and `.select()` gets the written rows back.
@@ -74,7 +79,9 @@ function applyWrite(table: string, call: QueryCall): FakeResult {
   const matches = (row: Row) =>
     call.ops.every(({ method, args }) => {
       const [column, value] = args as [string, unknown]
-      if (method === 'eq' || method === 'is') return row[column] === value
+      if (method === 'eq') return row[column] === value
+      // A column a fixture leaves out reads as null, as an unset column does in Postgres.
+      if (method === 'is') return (row[column] ?? null) === value
       if (method === 'neq') return row[column] !== value
       if (method === 'in') return (value as unknown[]).includes(row[column])
       return true
@@ -88,7 +95,7 @@ function applyWrite(table: string, call: QueryCall): FakeResult {
       const keys = conflict ? conflict.split(',') : ['id']
       const at = rows.findIndex((r) => keys.every((k) => r[k] !== undefined && r[k] === row[k]))
       if (write.method === 'upsert' && at >= 0) rows[at] = { ...rows[at], ...row }
-      else rows.push(row)
+      else rows.push({ ...INSERT_DEFAULTS[table]?.(), ...row })
     }
   } else if (write.method === 'update') {
     const patch = write.args[0] as Row

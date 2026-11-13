@@ -62,6 +62,7 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   warning on them is expected.
 - After the migration: `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then update `01_schema.test.sql`
   and `docs/architecture.md`.
+- Seats: [notes](../docs/architecture.md#seats).
 
 ## Notifications
 

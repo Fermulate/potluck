@@ -31,6 +31,10 @@ export interface PushCopy {
   expenseRestoredBody: string
   memberAdded: string
   memberAddedBody: string
+  friendAdded: string
+  friendAddedBody: string
+  inviteChanged: string
+  inviteChangedBody: string
   mfaRemoved: string
   mfaRemovedBody: string
   paymentUpdated: string
@@ -81,6 +85,10 @@ const en: PushCopy = {
   expenseRestoredBody: 'An expense is back',
   memberAdded: 'You were added to a group',
   memberAddedBody: 'Pull up a chair.',
+  friendAdded: 'New friend',
+  friendAddedBody: 'Someone accepted your friend link.',
+  inviteChanged: 'An invite changed',
+  inviteChangedBody: 'Someone you added will get their invite at a new address.',
   mfaRemoved: 'Two-step sign in is off',
   mfaRemovedBody: 'A recovery code was used to sign in. Not you? Change your password.',
   paymentUpdated: 'Payment changed',
@@ -131,6 +139,10 @@ const es: PushCopy = {
   expenseRestoredBody: 'Un gasto ha vuelto',
   memberAdded: 'Te añadieron a un grupo',
   memberAddedBody: 'Acerca una silla.',
+  friendAdded: 'Nuevo amigo',
+  friendAddedBody: 'Alguien aceptó tu enlace de amistad.',
+  inviteChanged: 'Cambió una invitación',
+  inviteChangedBody: 'Alguien que añadiste recibirá su invitación en otra dirección.',
   mfaRemoved: 'El inicio de sesión en dos pasos está desactivado',
   mfaRemovedBody:
     'Alguien entró con un código de recuperación. ¿No fuiste tú? Cambia tu contraseña.',
@@ -182,6 +194,10 @@ const fr: PushCopy = {
   expenseRestoredBody: 'Une dépense est de retour',
   memberAdded: "On t'a ajouté à un groupe",
   memberAddedBody: 'Installe-toi.',
+  friendAdded: 'Nouvel ami',
+  friendAddedBody: "Quelqu'un a accepté ton lien d'ami.",
+  inviteChanged: 'Une invitation a changé',
+  inviteChangedBody: "Quelqu'un que tu as ajouté recevra son invitation à une autre adresse.",
   mfaRemoved: 'La connexion en deux étapes est désactivée',
   mfaRemovedBody:
     "Un code de secours a servi à se connecter. Ce n'était pas toi ? Change ton mot de passe.",
@@ -233,6 +249,10 @@ const de: PushCopy = {
   expenseRestoredBody: 'Eine Ausgabe ist zurück',
   memberAdded: 'Du wurdest zu einer Gruppe hinzugefügt',
   memberAddedBody: 'Setz dich dazu.',
+  friendAdded: 'Neue Freundschaft',
+  friendAddedBody: 'Jemand hat deinen Freundschaftslink angenommen.',
+  inviteChanged: 'Eine Einladung wurde geändert',
+  inviteChangedBody: 'Jemand, den du hinzugefügt hast, bekommt die Einladung an eine neue Adresse.',
   mfaRemoved: 'Die Anmeldung in zwei Schritten ist aus',
   mfaRemovedBody:
     'Jemand hat sich mit einem Wiederherstellungscode angemeldet. Warst du das nicht? Ändere dein Passwort.',
@@ -284,6 +304,10 @@ const pt: PushCopy = {
   expenseRestoredBody: 'Uma despesa voltou',
   memberAdded: 'Você foi adicionado a um grupo',
   memberAddedBody: 'Puxe uma cadeira.',
+  friendAdded: 'Novo amigo',
+  friendAddedBody: 'Alguém aceitou seu link de amizade.',
+  inviteChanged: 'Um convite mudou',
+  inviteChangedBody: 'Alguém que você adicionou vai receber o convite em outro endereço.',
   mfaRemoved: 'O login em duas etapas está desligado',
   mfaRemovedBody: 'Alguém entrou com um código de recuperação. Não foi você? Troque sua senha.',
   paymentUpdated: 'Pagamento alterado',

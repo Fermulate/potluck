@@ -37,6 +37,7 @@ export const group: MoneyGroup = {
   simplify_debts: true,
   is_direct: false,
   archived_at: null,
+  members_can_invite: true,
   default_split: null,
   members,
 }

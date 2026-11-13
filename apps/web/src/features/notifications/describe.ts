@@ -15,6 +15,8 @@ export type NotificationTarget =
   | { to: '/groups/$groupId/members'; params: { groupId: string } }
   | { to: '/new/settle'; search: { groupId: string; to?: string }; params?: undefined }
   | { to: '/recurring/$recurringId'; params: { recurringId: string } }
+  | { to: '/friends/$friendId'; params: { friendId: string } }
+  | { to: '/friends'; params?: undefined }
   | { to: '/notifications'; params?: undefined }
   | { to: '/home'; params?: undefined }
   | { to: '/me'; params?: undefined }
@@ -249,6 +251,25 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         body: t('notifications.types.expense.restored.body', { actor, description, group }),
         kind: 'money',
         target: toExpense(),
+      }
+    case 'friend.added': {
+      const friendId = typeof d.user_id === 'string' ? d.user_id : null
+      return {
+        title: t('notifications.types.friend.added.title'),
+        body: t('notifications.types.friend.added.body', { actor }),
+        kind: 'people',
+        target: friendId ? { to: '/friends/$friendId', params: { friendId } } : { to: '/friends' },
+      }
+    }
+    case 'member.invite_changed':
+      return {
+        title: t('notifications.types.member.invite_changed.title', { group }),
+        body: t('notifications.types.member.invite_changed.body', {
+          actor,
+          name: firstNameOf(ctx.people.get(str(d.user_id) ?? '')) ?? t('notifications.someone'),
+        }),
+        kind: 'people',
+        target: toGroup('members'),
       }
     case 'member.added':
       return {

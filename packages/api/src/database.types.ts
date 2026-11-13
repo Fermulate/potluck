@@ -951,6 +951,51 @@ export type Database = {
           },
         ]
       }
+      friend_invites: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          email: string | null
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          uses: number
+        }
+        ComputedFields: never
+        Insert: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          uses?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          email?: string | null
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          uses?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'friend_invites_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       friendships: {
         Row: {
           created_at: string
@@ -1017,6 +1062,7 @@ export type Database = {
           group_id: string
           id: string
           max_uses: number | null
+          placeholder_id: string | null
           revoked_at: string | null
           role: Database['public']['Enums']['group_role']
           uses: number
@@ -1031,6 +1077,7 @@ export type Database = {
           group_id: string
           id?: string
           max_uses?: number | null
+          placeholder_id?: string | null
           revoked_at?: string | null
           role?: Database['public']['Enums']['group_role']
           uses?: number
@@ -1044,6 +1091,7 @@ export type Database = {
           group_id?: string
           id?: string
           max_uses?: number | null
+          placeholder_id?: string | null
           revoked_at?: string | null
           role?: Database['public']['Enums']['group_role']
           uses?: number
@@ -1061,6 +1109,13 @@ export type Database = {
             columns: ['group_id']
             isOneToOne: false
             referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'group_invites_placeholder_id_fkey'
+            columns: ['placeholder_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
         ]
@@ -1267,6 +1322,78 @@ export type Database = {
           },
         ]
       }
+      placeholders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          email: string | null
+          email_hint: string | null
+          group_id: string
+          held_by: string | null
+          held_reminder: boolean
+          invited_at: string | null
+          invites_sent: number
+          profile_id: string
+          reminded_at: string | null
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          email_hint?: never
+          group_id: string
+          held_by?: string | null
+          held_reminder?: boolean
+          invited_at?: string | null
+          invites_sent?: number
+          profile_id: string
+          reminded_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          email_hint?: never
+          group_id?: string
+          held_by?: string | null
+          held_reminder?: boolean
+          invited_at?: string | null
+          invites_sent?: number
+          profile_id?: string
+          reminded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'placeholders_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'placeholders_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'placeholders_held_by_fkey'
+            columns: ['held_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'placeholders_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: true
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_path: string | null
@@ -1275,6 +1402,7 @@ export type Database = {
           deleted_at: string | null
           display_name: string
           id: string
+          is_placeholder: boolean
           locale: string
           timezone: string
           updated_at: string
@@ -1287,6 +1415,7 @@ export type Database = {
           deleted_at?: string | null
           display_name: string
           id: string
+          is_placeholder?: boolean
           locale?: string
           timezone?: string
           updated_at?: string
@@ -1298,6 +1427,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string
           id?: string
+          is_placeholder?: boolean
           locale?: string
           timezone?: string
           updated_at?: string
@@ -1591,7 +1721,13 @@ export type Database = {
       }
     }
     Functions: {
+      accept_friend_invite: { Args: { code: string }; Returns: string }
       accept_invite: { Args: { code: string }; Returns: string }
+      add_friend: { Args: { user_id: string }; Returns: undefined }
+      add_placeholder_member: {
+        Args: { display_name: string; email?: string; group_id: string }
+        Returns: string
+      }
       best_slots: {
         Args: { event_id: string; limit?: number }
         Returns: {
@@ -1603,6 +1739,7 @@ export type Database = {
           yes_count: number
         }[]
       }
+      block_user: { Args: { user_id: string }; Returns: undefined }
       calendar_feed_token: { Args: { rotate?: boolean }; Returns: string }
       cancel_event: {
         Args: { event_id: string }
@@ -1704,6 +1841,26 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_friend_invite: {
+        Args: { email: string }
+        Returns: {
+          code: string
+          created_at: string
+          created_by: string
+          email: string | null
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          uses: number
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'friend_invites'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_group: {
         Args: { color?: string; currency?: string; emoji?: string; name: string }
         Returns: {
@@ -1766,6 +1923,7 @@ export type Database = {
           group_id: string
           id: string
           max_uses: number | null
+          placeholder_id: string | null
           revoked_at: string | null
           role: Database['public']['Enums']['group_role']
           uses: number
@@ -1885,6 +2043,16 @@ export type Database = {
           net_cents: number
         }[]
       }
+      friend_invite_preview: {
+        Args: { code: string }
+        Returns: {
+          avatar_path: string
+          is_friend: boolean
+          is_self: boolean
+          name: string
+          status: string
+        }[]
+      }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
       guest_link_preview: {
         Args: { code: string; token?: string }
@@ -1926,6 +2094,23 @@ export type Database = {
           status: string
         }[]
       }
+      invite_preview_v2: {
+        Args: { code: string }
+        Returns: {
+          color: string
+          cover_path: string
+          email_hint: string
+          email_matches: boolean
+          emoji: string
+          first_names: string[]
+          group_id: string
+          is_member: boolean
+          member_count: number
+          name: string
+          placeholder_name: string
+          status: string
+        }[]
+      }
       leave_group: { Args: { group_id: string }; Returns: undefined }
       make_expense_recurring: {
         Args: { expense_id: string; recurrence: Database['public']['Enums']['recurrence'] }
@@ -1962,6 +2147,16 @@ export type Database = {
       }
       mfa_recovery_code_matches: { Args: { code: string; target: string }; Returns: boolean }
       mfa_recovery_codes_left: { Args: Record<PropertyKey, never>; Returns: number }
+      my_blocks: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          avatar_path: string
+          blocked_at: string
+          display_name: string
+          user_id: string
+        }[]
+      }
+      my_friend_link: { Args: { rotate?: boolean }; Returns: string }
       my_notification_prefs: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -2018,8 +2213,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      remind_placeholder: { Args: { user_id: string }; Returns: undefined }
+      remove_friend: { Args: { friend_id: string }; Returns: undefined }
       remove_guest_answer: { Args: { guest_id: string }; Returns: undefined }
       remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
+      remove_placeholder: { Args: { user_id: string }; Returns: undefined }
       request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
       restore_expense: {
         Args: { id: string }
@@ -2414,6 +2612,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_placeholder: {
+        Args: { display_name?: string; email?: string; user_id: string }
+        Returns: boolean
       }
       update_recurring_expense: {
         Args: { id: string; payload: Json }

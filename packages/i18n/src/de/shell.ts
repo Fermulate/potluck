@@ -217,6 +217,22 @@ export const errors = {
       'Dieser Abmeldelink funktioniert nicht. Ändere deine E-Mail-Einstellungen stattdessen auf der Ich-Seite.',
     mfa_required: 'Schließ zuerst die Anmeldung in zwei Schritten ab.',
     invalid_payment_handle: 'Das sieht nicht nach einem Namen für diese App aus.',
+    already_member: 'Jemand mit dieser E-Mail ist schon in der Gruppe.',
+    profile_without_account: 'Dieses Profil braucht ein Konto.',
+    placeholder_member:
+      'Wer noch nicht bei Potluck ist, kann nur einfaches Mitglied seiner Gruppe sein.',
+    placeholder_not_found:
+      'Dieser Platz ist nicht mehr freigehalten. Bitte um eine neue Einladung.',
+    placeholder_claim_conflict: 'Du bist schon unter deinem eigenen Namen in dieser Gruppe.',
+    placeholder_exists: 'Jemand mit dieser E-Mail wartet schon darauf beizutreten.',
+    placeholder_no_email: 'Füg zuerst die E-Mail hinzu.',
+    placeholder_already_reminded: 'Die Erinnerung wurde schon geschickt.',
+    invalid_name: 'Gib einen Namen ein.',
+    invalid_email: 'Diese E-Mail sieht nicht richtig aus.',
+    too_many_invites: 'Das sind viele Einladungen für einen Tag. Versuch es morgen wieder.',
+    email_not_verified: 'Bestätige zuerst deine E-Mail. Schau in dein Postfach.',
+    friend_has_balance: 'Begleicht zuerst euren Stand zu zweit.',
+    person_not_found: 'Diese Person finden wir nicht.',
   },
   auth: {
     invalidCredentials: 'E-Mail und Passwort passen nicht zusammen.',

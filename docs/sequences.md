@@ -14,6 +14,8 @@ Participants used throughout:
 - [Sign up and profile creation](#sign-up-and-profile-creation)
 - [Create a group and invite people](#create-a-group-and-invite-people)
 - [Join through an invite link](#join-through-an-invite-link)
+- [Add someone who is not on Potluck yet, and their claim](#add-someone-who-is-not-on-potluck-yet-and-their-claim)
+- [Friend links, removing and blocking](#friend-links-removing-and-blocking)
 - [Add an expense](#add-an-expense)
 - [Settle up](#settle-up)
 - [Settle with a friend across groups](#settle-with-a-friend-across-groups)
@@ -93,7 +95,7 @@ sequenceDiagram
 
 ## Join through an invite link
 
-The join page works before sign in. `invite_preview` is the one RPC `anon` may execute, and it only returns what the join page needs: group name, look, member count and up to five first names.
+The join page works before sign in. It calls `invite_preview_v2` (anon may execute it, like `invite_preview` before it), which only returns what the join page needs: group name, look, member count and up to five first names, plus the saved seat for a claim link (next section).
 
 ```mermaid
 sequenceDiagram
@@ -105,7 +107,7 @@ sequenceDiagram
   participant E as Edge notify
 
   G->>W: open /join/:code
-  W->>DB: rpc invite_preview(code) as anon
+  W->>DB: rpc invite_preview_v2(code) as anon
   DB-->>W: name, emoji, member_count, first_names,<br/>status (valid, expired, revoked, used_up, archived, blocked), is_member
   alt not signed in
     W->>A: sign up or sign in, redirect back to /join/:code
@@ -127,6 +129,69 @@ sequenceDiagram
     DB-->>W: group_id
   end
   W->>W: navigate to /groups/:groupId
+```
+
+## Add someone who is not on Potluck yet, and their claim
+
+Ava adds "Sam (sam@example.com)" to a group. Sam is a placeholder profile with no auth user ([ADR 19](adr/0019-placeholder-members-and-claiming.md)): a plain member who can pay, be in splits and be paid, but never signs in, gets push or an inbox. When Sam confirms that email, or opens his claim link, everything that names the placeholder is moved to his account.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava
+  actor S as Sam
+  participant W as Web
+  participant Au as Auth
+  participant DB as DB
+  participant E as Edge notify
+
+  A->>W: Members, Add someone (name, email)
+  W->>DB: rpc add_placeholder_member(group_id, 'Sam', email)
+  DB->>DB: require_can_add_people (member, open, may invite)<br/>placeholder_exists, too_many_invites
+  DB->>DB: insert profiles (is_placeholder), placeholders (email),<br/>group_invites (placeholder_id, email, max_uses 1)
+  DB->>DB: insert group_members (role member)<br/>trigger: activity member.added (actor Ava)
+  DB->>DB: trigger: notify member.added to Sam<br/>notifications_skip_placeholders keeps only this type<br/>channels: email only (never push)
+  DB-->>W: placeholder id
+  Note over DB,E: send_email_notifications (cron) sends the invite to placeholders.email<br/>with claim_code; one reminder later via remind_placeholder
+  A->>W: add expense split with Sam (ordinary member)
+  alt Sam signs up with that email
+    S->>Au: sign up, confirm email
+    Au->>DB: insert or update auth.users (email_confirmed_at)
+    DB->>DB: on_auth_user_created: profiles row for Sam
+    DB->>DB: on_auth_user_verified: claim_placeholder(ph, Sam, announce)<br/>for each waiting seat with that email (errors swallowed)
+  else Sam opens his claim link
+    S->>W: /join/:code (invite_preview_v2 shows "a seat saved for Sam")
+    W->>DB: rpc accept_invite(code)
+    DB->>DB: email matches the link's, email confirmed,<br/>uses + 1, claim_placeholder(ph, Sam)
+  end
+  DB->>DB: lock group row for no key update<br/>refuse if Sam is or was in the group, or is blocked there
+  DB->>DB: potluck.claiming on: rewrite every FK to profiles,<br/>activity data, notification payloads, default split,<br/>recurring templates, expense_items.user_ids
+  DB->>DB: befriend the group, delete the placeholder,<br/>activity member.claimed, member.joined to owner, admins, Ava
+  DB-->>W: group_id: Sam sees the group, history and balance
+```
+
+## Friend links, removing and blocking
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava
+  actor C as Cleo
+  participant W as Web
+  participant DB as DB
+
+  A->>W: Friends, Add a friend
+  W->>DB: rpc my_friend_link() (or create_friend_invite(email))
+  DB-->>W: code (email invites open Ava's own mail app)
+  C->>W: /friend/:code
+  W->>DB: rpc friend_invite_preview(code) as anon
+  DB-->>W: Ava's first name, avatar, status
+  C->>W: Add Ava as a friend
+  W->>DB: rpc accept_friend_invite(code)
+  DB->>DB: checks (revoked, expired, used up, email, block)<br/>friendships both ways, notify friend.added to Ava
+  A->>W: friend page, Remove friend or Block
+  W->>DB: rpc remove_friend(id) (refused with an open 1:1 balance)<br/>or rpc block_user(id) (friendship gone both ways)
+  Note over DB: a block is never announced (refusals read like a dead link or a stranger)<br/>and mutes: no notification whose actor Ava blocked reaches her
 ```
 
 ## Add an expense
@@ -637,7 +702,7 @@ sequenceDiagram
   DB->>DB: pause recurring templates the user pays or shares (open groups)
   DB->>DB: leave groups where balance is 0,<br/>keep memberships with open balances
   DB->>DB: delete push_tokens, calendar_connections, busy_blocks,<br/>notifications, availability, requests, RSVPs,<br/>friendships, blocks
-  DB->>DB: revoke open invites the user created
+  DB->>DB: revoke open invites the user created<br/>(seat claim links stay open)
   DB->>DB: profile: Former member, avatar_path null,<br/>timezone UTC, locale en, deleted_at now()
   DB-->>E: ok
   E->>A: auth.admin.deleteUser(id, shouldSoftDelete = true)

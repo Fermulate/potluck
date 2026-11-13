@@ -213,6 +213,21 @@ export const errors = {
     invalid_unsubscribe_link:
       'This unsubscribe link does not work. Change email settings on the Me page instead.',
     mfa_required: 'Finish two-step sign in first.',
+    already_member: 'Someone with that email is already in this group.',
+    // People not on Potluck yet, friends and blocks (ADR 19).
+    profile_without_account: 'That profile needs an account.',
+    placeholder_member: 'Someone not on Potluck yet can only be a regular member of their group.',
+    placeholder_not_found: 'This seat is no longer saved. Ask for a fresh invite.',
+    placeholder_claim_conflict: 'You are already in this group under your own name.',
+    placeholder_exists: 'Someone with that email is already waiting to join.',
+    placeholder_no_email: 'Add their email first.',
+    placeholder_already_reminded: 'They already got their reminder.',
+    invalid_name: 'Give them a name.',
+    invalid_email: 'That email does not look right.',
+    too_many_invites: 'That is a lot of invites for one day. Try again tomorrow.',
+    email_not_verified: 'Confirm your email first. Check your inbox.',
+    friend_has_balance: 'Settle your one-on-one balance first.',
+    person_not_found: 'We could not find that person.',
   },
   auth: {
     invalidCredentials: 'That email and password do not match.',

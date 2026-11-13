@@ -1,5 +1,6 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
+import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -8,6 +9,7 @@ import {
   GROUP_ID,
   ME,
   expense,
+  group,
   members,
   renderWithClient,
   seededClient,
@@ -72,6 +74,25 @@ describe('ExpenseForm', () => {
       receipt_path: null,
     })
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+  })
+
+  it('offers adding someone new only to people the group lets add people', () => {
+    const addButton = () =>
+      screen.queryByRole('button', { name: t('people.placeholder.addToSplit') })
+    const { unmount } = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+    )
+    expect(addButton()).toBeInTheDocument()
+    unmount()
+
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+      seededClient((client) =>
+        client.setQueryData(moneyKeys.groupInfo(GROUP_ID), { ...group, members_can_invite: false }),
+      ),
+    )
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toBeInTheDocument()
+    expect(addButton()).toBeNull()
   })
 
   it('says who gets the extra cent when a split does not divide evenly', () => {

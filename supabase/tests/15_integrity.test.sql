@@ -36,12 +36,12 @@ insert into public.blocks (blocker_id, blocked_id) values
   (tests.uid('rev'), tests.uid('mem'));
 
 select tests.login('blk');
-select is((select status from invite_preview('blockparty-1')), 'blocked', 'preview: a member blocked the visitor');
-select throws_ok($$ select accept_invite('blockparty-1') $$, '42501', 'blocked', 'joining is refused when a member blocked you');
+select is((select status from invite_preview('blockparty-1')), 'revoked', 'preview: a member blocked the visitor, who sees a revoked link');
+select throws_ok($$ select accept_invite('blockparty-1') $$, '23514', 'invite_revoked', 'joining is refused when a member blocked you, like a revoked link');
 
 select tests.login('rev');
-select is((select status from invite_preview('blockparty-1')), 'blocked', 'preview: the visitor blocked a member');
-select throws_ok($$ select accept_invite('blockparty-1') $$, '42501', 'blocked', 'joining is refused when you blocked a member');
+select is((select status from invite_preview('blockparty-1')), 'revoked', 'preview: the visitor blocked a member');
+select throws_ok($$ select accept_invite('blockparty-1') $$, '23514', 'invite_revoked', 'joining is refused when you blocked a member');
 
 select tests.login_anon();
 select is((select status from invite_preview('blockparty-1')), 'valid', 'anonymous visitors see a valid invite');

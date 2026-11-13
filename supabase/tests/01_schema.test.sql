@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(102);
+select plan(116);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -21,7 +21,8 @@ select tables_are('public', array[
   'calendar_connections',
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
   'calendar_feed_tokens', 'notification_prefs',
-  'event_guest_links', 'event_guests', 'event_guest_availability'
+  'event_guest_links', 'event_guests', 'event_guest_availability',
+  'placeholders', 'friend_invites'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances', 'expense_ledger'], 'public has the balances and ledger views');
@@ -99,6 +100,19 @@ select has_function('public', 'my_notification_prefs', array[]::text[], 'my_noti
 select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
 select has_function('public', 'email_unsubscribe', array['text', 'text'], 'email_unsubscribe(token, action)');
 select has_function('public', 'email_outbox_report', array['uuid', 'boolean', 'text', 'uuid[]'], 'email_outbox_report(batch, delivered, error, rejected)');
+select has_function('public', 'add_placeholder_member', array['uuid', 'text', 'text'], 'add_placeholder_member(group_id, display_name, email)');
+select has_function('public', 'update_placeholder', array['uuid', 'text', 'text'], 'update_placeholder(user_id, display_name, email)');
+select has_function('public', 'remind_placeholder', array['uuid'], 'remind_placeholder(user_id)');
+select has_function('public', 'remove_placeholder', array['uuid'], 'remove_placeholder(user_id)');
+select has_function('public', 'invite_preview_v2', array['text'], 'invite_preview_v2(code)');
+select has_function('public', 'my_friend_link', array['boolean'], 'my_friend_link(rotate)');
+select has_function('public', 'create_friend_invite', array['text'], 'create_friend_invite(email)');
+select has_function('public', 'friend_invite_preview', array['text'], 'friend_invite_preview(code)');
+select has_function('public', 'accept_friend_invite', array['text'], 'accept_friend_invite(code)');
+select has_function('public', 'add_friend', array['uuid'], 'add_friend(user_id)');
+select has_function('public', 'remove_friend', array['uuid'], 'remove_friend(friend_id)');
+select has_function('public', 'block_user', array['uuid'], 'block_user(user_id)');
+select has_function('public', 'my_blocks', array[]::text[], 'my_blocks()');
 select ok(
   not has_function_privilege('authenticated', 'public.email_outbox_report(uuid, boolean, text, uuid[])', 'execute'),
   'only the service role reports email deliveries'
@@ -128,8 +142,8 @@ select is(
   (select array_agg(p.proname::text order by p.proname) from pg_proc p
    where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
      and has_function_privilege('anon', p.oid, 'execute')),
-  array['email_unsubscribe', 'guest_link_preview', 'invite_preview', 'set_guest_availability'],
-  'anon can only execute invite_preview, email_unsubscribe and the guest link RPCs'
+  array['email_unsubscribe', 'friend_invite_preview', 'guest_link_preview', 'invite_preview', 'invite_preview_v2', 'set_guest_availability'],
+  'anon can only execute the invite previews, email_unsubscribe and the guest link RPCs'
 );
 
 -- Not found is PT404 (HTTP 404). P0002 reaches clients as HTTP 500; old migration files still
@@ -230,6 +244,10 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'recurring-heads-up' and schedule = '5,35 * * * *'),
   'heads-ups for repeating expenses run at :05 and :35'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'purge-invite-sends' and schedule = '20 3 * * *'),
+  'the invite log is trimmed daily'
 );
 
 -- Grants: clients never write money tables directly.

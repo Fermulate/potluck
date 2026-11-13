@@ -2,6 +2,7 @@ import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
 import type { InvitePreview } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
@@ -138,5 +139,64 @@ describe('JoinPage', () => {
     renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
     expect(await screen.findByText('You cannot join this group.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Join Hike crew' })).not.toBeInTheDocument()
+  })
+
+  describe('a saved seat', () => {
+    const seat: InvitePreview = {
+      ...valid,
+      placeholder_name: 'Sam',
+      email_hint: 's***@example.com',
+    }
+
+    it('says whose seat it is and which email takes it', async () => {
+      state.preview = seat
+      renderWithProviders(<JoinPage code="sam-seat" />, { path: '/join/sam-seat' })
+      expect(await screen.findByText(t('people.claim.title'))).toBeInTheDocument()
+      expect(
+        screen.getByText(t('people.claim.seatFor', { host: 'Ava', name: 'Sam' })),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(t('people.claim.emailNote', { email: 's***@example.com' })),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: t('people.claim.signUp') })).toHaveAttribute(
+        'href',
+        '/sign-up?redirect=%2Fjoin%2Fsam-seat',
+      )
+    })
+
+    it('takes the seat in one tap and welcomes them to their history', async () => {
+      state.session = { user: { id: 'u-sam', user_metadata: { onboarded: true } } }
+      state.preview = seat
+      const { router } = renderWithProviders(
+        <>
+          <JoinPage code="sam-seat" />
+          <Toaster label="Notifications" />
+        </>,
+        { path: '/join/sam-seat' },
+      )
+      fireEvent.click(await screen.findByRole('button', { name: t('people.claim.accept') }))
+      expect(
+        await screen.findByText(t('people.claim.welcome', { name: 'Sam' })),
+      ).toBeInTheDocument()
+      await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-hike'))
+    })
+  })
+
+  it('explains when a seat is saved for another email than the one signed in', async () => {
+    state.session = { user: { id: 'u-cleo', user_metadata: { onboarded: true } } }
+    state.preview = {
+      ...valid,
+      placeholder_name: 'Sam',
+      email_hint: 's***@example.com',
+      email_matches: false,
+    }
+    renderWithProviders(<JoinPage code="sam-seat" />, { path: '/join/sam-seat' })
+    expect(
+      await screen.findByText(t('people.claim.wrongEmail', { email: 's***@example.com' })),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: t('people.claim.switchAccount') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('people.claim.accept') })).toBeNull()
   })
 })

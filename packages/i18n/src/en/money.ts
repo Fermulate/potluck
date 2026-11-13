@@ -605,6 +605,9 @@ export const activity = {
       left: 'You left the group',
       removed: 'You removed {name}',
       role_changed: 'You made {name} {role}',
+      added: 'You added {name}',
+      claimed: "You took {seat}'s seat",
+      invite_changed: "You changed {name}'s invite email",
     },
     expense: {
       created: 'You added "{description}" ({amount})',
@@ -641,6 +644,8 @@ export const activity = {
     member: {
       removed: '{actor} removed you',
       role_changed: '{actor} made you {role}',
+      added: '{actor} added you',
+      invite_changed: '{actor} changed your invite email',
     },
     settlement: {
       created: '{actor} paid you {amount}',
@@ -662,6 +667,9 @@ export const activity = {
     left: '{actor} left the group',
     removed: '{actor} removed {name}',
     role_changed: '{actor} made {name} {role}',
+    invite_changed: "{actor} changed {name}'s invite email",
+    added: '{actor} added {name}',
+    claimed: "{actor} took {seat}'s seat",
   },
   expense: {
     created: '{actor} added "{description}" ({amount})',

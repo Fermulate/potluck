@@ -78,6 +78,13 @@ export const notifications = {
         body: "{actor} vient d'arriver. Dis bonjour.",
       },
       added: { title: 'Bienvenue dans {group}', body: "{actor} t'a ajouté. Installe-toi." },
+      invite_changed: {
+        title: 'Une invitation a changé dans {group}',
+        body: "{actor} a envoyé l'invitation de {name} à une autre adresse",
+      },
+    },
+    friend: {
+      added: { title: 'Nouvel ami', body: "{actor} a accepté ton lien d'ami." },
     },
     event: {
       created: { title: 'Il se prépare quelque chose', body: '{actor} organise {event}' },

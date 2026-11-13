@@ -29,6 +29,35 @@ function item(patch: Partial<ActivityItem>): ActivityItem {
 }
 
 describe('describeActivity', () => {
+  it('says who added someone not on Potluck yet, and when they took their seat', () => {
+    const added = describeActivity(
+      item({
+        verb: 'member.added',
+        subject_id: 'cleo',
+        data: { user_id: 'cleo', placeholder: true },
+      }),
+      ctx,
+    )
+    expect(added.text).toBe('Ben added Cleo')
+    expect(added.emoji).toBe('🪑')
+    const claimed = describeActivity(
+      item({ verb: 'member.claimed', actor_id: 'cleo', data: { user_id: 'cleo', name: 'Sam' } }),
+      ctx,
+    )
+    expect(claimed.text).toBe("Cleo took Sam's seat")
+    // An entry from before the claim keeps the seat's name, even for the account that took it.
+    const before = describeActivity(
+      item({
+        verb: 'member.added',
+        subject_id: 'me',
+        data: { user_id: 'me', seat: { user_id: 'me', name: 'Sam' } },
+      }),
+      ctx,
+    )
+    expect(before.text).toBe('Ben added Sam')
+    expect(claimed.emoji).toBe('👋')
+  })
+
   it('renders expense verbs with the amount and links to the expense', () => {
     const view = describeActivity(
       item({ data: { description: 'Tacos', amount_cents: 4500, currency: 'USD' } }),

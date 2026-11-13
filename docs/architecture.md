@@ -139,7 +139,10 @@ The ER diagrams below are drawn from the migrations and split in three so they s
 
 ```mermaid
 erDiagram
-  AUTH_USERS ||--|| profiles : "trigger creates"
+  AUTH_USERS |o--|| profiles : "trigger creates (not for placeholders)"
+  profiles ||--o| placeholders : "placeholder details"
+  groups ||--o{ placeholders : "saved seats"
+  profiles ||--o{ friend_invites : creates
   profiles ||--o{ friendships : "has (both directions)"
   profiles ||--o{ blocks : blocks
   profiles ||--o{ reports : files
@@ -154,13 +157,30 @@ erDiagram
     text email
   }
   profiles {
-    uuid id PK, FK "auth.users, cascade"
+    uuid id PK "auth.users id, or a placeholder's own"
+    bool is_placeholder "no account (ADR 19)"
     text display_name "1..80 chars"
     text avatar_path
     text timezone "IANA, default UTC"
     char3 default_currency
     text locale
     timestamptz deleted_at "tombstone"
+  }
+  placeholders {
+    uuid profile_id PK, FK
+    uuid group_id FK
+    text email "invite address, members see email_hint"
+    uuid created_by FK
+    timestamptz invited_at
+    timestamptz reminded_at "one reminder"
+  }
+  friend_invites {
+    uuid id PK
+    text code UK
+    uuid created_by FK
+    text email "null: personal link"
+    int max_uses
+    int uses
   }
   friendships {
     uuid user_id PK, FK
@@ -198,6 +218,7 @@ erDiagram
     uuid group_id FK
     text code UK "url-safe, 10..64"
     text email "optional binding"
+    uuid placeholder_id FK "claim link"
     group_role role "never owner"
     int max_uses
     int uses
@@ -471,7 +492,9 @@ erDiagram
 
 ### Identity and social
 
-- `profiles`: `id uuid pk → auth.users on delete cascade`, `display_name text not null`, `avatar_path text`, `timezone text default 'UTC'`, `default_currency char(3) default 'USD'`, `locale text default 'en'`, `deleted_at timestamptz`, timestamps. Created by trigger on `auth.users` insert.
+- `profiles`: `id uuid pk` (the `auth.users` id), `is_placeholder bool default false`, `display_name text not null`, `avatar_path text`, `timezone text default 'UTC'`, `default_currency char(3) default 'USD'`, `locale text default 'en'`, `deleted_at timestamptz`, timestamps. Created by trigger on `auth.users` insert. A placeholder ([ADR 19](adr/0019-placeholder-members-and-claiming.md)) is a profile with no auth user, made by `add_placeholder_member`; since it cannot have a foreign key to `auth.users`, two triggers stand in for one: a real profile needs an auth user (`profile_without_account`), and deleting an auth user deletes its profile.
+- `placeholders`: `profile_id pk → profiles`, `group_id → groups` (cascade), `email text?` (lower case; members read only the generated `email_hint`, `s***@example.com`), `created_by`, `created_at`, `invited_at`, `invites_sent`, `reminded_at`. One row per placeholder, for the one group it belongs to. A group delete takes its placeholders' profiles along (deferred trigger).
+- `friend_invites`: `id`, `code text unique`, `created_by`, `email text?` (bound, single use, 30 days) or null with `max_uses` null (the personal link), `uses`, `expires_at`, `revoked_at`. Read and revoked by their creator only; written by `my_friend_link` and `create_friend_invite`.
 - `friendships`: `(user_id, friend_id)` pk, `created_at`. Stored both directions. Created when two users share a group or by accepting a friend invite.
 - `blocks`: `(blocker_id, blocked_id)` pk.
 - `reports`: `id`, `reporter_id`, `subject_user_id?`, `group_id?`, `reason text`, `created_at`.
@@ -480,7 +503,7 @@ erDiagram
 
 - `groups`: `id`, `name text not null`, `emoji text`, `color text`, `cover_path text`, `currency char(3) not null default 'USD'`, `simplify_debts bool default true`, `members_can_invite bool default true`, `is_direct bool default false` (a hidden 2-person group used for 1:1 expenses between friends), `created_by`, timestamps, `archived_at`, `default_split jsonb` (where new expenses start, `{split_type: equal | percent | shares, splits: [{user_id, weight}]}`; written only by `set_default_split`).
 - `group_members`: `(group_id, user_id)` pk, `role group_role not null default 'member'`, `joined_at`. Exactly one `owner` per group (partial unique index).
-- `group_invites`: `id`, `group_id`, `code text unique` (url-safe, 10+ chars), `email text?`, `role group_role default 'member'` (cannot be owner), `max_uses int?`, `uses int default 0`, `expires_at timestamptz?`, `created_by`, `revoked_at`.
+- `group_invites`: `id`, `group_id`, `code text unique` (url-safe, 10+ chars), `email text?`, `role group_role default 'member'` (cannot be owner), `max_uses int?`, `uses int default 0`, `expires_at timestamptz?`, `created_by`, `revoked_at`, `placeholder_id uuid?` (a claim link: accepting it hands that placeholder to the account, single use, bound to the placeholder's email when it has one).
 
 ### Money
 
@@ -520,24 +543,29 @@ erDiagram
 
 ## Roles
 
-| Permission                                          | Owner | Admin                          | Member                  |
-| --------------------------------------------------- | ----- | ------------------------------ | ----------------------- |
-| Add/edit own expenses, availability, RSVP, comments | yes   | yes                            | yes                     |
-| Create events, request availability                 | yes   | yes                            | yes                     |
-| Lock / cancel an event                              | yes   | yes                            | creator only            |
-| Create guest links                                  | yes   | yes                            | yes                     |
-| Turn off a guest link                               | yes   | yes                            | link or plan creator    |
-| Remove a guest's answer                             | yes   | yes                            | plan creator only       |
-| Edit/delete others' expenses                        | yes   | yes                            | no                      |
-| Record a payment between two other members          | yes   | yes                            | no                      |
-| Edit/delete/restore a payment you were not part of  | yes   | yes                            | no                      |
-| Create invites                                      | yes   | yes                            | if `members_can_invite` |
-| Create admin invites                                | yes   | no                             | no                      |
-| Remove members, change roles                        | yes   | admins can manage members only | no                      |
-| Edit group settings                                 | yes   | yes                            | no                      |
-| Delete group, transfer ownership                    | yes   | no                             | no                      |
+| Permission                                          | Owner | Admin                          | Member                                         |
+| --------------------------------------------------- | ----- | ------------------------------ | ---------------------------------------------- |
+| Add/edit own expenses, availability, RSVP, comments | yes   | yes                            | yes                                            |
+| Create events, request availability                 | yes   | yes                            | yes                                            |
+| Lock / cancel an event                              | yes   | yes                            | creator only                                   |
+| Create guest links                                  | yes   | yes                            | yes                                            |
+| Turn off a guest link                               | yes   | yes                            | link or plan creator                           |
+| Remove a guest's answer                             | yes   | yes                            | plan creator only                              |
+| Edit/delete others' expenses                        | yes   | yes                            | no                                             |
+| Record a payment between two other members          | yes   | yes                            | no                                             |
+| Edit/delete/restore a payment you were not part of  | yes   | yes                            | no                                             |
+| Create invites                                      | yes   | yes                            | if `members_can_invite`                        |
+| Create admin invites                                | yes   | no                             | no                                             |
+| Remove members, change roles                        | yes   | admins can manage members only | no                                             |
+| Edit group settings                                 | yes   | yes                            | no                                             |
+| Delete group, transfer ownership                    | yes   | no                             | no                                             |
+| Add someone not on Potluck yet                      | yes   | yes                            | if `members_can_invite`                        |
+| Remind them (once)                                  | yes   | yes                            | yes                                            |
+| Rename them                                         | yes   | yes                            | if `members_can_invite`, or whoever added them |
+| Change their email                                  | yes   | yes                            | whoever added them                             |
+| Remove them (balance zero)                          | yes   | yes                            | whoever added them                             |
 
-A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid (any part of). Any member may save the group's default split.
+A placeholder is always a plain member and can never be made admin or owner (`placeholder_member`). A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid (any part of). Any member may save the group's default split.
 
 `create_invite` is the source of truth for admin invites: only the owner can mint them, and `can()` in `packages/core/src/roles` applies the same rule.
 
@@ -548,6 +576,13 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `create_group(name, emoji, color, currency)`                                                                                                        | creator becomes owner                                                                                                                                                                                                   |
 | `create_invite(group_id, role, max_uses, expires_at, email)` → invite                                                                               |                                                                                                                                                                                                                         |
 | `invite_preview(code)` → group name, emoji, member count, first names                                                                               | callable by `anon`, for the join page                                                                                                                                                                                   |
+| `invite_preview_v2(code)` → `invite_preview` plus `placeholder_name`, `email_hint`                                                                  | callable by `anon`; what the join page reads now. Members opening a used link get `valid`; counts and names skip placeholders                                                                                           |
+| `add_placeholder_member(group_id, display_name, email?)` → profile id                                                                               | someone not on Potluck yet; makes their claim link and, with an email, the invite email ([ADR 19](adr/0019-placeholder-members-and-claiming.md))                                                                        |
+| `update_placeholder(user_id, display_name?, email?)` / `remind_placeholder(user_id)` / `remove_placeholder(user_id)`                                | rename or re-address (fresh link and invite); the one reminder; remove when settled                                                                                                                                     |
+| `my_friend_link(rotate)` → code / `create_friend_invite(email)` → invite                                                                            | the personal friend link; a single-use link bound to an email                                                                                                                                                           |
+| `friend_invite_preview(code)` → inviter first name, avatar, status                                                                                  | callable by `anon`, for `/friend/<code>`                                                                                                                                                                                |
+| `accept_friend_invite(code)` → friend id / `add_friend(user_id)` / `remove_friend(friend_id)`                                                       | friendships both ways; adding needs a shared group; removing needs a settled 1:1 tab                                                                                                                                    |
+| `block_user(user_id)` / `my_blocks()`                                                                                                               | block someone you know and drop the friendship both ways; the blocked list with names. Unblock is a direct delete on `blocks`                                                                                           |
 | `accept_invite(code)` → group_id                                                                                                                    | validates expiry/uses/revoked, adds member, creates friendships                                                                                                                                                         |
 | `set_member_role(group_id, user_id, role)` / `remove_member` / `leave_group` / `transfer_ownership`                                                 | role checks per table above                                                                                                                                                                                             |
 | `get_or_create_direct_group(friend_id)` → group_id                                                                                                  | 1:1 expenses                                                                                                                                                                                                            |
@@ -558,7 +593,7 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `update_recurring_expense(id, payload jsonb)` → template                                                                                            | an admin or anyone it involves (creator, payer, someone in the split); the `create_expense_v2` payload plus `recurrence`, `next_run_on`; only future copies change ([ADR 14](adr/0014-editable-recurring-templates.md)) |
 | `skip_recurring_expense(id)` → template                                                                                                             | an admin or anyone it involves; moves `next_run_on` one period on; logged as `recurring.skipped`                                                                                                                        |
 | `make_expense_recurring(expense_id, recurrence)` → template                                                                                         | whoever may edit the expense; first copy one period after its date, or the next date still to come                                                                                                                      |
-| `settle_up(group_id, to_user, amount_cents, currency, note)`                                                                                        | v1, kept for older clients: the caller pays, today                                                                                                                                                                      |
+| `settle_up(group_id, to_user, amount_cents, currency, note)`                                                                                        |                                                                                                                                                                                                                         |
 | `settle_up_v2(group_id, from_user, to_user, amount_cents, currency, note, settled_on)`                                                              | either direction; between two others for owners and admins; a picked day uses that day's rate                                                                                                                           |
 | `update_settlement(id, payload jsonb)` / `restore_settlement(id)`                                                                                   | edit the keys sent; undo `delete_settlement`                                                                                                                                                                            |
 | `settle_all(group_id, settled_on, note)` → settlements                                                                                              | records every debt involving the caller in one group                                                                                                                                                                    |
@@ -614,9 +649,10 @@ Where the wording lives (`errorMessage` in `apps/web/src/lib/errors.ts`): the sc
 
 Codes:
 
-- Session and membership: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `blocked` (joining a group, or opening a 1:1 tab, across a block in either direction), `mfa_required` (any request from a session that has not finished two-step sign in, see [Two-step sign in](#two-step-sign-in)).
+- Session and membership: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `blocked` (claiming internally; a block is never announced to the person blocked: joining a group or taking a seat across it raises `invite_revoked`, and a 1:1 tab or adding a friend raises `not_a_friend`), `mfa_required` (any request from a session that has not finished two-step sign in, see [Two-step sign in](#two-step-sign-in)).
 - Groups and roles: `group_name_required`, `invalid_currency`, `group_currency_locked`, `group_owner_required`, `group_archived` (any write into an archived group: expenses, recurring expenses, payments, plans, availability, comments, RSVPs), `group_has_balances` (deleting a group while anyone, former members included, has a non-zero balance), `member_not_found`, `member_has_balance`, `owner_must_transfer`, `already_owner`, `cannot_change_owner`, `cannot_remove_owner`, `use_transfer_ownership`, `use_leave_group`.
-- 1:1 tabs: `invalid_friend`, `not_a_friend`.
+- 1:1 tabs and friends: `invalid_friend`, `not_a_friend`, `friend_has_balance` (removing a friend with an open 1:1 balance), `person_not_found` (blocking someone you do not know).
+- People not on Potluck yet: `already_member` (adding an email that is already in the group), `profile_without_account`, `placeholder_member` (a placeholder as admin, owner, or in another group), `placeholder_not_found`, `placeholder_claim_conflict` (the account is or was already in the group), `placeholder_exists` (same email waiting in the group), `placeholder_no_email`, `placeholder_already_reminded`, `invalid_name`, `invalid_email`, `too_many_invites` (20 emailed invites a day, 3 addresses per placeholder), `email_not_verified` (claiming, or an email-bound friend link, needs a confirmed email).
 - Invites: `direct_group`, `invalid_role`, `invalid_max_uses`, `invalid_expiry`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`.
 - Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left), `invalid_payers`, `payers_sum_mismatch` (what each person paid does not add up to the amount, also from the deferred check).
 - Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `adjustments_exceed_total`, `negative_share`, `items_required`, `invalid_items`.
@@ -631,8 +667,16 @@ Codes:
 
 - `create_group(name, emoji?, color?, currency?)` returns the `groups` row. Currency defaults to the caller's `default_currency`.
 - `create_invite(group_id, role = 'member', max_uses?, expires_at?, email?)` returns the invite row. Members can invite only when `members_can_invite`; only the owner can create `admin` invites; direct and archived groups cannot have invites.
-- `invite_preview(code)` returns `group_id, name, emoji, color, cover_path, member_count, first_names text[] (owner first, max 5), status ('valid' | 'expired' | 'revoked' | 'used_up' | 'archived' | 'blocked'), is_member`. `blocked` is only reported to a signed in visitor who is not a member and has a block, in either direction, with someone in the group. Unknown codes raise `invite_not_found`.
-- `accept_invite(code)`: already being a member returns the group id without using up the invite. Email-bound invites compare against the auth email, case-insensitive. Archived groups raise `group_archived`; a block between the joiner and anyone in the group raises `blocked`.
+- `invite_preview(code)` returns `group_id, name, emoji, color, cover_path, member_count, first_names text[] (owner first, max 5), status ('valid' | 'expired' | 'revoked' | 'used_up' | 'archived'), is_member`. A signed in visitor who is not a member and has a block, in either direction, with someone in the group sees `revoked`, like a dead link. Seats are neither counted nor named. Unknown codes raise `invite_not_found`. `invite_preview_v2` adds `placeholder_name`, `email_hint` (only while the claim link works) and `email_matches` (signed in on a link bound to an email: whether it is this account's).
+- `accept_invite(code)`: already being a member returns the group id without using up the invite. Email-bound invites compare against the auth email, case-insensitive. Archived groups raise `group_archived`; a block between the joiner and anyone in the group raises `invite_revoked`, so the blocked person cannot tell. A claim link (`placeholder_id`) also needs a confirmed email (`email_not_verified`) and then runs `private.claim_placeholder`, archived groups included.
+- Claiming (`private.claim_placeholder(placeholder, account, announce)`, [ADR 19](adr/0019-placeholder-members-and-claiming.md)): runs from `accept_invite` and from the `on_auth_user_verified` trigger when an account confirms an email that matches a waiting placeholder (errors there are swallowed, so sign up never fails). Locks the group row `for no key update`, refuses an account that is or was in the group (`placeholder_claim_conflict`) or is blocked there, then, with `potluck.claiming` on, rewrites every column with a foreign key to `profiles` (from the catalog), the ids inside `activity.data`, notification payloads, `groups.default_split`, recurring `splits` / `payers` and `expense_items.user_ids`, befriends the group, deletes the placeholder, logs `member.claimed` and tells the owner, admins and whoever added them (`member.joined`). Amounts never change.
+- Placeholders never get push or an inbox: a before insert trigger on `notifications` drops every row for one except `member.added`, which is their invite email, sent to `placeholders.email` with the claim link (`claim_code`). They are skipped by `request_availability`, `best_slots` (`missing`), friendships, `leave_group` (an owner left with only placeholders closes the group) and `delete_my_account` (never an heir).
+- `add_placeholder_member(group_id, display_name, email?)`: an email already in the group raises `already_member`; an email of a confirmed, open account that is not in the group adds that account directly (`member.added` to them, logged as added by the caller) instead of a seat, unless a block stands between them and the group, which silently makes a seat. Seat emails are plain ASCII and compared after lower casing A to Z only (`private.ascii_lower`, `private.is_plain_email`; core `asciiLower`, `isPlainEmail`).
+- `update_placeholder`: any member who may add people renames a seat; only whoever added it or an admin changes its email (`not_allowed`), never to the address of someone already in the group (`already_member`). The new invite counts toward the daily limit of whoever made the change. A new address revokes the old link, makes a new one (still owned by whoever added the seat), sends a fresh invite, logs `member.invite_changed` and tells whoever added the seat when someone else changed it. A removed seat that the history still names loses its email.
+- Payments with a seat: the usual `private.check_payment` rule (a member records only payments they are part of; owners and admins any), so "Sam paid you" is recorded by you and the seat removed once settled. The balances tab offers "Record payment" on a seat's line to whoever it involves and to admins.
+- Daily limit: `private.spend_invite_budget` logs every invite email a person sets off (a seat with an email, a seat's new address, an account added by email, a reminder) in `private.invite_sends` and refuses the 21st in a day (`too_many_invites`). The log names no seat and no group it depends on, so removing a seat or deleting a group gives nothing back; the `purge-invite-sends` job drops rows older than a week.
+- A seat's invite and reminder are dropped (the reminder still counts as sent) when its email belongs to an account with a block, either way, with whoever sent them (`private.seat_email_blocked`).
+- Blocks mute ([ADR 19](adr/0019-placeholder-members-and-claiming.md)): the before insert trigger on `notifications` drops any row whose `actor_id` the recipient has blocked, so nothing the blocked person does reaches the blocker, in shared groups too. Shared groups keep working: their expenses and payments still count. The blocked person cannot join the blocker's groups, take a seat there, open a 1:1 tab, accept a friend link or add them back, and is told only what a dead link or a stranger gets. In a 1:1 tab that already exists, `private.freeze_blocked_direct_money` (before triggers on `expenses`, `settlements`, `recurring_expenses`) refuses the blocked person's money writes, and comments there, with `not_a_friend`; the blocker's still work, and turning a repeating expense off always does.
 - `set_member_role`: admins may change roles of plain members only (including promoting to admin); nobody can grant `owner` here.
 - Lock order (deadlock-free only if every function follows it):
   - `remove_member` / `leave_group` lock the group row before reading balances.
@@ -643,7 +687,7 @@ Codes:
   - The recurring expenses job share locks the group rows of every due template, in id order, before touching any template.
 - `leave_group`: the owner must transfer first, unless nobody else active is left (they are alone, or only closed accounts remain, which cannot take ownership). Then leaving deletes the group, provided no active person (former members included) has an open balance there (`member_has_balance`); anything left is between the owner and closed accounts.
 - `delete_group(group_id)`: owner only. Locks the group row, then refuses with `group_has_balances` unless every balance in `group_balances` (former members included, direct groups too) is zero. Clients cannot delete `groups` rows directly; a `before delete` trigger on `groups` also refuses any other delete of a group with open balances (only `delete_my_account` may remove a group nobody active is left in).
-- `get_or_create_direct_group(friend_id)`: the friend must be a friend or share a group, and neither may have blocked the other. Creates a group named `Direct` (caller owner, friend admin, `members_can_invite = false`).
+- `get_or_create_direct_group(friend_id)`: the friend must be a friend or share a group, and neither may have blocked the other; a block, a closed account and a placeholder all raise `not_a_friend`. Creates a group named `Direct` (caller owner, friend admin, `members_can_invite = false`).
 - `create_expense(payload)` / `update_expense(id, payload)` / `delete_expense(id)` / `restore_expense(id)` return the `expenses` row.
   - Payload keys: read `private.save_expense` in `supabase/schema/current.sql` (the live version; the comment at the top of the first expenses migration is older).
   - Extra payload key `recurrence` (`weekly` | `biweekly` | `monthly` | `yearly`, create only) also creates a `recurring_expenses` template whose first run is one period after `spent_at` (`private.recurring_step`); a backdated one catches up. A by-item bill's items, tax, tip and discount are stored on the template too.
@@ -693,10 +737,24 @@ Codes:
   - tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set);
   - hands owned groups to the longest-standing admin (else member), or deletes groups with nobody else;
   - removes zero-balance memberships (open balances stay);
-  - deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites.
+  - deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes the open invites it made (seat claim links stay open).
   - Closed accounts then get `account_deleted` from every RPC.
   - Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused.
   - The edge function also removes the avatar files under `<uid>/` in the `avatars` bucket, and a trigger on `profiles.deleted_at` drops the `calendar_feed_tokens` row so old feed URLs stop working.
+
+### Seats
+
+People not on Potluck yet. Notes for changing anything that touches seats, claims or blocks ([ADR 19](adr/0019-placeholder-members-and-claiming.md)).
+
+- A placeholder (seat) is a `profiles` row with `is_placeholder` and no auth user; `profiles` has no foreign key to `auth.users` (`profiles_need_account` and `on_auth_user_deleted` keep that rule for real people).
+- `private.claim_placeholder` rewrites every foreign key to `profiles(id)` it finds in the catalog, private tables included. A new column that holds a person: make it a foreign key to `profiles`, or add it (jsonb, arrays) to `claim_placeholder`.
+- Triggers on tables with user ids return early when `private.claiming()` if they log, notify, bump `updated_at`, guard archived groups or freeze a 1:1 tab.
+- `notifications_skip_placeholders` lets a seat get only `member.added`, never across a block with the sender (held back on the seat as `held_by`, sent once when that block is lifted, `private.release_held_invites`), and drops any row whose `data.actor_id` the recipient blocked: put `actor_id` in new notification data.
+- Leave seats out of anything that asks someone to act (availability, RSVPs, `best_slots` missing lists, heirs). Repeating expenses treat a seat like any member: one that names it keeps running after a claim, and removing a seat pauses them like anyone leaving.
+- Seat emails are looked up through `private.account_emails` (every account email, lower cased A to Z, indexed, kept by a trigger on `auth.users`), never by lower casing `auth.users` row by row.
+- Core mirrors: roles `placeholder.add`, `placeholder.edit`, `placeholder.remove`; `placeholderSchema` and `isPlainEmail` (`private.placeholder_email`, `private.is_plain_email`); `asciiLower` (`private.ascii_lower`).
+- Web: a member or person with `is_placeholder` is a saved seat (dashed row, "Not on Potluck yet" badge), split with like anyone, never offered roles, friendship, blocking or a 1:1 tab (`features/groups/placeholders.tsx`, rules in `placeholder-helpers.ts`). The friend page reads the same `friend_balances` as the Friends list. API: `packages/api/src/people.ts`.
+- Tests: `27_placeholder_members`, e2e `people.spec.ts`.
 
 ### Schema additions
 
@@ -731,22 +789,26 @@ Clients write directly (RLS-checked) only to these tables. Everything else goes 
 - `notifications`: own `read_at`, delete.
 - `notification_prefs`: read own; writes only through `set_notification_pref` and `email_unsubscribe`.
 - `push_tokens`, `blocks`, `reports`, `busy_blocks`, `payment_methods`: own rows.
+- `friendships`: delete, either side (the friends page uses `remove_friend`, which removes both directions at once).
+- `blocks`: insert and delete own (`block_user` also ends the friendship; unblocking is a direct delete).
+- `reports`: insert own.
+- `friend_invites`: read and revoke own.
+- `placeholders`: read only (members of its group, every column but `email`); written by the placeholder RPCs.
 - `recurring_expenses`: an admin or anyone it involves (`private.recurring_involves`: creator, payer, someone in the split) may change `active` (pause, resume) or delete; every other change goes through `update_recurring_expense`. Archived groups raise `group_archived` from a trigger. Turning `active` back on moves a past `next_run_on` to the next occurrence on or after today, so paused periods are never charged, and is refused while the template names someone who left.
-- `friendships`: delete, either side.
 - `event_guest_links`, `event_guests`, `event_guest_availability`: no direct writes at all; members read them (`event_guests` without `token_hash`, `saves`, `saves_window_start`).
 
 Who can read what:
 
-- Profiles are visible to yourself, people you share a group with, friends, and anyone who has left (or closed their account in) one of your groups, so old expenses, payments and activity keep their names.
+- Profiles are visible to yourself, people you share a group with (placeholders included, since they are members), friends, and anyone who has left (or closed their account in) one of your groups, so old expenses, payments and activity keep their names. A placeholder is never `auth.uid()`, so `my_group_ids()` and every own-row policy need no change for them.
 - Former members are tracked in `private.former_members` by a trigger on `group_members`, only while something in the group (an expense, payment, comment, or a feed entry for something they did there, not their joining or leaving) still names them. Rejoining removes the row.
 - Busy blocks are private. `app_config` is readable by `anon`.
 - Guests are not users and read nothing directly: `anon` has no grants on the guest tables, only the two guest RPCs, which show one link's plan window and aggregated counts.
 
 ### Activity and notifications
 
-Activity verbs: `group.created`, `group.updated`, `group.default_split`, `member.joined`, `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.updated`, `settlement.deleted`, `settlement.restored`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`, `recurring.created`, `recurring.updated`, `recurring.skipped`, `recurring.paused` (subject: the template; paused when someone in it left, with `user_ids`, no actor). Every `expense.updated` row carries `changes`: `{field: {from, to}}` for each field the edit changed (`description`, `amount_cents`, `currency`, `spent_at`, `category`, `notes`, `is_refund`, `receipt`, `event_id`, `tax_cents`, `tip_cents`, `discount_cents`, `items` (the bill's lines as entered), plus `payers` and `split` as `{type, shares}` when those changed beyond rescaling to a new amount; `private.expense_row_changes` builds the row part). `private.save_expense` writes that row itself, once per edit, so payer and split changes are in it; it sets `potluck.expense_logged` for the update so the `expenses_activity` trigger stays out of the way, and the trigger still logs (with row `changes`) any other update. An edit that only changes the split or who paid is also notified as `expense.updated` from `save_expense`, since the notification triggers only compare expense columns; people dropped from the split or the payers are notified too. Every payer hears about a new expense, like the people in the split. The expense page reads its history (`expense.*` rows for that subject) from `activity` and renders every change, old value to new.
+Activity verbs: `group.created`, `group.updated`, `group.default_split`, `member.joined`, `member.added` (someone put a placeholder, or an account by its email, in the group; the actor is who added them), `member.claimed` (a placeholder was taken over by an account; `data.name` is the seat's name), `member.invite_changed` (a seat's invite email changed; the row never holds an address), `member.left`, `member.removed`, `member.role_changed`, `expense.created`, `expense.updated`, `expense.deleted`, `expense.restored`, `settlement.created`, `settlement.updated`, `settlement.deleted`, `settlement.restored`, `event.created`, `event.scheduled` (also on reschedule), `event.cancelled`, `availability.requested`, `comment.created`, `recurring.created`, `recurring.updated`, `recurring.skipped`, `recurring.paused` (subject: the template; paused when someone in it left, with `user_ids`, no actor). Every `expense.updated` row carries `changes`: `{field: {from, to}}` for each field the edit changed (`description`, `amount_cents`, `currency`, `spent_at`, `category`, `notes`, `is_refund`, `receipt`, `event_id`, `tax_cents`, `tip_cents`, `discount_cents`, `items` (the bill's lines as entered), plus `payers` and `split` as `{type, shares}` when those changed beyond rescaling to a new amount; `private.expense_row_changes` builds the row part). `private.save_expense` writes that row itself, once per edit, so payer and split changes are in it; it sets `potluck.expense_logged` for the update so the `expenses_activity` trigger stays out of the way, and the trigger still logs (with row `changes`) any other update. An edit that only changes the split or who paid is also notified as `expense.updated` from `save_expense`, since the notification triggers only compare expense columns; people dropped from the split or the payers are notified too. Every payer hears about a new expense, like the people in the split. The expense page reads its history (`expense.*` rows for that subject) from `activity` and renders every change, old value to new.
 
-Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `expense.deleted`, `expense.restored` (everyone in the expense), `settlement.created` (both people in the payment), `settlement.updated`, `settlement.deleted`, `settlement.restored` (both people in the payment, old and new; an edit counts when it changes people, amount, currency or day), `debt.reminder` (the person reminded, with the note), `member.added` (someone else put you in a group; not 1:1 tabs; nothing does that yet, it is ready for placeholder members), `summary.monthly` (monthly job, everyone with a non-zero balance), `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet), `recurring.upcoming` (at 09:00 on each person's local day before a repeating expense posts, or as soon as possible if that passed, never after it posts, inbox only when that is late and at night (`data.quiet`); to its payers and everyone with a share, each with their own `share_cents`, `paid_cents`, the `posts_on` date, the `deadline` (00:10 UTC that day) and their `timezone`; Reminders setting), `recurring.paused` (one was paused because someone in it left; to whoever set it up, else the owner and admins; edits and deletions setting). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
+Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `expense.deleted`, `expense.restored` (everyone in the expense), `settlement.created` (both people in the payment), `settlement.updated`, `settlement.deleted`, `settlement.restored` (both people in the payment, old and new; an edit counts when it changes people, amount, currency or day), `debt.reminder` (the person reminded, with the note), `member.added` (someone else put you in a group, not 1:1 tabs: a placeholder's invite email and its one reminder (`reminder: true`), an account added by its email, and the inbox note an account gets when signing up claims a seat), `member.invite_changed` (whoever added a seat, when someone else changes its email), `friend.added` (someone accepted your friend link), `summary.monthly` (monthly job, everyone with a non-zero balance), `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet), `recurring.upcoming` (at 09:00 on each person's local day before a repeating expense posts, or as soon as possible if that passed, never after it posts, inbox only when that is late and at night (`data.quiet`); to its payers and everyone with a share, each with their own `share_cents`, `paid_cents`, the `posts_on` date, the `deadline` (00:10 UTC that day) and their `timezone`; Reminders setting), `recurring.paused` (one was paused because someone in it left; to whoever set it up, else the owner and admins; edits and deletions setting). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
 
 Every notification lands in the inbox. `notifications_route` (before insert) fills `channels` from `private.notification_channels(user, type)`: the type's category in `private.notification_types`, the person's `notification_prefs` row or the category default, and for email also `app_config.email_notifications` and a confirmed address. A type with no category row is pushed and never emailed. New type: one insert into `private.notification_types` (see `supabase/AGENTS.md`). Categories and defaults: new expenses, edits and deletions, payments, comments, groups, reminders push and email; plans push only; the monthly summary emails only.
 
@@ -768,16 +830,17 @@ The browser is untrusted. It holds the publishable key and, once signed in, a sh
 
 ### Layers
 
+1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview`, `invite_preview_v2`, `friend_invite_preview` (the link code is the credential) and `email_unsubscribe` (which needs a signed token), and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
 1. **Grants.** Every table starts with `revoke all ... from anon, authenticated`, then each migration grants back only the columns a client may touch. For example `profiles` grants `update (display_name, avatar_path, timezone, default_currency, locale)`, so a client cannot set `deleted_at` even on its own row. In the database, `anon` gets `select` on `app_config` and `execute` on `invite_preview`, `email_unsubscribe` (which needs a signed token), `guest_link_preview` and `set_guest_availability` (which need a guest link code), and nothing else. The public `avatars` and `group-covers` buckets are readable without signing in.
-2. **Row Level Security.** Enabled on every table in `public`. Policies answer "which rows" using helpers from the `private` schema. Policies use `(select auth.uid())` and `group_id = any (array(select private.my_group_ids()))` so Postgres evaluates them once per statement instead of once per row, and can read only the caller's rows through the `group_id` indexes.
-3. **Security definer RPCs.** Multi-row writes (expense plus splits, settle up, joining, role changes, scheduling) have no insert or update policy at all. They go through `public.*` functions that run as the owner, start with `private.require_user()` (signed in, account not closed) and `private.require_member(group_id)`, then check the role rules themselves. All of them set `search_path = ''` and schema-qualify every name.
-4. **Triggers and constraints** hold invariants no client can skip: exactly one owner per group, splits sum to the amount, group currency locked once money exists, `comments.group_id` copied from the parent, only the author edits a comment body.
+1. **Row Level Security.** Enabled on every table in `public`. Policies answer "which rows" using helpers from the `private` schema. Policies use `(select auth.uid())` and `group_id = any (array(select private.my_group_ids()))` so Postgres evaluates them once per statement instead of once per row, and can read only the caller's rows through the `group_id` indexes.
+1. **Security definer RPCs.** Multi-row writes (expense plus splits, settle up, joining, role changes, scheduling) have no insert or update policy at all. They go through `public.*` functions that run as the owner, start with `private.require_user()` (signed in, account not closed) and `private.require_member(group_id)`, then check the role rules themselves. All of them set `search_path = ''` and schema-qualify every name.
+1. **Triggers and constraints** hold invariants no client can skip: exactly one owner per group, splits sum to the amount, group currency locked once money exists, `comments.group_id` copied from the parent, only the author edits a comment body.
 
 ### The private schema
 
 `private` is not in `[api].schemas`, so PostgREST never exposes it. `revoke all on schema private from public` plus `alter default privileges ... revoke execute on functions from public` means a new function is callable by nobody until a migration grants it. API roles get `usage` on the schema and `execute` only on the policy helpers (`is_group_member`, `group_role`, `is_group_admin`, `my_group_ids`, `my_event_ids`, `shares_group_with`, `my_contact_ids`, `can_manage_event`) and a few pure functions (`try_uuid`, `minor_units`, `convert_minor`, `is_time_zone`). The helpers are `security definer` so they can read `group_members` without recursing into its own policy, and they only ever answer questions about `auth.uid()`.
 
-Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function`, `notify`, `notification_channels` and `unsubscribe_token` are not executable by `anon` or `authenticated`. Private tables (`former_members`, `notification_categories`, `notification_types`, `email_outbox`, `signing_keys`) are not readable by them either. `mfa_satisfied` and `check_request` are executable by every API role because PostgREST and the realtime policies call them as the caller. `private.mfa_recovery_codes` and `private.mfa_recover_attempts` are readable by nobody but their owner.
+Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function`, `notify`, `notification_channels` and `unsubscribe_token` are not executable by `anon` or `authenticated`. Private tables (`former_members`, `invite_sends`, `notification_categories`, `notification_types`, `email_outbox`, `signing_keys`) are not readable by them either. `mfa_satisfied` and `check_request` are executable by every API role because PostgREST and the realtime policies call them as the caller. `private.mfa_recovery_codes` and `private.mfa_recover_attempts` are readable by nobody but their owner.
 
 ### Two-step sign in
 
@@ -854,6 +917,7 @@ All jobs are `pg_cron` entries created by migrations, so every environment gets 
 | `fx-sync`                        | `30 16 * * *`  | `private.invoke_edge_function('fx-sync')`                            | Asks the edge function to pull the day's ECB rates. The ECB publishes around 16:00 CET                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `email-notifications`            | `* * * * *`    | `private.send_email_notifications()`                                 | Does nothing while `app_config.email_notifications` is off. Otherwise hands `notify` the outbox rows whose subject has been quiet for 60 seconds, one email per expense (nothing if it was added and deleted inside the hold), re-checking settings, in batches of 50 per call. Re-sends batches with no report after 10 minutes (same batch id, the provider's idempotency key, when exactly the same rows go again; otherwise a new one), retries reported failures with backoff up to 5 attempts, drops rows older than a day                                                                                   |
 | `monthly-summary`                | `0 15 1 * *`   | `private.send_monthly_summaries()`                                   | One `summary.monthly` notification (inbox card, email when on, never push) for everyone with a non-zero balance, about the month that just ended                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `purge-invite-sends`             | `20 3 * * *`   | `delete from private.invite_sends`                                   | Drops invite log rows older than a week; the daily invite limit only reads the last day                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 Each recurring template (in both recurring jobs) runs inside its own `begin ... exception` block, so one bad template logs a warning and the rest still run.
 

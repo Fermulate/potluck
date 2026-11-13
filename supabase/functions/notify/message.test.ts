@@ -140,3 +140,14 @@ test('a repeating expense paused because someone left opens it', () => {
   assert.equal(m.title, '"Internet" is paused')
   assert.equal(m.url, '/recurring/r1')
 })
+
+test('a saved seat opens its claim link, a new friend their page', () => {
+  assert.equal(
+    message(row('member.added', { group_id: 'g1', claim_code: 'abc_DEF-123' })).url,
+    '/join/abc_DEF-123',
+  )
+  assert.equal(message(row('friend.added', { user_id: 'u2' })).url, '/friends/u2')
+  assert.equal(message(row('friend.added', {})).url, '/friends')
+  assert.equal(message(row('friend.added', { user_id: 'u2' }), 'es').title, 'Nuevo amigo')
+  assert.equal(message(row('member.invite_changed', { group_id: 'g1' })).url, '/groups/g1/members')
+})

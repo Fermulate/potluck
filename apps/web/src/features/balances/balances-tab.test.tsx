@@ -14,14 +14,20 @@ function renderTab({
   simplified = [] as { from_user: string; to_user: string; amount_cents: number }[],
   simplify = true,
   expenses = [] as ReturnType<typeof expense>[],
+  seats = [] as string[],
 }: {
   nets: [string, number][]
   simplified?: { from_user: string; to_user: string; amount_cents: number }[]
   simplify?: boolean
   expenses?: ReturnType<typeof expense>[]
+  seats?: string[]
 }) {
   const client = seededClient((c) => {
-    c.setQueryData(moneyKeys.groupInfo(GROUP_ID), { ...group, simplify_debts: simplify })
+    c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+      ...group,
+      simplify_debts: simplify,
+      members: group.members.map((m) => ({ ...m, is_placeholder: seats.includes(m.id) })),
+    })
     c.setQueryData(
       moneyKeys.balances(GROUP_ID),
       nets.map(([user_id, net_cents]) => ({ group_id: GROUP_ID, user_id, net_cents })),
@@ -208,5 +214,41 @@ describe('BalancesTab', () => {
     expect(
       within(sheet).getByRole('button', { name: t('settle.settleAllRecord', { count: 2 }) }),
     ).toBeInTheDocument()
+  })
+
+  it('lets anyone record what someone not on Potluck yet paid, and never reminds them', async () => {
+    renderTab({
+      nets: [
+        [ME, 3000],
+        [BEN, 0],
+        [CLEO, -3000],
+      ],
+      simplified: [{ from_user: CLEO, to_user: ME, amount_cents: 3000 }],
+      seats: [CLEO],
+    })
+    expect(await screen.findByText(t('balances.youAreOwedTotal'))).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: t('balances.remindLabel', { name: 'Cleo' }) }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('settle.recordPayment') })).toHaveAttribute(
+      'href',
+      `/new/settle?groupId=${GROUP_ID}&from=${CLEO}&to=${ME}&amount=3000`,
+    )
+  })
+
+  it('leaves what a seat paid someone else to them or an admin', async () => {
+    renderTab({
+      nets: [
+        [ME, 0],
+        [BEN, 3000],
+        [CLEO, -3000],
+      ],
+      simplified: [{ from_user: CLEO, to_user: BEN, amount_cents: 3000 }],
+      seats: [CLEO],
+    })
+    expect(
+      await screen.findByText(t('balances.owes', { from: 'Cleo', to: 'Ben', amount: '$30.00' })),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('settle.recordPayment') })).not.toBeInTheDocument()
   })
 })

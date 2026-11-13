@@ -276,3 +276,60 @@ test('a repeating expense the job paused says why', () => {
   assert.equal(e.subject, '"Internet" is paused in Flat')
   assert.match(e.text, /Someone in it left the group/)
 })
+
+test('someone not on Potluck yet gets their claim link, and the one reminder says so', () => {
+  const data = {
+    group_id: 'g1',
+    group_name: 'Roommates',
+    actor_name: 'Ava',
+    placeholder: true,
+    claim_code: 'seat-code-123',
+  }
+  const invite = renderEmail(job('member.added', data, { category: 'groups', name: 'Sam' }), links)
+  assert.equal(invite.subject, 'Ava added you to Roommates on Potluck')
+  assert.match(invite.text, /^Hi Sam,/)
+  assert.match(invite.text, /Take your seat: https:\/\/potluck\.example\/join\/seat-code-123/)
+  assert.match(invite.html, /href="https:\/\/potluck\.example\/join\/seat-code-123"/)
+
+  const reminder = renderEmail(
+    job('member.added', { ...data, reminder: true }, { category: 'groups' }),
+    links,
+  )
+  assert.equal(reminder.subject, 'Reminder: Ava saved you a seat in Roommates')
+})
+
+test('a member added by someone else is sent to the group', () => {
+  const e = renderEmail(
+    job(
+      'member.added',
+      { group_id: 'g1', group_name: 'Roommates', actor_name: 'Ava' },
+      { category: 'groups' },
+    ),
+    links,
+  )
+  assert.equal(e.subject, 'Ava added you to Roommates')
+  assert.match(e.text, /https:\/\/potluck\.example\/groups\/g1/)
+})
+
+test('an accepted friend link opens the new friend', () => {
+  const e = renderEmail(
+    job('friend.added', { user_id: 'u2', actor_name: 'Cleo' }, { category: 'groups' }),
+    links,
+  )
+  assert.equal(e.subject, 'Cleo is now your friend on Potluck')
+  assert.match(e.text, /https:\/\/potluck\.example\/friends\/u2/)
+})
+
+test('a changed seat invite tells whoever added the seat and opens the members page', () => {
+  const e = renderEmail(
+    job(
+      'member.invite_changed',
+      { group_id: 'g1', group_name: 'Roommates', user_id: 'p1', actor_name: 'Ava' },
+      { category: 'groups' },
+    ),
+    links,
+  )
+  assert.equal(e.subject, 'Ava changed an invite in Roommates')
+  assert.match(e.text, /new address/)
+  assert.match(e.text, /https:\/\/potluck\.example\/groups\/g1\/members/)
+})

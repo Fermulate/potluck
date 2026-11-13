@@ -232,7 +232,10 @@ describe('invites', () => {
     expect(invites.map((i) => i.id)).toEqual(['open', 'future'])
     const [query] = fake.queries('group_invites')
     expect(argsOf(query!, 'eq')).toEqual([['group_id', 'g1']])
-    expect(argsOf(query!, 'is')).toEqual([['revoked_at', null]])
+    expect(argsOf(query!, 'is')).toEqual([
+      ['revoked_at', null],
+      ['placeholder_id', null],
+    ])
   })
 
   it('handles an empty or failed invite read', async () => {
@@ -286,7 +289,7 @@ describe('invites', () => {
   })
 
   it('previews an invite with first names defaulted', async () => {
-    const fake = fakeSupabase().respond('rpc:invite_preview', {
+    const fake = fakeSupabase().respond('rpc:invite_preview_v2', {
       data: [{ group_id: 'g1', name: 'Flat', status: 'valid', first_names: null }],
     })
 
@@ -296,17 +299,17 @@ describe('invites', () => {
       status: 'valid',
       first_names: [],
     })
-    expect(fake.rpcArgs('invite_preview')).toEqual([{ code: 'abc' }])
+    expect(fake.rpcArgs('invite_preview_v2')).toEqual([{ code: 'abc' }])
   })
 
   it('throws invite_not_found for an unknown code, and RPC errors as is', async () => {
-    const fake = fakeSupabase().respond('rpc:invite_preview', { data: [] })
+    const fake = fakeSupabase().respond('rpc:invite_preview_v2', { data: [] })
     await expect(fetchInvitePreview(fake.client, 'nope')).rejects.toMatchObject({
       message: 'invite_not_found',
       code: 'PT404',
     })
 
-    const failing = fakeSupabase().respond('rpc:invite_preview', { error: boom })
+    const failing = fakeSupabase().respond('rpc:invite_preview_v2', { error: boom })
     await expect(fetchInvitePreview(failing.client, 'abc')).rejects.toBe(boom)
   })
 
@@ -390,7 +393,7 @@ describe('query options', () => {
     const fake = fakeSupabase()
       .respond('from:groups', { data: [] }, { data: null }, { data: [] })
       .respond('from:group_invites', { data: [] })
-      .respond('rpc:invite_preview', { data: [{ status: 'valid', first_names: ['A'] }] })
+      .respond('rpc:invite_preview_v2', { data: [{ status: 'valid', first_names: ['A'] }] })
       .respond('from:friendships', { data: [] })
     const { client } = fake
     const run = (o: { queryFn?: unknown }) => (o.queryFn as () => Promise<unknown>)()
@@ -404,7 +407,8 @@ describe('query options', () => {
     expect(list.queryKey).toEqual(groupKeys.list('u1'))
     expect(detail.queryKey).toEqual(['potluck', 'groups', 'detail', 'g1'])
     expect(invites.queryKey).toEqual(groupKeys.invites('g1'))
-    expect(preview.queryKey).toEqual(['potluck', 'groups', 'invite-preview', 'abc'])
+    expect(preview.queryKey).toEqual(['potluck', 'groups', 'invite-preview', 'abc', 'anon'])
+    expect(invitePreviewQueryOptions(client, 'abc', 'u1').queryKey).toContain('u1')
     expect(preview.retry).toBe(false)
     expect(friends.queryKey).toEqual(groupKeys.friends('u1'))
 

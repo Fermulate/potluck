@@ -42,6 +42,8 @@ export const help = {
     search: 'What search looks through',
     totals: 'How totals are counted',
     restore: 'About restoring',
+    placeholders: 'About people not on Potluck yet',
+    friends: 'How friends work',
   },
   tips: {
     simplifiedDebts:

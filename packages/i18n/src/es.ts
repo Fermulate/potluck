@@ -8,6 +8,7 @@ import { events, availability, bestTime, rsvp, timeline, home, guests } from './
 import { notifications, settings, account, unsubscribe, security } from './es/me'
 import { help } from './es/help'
 import { search, filters, insights, deletedItems, activityFilter } from './es/insights'
+import { people } from './es/people'
 
 /**
  * Spanish (tú, neutral Latin American and Spain friendly). Same files and keys as `./en`; a key
@@ -49,6 +50,7 @@ export const es = {
   insights,
   deletedItems,
   activityFilter,
+  people,
   empty,
   errors,
 } satisfies Translation<Dictionary>

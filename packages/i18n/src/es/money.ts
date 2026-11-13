@@ -599,6 +599,9 @@ export const activity = {
       left: 'Dejaste el grupo',
       removed: 'Sacaste a {name}',
       role_changed: 'Hiciste {role} a {name}',
+      added: 'Añadiste a {name}',
+      claimed: 'Ocupaste el lugar de {seat}',
+      invite_changed: 'Cambiaste el correo de la invitación de {name}',
     },
     expense: {
       created: 'Añadiste "{description}" ({amount})',
@@ -634,6 +637,8 @@ export const activity = {
     member: {
       removed: '{actor} te sacó',
       role_changed: '{actor} te hizo {role}',
+      added: '{actor} te añadió',
+      invite_changed: '{actor} cambió el correo de tu invitación',
     },
     settlement: {
       created: '{actor} te pagó {amount}',
@@ -655,6 +660,9 @@ export const activity = {
     left: '{actor} dejó el grupo',
     removed: '{actor} sacó a {name}',
     role_changed: '{actor} hizo {role} a {name}',
+    added: '{actor} añadió a {name}',
+    claimed: '{actor} ocupó el lugar de {seat}',
+    invite_changed: '{actor} cambió el correo de la invitación de {name}',
   },
   expense: {
     created: '{actor} añadió "{description}" ({amount})',

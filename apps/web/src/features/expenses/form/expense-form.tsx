@@ -15,7 +15,14 @@ import {
   type RecurringExpense,
   type RecurringUpdate,
 } from '@potluck/api'
-import { CATEGORIES, RECURRENCES, firstName, nextOccurrence, type CategoryId } from '@potluck/core'
+import {
+  CATEGORIES,
+  RECURRENCES,
+  can,
+  firstName,
+  nextOccurrence,
+  type CategoryId,
+} from '@potluck/core'
 import { formatDate, formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -33,6 +40,7 @@ import {
   toast,
   useMediaQuery,
 } from '@potluck/ui'
+import { AddPlaceholderSheet } from '@/features/groups/placeholders'
 import { Help } from '@/features/help/help'
 import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
@@ -181,6 +189,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const queryClient = useQueryClient()
   const formId = useId()
   const memberIds = group.members.map((m) => m.id)
+  const myRole = group.members.find((m) => m.id === me)?.role
+  const canAddPerson =
+    !group.is_direct &&
+    !!myRole &&
+    can(myRole, 'placeholder.add', { membersCanInvite: group.members_can_invite })
   const people = usePeople()
   // Someone who has left the group can still be in an older expense, as payer or in the split.
   const formerMember = (id: string): MoneyMember => {
@@ -241,6 +254,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
   const [draft, setDraft] = useState<SplitDraft>(savedDraft)
+  const [addingPerson, setAddingPerson] = useState(false)
   const [saveDefault, setSaveDefault] = useState(false)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -706,7 +720,22 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 amountCents={total}
                 currency={currency}
                 locale={intlLocale()}
+                onAddPerson={canAddPerson ? () => setAddingPerson(true) : undefined}
               />
+              {canAddPerson && (
+                <AddPlaceholderSheet
+                  group={group}
+                  open={addingPerson}
+                  onOpenChange={setAddingPerson}
+                  onAdded={(id) =>
+                    setDraft((d) =>
+                      d.participants.includes(id)
+                        ? d
+                        : { ...d, participants: [...d.participants, id] },
+                    )
+                  }
+                />
+              )}
               {group.default_split && isDefault ? (
                 <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">
                   <span>{t('expenses.defaultSplit.active')}</span>

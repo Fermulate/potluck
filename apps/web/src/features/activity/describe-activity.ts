@@ -33,9 +33,15 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : und
  */
 export function describeActivity(item: ActivityItem, ctx: Context): ActivityView {
   const d = item.data ?? {}
+  // A seat someone has since taken over (ADR 19): entries from before keep the seat's name.
+  const seat = (typeof d.seat === 'object' && d.seat ? d.seat : {}) as Record<string, unknown>
+  const seatId = str(seat.user_id)
+  const seatName = str(seat.name)
+  const nameOf: Context['nameOf'] = (id, options) =>
+    seatId && seatName && id === seatId ? seatName : ctx.nameOf(id, options)
   const subjectId =
     item.verb === 'settlement.created' ? (str(d.from_user) ?? item.actor_id) : item.actor_id
-  const actor = ctx.nameOf(subjectId)
+  const actor = nameOf(subjectId)
   const amountCents = num(d.amount_cents)
   const currency = str(d.currency)
   const amount = amountCents !== undefined && currency ? formatMoney(amountCents, currency) : ''
@@ -54,6 +60,7 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
         ? t(`roles.${role}.label` as 'roles.admin.label').toLowerCase()
         : (role ?? ''),
     subject: '',
+    seat: str(d.name) ?? '',
   }
 
   // The person `{name}` points at, when there is one: the payee or the member acted on.
@@ -75,17 +82,24 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       emoji = item.verb === 'settlement.deleted' ? '🗑️' : '🤝'
       tone = 'olive'
       named = str(d.to_user)
-      params.name = ctx.nameOf(named, { lower: true })
+      params.name = nameOf(named, { lower: true })
       link = item.subject_id
         ? { to: '/payments/$paymentId', params: { paymentId: item.subject_id } }
         : { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
       break
     }
     case 'member':
-      emoji = item.verb === 'member.joined' ? '👋' : item.verb === 'member.left' ? '🚪' : '🪪'
+      emoji =
+        item.verb === 'member.joined' || item.verb === 'member.claimed'
+          ? '👋'
+          : item.verb === 'member.added'
+            ? '🪑'
+            : item.verb === 'member.left'
+              ? '🚪'
+              : '🪪'
       tone = 'plum'
       named = str(d.user_id)
-      params.name = ctx.nameOf(named, { lower: true })
+      params.name = nameOf(named, { lower: true })
       break
     case 'event':
     case 'availability':
@@ -135,6 +149,7 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
     }
   }
 
+  if (named && named === seatId) named = undefined
   // Other languages conjugate for "you", so the viewer as subject or object gets its own line.
   const own =
     subjectId === ctx.viewerId

@@ -43,6 +43,8 @@ export const HELP_TOPICS = {
   search: '/expenses/search-and-totals/#search-everything',
   totals: '/expenses/search-and-totals/#totals-and-charts',
   restore: '/expenses/editing/#undo-and-restore',
+  placeholders: '/groups/#people-not-on-potluck-yet',
+  friends: '/friends/#add-a-friend',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

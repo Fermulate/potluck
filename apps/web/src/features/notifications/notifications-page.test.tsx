@@ -112,6 +112,27 @@ describe('NotificationsPage', () => {
     expect(readUpdates()).toHaveLength(1)
   })
 
+  it('names the seat whose invite someone else sent to a new address', async () => {
+    resetDb({
+      tables: {
+        ...groupTables(group()),
+        notifications: [
+          notification('n-4', 'member.invite_changed', {
+            actor_id: 'u-ben',
+            group_id: 'g-hike',
+            user_id: 'p-sam',
+          }),
+        ],
+        profiles: [
+          { id: 'u-ben', display_name: 'Ben Ortiz', avatar_path: null, deleted_at: null },
+          { id: 'p-sam', display_name: 'Sam Lee', avatar_path: null, deleted_at: null },
+        ],
+      },
+    })
+    renderWithProviders(<NotificationsPage />, { path: '/notifications' })
+    expect(await screen.findByText("Ben sent Sam's invite to a new address")).toBeInTheDocument()
+  })
+
   it('has a friendly empty state', async () => {
     seed([])
     renderWithProviders(<NotificationsPage />, { path: '/notifications' })
