@@ -114,6 +114,9 @@ describe('GuestLinksPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: t('guests.panel.revoke', { code: 'code-l-mine' }) }),
     )
+    const confirm = await screen.findByRole('dialog', { name: t('guests.panel.revokeTitle') })
+    expect(db().rpcArgs('revoke_guest_link')).toEqual([])
+    fireEvent.click(within(confirm).getByRole('button', { name: t('guests.panel.turnOff') }))
     await waitFor(() => expect(db().rpcArgs('revoke_guest_link')).toEqual([{ link_id: 'l-mine' }]))
     await waitFor(() =>
       expect(within(list).queryByText(t('guests.panel.usage', { used: 2, max: 2 }))).toBeNull(),
@@ -164,6 +167,15 @@ describe('GuestLinksPanel', () => {
     const dialog = await screen.findByRole('dialog', { name: t('guests.panel.removeTitle') })
     fireEvent.click(within(dialog).getByRole('button', { name: t('common.remove') }))
     await waitFor(() => expect(db().rpcArgs('remove_guest_answer')).toEqual([{ guest_id: 'g1' }]))
+  })
+
+  it('offers a retry when the links do not load', async () => {
+    resetDb({ tables: { event_guests: [] } })
+    db().respond('from:event_guest_links', { error: { message: 'boom' } }, { data: [] })
+    renderPanel(member('u-me'))
+    expect(await screen.findByText(t('guests.panel.loadFailed'))).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('button', { name: t('guests.panel.share') })).toBeVisible()
   })
 
   it('shows the server reason when a link cannot be made', async () => {

@@ -28,13 +28,14 @@ import {
   toast,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Link2, Share2, UserRound, X } from 'lucide-react'
+import { Check, Copy, Link2, Link2Off, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { Help } from '@/features/help/help'
 import { copyText } from '@/features/invites/share'
 import { planErrorMessage } from '@/features/plans/format'
 import { guestUrl } from '@/lib/app-url'
 import { supabase } from '@/lib/supabase'
+import { GuestList } from './guest-list'
 import { parseGuestCap, shareGuestLink } from './share'
 
 type CapChoice = '5' | '10' | '25' | 'custom'
@@ -63,6 +64,7 @@ export function GuestLinksPanel({ event, viewer, timeZone }: GuestLinksPanelProp
   const [creating, setCreating] = useState(false)
   const [fresh, setFresh] = useState<string | null>(null)
   const [removing, setRemoving] = useState<EventGuest | null>(null)
+  const [revoking, setRevoking] = useState<GuestLink | null>(null)
   const organizes = !!viewer && event.created_by === viewer.userId
   const canRemove = can(viewer?.role, 'guest.remove', { isCreator: organizes })
   const key = guestKeys.links(event.id)
@@ -116,7 +118,22 @@ export function GuestLinksPanel({ event, viewer, timeZone }: GuestLinksPanelProp
         )}
       </div>
 
-      {!links ? (
+      {linksQ.isError || guestsQ.isError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-mute">{t('guests.panel.loadFailed')}</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={linksQ.isFetching || guestsQ.isFetching}
+            onClick={() => {
+              void linksQ.refetch()
+              void guestsQ.refetch()
+            }}
+          >
+            {t('common.retry')}
+          </Button>
+        </div>
+      ) : !links ? (
         <Skeleton className="h-20" />
       ) : links.length === 0 ? (
         <div className="flex flex-col gap-3">
@@ -138,44 +155,13 @@ export function GuestLinksPanel({ event, viewer, timeZone }: GuestLinksPanelProp
               canRevoke={can(viewer?.role, 'guestLink.revoke', {
                 isCreator: organizes || (!!viewer && link.created_by === viewer.userId),
               })}
-              onRevoke={() => revoke.mutate(link)}
+              onRevoke={() => setRevoking(link)}
             />
           ))}
         </ul>
       )}
 
-      {guests.length > 0 && (
-        <section aria-labelledby={`guests-${event.id}`} className="flex flex-col gap-2">
-          <h3 id={`guests-${event.id}`} className="text-sm font-bold text-mute">
-            {t('guests.panel.answered', { count: guests.length })}
-          </h3>
-          <ul className="flex flex-col divide-y divide-line">
-            {guests.map((guest) => (
-              <li key={guest.id} className="flex min-h-11 items-center gap-2.5 py-1.5">
-                <span
-                  aria-hidden
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-sunken text-mute"
-                >
-                  <UserRound className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                  {guest.display_name}
-                </span>
-                <Badge tone="neutral">{t('guests.tag')}</Badge>
-                {canRemove && (
-                  <IconButton
-                    size="sm"
-                    variant="ghost"
-                    label={t('guests.panel.remove', { name: guest.display_name })}
-                    icon={<X />}
-                    onClick={() => setRemoving(guest)}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <GuestList guests={guests} onRemove={canRemove ? setRemoving : undefined} />
 
       <CreateGuestLinkSheet
         open={creating}
@@ -184,6 +170,20 @@ export function GuestLinksPanel({ event, viewer, timeZone }: GuestLinksPanelProp
         onCreated={(link) => {
           queryClient.setQueryData<GuestLink[]>(key, (rows) => [link, ...(rows ?? [])])
           setFresh(link.id)
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!revoking}
+        onOpenChange={(open) => !open && setRevoking(null)}
+        tone="danger"
+        title={t('guests.panel.revokeTitle')}
+        description={t('guests.panel.revokeConfirm')}
+        confirmLabel={t('guests.panel.turnOff')}
+        cancelLabel={t('common.back')}
+        closeLabel={t('common.close')}
+        onConfirm={async () => {
+          if (revoking) await revoke.mutateAsync(revoking)
         }}
       />
 
@@ -241,7 +241,7 @@ function GuestLinkRow({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{url.replace(/^https?:\/\//, '')}</p>
-          <p className="truncate text-xs text-mute">
+          <p className="text-xs text-pretty text-mute">
             <span className="tabular">
               {t('guests.panel.usage', { used, max: link.max_guests })}
             </span>
@@ -274,14 +274,16 @@ function GuestLinkRow({
           onClick={() => void shareGuestLink(eventTitle, link.code)}
         />
         {canRevoke && (
-          <IconButton
+          <Button
             size="sm"
             variant="ghost"
-            className="ml-auto"
-            label={t('guests.panel.revoke', { code: link.code })}
-            icon={<X />}
+            className="ml-auto text-tomato-ink"
+            leadingIcon={<Link2Off />}
+            aria-label={t('guests.panel.revoke', { code: link.code })}
             onClick={onRevoke}
-          />
+          >
+            {t('guests.panel.turnOff')}
+          </Button>
         )}
       </div>
     </li>

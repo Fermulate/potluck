@@ -204,6 +204,29 @@ describe('EventPage', () => {
     expect(screen.getAllByText('1 guest answered').length).toBeGreaterThan(0)
   })
 
+  it('keeps the record of who answered as a guest once the plan is scheduled', async () => {
+    loadEvent.mockResolvedValue({
+      ...poll,
+      status: 'scheduled',
+      starts_at: '2026-06-12T18:00:00+00:00',
+      ends_at: '2026-06-12T19:00:00+00:00',
+    } as PlanEventWithGroup)
+    loadMembers.mockResolvedValue(people)
+    loadAvailability.mockResolvedValue([])
+    loadGuests.mockResolvedValue([
+      { id: 'g-ana', link_id: 'l1', display_name: 'Ana', created_at: '2026-06-01T00:00:00Z' },
+    ])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <EventPage eventId="e1" />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('1 guest answered')).toBeVisible()
+    expect(screen.getByText('Ana')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Remove Ana' })).toBeNull()
+  })
+
   it('says where a scheduled plan is once', async () => {
     loadEvent.mockResolvedValue({
       ...poll,
