@@ -98,7 +98,7 @@ There is no analytics or tracking code in the app.
 
 Users close their account from the app, which calls the `delete-account` edge function with their JWT. The flow is drawn in [sequences.md](sequences.md#delete-an-account).
 
-What is removed: push subscriptions, calendar links, busy blocks, notifications, availability, availability requests, RSVPs, friendships, blocks, and memberships in groups where the balance is zero. Open invites the user created are revoked. Groups they owned pass to the longest-standing admin, else the longest-standing member, and are deleted if nobody else is left. The auth user is soft deleted, so the email can no longer sign in.
+What is removed: push subscriptions, calendar links, busy blocks, notifications, availability, availability requests, RSVPs, friendships, blocks, and memberships in groups where the balance is zero. Open invites the user created are revoked, except the claim links of seats they added, which stay usable. Groups they owned pass to the longest-standing admin, else the longest-standing member, and are deleted if nobody else is left. The auth user is soft deleted, so the email can no longer sign in.
 
 What stays, and why: the profile row stays as a tombstone named "Former member" with no avatar, because other people's expenses and settlements reference it and their balances must not change. Memberships with an open balance stay so nobody's debt disappears. Expenses, splits, settlements, comments and activity the user took part in stay in their groups.
 

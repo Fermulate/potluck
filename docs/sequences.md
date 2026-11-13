@@ -702,7 +702,7 @@ sequenceDiagram
   DB->>DB: pause recurring templates the user pays or shares (open groups)
   DB->>DB: leave groups where balance is 0,<br/>keep memberships with open balances
   DB->>DB: delete push_tokens, calendar_connections, busy_blocks,<br/>notifications, availability, requests, RSVPs,<br/>friendships, blocks
-  DB->>DB: revoke open invites the user created
+  DB->>DB: revoke open invites the user created<br/>(seat claim links stay open)
   DB->>DB: profile: Former member, avatar_path null,<br/>timezone UTC, locale en, deleted_at now()
   DB-->>E: ok
   E->>A: auth.admin.deleteUser(id, shouldSoftDelete = true)
