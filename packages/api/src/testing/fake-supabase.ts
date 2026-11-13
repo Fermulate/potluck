@@ -112,8 +112,11 @@ function runInMemory(rows: Row[], ops: Op[], maxRows: number): FakeResult {
     const [column, value] = args as [string, unknown]
     switch (method) {
       case 'eq':
-      case 'is':
         out = out.filter((r) => r[column] === value)
+        break
+      case 'is':
+        // A column a fixture leaves out reads as null, as an unset column does in Postgres.
+        out = out.filter((r) => (r[column] ?? null) === value)
         break
       case 'neq':
         out = out.filter((r) => r[column] !== value)
