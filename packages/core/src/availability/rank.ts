@@ -18,7 +18,7 @@ export interface RankOptions {
   members: readonly string[]
   /**
    * Guests who answered through a guest link (their guest ids). They count exactly like
-   * members, as `best_slots` does since guest links (ADR 10).
+   * members, as `best_slots` does since guest links (ADR 16).
    */
   guests?: readonly string[]
   /** Maximum number of suggestions. Defaults to 5, like `best_slots`. */

@@ -131,6 +131,7 @@ describe('fetchGuestLinkPreview', () => {
       respondents: 4,
       mine: { name: 'Ana', slots: openRow.my_slots },
       heat: openRow.heat,
+      scheduled: null,
     })
     expect(fake.rpcArgs('guest_link_preview')).toEqual([{ code: 'abc', token: 'tok' }])
   })
@@ -154,6 +155,7 @@ describe('fetchGuestLinkPreview', () => {
     expect(fake.rpcArgs('guest_link_preview')).toEqual([{ code: 'abc' }])
     expect(preview).toMatchObject({ status: 'full', respondents: null, mine: null, heat: null })
     expect(preview.plan).toMatchObject({ emoji: null, groupEmoji: null, hostName: null })
+    expect(preview.scheduled).toBeNull()
   })
 
   it('has no plan for a closed link', async () => {
@@ -164,6 +166,54 @@ describe('fetchGuestLinkPreview', () => {
       respondents: null,
       mine: null,
       heat: null,
+      scheduled: null,
+    })
+  })
+
+  it('shows the picked time for a scheduled plan', async () => {
+    const row = {
+      ...closedRow,
+      status: 'scheduled',
+      title: 'Picnic',
+      emoji: null,
+      group_emoji: null,
+      host_name: 'Musa',
+      timezone: 'UTC',
+      my_name: 'Ana',
+      starts_at: '2026-06-01T10:00:00+00:00',
+      ends_at: '2026-06-01T11:00:00+00:00',
+    }
+    const fake = fakeSupabase().respond('rpc:guest_link_preview', { data: [row] })
+    const preview = await fetchGuestLinkPreview(fake.client, 'abc', 'tok')
+    expect(preview).toMatchObject({ status: 'scheduled', plan: null, mine: null })
+    expect(preview.scheduled).toEqual({
+      title: 'Picnic',
+      emoji: null,
+      groupEmoji: null,
+      hostName: 'Musa',
+      timezone: 'UTC',
+      startsAt: '2026-06-01T10:00:00+00:00',
+      endsAt: '2026-06-01T11:00:00+00:00',
+      myName: 'Ana',
+    })
+    const anon = fakeSupabase().respond('rpc:guest_link_preview', {
+      data: [{ ...row, emoji: '🧺', group_emoji: '🌳', host_name: null, my_name: null }],
+    })
+    expect((await fetchGuestLinkPreview(anon.client, 'abc', null)).scheduled).toMatchObject({
+      emoji: '🧺',
+      groupEmoji: '🌳',
+      hostName: null,
+      myName: null,
+    })
+  })
+
+  it('reads a removed answer as its own status', async () => {
+    const fake = fakeSupabase().respond('rpc:guest_link_preview', {
+      data: [{ ...closedRow, status: 'removed' }],
+    })
+    expect(await fetchGuestLinkPreview(fake.client, 'abc', 'tok')).toMatchObject({
+      status: 'removed',
+      scheduled: null,
     })
   })
 
@@ -178,7 +228,7 @@ describe('fetchGuestLinkPreview', () => {
     const preview = await fetchGuestLinkPreview(fake.client, 'abc', 'tok')
     expect(preview.status).toBe('closed')
     expect(preview.plan).toBeNull()
-    expect(preview.mine).toEqual({ name: 'Ana', slots: [] })
+    expect(preview.mine).toBeNull()
     expect(preview.heat).toEqual([
       { slot_start: 'undefined', yes: 0, maybe: 0 },
       { slot_start: 's', yes: 0, maybe: 0 },

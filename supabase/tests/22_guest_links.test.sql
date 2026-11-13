@@ -2,7 +2,7 @@
 -- revocation, the guest cap, rate limits, who can read what, removing a guest's answer, and
 -- best_slots counting guests (the same case as the guest test in packages/core rank-slots).
 begin;
-select plan(80);
+select plan(87);
 
 select tests.create_user('owner');
 select tests.create_user('m1');
@@ -140,9 +140,17 @@ select throws_ok(
 );
 select throws_ok(
   format($$ select * from public.set_guest_availability(%L, %L, null, %L) $$,
-    pg_temp.code(), E'Ana\nBob', jsonb_build_array(pg_temp.slot(1, '10:00'))),
-  '22023', 'invalid_guest_name', 'names cannot hold control characters'
+    pg_temp.code(), E'\u200B\u200D\uFEFF \u2066\u3164', jsonb_build_array(pg_temp.slot(1, '10:00'))),
+  '22023', 'invalid_guest_name', 'a name of only invisible characters is empty'
 );
+reset role;
+select is(
+  private.clean_guest_name(E'  An\u200Ba\u2069\u00A0\tB\nc\u00AD  '),
+  'Ana B c',
+  'names lose invisible characters and collapse whitespace, like cleanGuestName in core'
+);
+select is(private.clean_guest_name(E'Zo\u00EB \U0001F96F'), E'Zo\u00EB \U0001F96F', 'letters and emoji stay');
+select tests.login_anon();
 select throws_ok(
   format($$ select * from public.set_guest_availability(%L, 'Ana', null, '[]') $$, pg_temp.code()),
   '22023', 'guest_slots_required', 'a new guest has to pick a time'
@@ -164,7 +172,7 @@ select throws_ok(
 
 insert into tok
 select 'ana', guest_token from public.set_guest_availability(
-  pg_temp.code(), '  Ana  ', null, jsonb_build_array(pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:30')));
+  pg_temp.code(), E'  An\u200Ba\u2069 ', null, jsonb_build_array(pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:30')));
 select ok(char_length(pg_temp.tok('ana')) >= 32, 'a new guest gets a long random token back');
 
 reset role;
@@ -350,12 +358,34 @@ select throws_ok(
   $$ select public.remove_guest_answer((select id from ben)) $$,
   'PT404', 'guest_not_found', 'removing twice is not found'
 );
--- Removing Ben freed a seat: his old token is unknown now, so he comes back as a new guest.
+select is(
+  (select count(*)::int from public.event_guests where event_id = tests.id('ev')),
+  1,
+  'members no longer see a removed guest'
+);
+select ok(
+  not exists (
+    select 1 from public.best_slots(tests.id('ev')) b, ben where ben.id = any (b.missing)
+  ),
+  'best_slots forgets a removed guest'
+);
+
+-- Ben's token is blocked, but his seat freed up for someone new.
 select tests.login_anon();
+select throws_ok(
+  format($$ select * from public.set_guest_availability(%L, 'Ben', %L, %L) $$,
+    pg_temp.code(), pg_temp.tok('ben'), jsonb_build_array(pg_temp.slot(1, '11:00'))),
+  '42501', 'guest_removed', 'a removed guest cannot answer again with their token'
+);
+select is(
+  (select status from public.guest_link_preview(pg_temp.code(), pg_temp.tok('ben'))),
+  'removed',
+  'and their link says the answer was removed'
+);
 insert into tok
-select 'ben2', guest_token from public.set_guest_availability(
-  pg_temp.code(), 'Ben', pg_temp.tok('ben'), jsonb_build_array(pg_temp.slot(1, '11:00')));
-select isnt(pg_temp.tok('ben2'), pg_temp.tok('ben'), 'a removed guest who answers again gets a new token');
+select 'cy', guest_token from public.set_guest_availability(
+  pg_temp.code(), 'Cy', null, jsonb_build_array(pg_temp.slot(1, '11:00')));
+select isnt(pg_temp.tok('cy'), null, 'the freed seat takes a new guest');
 
 -- Rate limits -----------------------------------------------------------------------------------
 
@@ -508,9 +538,14 @@ select tests.login('m1');
 select schedule_event(tests.id('ev'), ((current_date + 1) + '10:00'::time) at time zone 'UTC');
 select tests.login_anon();
 select results_eq(
-  $$ select status, title from public.guest_link_preview((select code from busy)) $$,
-  $$ values ('closed', null::text) $$,
-  'once the plan is scheduled its links close'
+  $$ select status, title, starts_at, window_start from public.guest_link_preview((select code from busy)) $$,
+  $$ values ('scheduled', 'Guest hike', ((current_date + 1) + '10:00'::time) at time zone 'UTC', null::date) $$,
+  'once the plan is scheduled its links close and show the time picked'
+);
+select is(
+  (select status from public.guest_link_preview((select code from l3))),
+  'expired',
+  'an expired link does not show the time to someone who never answered'
 );
 select throws_ok(
   format($$ select * from public.set_guest_availability((select code from busy), 'Fay', null, %L) $$,

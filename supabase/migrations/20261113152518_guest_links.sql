@@ -1,4 +1,4 @@
--- Guest availability links (ADR 10). A member shares a link to a polling plan; anyone with it can
+-- Guest availability links (ADR 16). A member shares a link to a polling plan; anyone with it can
 -- add their times with just a name, no account. Guests are their own rows, never auth users:
 --
 --   event_guest_links         one shareable code per link, with an expiry and a cap on guests
@@ -9,7 +9,8 @@
 -- Clients never write these tables. Members read them (minus the token hash) for the heatmap and
 -- the plan page; anon reads nothing and goes through two anon-callable RPCs that check the code,
 -- expiry, revocation, the cap, the plan's status and the group's archive state on every call.
--- best_slots counts guests like members, so they count toward min_attendees.
+-- best_slots counts guests like members (removed ones not at all), so they count toward
+-- min_attendees.
 -- best_slots body as in 20261105071518_rpc_availability.sql plus the guest rows.
 
 -- Tables ------------------------------------------------------------------------------------------
@@ -42,6 +43,7 @@ create table public.event_guests (
   token_hash bytea not null,
   saves int not null default 1,
   saves_window_start timestamptz not null default now(),
+  removed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (link_id, token_hash)
@@ -51,6 +53,8 @@ comment on table public.event_guests is
   'People who answered a plan through a guest link. token_hash is sha256 of the token their browser keeps; it is never readable by clients.';
 comment on column public.event_guests.saves is
   'Saves since saves_window_start: the per guest rate limit in set_guest_availability.';
+comment on column public.event_guests.removed_at is
+  'Set when the organizer removes the answer: the slots are deleted, the seat frees up, and the token can no longer answer.';
 
 create index event_guests_link_id_idx on public.event_guests (link_id, created_at);
 create index event_guests_event_id_idx on public.event_guests (event_id);
@@ -92,7 +96,7 @@ create policy "event_guest_links: members read" on public.event_guest_links
 
 create policy "event_guests: members read" on public.event_guests
   for select to authenticated
-  using (group_id = any (array(select private.my_group_ids())));
+  using (group_id = any (array(select private.my_group_ids())) and removed_at is null);
 
 create policy "event_guest_availability: members read" on public.event_guest_availability
   for select to authenticated
@@ -101,6 +105,31 @@ create policy "event_guest_availability: members read" on public.event_guest_ava
 alter publication supabase_realtime add table public.event_guest_availability;
 
 -- Helpers -----------------------------------------------------------------------------------------
+
+-- A guest's name as typed, made safe to show: invisible and zero width characters (soft hyphen,
+-- joiners, bidi controls, variation selectors, tag characters, Hangul fillers, the BOM) are dropped,
+-- any run of whitespace or control characters becomes one space, and the ends are trimmed. Same
+-- rules and test cases as cleanGuestName in packages/core.
+create or replace function private.clean_guest_name(name text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select btrim(regexp_replace(
+    regexp_replace(
+      coalesce(name, ''),
+      '[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\U0001D173-\U0001D17A\U000E0000-\U000E007F]',
+      '',
+      'g'
+    ),
+    '[\s\u0001-\u001F\u007F-\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+',
+    ' ',
+    'g'
+  ));
+$$;
+
+revoke execute on function private.clean_guest_name(text) from public, anon, authenticated;
 
 -- Parses and checks a slots payload against an event's grid. The same rules as the grid check in
 -- public.set_availability (and buildSlots in packages/core); returns [{slot_start, level}].
@@ -283,12 +312,14 @@ declare
 begin
   perform private.require_user();
   select * into guest from public.event_guests g where g.id = remove_guest_answer.guest_id;
-  if guest.id is null then
+  if guest.id is null or guest.removed_at is not null then
     raise exception using message = 'guest_not_found', detail = 'That guest answer is already gone', errcode = 'PT404';
   end if;
   -- Organizer or group admin, group not archived.
   perform private.manageable_event(guest.event_id);
-  delete from public.event_guests g where g.id = guest.id;
+  -- Keep the row so the guest's token cannot answer again; the slots go and the seat frees up.
+  delete from public.event_guest_availability ga where ga.guest_id = guest.id;
+  update public.event_guests g set removed_at = now(), updated_at = now() where g.id = guest.id;
 end;
 $$;
 
@@ -297,11 +328,14 @@ grant execute on function public.remove_guest_answer(uuid) to authenticated, ser
 
 -- Anon-callable RPCs ------------------------------------------------------------------------------
 
--- What a guest link shows. status is one of open, full, revoked, expired, archived, closed (the
--- plan was scheduled, cancelled or is done). Only open and full carry the plan; only open carries
--- the grid, the aggregated heat ([{slot_start, yes, maybe}], no names or ids) and, when the
--- token matches a guest, their own name and slots. A guest who already answered sees open even
--- when the link is full.
+-- What a guest link shows. status is one of:
+--   open       answers welcome: the plan, the grid, aggregated heat, the visitor's own answer
+--   full       every seat taken (a guest who already answered still sees open): the plan only
+--   scheduled  the plan has a time: title, emojis, host, starts_at and ends_at. Shown while the
+--              link has not expired, or to a guest who answered through it
+--   removed    the organizer removed this visitor's answer
+--   revoked, expired, archived, closed (cancelled, or no longer polling): nothing else
+-- heat is [{slot_start, yes, maybe}] from members and guests, never names or ids.
 create or replace function public.guest_link_preview(code text, token text default null)
 returns table (
   status text,
@@ -322,7 +356,9 @@ returns table (
   respondents int,
   my_name text,
   my_slots jsonb,
-  heat jsonb
+  heat jsonb,
+  starts_at timestamptz,
+  ends_at timestamptz
 )
 language plpgsql
 stable
@@ -335,7 +371,9 @@ declare
   ev public.events;
   grp public.groups;
   me public.event_guests;
+  answered boolean;
   guests int;
+  host text;
   st text;
 begin
   select * into link from public.event_guest_links l where l.code = guest_link_preview.code;
@@ -345,21 +383,37 @@ begin
   select * into ev from public.events e where e.id = link.event_id;
   select * into grp from public.groups g where g.id = link.group_id;
   me := private.guest_for_token(link.id, guest_link_preview.token);
-  select count(*)::int into guests from public.event_guests g where g.link_id = link.id;
+  answered := me.id is not null and me.removed_at is null;
+  select count(*)::int into guests from public.event_guests g
+  where g.link_id = link.id and g.removed_at is null;
+  select nullif(split_part(p.display_name, ' ', 1), '') into host
+  from public.profiles p where p.id = link.created_by and p.deleted_at is null;
 
   st := case
     when link.revoked_at is not null then 'revoked'
-    when link.expires_at <= now() then 'expired'
     when grp.archived_at is not null then 'archived'
+    when me.removed_at is not null then 'removed'
+    when ev.status in ('scheduled', 'done') and (link.expires_at > now() or answered) then 'scheduled'
+    when link.expires_at <= now() then 'expired'
     when ev.status <> 'polling' then 'closed'
-    when me.id is null and guests >= link.max_guests then 'full'
+    when not answered and guests >= link.max_guests then 'full'
     else 'open'
   end;
+
+  if st = 'scheduled' then
+    return query select st, ev.title, ev.emoji, grp.emoji, host, ev.timezone,
+      null::date, null::date, null::int, null::int, null::int, null::int,
+      null::timestamptz, null::int, null::int, null::int,
+      case when answered then me.display_name end, null::jsonb, null::jsonb,
+      ev.starts_at, ev.ends_at;
+    return;
+  end if;
 
   if st not in ('open', 'full') then
     return query select st, null::text, null::text, null::text, null::text, null::text,
       null::date, null::date, null::int, null::int, null::int, null::int,
-      null::timestamptz, null::int, null::int, null::int, null::text, null::jsonb, null::jsonb;
+      null::timestamptz, null::int, null::int, null::int, null::text, null::jsonb, null::jsonb,
+      null::timestamptz, null::timestamptz;
     return;
   end if;
 
@@ -379,8 +433,7 @@ begin
     ev.title,
     ev.emoji,
     grp.emoji,
-    (select nullif(split_part(p.display_name, ' ', 1), '') from public.profiles p
-     where p.id = link.created_by and p.deleted_at is null),
+    host,
     ev.timezone,
     ev.window_start,
     ev.window_end,
@@ -392,8 +445,8 @@ begin
     link.max_guests,
     guests,
     case when st = 'open' then (select count(distinct x.who)::int from answers x) end,
-    me.display_name,
-    case when me.id is not null then (
+    case when answered then me.display_name end,
+    case when answered then (
       select coalesce(jsonb_agg(jsonb_build_object('slot_start', ga.slot_start, 'level', ga.level) order by ga.slot_start), '[]'::jsonb)
       from public.event_guest_availability ga where ga.guest_id = me.id
     ) end,
@@ -407,7 +460,9 @@ begin
         from answers x
         group by x.slot_start
       ) h
-    ) end;
+    ) end,
+    null::timestamptz,
+    null::timestamptz;
 end;
 $$;
 
@@ -417,8 +472,9 @@ grant execute on function public.guest_link_preview(text, text) to anon, authent
 -- Adds or replaces a guest's answer. No token (or one this link does not know) makes a new guest,
 -- if the link has room, and returns a fresh token for the browser to keep; a known token edits
 -- that guest. The link row lock serializes the cap and the rate limits.
--- Limits: names 1 to 40 characters, a new guest needs at least one slot, 20 new guests per link
--- per 10 minutes, 60 saves per guest per hour, max_guests guests per link.
+-- Limits: names 1 to 40 characters once cleaned (private.clean_guest_name), a new guest needs at
+-- least one slot, 20 new guests per link per 10 minutes, 60 saves per guest per hour, max_guests
+-- guests per link. A token whose answer the organizer removed is refused (guest_removed).
 create or replace function public.set_guest_availability(code text, name text, token text, slots jsonb)
 returns table (guest_token text, saved int)
 language plpgsql
@@ -431,7 +487,7 @@ declare
   ev public.events;
   grp public.groups;
   me public.event_guests;
-  clean_name text := btrim(coalesce(set_guest_availability.name, ''));
+  clean_name text := private.clean_guest_name(set_guest_availability.name);
   parsed jsonb;
   fresh_token text;
   n int;
@@ -455,18 +511,22 @@ begin
   if ev.status <> 'polling' then
     raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
   end if;
-  if char_length(clean_name) not between 1 and 40 or clean_name ~ '[[:cntrl:]]' then
+  if char_length(clean_name) not between 1 and 40 then
     raise exception using message = 'invalid_guest_name', detail = 'Names are 1 to 40 characters', errcode = '22023';
   end if;
 
   parsed := private.event_slots(ev, slots);
   me := private.guest_for_token(link.id, set_guest_availability.token);
+  if me.removed_at is not null then
+    raise exception using message = 'guest_removed', detail = 'The organizer removed this answer', errcode = '42501';
+  end if;
 
   if me.id is null then
     if jsonb_array_length(parsed) = 0 then
       raise exception using message = 'guest_slots_required', detail = 'Pick at least one time', errcode = '22023';
     end if;
-    select count(*)::int into n from public.event_guests g where g.link_id = link.id;
+    select count(*)::int into n from public.event_guests g
+    where g.link_id = link.id and g.removed_at is null;
     if n >= link.max_guests then
       raise exception using message = 'guest_link_full', detail = 'This guest link is full', errcode = '23514';
     end if;
@@ -532,7 +592,7 @@ begin
   with members as (
     select m.user_id from public.group_members m where m.group_id = ev.group_id
     union all
-    select g.id from public.event_guests g where g.event_id = ev.id
+    select g.id from public.event_guests g where g.event_id = ev.id and g.removed_at is null
   ),
   answers as (
     select a.user_id, a.slot_start, a.level from public.availability a where a.event_id = ev.id

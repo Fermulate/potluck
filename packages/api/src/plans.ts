@@ -519,7 +519,7 @@ export async function addEventComment(
 }
 
 // Guest links -----------------------------------------------------------------
-// People without an account add their times through a shareable link (ADR 10). Members read
+// People without an account add their times through a shareable link (ADR 16). Members read
 // links, guests and guest slots straight from the tables; guests go through two anon RPCs.
 
 export type GuestLink = Tables['event_guest_links']['Row']
@@ -534,7 +534,8 @@ export interface EventGuest {
   created_at: string
 }
 
-export type GuestLinkStatus = 'open' | 'full' | 'revoked' | 'expired' | 'archived' | 'closed'
+export type GuestLinkStatus =
+  'open' | 'full' | 'scheduled' | 'removed' | 'revoked' | 'expired' | 'archived' | 'closed'
 
 /** One cell of the heatmap a guest sees: counts only, never who. */
 export interface GuestHeatCell {
@@ -574,11 +575,25 @@ export interface GuestLinkPreview {
   mine: { name: string; slots: GuestSlot[] } | null
   /** Counts per slot from everyone; null unless open. */
   heat: GuestHeatCell[] | null
+  /** The time the group picked, when the status is `scheduled`. */
+  scheduled: {
+    title: string
+    emoji: string | null
+    groupEmoji: string | null
+    hostName: string | null
+    timezone: string
+    startsAt: string
+    endsAt: string
+    /** The visitor's name when they answered through this link. */
+    myName: string | null
+  } | null
 }
 
 const GUEST_STATUSES: readonly GuestLinkStatus[] = [
   'open',
   'full',
+  'scheduled',
+  'removed',
   'revoked',
   'expired',
   'archived',
@@ -723,8 +738,21 @@ export async function fetchGuestLinkPreview(
     status,
     plan,
     respondents: row.respondents ?? null,
-    mine: row.my_name ? { name: row.my_name, slots: guestSlots(row.my_slots) } : null,
+    mine: plan && row.my_name ? { name: row.my_name, slots: guestSlots(row.my_slots) } : null,
     heat: heatCells(row.heat),
+    scheduled:
+      status === 'scheduled' && row.title && row.starts_at && row.ends_at
+        ? {
+            title: row.title,
+            emoji: row.emoji ?? null,
+            groupEmoji: row.group_emoji ?? null,
+            hostName: row.host_name ?? null,
+            timezone: row.timezone,
+            startsAt: row.starts_at,
+            endsAt: row.ends_at,
+            myName: row.my_name ?? null,
+          }
+        : null,
   }
 }
 

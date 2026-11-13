@@ -127,7 +127,7 @@ describe('rankSlots', () => {
     })
     expect(ranked[0]).toMatchObject({ startsAt: at('18:00'), endsAt: at('18:45'), yesCount: 1 })
   })
-  // Same case as the best_slots test in supabase/tests/17_guest_links.test.sql.
+  // Same case as the best_slots test in supabase/tests/22_guest_links.test.sql.
   it('counts guests like members, toward the minimum too', () => {
     const guestRows = [
       row('m1', '10:00'),

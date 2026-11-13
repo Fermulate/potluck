@@ -20,6 +20,7 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
   | `balances/simplifyDebts`                              | `public.simplified_debts`                                                           |
   | `currency/convert`, `minorUnits`, `invertRate`        | `private.convert_minor`, `private.minor_units`, `private.fx_rate`                   |
   | `availability/` slots, `rankSlots` (guests too), heat | `public.set_availability` and `private.event_slots` grid check, `public.best_slots` |
+  | `people/cleanGuestName`                               | `private.clean_guest_name`                                                          |
   | `recurrence/nextOccurrence` (biweekly too)            | `private.recurring_step` (used by the materialize job)                              |
   | `recurrence/firstOccurrenceFrom`                      | `private.recurring_next_from` (`make_expense_recurring`)                            |
   | `roles/can()`                                         | role checks inside each RPC                                                         |
