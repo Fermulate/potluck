@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(120);
+select plan(126);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -22,7 +22,7 @@ select tables_are('public', array[
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
   'calendar_feed_tokens', 'notification_prefs',
   'event_guest_links', 'event_guests', 'event_guest_availability',
-  'placeholders', 'friend_invites'
+  'placeholders', 'friend_invites', 'group_whiteboards'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances', 'expense_ledger'], 'public has the balances and ledger views');
@@ -51,6 +51,7 @@ select enum_has_labels('public', 'availability_level', array['yes', 'maybe'], 'a
 select enum_has_labels('public', 'rsvp_status', array['going', 'maybe', 'declined'], 'rsvp_status labels');
 select enum_has_labels('public', 'push_platform', array['web', 'ios', 'android'], 'push_platform labels');
 select enum_has_labels('public', 'recurrence', array['weekly', 'biweekly', 'monthly', 'yearly'], 'recurrence labels');
+select enum_has_labels('public', 'group_type', array['home', 'trip', 'couple', 'other'], 'group_type labels');
 
 -- RPC signatures
 select has_function('public', 'create_group', array['text', 'text', 'text', 'text'], 'create_group(name, emoji, color, currency)');
@@ -99,6 +100,10 @@ select has_function('public', 'friend_activity', array['uuid', 'timestamp with t
 select has_function('public', 'search_money',
   array['text', 'uuid', 'uuid', 'date', 'date', 'text[]', 'text[]', 'date', 'timestamp with time zone', 'uuid', 'integer'],
   'search_money(query, filters, cursor, max_rows)');
+select has_function('public', 'create_group_v2', array['text', 'text', 'text', 'text', 'group_type', 'date', 'date'], 'create_group_v2(name, emoji, color, currency, type, starts_on, ends_on)');
+select has_function('public', 'restore_group', array['uuid'], 'restore_group');
+select has_function('public', 'my_deleted_groups', array[]::text[], 'my_deleted_groups');
+select has_function('public', 'save_group_whiteboard', array['uuid', 'text', 'integer'], 'save_group_whiteboard(group_id, body, base_version)');
 select has_function('public', 'my_notification_prefs', array[]::text[], 'my_notification_prefs');
 select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
 select has_function('public', 'email_unsubscribe', array['text', 'text'], 'email_unsubscribe(token, action)');
@@ -222,7 +227,8 @@ select results_eq(
 select set_eq(
   $$ select tablename::text from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' $$,
   array['availability', 'expenses', 'expense_splits', 'settlements', 'activity',
-        'notifications', 'event_rsvps', 'events', 'group_members', 'event_guest_availability'],
+        'notifications', 'event_rsvps', 'events', 'group_members', 'event_guest_availability',
+        'group_whiteboards'],
   'realtime publication covers the live tables'
 );
 
@@ -239,6 +245,10 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'email-notifications' and schedule = '* * * * *'),
   'email job runs every minute'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'purge-deleted-groups' and schedule = '20 3 * * *'),
+  'deleted groups are purged nightly'
 );
 select ok(
   exists (select 1 from cron.job where jobname = 'monthly-summary' and schedule = '0 15 1 * *'),

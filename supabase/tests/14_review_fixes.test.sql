@@ -3,7 +3,7 @@
 -- back-charges, recurring templates stop for closed accounts, and editing an
 -- expense's details keeps a former member's share.
 begin;
-select plan(51);
+select plan(52);
 
 select tests.create_user('own');
 select tests.create_user('ann');
@@ -98,7 +98,8 @@ select throws_ok($$ select delete_group(tests.id('owed')) $$, '42501', 'not_allo
 select tests.login('own');
 select lives_ok($$ select delete_group(tests.id('owed')) $$, 'a settled group can be deleted');
 reset role;
-select is((select count(*)::int from public.groups where id = tests.id('owed')), 0, 'and is gone');
+select is((select count(*)::int from public.groups where id = tests.id('owed') and deleted_at is not null), 1,
+  'and is gone (restorable for 30 days)');
 
 select tests.remember('direct', tests.group_with('own', array['ann'], '{}', 'Direct'));
 update public.groups set is_direct = true, members_can_invite = false where id = tests.id('direct');
@@ -106,8 +107,8 @@ select tests.login('own');
 select create_expense(jsonb_build_object(
   'group_id', tests.id('direct'), 'description', 'Taxi', 'amount_cents', 500,
   'splits', tests.people('own', 'ann')));
-select throws_ok($$ select delete_group(tests.id('direct')) $$, '23514', 'group_has_balances',
-  'one-on-one groups with a balance are protected too');
+select throws_ok($$ select delete_group(tests.id('direct')) $$, '23514', 'direct_group_not_deletable',
+  'one-on-one groups cannot be deleted at all (28_groups)');
 reset role;
 select throws_ok($$ delete from public.groups where id = tests.id('direct') $$, '23514', 'group_has_balances',
   'the guard is a trigger, so it holds for every role');
@@ -264,8 +265,11 @@ update public.groups set archived_at = now() where id = tests.id('attic');
 select tests.login('own');
 select lives_ok($$ select delete_group(tests.id('attic')) $$, 'an archived group with a template can still be deleted');
 reset role;
+select is((select count(*)::int from public.recurring_expenses where id = tests.id('attic_rent')), 1,
+  'the template waits with the deleted group');
+select private.purge_deleted_groups('0 seconds');
 select is((select count(*)::int from public.recurring_expenses where id = tests.id('attic_rent')), 0,
-  'and the template goes with it');
+  'and goes with it when the group is purged');
 select is(
   (select count(*)::int from public.group_members where group_id = tests.id('rg') and user_id = tests.uid('bob')),
   1,

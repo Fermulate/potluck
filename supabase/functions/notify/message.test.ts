@@ -48,6 +48,17 @@ test('deleted and restored expenses and being added to a group', () => {
   assert.equal(message(row('member.added', { group_id: 'g1' })).url, '/groups/g1')
 })
 
+test('a deleted group names itself and opens the page that restores it; a restore opens it', () => {
+  const deleted = message(row('group.deleted', { deleted_group_id: 'g9', group_name: 'Old flat' }))
+  assert.equal(deleted.title, 'Old flat')
+  assert.equal(deleted.url, '/groups/g9')
+  assert.equal(message(row('group.deleted', {})).url, '/home')
+  assert.equal(message(row('group.deleted', {})).title, 'Group deleted')
+  const back = message(row('group.restored', { group_id: 'g9', group_name: 'Old flat' }), 'es')
+  assert.equal(back.url, '/groups/g9')
+  assert.equal(back.body, 'Vuelve a la mesa.')
+})
+
 test('a recovery that turned two-step sign in off links to Me', () => {
   const removed = row('account.mfa_removed', {})
   assert.equal(message(removed).title, 'Two-step sign in is off')

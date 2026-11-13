@@ -61,7 +61,8 @@ select throws_ok(
   '42501', null, 'outsiders cannot upload covers'
 );
 select tests.login_anon();
-select is((select count(*)::int from storage.objects where bucket_id = 'group-covers'), 1, 'covers are publicly readable');
+select is((select count(*)::int from storage.objects where bucket_id = 'group-covers'), 0,
+  'anon cannot list covers (the public URL still serves them)');
 
 -- receipts
 select tests.login('member');

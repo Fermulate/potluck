@@ -2,7 +2,7 @@
 // The token (from calendar_feed_token()) is the credential, so this function
 // does not require a JWT. Returns scheduled events from the owner's groups.
 import { adminClient } from '../_shared/admin.ts'
-import { escapeText, fold } from './ics.ts'
+import { escapeText, fold, liveGroupIds } from './ics.ts'
 
 const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.fermulate.com'
 
@@ -32,11 +32,12 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (!profile || profile.deleted_at) return new Response('Not found', { status: 404 })
 
+  // Deleted groups (waiting 30 days to be purged) keep their rows but leave the feed.
   const { data: memberships } = await db
     .from('group_members')
-    .select('group_id')
+    .select('group_id, groups(deleted_at)')
     .eq('user_id', owner.user_id)
-  const groupIds = (memberships ?? []).map((m) => m.group_id)
+  const groupIds = liveGroupIds(memberships ?? [])
 
   const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString()
   const { data: events } = groupIds.length

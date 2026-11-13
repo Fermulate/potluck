@@ -1,7 +1,7 @@
 // Run with `pnpm test:functions` (Node's test runner; the module has no Deno imports).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { escapeText, fold } from './ics.ts'
+import { escapeText, fold, liveGroupIds } from './ics.ts'
 
 const octets = (s: string) => new TextEncoder().encode(s).length
 
@@ -39,4 +39,16 @@ test('folds multi-byte text by octets without splitting a character', () => {
     assert.ok(!/^ ?[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/.test(line))
   }
   assert.equal(folded.replace(/\r\n /g, ''), text)
+})
+
+test('leaves deleted groups out of the feed', () => {
+  assert.deepEqual(
+    liveGroupIds([
+      { group_id: 'live', groups: { deleted_at: null } },
+      { group_id: 'deleted', groups: { deleted_at: '2026-11-13T10:00:00Z' } },
+      { group_id: 'listed', groups: [{ deleted_at: null }] },
+      { group_id: 'unreadable', groups: null },
+    ]),
+    ['live', 'listed'],
+  )
 })
