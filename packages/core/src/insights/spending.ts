@@ -429,23 +429,3 @@ export function monthEnd(month: string): string {
   const days = new Date(Date.UTC(year, m, 0)).getUTCDate()
   return `${month.slice(0, 7)}-${String(days).padStart(2, '0')}`
 }
-
-export type SpendingPeriod =
-  | { kind: 'all' }
-  | { kind: 'month'; month: string }
-  | { kind: 'year'; year: number }
-  | { kind: 'range'; from: string | null; to: string | null }
-
-/** Inclusive day bounds for a period; null means open on that side. */
-export function periodBounds(period: SpendingPeriod): { from: string | null; to: string | null } {
-  switch (period.kind) {
-    case 'all':
-      return { from: null, to: null }
-    case 'month':
-      return { from: monthOf(period.month), to: monthEnd(period.month) }
-    case 'year':
-      return { from: `${period.year}-01-01`, to: `${period.year}-12-31` }
-    case 'range':
-      return { from: period.from, to: period.to }
-  }
-}

@@ -239,7 +239,7 @@ Conflicts: Batch 6 (notification triggers and `describe.ts`; add types in separa
 Features:
 
 - Search across all groups (expenses and payments) from a search button in the app bar, with results grouped by group.
-- Filters: date range, person (paid or involved), category, group; also on a group's expenses tab.
+- Filters: date range, person (paid or involved), category, group and type (expenses or payments); date, person, category and type also on a group's Expenses tab, kept in its address.
 - Totals (matching Splitwise's free Totals screen): total group spend, what you paid, your share, payments made and received, net change, by month or all time.
 - Charts: spending by category and by month, per group and across groups, in the viewer's chosen currency.
 - Deleted items view per group (expenses and payments) with Restore.

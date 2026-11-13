@@ -4,14 +4,19 @@ import {
   activeFilters,
   countFilters,
   dateLabel,
-  dayParam,
   matchingPreset,
   presetRange,
   withoutFilter,
   type MoneyFilters,
 } from './filter-state'
 import { chartMonths, rowsInPeriod } from './period'
-import { validateActivitySearch, validateMoneySearch } from './search-params'
+import {
+  filtersFromSearch,
+  searchFromFilters,
+  validateActivitySearch,
+  validateGroupListSearch,
+  validateMoneySearch,
+} from './search-params'
 
 const today = '2026-03-15'
 
@@ -112,8 +117,22 @@ describe('search params', () => {
       person: uuid,
     })
     expect(validateActivitySearch({ groupId: 1 })).toEqual({})
-    expect(dayParam('2026-01-01')).toBe('2026-01-01')
-    expect(dayParam(5)).toBeUndefined()
+    // The Expenses tab keeps the type too, but no query or group.
+    expect(validateGroupListSearch({ kind: 'payment', q: 'tacos', groupId: uuid })).toEqual({
+      kind: 'payment',
+    })
+    expect(validateGroupListSearch({ kind: 'refund' })).toEqual({})
+    expect(filtersFromSearch({ kind: 'expense', cats: 'food' })).toMatchObject({
+      kind: 'expense',
+      categories: ['food'],
+    })
+    expect(searchFromFilters({ kind: 'payment', categories: [], person: null })).toEqual({
+      kind: 'payment',
+      person: undefined,
+      from: undefined,
+      to: undefined,
+      cats: undefined,
+    })
   })
 })
 

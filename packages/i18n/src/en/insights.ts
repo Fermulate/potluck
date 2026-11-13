@@ -60,7 +60,7 @@ export const filters = {
   summary_one: '{count} expense, {total} in all',
   summary_other: '{count} expenses, {total} in all',
   yourShare: 'Your share {amount}',
-  paymentsHidden: 'Payments are hidden while filtering.',
+  paymentsHidden: 'Payments are hidden while filtering by category.',
 } as const
 
 export const insights = {

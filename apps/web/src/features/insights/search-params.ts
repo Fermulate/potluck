@@ -56,15 +56,16 @@ export function validateActivitySearch(search: Record<string, unknown>): Activit
 }
 
 /** A group's expense list filters, in the Expenses tab's address. */
-export type GroupListSearch = Pick<MoneySearch, 'person' | 'from' | 'to' | 'cats'>
+export type GroupListSearch = Pick<MoneySearch, 'person' | 'from' | 'to' | 'cats' | 'kind'>
 
 export function validateGroupListSearch(search: Record<string, unknown>): GroupListSearch {
-  const { person, from, to, cats } = validateMoneySearch(search)
+  const { person, from, to, cats, kind } = validateMoneySearch(search)
   const out: GroupListSearch = {}
   if (person) out.person = person
   if (from) out.from = from
   if (to) out.to = to
   if (cats) out.cats = cats
+  if (kind) out.kind = kind
   return out
 }
 
@@ -74,6 +75,7 @@ export function filtersFromSearch(search: GroupListSearch): MoneyFilters {
     from: search.from ?? null,
     to: search.to ?? null,
     categories: search.cats ? search.cats.split(',') : [],
+    kind: search.kind ?? null,
   }
 }
 
@@ -83,5 +85,6 @@ export function searchFromFilters(filters: MoneyFilters): GroupListSearch {
     from: filters.from || undefined,
     to: filters.to || undefined,
     cats: filters.categories?.length ? filters.categories.join(',') : undefined,
+    kind: filters.kind || undefined,
   }
 }

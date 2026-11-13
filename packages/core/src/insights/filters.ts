@@ -42,3 +42,27 @@ export function matchesExpenseFilters(
   }
   return true
 }
+
+export interface FilterablePayment {
+  fromUser: string
+  toUser: string
+  /** The payment's calendar day in the viewer's zone, `YYYY-MM-DD`. */
+  day: string
+}
+
+/**
+ * Whether a payment passes the filters, as `search_money` decides: either person counts, the
+ * day is the payment's, and any category leaves payments out.
+ */
+export function matchesPaymentFilters(
+  payment: FilterablePayment,
+  filters: ExpenseFilters,
+): boolean {
+  if (filters.categories?.length) return false
+  if (filters.from && payment.day < filters.from) return false
+  if (filters.to && payment.day > filters.to) return false
+  if (filters.person && payment.fromUser !== filters.person && payment.toUser !== filters.person) {
+    return false
+  }
+  return true
+}

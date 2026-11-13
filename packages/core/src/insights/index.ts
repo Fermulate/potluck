@@ -3,7 +3,6 @@ export {
   ledgerLines,
   monthEnd,
   nextMonth,
-  periodBounds,
   previousMonth,
   spendingByCategory,
   spendingByGroup,
@@ -19,13 +18,14 @@ export {
   type LedgerPayment,
   type LedgerSplit,
   type SpendingInput,
-  type SpendingPeriod,
   type SpendingRow,
   type SpendingTotals,
 } from './spending'
 export {
   matchesExpenseFilters,
+  matchesPaymentFilters,
   noFilters,
   type ExpenseFilters,
   type FilterableExpense,
+  type FilterablePayment,
 } from './filters'

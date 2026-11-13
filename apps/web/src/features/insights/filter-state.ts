@@ -3,7 +3,7 @@ import type { SearchKind } from '@potluck/api'
 import { formatDate, t } from '@potluck/i18n'
 import { categoryLabel } from '@/features/expenses/format'
 
-/** Everything the filter sheet edits. Search adds a group and a type; a group's list does not. */
+/** Everything the filter sheet edits. Search adds a group; search and a group's list add a type. */
 export interface MoneyFilters extends ExpenseFilters {
   groupId?: string | null
   kind?: SearchKind | null
@@ -111,11 +111,4 @@ export function countFilters(filters: MoneyFilters): number {
     (filters.groupId ? 1 : 0) +
     (filters.kind ? 1 : 0)
   )
-}
-
-const DAY = /^\d{4}-\d{2}-\d{2}$/
-
-/** A `YYYY-MM-DD` search param, or undefined. */
-export function dayParam(value: unknown): string | undefined {
-  return typeof value === 'string' && DAY.test(value) ? value : undefined
 }

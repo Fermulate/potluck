@@ -1,7 +1,7 @@
 -- Search, totals and charts.
 --
 -- * pg_trgm indexes, so search_money can match descriptions, notes, payment notes and comments
---   with ILIKE without reading every row in the viewer's groups.
+--   (on expenses and on payments) with ILIKE without reading every row in the viewer's groups.
 -- * View expense_ledger: one row per (expense, person) with what that person paid and their
 --   share, both in group currency, using the same convert-once and largest-remainder rules as
 --   group_balances (summing paid minus share over a group gives the expense part of each
@@ -29,6 +29,8 @@ create index settlements_note_trgm_idx on public.settlements
   using gin (note extensions.gin_trgm_ops) where note is not null;
 create index comments_body_trgm_idx on public.comments
   using gin (body extensions.gin_trgm_ops) where expense_id is not null and deleted_at is null;
+create index comments_settlement_body_trgm_idx on public.comments
+  using gin (body extensions.gin_trgm_ops) where settlement_id is not null and deleted_at is null;
 
 -- The person filter on the activity feed pages by (actor_id, created_at). The old single
 -- column index is a prefix of this one.
@@ -235,7 +237,7 @@ begin
   if target is not null and target !~ '^[A-Z]{3}$' then
     raise exception using message = 'invalid_currency', detail = 'Pick a currency', errcode = '22023';
   end if;
-  select p.timezone into tz from public.profiles p where p.id = uid;
+  tz := private.user_time_zone(uid);
 
   -- With in_currency, every amount (already in its group's currency) is converted once more, at
   -- the rate on or before that expense's date (a payment's day for payments), with the lookup
@@ -274,7 +276,7 @@ begin
     select
       st.group_id,
       g.currency::text as currency,
-      (st.settled_at at time zone coalesce(tz, 'UTC'))::date as day,
+      (st.settled_at at time zone tz)::date as day,
       st.from_user,
       st.to_user,
       private.convert_minor(st.amount_cents, st.fx_rate, st.currency::text, g.currency::text) as amount
@@ -404,7 +406,8 @@ declare
   gids uuid[];
   q text := nullif(btrim(coalesce(search_money.query, '')), '');
   pat text;
-  amount numeric;
+  amount_text text;
+  amounts numeric[];
   tz text;
   lim int := least(greatest(coalesce(search_money.max_rows, 50), 1), 100);
   want_expenses boolean := search_money.kinds is null or 'expense' = any (search_money.kinds);
@@ -426,13 +429,19 @@ begin
   if (before_id is null) <> (before_day is null) or (before_id is null) <> (before_at is null) then
     raise exception using message = 'invalid_cursor', detail = 'A page cursor needs a day, a time and an id', errcode = '22023';
   end if;
-  select p.timezone into tz from public.profiles p where p.id = uid;
+  tz := private.user_time_zone(uid);
 
   if q is not null then
     pat := '%' || replace(replace(replace(q, '\', '\\'), '%', '\%'), '_', '\_') || '%';
-    -- "12.50", "12,50", "$12.50", "12.50 EUR": an amount in the expense's own currency.
+    -- "12.50", "12,50", "$12.50", "12.50 EUR": an amount in the expense's own currency. Three
+    -- digits after the separator also read as thousands ("1,000", "2.500"). A reading only
+    -- matches a currency with at least as many minor units as it has decimals.
     if q ~* '^[^0-9a-z]{0,3}\s*[0-9]{1,12}([.,][0-9]{1,3})?\s*([a-z]{3}|[^0-9a-z]{0,3})$' then
-      amount := replace(substring(q from '[0-9]{1,12}(?:[.,][0-9]{1,3})?'), ',', '.')::numeric;
+      amount_text := substring(q from '[0-9]{1,12}(?:[.,][0-9]{1,3})?');
+      amounts := array[replace(amount_text, ',', '.')::numeric];
+      if amount_text ~ '[.,][0-9]{3}$' then
+        amounts := amounts || translate(amount_text, '.,', '')::numeric;
+      end if;
     end if;
   end if;
 
@@ -468,14 +477,28 @@ begin
     union all
     select e.id, 5, 'amount', null
     from public.expenses e
-    where amount is not null
+    where amounts is not null
       and e.group_id = any (gids)
-      and e.amount_cents = round(amount * power(10::numeric, private.minor_units(e.currency::text)))
+      and exists (
+        select 1 from unnest(amounts) a
+        where scale(a) <= private.minor_units(e.currency::text)
+          and e.amount_cents = a * power(10::numeric, private.minor_units(e.currency::text))
+      )
   ),
   best as (
     select distinct on (h.id) h.id, h.matched, h.snippet
     from hits h
     order by h.id, h.rank
+  ),
+  payment_comments as (
+    select distinct on (c.settlement_id) c.settlement_id, c.body
+    from public.comments c
+    where q is not null
+      and c.group_id = any (gids)
+      and c.settlement_id is not null
+      and c.deleted_at is null
+      and c.body ilike pat
+    order by c.settlement_id, c.created_at, c.id
   ),
   expense_rows as (
     select
@@ -528,7 +551,7 @@ begin
       'payment'::text as kind,
       st.id,
       st.group_id,
-      (st.settled_at at time zone coalesce(tz, 'UTC'))::date as day,
+      (st.settled_at at time zone tz)::date as day,
       st.settled_at as at,
       st.note as description,
       null::text as category,
@@ -543,13 +566,17 @@ begin
       case
         when q is null then null
         when st.note ilike pat then 'notes'
+        when pc.body is not null then 'comment'
         when pf.display_name ilike pat or pt.display_name ilike pat then 'person'
-        when amount is not null
-          and st.amount_cents = round(amount * power(10::numeric, private.minor_units(st.currency::text)))
-          then 'amount'
+        when exists (
+          select 1 from unnest(amounts) a
+          where scale(a) <= private.minor_units(st.currency::text)
+            and st.amount_cents = a * power(10::numeric, private.minor_units(st.currency::text))
+        ) then 'amount'
       end as matched,
       case
         when q is not null and st.note ilike pat then null
+        when pc.body is not null then pc.body
         when q is not null and pf.display_name ilike pat then pf.display_name
         when q is not null and pt.display_name ilike pat then pt.display_name
       end as snippet,
@@ -559,6 +586,7 @@ begin
     join public.groups g on g.id = st.group_id
     join public.profiles pf on pf.id = st.from_user
     join public.profiles pt on pt.id = st.to_user
+    left join payment_comments pc on pc.settlement_id = st.id
     where want_payments
       and st.group_id = any (gids)
       and st.deleted_at is null
@@ -667,7 +695,7 @@ begin
   if (deleted_items.before_at is null) <> (deleted_items.before_id is null) then
     raise exception using message = 'invalid_cursor', detail = 'A page cursor needs a time and an id', errcode = '22023';
   end if;
-  select p.timezone into tz from public.profiles p where p.id = uid;
+  tz := private.user_time_zone(uid);
 
   return query
   select
@@ -707,7 +735,7 @@ begin
       'payment',
       st.id,
       st.group_id,
-      (st.settled_at at time zone coalesce(tz, 'UTC'))::date,
+      (st.settled_at at time zone tz)::date,
       st.note,
       null,
       st.amount_cents,

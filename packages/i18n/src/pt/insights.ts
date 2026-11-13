@@ -61,7 +61,7 @@ export const filters = {
   summary_one: '{count} despesa, {total} no total',
   summary_other: '{count} despesas, {total} no total',
   yourShare: 'Sua parte {amount}',
-  paymentsHidden: 'Os pagamentos ficam ocultos enquanto você filtra.',
+  paymentsHidden: 'Os pagamentos ficam ocultos enquanto você filtra por categoria.',
 } satisfies Translation<typeof en.filters>
 
 export const insights = {

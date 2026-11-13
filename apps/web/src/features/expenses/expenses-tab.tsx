@@ -1,4 +1,10 @@
-import { dayKey, matchesExpenseFilters, noFilters, viewerShare } from '@potluck/core'
+import {
+  dayKey,
+  matchesExpenseFilters,
+  matchesPaymentFilters,
+  noFilters,
+  viewerShare,
+} from '@potluck/core'
 import type { ExpenseWithSplits, Settlement } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import {
@@ -40,13 +46,13 @@ type FeedItem =
 
 export function ExpensesTab({
   groupId,
-  filters: filtersProp,
-  onFiltersChange,
+  filters,
+  onFiltersChange: setFilters,
 }: {
   groupId: string
-  /** Filters kept by the caller (the route keeps them in the address); local state otherwise. */
-  filters?: MoneyFilters
-  onFiltersChange?: (next: MoneyFilters) => void
+  /** Kept by the caller (the route keeps them in the address). */
+  filters: MoneyFilters
+  onFiltersChange: (next: MoneyFilters) => void
 }) {
   useGroupMoneyRealtime(groupId)
   const me = useUserId()
@@ -57,9 +63,6 @@ export function ExpensesTab({
   const expenses = useGroupExpenses(groupId)
   const settlements = useGroupSettlements(groupId)
   const [query, setQuery] = useState('')
-  const [localFilters, setLocalFilters] = useState<MoneyFilters>({})
-  const filters = filtersProp ?? localFilters
-  const setFilters = onFiltersChange ?? setLocalFilters
   const [sheetOpen, setSheetOpen] = useState(false)
   const search = useDeferredValue(query.trim().toLocaleLowerCase())
   const selectedCategories = filters.categories ?? []
@@ -71,11 +74,12 @@ export function ExpensesTab({
     return [...seen].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b)))
   }, [expenses.data])
 
+  const expenseData = expenses.data
+  const settlementData = settlements.data
   const { sections, matched } = useMemo(() => {
-    const filtering = search !== '' || !noFilters(filters)
     const items: FeedItem[] = []
     const matched: ExpenseWithSplits[] = []
-    for (const expense of expenses.data ?? []) {
+    for (const expense of filters.kind === 'payment' ? [] : (expenseData ?? [])) {
       const filterable = {
         paidBy: expense.paid_by,
         payers: payersOf(expense).map((p) => ({ userId: p.user_id })),
@@ -98,31 +102,37 @@ export function ExpensesTab({
       items.push({ kind: 'expense', day: expense.spent_at, at: expense.created_at, expense })
       matched.push(expense)
     }
-    if (!filtering) {
-      for (const settlement of settlements.data ?? []) {
-        items.push({
-          kind: 'settlement',
-          day: dayKey(settlement.settled_at, timeZone),
-          at: settlement.settled_at,
-          settlement,
-        })
+    for (const settlement of filters.kind === 'expense' ? [] : (settlementData ?? [])) {
+      const day = dayKey(settlement.settled_at, timeZone)
+      const filterable = { fromUser: settlement.from_user, toUser: settlement.to_user, day }
+      if (!matchesPaymentFilters(filterable, filters)) continue
+      if (search) {
+        const haystack = [
+          settlement.note ?? '',
+          nameOf(settlement.from_user),
+          nameOf(settlement.to_user),
+        ]
+          .join(' ')
+          .toLocaleLowerCase()
+        if (!haystack.includes(search)) continue
       }
+      items.push({ kind: 'settlement', day, at: settlement.settled_at, settlement })
     }
     items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
     return { sections: groupByDay(items, (item) => item.day), matched }
-  }, [expenses.data, settlements.data, search, filters, nameOf, timeZone])
+  }, [expenseData, settlementData, search, filters, nameOf, timeZone])
 
   const myRole = group.data?.members.find((m) => m.id === me)?.role
   // Payments count too: wait for them before calling the tab empty.
   const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
     !loading && (expenses.data?.length ?? 0) === 0 && (settlements.data?.length ?? 0) === 0
-  const filtering = query.trim() !== '' || !noFilters(filters)
+  const filtering = query.trim() !== '' || !noFilters(filters) || Boolean(filters.kind)
   const currency = group.data?.currency
   // What the filtered list adds up to, in the group currency: the whole of it and the viewer's
   // part, by the same rules as the balances and Totals.
   const filteredTotals = useMemo(() => {
-    if (!filtering || !currency) return null
+    if (!filtering || !currency || filters.kind === 'payment') return null
     let total = 0
     let share = 0
     for (const e of matched) {
@@ -147,7 +157,7 @@ export function ExpensesTab({
       share += line.shareCents
     }
     return { count: matched.length, total, share }
-  }, [filtering, currency, matched, me])
+  }, [filtering, currency, filters.kind, matched, me])
   const people = useMemo(
     () =>
       (group.data?.members ?? []).map((m) => ({
@@ -238,7 +248,7 @@ export function ExpensesTab({
         </Button>
       </div>
 
-      {categories.length > 1 && (
+      {categories.length > 1 && filters.kind !== 'payment' && (
         <div
           role="group"
           aria-label={t('expenses.filterCategory')}
@@ -279,9 +289,11 @@ export function ExpensesTab({
           <span className="text-mute">
             {t('filters.yourShare', { amount: formatMoney(filteredTotals.share, currency) })}
           </span>
-          {(settlements.data?.length ?? 0) > 0 && (
-            <span className="w-full text-xs text-mute">{t('filters.paymentsHidden')}</span>
-          )}
+          {filters.kind !== 'expense' &&
+            selectedCategories.length > 0 &&
+            (settlements.data?.length ?? 0) > 0 && (
+              <span className="w-full text-xs text-mute">{t('filters.paymentsHidden')}</span>
+            )}
         </p>
       )}
 
@@ -368,6 +380,7 @@ export function ExpensesTab({
         today={today}
         people={people}
         categories={categories.length ? categories : undefined}
+        showKind
       />
     </div>
   )

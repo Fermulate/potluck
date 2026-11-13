@@ -1,7 +1,7 @@
 -- Search, the expense ledger and spending totals (20261113172837_search_insights.sql).
 -- The totals case is the same as spendingSummary in packages/core/src/insights.
 begin;
-select plan(72);
+select plan(80);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values
@@ -383,6 +383,39 @@ select is(
   '(person,t)', 'search finds a second payer by name and lists every payer'
 );
 
+-- Amounts read as thousands, comments on payments, an unknown time zone ------------------
+
+reset role;
+select tests.remember('k', tests.group_with('ava', array['ben'], '{}', 'Kitchen', 'USD'));
+select tests.login('ava');
+select create_expense(jsonb_build_object('group_id', tests.id('k'), 'description', 'New oven',
+  'amount_cents', 100000, 'spent_at', '2026-06-01', 'splits', tests.people('ava', 'ben')));
+select create_expense(jsonb_build_object('group_id', tests.id('k'), 'description', 'Oven mitt',
+  'amount_cents', 100, 'spent_at', '2026-06-02', 'splits', tests.people('ava', 'ben')));
+select results_eq(format($$ select description from search_money('1,000', %L) $$, tests.id('k')),
+  array['New oven'], '"1,000" reads as one thousand dollars, not one');
+select results_eq(format($$ select description from search_money('1.00', %L) $$, tests.id('k')),
+  array['Oven mitt'], 'two decimals still read as cents');
+select is((select count(*)::int from search_money('12,000')), 0,
+  'three decimals never match a currency with two (not the 12.00 groceries)');
+
+select tests.login('ben');
+select tests.remember('s2', (select id from settle_up(tests.id('k'), tests.uid('ava'), 500, null, null)));
+insert into public.comments (settlement_id, body) values (tests.id('s2'), 'Cash at the trailhead');
+select tests.login('ava');
+select is((select (kind, matched, snippet)::text from search_money('trailhead')),
+  '(payment,comment,"Cash at the trailhead")', 'comments on a payment match, with the comment as the snippet');
+
+reset role;
+update public.profiles set timezone = 'Mars/Olympus_Mons' where id = tests.uid('ava');
+select tests.login('ava');
+select is((select day from search_money(null, tests.id('k'), kinds => array['payment'])),
+  (now() at time zone 'UTC')::date, 'an unknown time zone falls back to UTC for payment days');
+select lives_ok(format($$ select * from spending_summary(%L) $$, tests.id('k')),
+  'totals load with an unknown time zone');
+select lives_ok(format($$ select * from deleted_items(%L) $$, tests.id('k')),
+  'Recently deleted loads with an unknown time zone');
+
 -- Plans -----------------------------------------------------------------------------------
 
 reset role;
@@ -408,6 +441,13 @@ select ok(
   pg_temp.plan_text($$ select id from public.comments where expense_id is not null and deleted_at is null and body ilike '%salsa%' $$)
     like '%comments_body_trgm_idx%',
   'comment search can use the trigram index'
+);
+-- With a handful of rows the settlement_id btree wins; take it out of the running (rolled back).
+drop index public.comments_settlement_id_idx;
+select ok(
+  pg_temp.plan_text($$ select id from public.comments where settlement_id is not null and deleted_at is null and body ilike '%trailhead%' $$)
+    like '%comments_settlement_body_trgm_idx%',
+  'payment comment search can use its trigram index'
 );
 
 select * from finish();

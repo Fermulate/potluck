@@ -7,10 +7,10 @@ import {
   spendingRate,
   ledgerLines,
   matchesExpenseFilters,
+  matchesPaymentFilters,
   monthEnd,
   nextMonth,
   noFilters,
-  periodBounds,
   previousMonth,
   spendingByCategory,
   spendingByGroup,
@@ -125,7 +125,8 @@ describe('spendingSummary', () => {
       ...flat,
       viewerId: ava,
       payments: [payback],
-      ...periodBounds({ kind: 'month', month: '2026-03-01' }),
+      from: '2026-03-01',
+      to: '2026-03-31',
     })
     expect(spendingTotals(march).shareCents).toBe(3400)
     expect(march.every((r) => r.month === '2026-03-01')).toBe(true)
@@ -503,7 +504,7 @@ describe('rollups', () => {
   })
 })
 
-describe('months and periods', () => {
+describe('months', () => {
   it('steps months across years', () => {
     expect(nextMonth('2026-12-01')).toBe('2027-01-01')
     expect(nextMonth('2026-03-01')).toBe('2026-04-01')
@@ -511,22 +512,6 @@ describe('months and periods', () => {
     expect(previousMonth('2026-11-01')).toBe('2026-10-01')
     expect(monthEnd('2028-02-01')).toBe('2028-02-29')
     expect(monthEnd('2026-04-15')).toBe('2026-04-30')
-  })
-
-  it('turns periods into day bounds', () => {
-    expect(periodBounds({ kind: 'all' })).toEqual({ from: null, to: null })
-    expect(periodBounds({ kind: 'year', year: 2026 })).toEqual({
-      from: '2026-01-01',
-      to: '2026-12-31',
-    })
-    expect(periodBounds({ kind: 'month', month: '2026-02-01' })).toEqual({
-      from: '2026-02-01',
-      to: '2026-02-28',
-    })
-    expect(periodBounds({ kind: 'range', from: '2026-01-05', to: null })).toEqual({
-      from: '2026-01-05',
-      to: null,
-    })
   })
 })
 
@@ -543,6 +528,19 @@ describe('matchesExpenseFilters', () => {
     expect(matchesExpenseFilters(e, { from: '2026-03-01', to: '2026-03-31' })).toBe(true)
     expect(matchesExpenseFilters(e, { categories: ['groceries'] })).toBe(false)
     expect(matchesExpenseFilters({ ...e, category: null }, { categories: ['other'] })).toBe(true)
+  })
+
+  it('matches a payment on either person and its day, and never under a category', () => {
+    const p = { fromUser: ben, toUser: ava, day: '2026-03-05' }
+    expect(matchesPaymentFilters(p, {})).toBe(true)
+    expect(matchesPaymentFilters(p, { person: ben })).toBe(true)
+    expect(matchesPaymentFilters(p, { person: ava })).toBe(true)
+    expect(matchesPaymentFilters(p, { person: cleo })).toBe(false)
+    expect(matchesPaymentFilters(p, { from: '2026-03-05', to: '2026-03-05' })).toBe(true)
+    expect(matchesPaymentFilters(p, { from: '2026-03-06' })).toBe(false)
+    expect(matchesPaymentFilters(p, { to: '2026-03-04' })).toBe(false)
+    expect(matchesPaymentFilters(p, { categories: ['food'] })).toBe(false)
+    expect(matchesPaymentFilters(p, { categories: [] })).toBe(true)
   })
 
   it('knows when nothing is filtered', () => {

@@ -8,7 +8,8 @@ import type { GroupListSearch } from './search-params'
 const remembered = new Map<string, GroupListSearch>()
 
 export function rememberGroupFilters(groupId: string, search: GroupListSearch) {
-  if (search.person || search.from || search.to || search.cats) remembered.set(groupId, search)
+  if (search.person || search.from || search.to || search.cats || search.kind)
+    remembered.set(groupId, search)
   else remembered.delete(groupId)
 }
 

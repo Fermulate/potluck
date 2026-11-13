@@ -42,9 +42,3 @@ export function snippetParts(text: string, query: string, width = 56): SnippetPa
     after: `${flat.slice(matchEnd, end).trimEnd()}${end < flat.length ? '…' : ''}`,
   }
 }
-
-/** The same piece as plain text. */
-export function snippetAround(text: string, query: string, width = 56): string {
-  const { before, match, after } = snippetParts(text, query, width)
-  return `${before}${match}${after}`
-}
