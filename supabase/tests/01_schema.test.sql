@@ -16,6 +16,7 @@ select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
   'groups', 'group_members', 'group_invites',
   'expenses', 'expense_splits', 'expense_payers', 'expense_items', 'recurring_expenses', 'settlements', 'fx_rates',
+  'payment_methods', 'debt_reminders',
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
@@ -64,6 +65,13 @@ select has_function('public', 'set_default_split', array['uuid', 'jsonb'], 'set_
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
+select has_function('public', 'settle_up_v2', array['uuid', 'uuid', 'uuid', 'bigint', 'text', 'text', 'date'], 'settle_up_v2');
+select has_function('public', 'update_settlement', array['uuid', 'jsonb'], 'update_settlement');
+select has_function('public', 'restore_settlement', array['uuid'], 'restore_settlement');
+select has_function('public', 'settle_all', array['uuid', 'date', 'text'], 'settle_all');
+select has_function('public', 'settle_with_friend', array['uuid', 'date', 'text'], 'settle_with_friend');
+select has_function('public', 'friend_balances', array[]::text[], 'friend_balances');
+select has_function('public', 'remind_debt', array['uuid', 'uuid'], 'remind_debt');
 select has_function('public', 'set_availability', array['uuid', 'jsonb'], 'set_availability');
 select has_function('public', 'request_availability', array['uuid', 'uuid[]'], 'request_availability');
 select has_function('public', 'best_slots', array['uuid', 'integer'], 'best_slots');
