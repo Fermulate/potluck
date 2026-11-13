@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   acceptInvite,
+  categoryHistoryQueryOptions,
+  coverUrl,
   createGroup,
   createInvite,
   deleteGroup,
+  deletedGroupsQueryOptions,
+  fetchCategoryHistory,
+  fetchDeletedGroups,
   fetchFriends,
   fetchGroup,
   fetchGroupInvites,
@@ -17,12 +22,18 @@ import {
   invitePreviewQueryOptions,
   leaveGroup,
   myGroupsQueryOptions,
+  removeCoverFile,
   removeMember,
+  restoreGroup,
   restoreInvite,
   revokeInvite,
   setMemberRole,
+  saveWhiteboard,
   transferOwnership,
   updateGroup,
+  uploadCover,
+  whiteboardHistoryQueryOptions,
+  whiteboardQueryOptions,
 } from './groups'
 import { QueryClient } from '@tanstack/react-query'
 import { moneyKeys } from './money'
@@ -151,15 +162,54 @@ describe('fetchGroup', () => {
 
 describe('group mutations', () => {
   it('creates a group with a trimmed name and only the options given', async () => {
-    const fake = fakeSupabase().respond('rpc:create_group', { data: 'g1' })
+    const fake = fakeSupabase().respond('rpc:create_group_v2', { data: 'g1' })
 
     expect(await createGroup(fake.client, { name: '  Flat  ', emoji: null })).toBe('g1')
-    await createGroup(fake.client, { name: 'Trip', emoji: 'x', color: 'red', currency: 'USD' })
+    await createGroup(fake.client, {
+      name: 'Trip',
+      emoji: 'x',
+      color: 'red',
+      currency: 'USD',
+      type: 'trip',
+      startsOn: '2026-06-03',
+      endsOn: '2026-06-10',
+    })
 
-    expect(fake.rpcArgs('create_group')).toEqual([
+    expect(fake.rpcArgs('create_group_v2')).toEqual([
       { name: 'Flat' },
-      { name: 'Trip', emoji: 'x', color: 'red', currency: 'USD' },
+      {
+        name: 'Trip',
+        emoji: 'x',
+        color: 'red',
+        currency: 'USD',
+        type: 'trip',
+        starts_on: '2026-06-03',
+        ends_on: '2026-06-10',
+      },
     ])
+  })
+
+  it('restores a deleted group and lists the ones that can still come back', async () => {
+    const fake = fakeSupabase()
+      .respond('rpc:restore_group', { data: { id: 'g1', deleted_at: null } })
+      .respond('rpc:my_deleted_groups', { data: [{ id: 'g2', name: 'Old flat' }] }, { data: null })
+
+    expect(await restoreGroup(fake.client, 'g1')).toEqual({ id: 'g1', deleted_at: null })
+    expect(fake.rpcArgs('restore_group')).toEqual([{ group_id: 'g1' }])
+    const queryClient = new QueryClient()
+    expect(await queryClient.fetchQuery(deletedGroupsQueryOptions(fake.client, 'u1'))).toEqual([
+      { id: 'g2', name: 'Old flat' },
+    ])
+    expect(await fetchDeletedGroups(fake.client)).toEqual([])
+    expect(deletedGroupsQueryOptions(fake.client, 'u1').queryKey).toEqual(groupKeys.deleted('u1'))
+  })
+
+  it('throws what restore_group and my_deleted_groups raise', async () => {
+    const fake = fakeSupabase()
+      .respond('rpc:restore_group', { error: { message: 'group_not_found' } })
+      .respond('rpc:my_deleted_groups', { error: boom })
+    await expect(restoreGroup(fake.client, 'g1')).rejects.toEqual({ message: 'group_not_found' })
+    await expect(fetchDeletedGroups(fake.client)).rejects.toBe(boom)
   })
 
   it('updates settings and returns the row', async () => {
@@ -196,7 +246,7 @@ describe('group mutations', () => {
 
   it('rethrows every mutation error', async () => {
     const fake = fakeSupabase()
-      .respond('rpc:create_group', { error: boom })
+      .respond('rpc:create_group_v2', { error: boom })
       .respond('from:groups', { error: boom })
       .respond('rpc:set_member_role', { error: boom })
       .respond('rpc:remove_member', { error: boom })
@@ -428,5 +478,126 @@ describe('group picker keys', () => {
     await queryClient.invalidateQueries({ queryKey: groupKeys.all })
     expect(queryClient.getQueryState(moneyKeys.myGroups())?.isInvalidated).toBe(true)
     expect(queryClient.getQueryState(plansKeys.myGroups())?.isInvalidated).toBe(true)
+  })
+})
+
+describe('covers', () => {
+  it('builds public URLs, and none without a path', () => {
+    const fake = fakeSupabase()
+    expect(coverUrl(fake.client, 'g1/cover.jpg')).toBe(
+      'https://storage.test/group-covers/g1/cover.jpg',
+    )
+    expect(coverUrl(fake.client, null)).toBeNull()
+  })
+
+  it('uploads under the group folder with a fresh name, and removes old files', async () => {
+    const now = new Date('2026-03-04T05:06:07Z')
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const fake = fakeSupabase()
+    const path = await uploadCover(fake.client, 'g1', new Uint8Array([1]), 'image/jpeg')
+    expect(path).toBe(`g1/cover-${now.getTime().toString(36)}.jpg`)
+    expect(await uploadCover(fake.client, 'g1', new Uint8Array([1]), 'weird')).toMatch(/\.img$/)
+    await removeCoverFile(fake.client, path)
+    const [upload, , remove] = fake.storageCalls('group-covers')
+    expect(upload!.args[2]).toEqual({
+      contentType: 'image/jpeg',
+      upsert: false,
+      cacheControl: '31536000',
+    })
+    expect(remove!.method).toBe('remove')
+    expect(remove!.args[0]).toEqual([path])
+  })
+
+  it('throws storage errors', async () => {
+    const fake = fakeSupabase()
+      .respond('storage:group-covers.upload', { error: boom })
+      .respond('storage:group-covers.remove', { error: boom })
+    await expect(uploadCover(fake.client, 'g1', new Uint8Array([1]), 'image/png')).rejects.toBe(
+      boom,
+    )
+    await expect(removeCoverFile(fake.client, 'g1/a.png')).rejects.toBe(boom)
+  })
+})
+
+describe('whiteboard', () => {
+  it('reads the notes, empty at version 0 before anyone writes', async () => {
+    const row = { group_id: 'g1', body: 'Wifi', version: 3, updated_by: 'u1', updated_at: 'x' }
+    const fake = fakeSupabase().respond('from:group_whiteboards', { data: row }, { data: null })
+    const queryClient = new QueryClient()
+    expect(await queryClient.fetchQuery(whiteboardQueryOptions(fake.client, 'g1'))).toEqual(row)
+    expect(await queryClient.fetchQuery(whiteboardQueryOptions(fake.client, 'g2'))).toEqual({
+      group_id: 'g2',
+      body: '',
+      version: 0,
+      updated_by: null,
+      updated_at: '',
+    })
+    expect(argsOf(fake.queries('group_whiteboards')[0]!, 'eq')).toEqual([['group_id', 'g1']])
+  })
+
+  it('saves on top of the version the editor started from', async () => {
+    const fake = fakeSupabase().respond('rpc:save_group_whiteboard', { data: { version: 4 } })
+    expect(await saveWhiteboard(fake.client, 'g1', 'Bins on Tuesday', 3)).toEqual({ version: 4 })
+    expect(fake.rpcArgs('save_group_whiteboard')).toEqual([
+      { group_id: 'g1', body: 'Bins on Tuesday', base_version: 3 },
+    ])
+  })
+
+  it('reads who edited, newest first, from the activity', async () => {
+    const fake = fakeSupabase().respond('from:activity', {
+      data: [
+        { id: 'a2', actor_id: 'u2', created_at: '2026-01-02', data: { excerpt: 'Bins' } },
+        { id: 'a1', actor_id: null, created_at: '2026-01-01', data: null },
+      ],
+    })
+    const queryClient = new QueryClient()
+    expect(await queryClient.fetchQuery(whiteboardHistoryQueryOptions(fake.client, 'g1'))).toEqual([
+      { id: 'a2', actor_id: 'u2', created_at: '2026-01-02', excerpt: 'Bins' },
+      { id: 'a1', actor_id: null, created_at: '2026-01-01', excerpt: '' },
+    ])
+    const [query] = fake.queries('activity')
+    expect(argsOf(query!, 'eq')).toEqual([
+      ['group_id', 'g1'],
+      ['verb', 'group.notes_updated'],
+    ])
+  })
+
+  it('throws what the server says', async () => {
+    const fake = fakeSupabase()
+      .respond('from:group_whiteboards', { error: boom })
+      .respond('rpc:save_group_whiteboard', { error: { message: 'whiteboard_conflict' } })
+      .respond('from:activity', { error: boom })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await expect(queryClient.fetchQuery(whiteboardQueryOptions(fake.client, 'g1'))).rejects.toBe(
+      boom,
+    )
+    await expect(saveWhiteboard(fake.client, 'g1', 'x', 0)).rejects.toEqual({
+      message: 'whiteboard_conflict',
+    })
+    await expect(
+      queryClient.fetchQuery(whiteboardHistoryQueryOptions(fake.client, 'g1')),
+    ).rejects.toBe(boom)
+  })
+})
+
+describe('category history', () => {
+  it('reads recent expenses with a category in one group, newest first', async () => {
+    const rows = [{ description: 'Uber', category: 'taxi' }]
+    const fake = fakeSupabase().respond('from:expenses', { data: rows }, { data: null })
+    const queryClient = new QueryClient()
+    expect(await queryClient.fetchQuery(categoryHistoryQueryOptions(fake.client, 'g1'))).toEqual(
+      rows,
+    )
+    expect(await fetchCategoryHistory(fake.client, 'g1')).toEqual([])
+    const [query] = fake.queries('expenses')
+    expect(argsOf(query!, 'eq')).toEqual([['group_id', 'g1']])
+    expect(argsOf(query!, 'not')).toEqual([['category', 'is', null]])
+    expect(argsOf(query!, 'order')).toEqual([['created_at', { ascending: false }]])
+  })
+
+  it('throws read errors', async () => {
+    const fake = fakeSupabase().respond('from:expenses', { error: boom })
+    await expect(fetchCategoryHistory(fake.client, 'g1')).rejects.toBe(boom)
   })
 })

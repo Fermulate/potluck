@@ -16,6 +16,9 @@ Root rules: [../../AGENTS.md](../../AGENTS.md).
   `fx_rate: string`; RPC results are `ExpenseRow` / `SettlementRow` (number).
 - Expense writes call `create_expense_v2` / `update_expense_v2` (payers, refunds, stored items); the v1
   RPCs stay for old clients. `EXPENSE_SELECT` reads `expense_payers` and `expense_items` with the splits.
+- `groups.ts` also holds covers (`uploadCover`, `coverUrl`), restoring (`restoreGroup`,
+  `deletedGroupsQueryOptions`), the whiteboard (`saveWhiteboard` with a base version,
+  `whiteboardQueryOptions`) and `categoryHistoryQueryOptions`. `createGroup` calls `create_group_v2`.
 - Paged reads use `fetchAllPages` (`src/paging.ts`); PostgREST caps responses at 1000 rows.
 - Throw the PostgREST error as is (`unwrap`); screens translate `error.message` codes.
 - Tests: `src/testing/fake-supabase.ts` is an in-memory recorder (`fakeSupabase({ tables })`,

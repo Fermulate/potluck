@@ -117,6 +117,17 @@ describe('money groups', () => {
     expect(argsOf(query!, 'order')).toEqual([['name']])
   })
 
+  it('reads the group as maybe one row, and says not found when there is none', async () => {
+    const fake = fakeSupabase().respond('from:groups', { data: null })
+    await expect(fetchMoneyGroup(fake.client, 'gone')).rejects.toMatchObject({
+      message: 'group_not_found',
+      code: 'PT404',
+    })
+    const [query] = fake.queries('groups')
+    expect(query!.ops.some((op) => op.method === 'maybeSingle')).toBe(true)
+    expect(query!.ops.some((op) => op.method === 'single')).toBe(false)
+  })
+
   it('throws when the group cannot be read', async () => {
     const fake = fakeSupabase().respond('from:groups', { error: boom })
     await expect(fetchMoneyGroup(fake.client, 'g1')).rejects.toBe(boom)
