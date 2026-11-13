@@ -103,6 +103,29 @@ CREATE TYPE "public"."split_type" AS ENUM (
 ALTER TYPE "public"."split_type" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."add_pair_debt"("owed" "jsonb", "debtor" "uuid", "creditor" "uuid", "cents" numeric) RETURNS "jsonb"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  k text;
+begin
+  if debtor = creditor or cents = 0 then
+    return owed;
+  end if;
+  if debtor < creditor then
+    k := debtor::text || '|' || creditor::text;
+    return jsonb_set(owed, array[k], to_jsonb(coalesce((owed ->> k)::numeric, 0) + cents));
+  end if;
+  k := creditor::text || '|' || debtor::text;
+  return jsonb_set(owed, array[k], to_jsonb(coalesce((owed ->> k)::numeric, 0) - cents));
+end;
+$$;
+
+
+ALTER FUNCTION "private"."add_pair_debt"("owed" "jsonb", "debtor" "uuid", "creditor" "uuid", "cents" numeric) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."befriend_group_members"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -166,6 +189,18 @@ $$;
 
 
 ALTER FUNCTION "private"."can_manage_event"("eid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."can_see_payment_methods"("owner" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select owner = (select auth.uid())
+    or (private.shares_group_with(owner) and not private.has_block(owner, (select auth.uid())));
+$$;
+
+
+ALTER FUNCTION "private"."can_see_payment_methods"("owner" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."check_expense_payers"() RETURNS "trigger"
@@ -288,6 +323,38 @@ $$;
 ALTER FUNCTION "private"."check_group_has_owner"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."check_payment"("gid" "uuid", "my_role" "public"."group_role", "payer" "uuid", "payee" "uuid", "amount" bigint) RETURNS "void"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := auth.uid();
+begin
+  if amount is null or amount <= 0 or amount > 100000000000 then
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+  end if;
+  if payer is null or payee is null or payer = payee then
+    raise exception using message = 'invalid_parties', detail = 'A payment needs two different people', errcode = '22023';
+  end if;
+  if my_role = 'member' and uid is distinct from payer and uid is distinct from payee then
+    raise exception using
+      message = 'not_a_party',
+      detail = 'Only owners and admins can record a payment between two other people',
+      errcode = '42501';
+  end if;
+  if (
+    select count(*) from public.group_members m
+    where m.group_id = gid and m.user_id in (payer, payee)
+  ) <> 2 then
+    raise exception using message = 'member_not_in_group', detail = 'Both people must be in the group', errcode = '23514';
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."check_payment"("gid" "uuid", "my_role" "public"."group_role", "payer" "uuid", "payee" "uuid", "amount" bigint) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."check_request"() RETURNS "void"
     LANGUAGE "plpgsql" STABLE
     SET "search_path" TO ''
@@ -315,6 +382,7 @@ begin
     jsonb_build_object(
       'expense_id', new.expense_id,
       'event_id', new.event_id,
+      'settlement_id', new.settlement_id,
       'excerpt', left(new.body, 140)
     ));
   return null;
@@ -361,6 +429,15 @@ begin
       union
       select e.created_by from public.expenses e where e.id = new.expense_id
     ) x;
+  elsif new.settlement_id is not null then
+    select array_agg(distinct u) into recipients
+    from (
+      select s.from_user as u from public.settlements s where s.id = new.settlement_id
+      union
+      select s.to_user from public.settlements s where s.id = new.settlement_id
+      union
+      select s.created_by from public.settlements s where s.id = new.settlement_id
+    ) x;
   else
     select array_agg(distinct u) into recipients
     from (
@@ -379,6 +456,7 @@ begin
       'group_id', new.group_id,
       'expense_id', new.expense_id,
       'event_id', new.event_id,
+      'settlement_id', new.settlement_id,
       'excerpt', left(new.body, 140)
     ),
     new.author_id
@@ -398,6 +476,8 @@ CREATE OR REPLACE FUNCTION "private"."comments_set_group"() RETURNS "trigger"
 begin
   if new.expense_id is not null then
     select e.group_id into new.group_id from public.expenses e where e.id = new.expense_id;
+  elsif new.settlement_id is not null then
+    select s.group_id into new.group_id from public.settlements s where s.id = new.settlement_id;
   else
     select ev.group_id into new.group_id from public.events ev where ev.id = new.event_id;
   end if;
@@ -1051,6 +1131,7 @@ CREATE OR REPLACE FUNCTION "private"."forget_closed_account"() RETURNS "trigger"
     AS $$
 begin
   delete from public.calendar_feed_tokens t where t.user_id = new.id;
+  delete from public.payment_methods pm where pm.user_id = new.id;
   return null;
 end;
 $$;
@@ -1105,6 +1186,23 @@ $$;
 
 
 ALTER FUNCTION "private"."fx_rate"("from_currency" character, "to_currency" character, "on_day" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."group_debts"("gid" "uuid") RETURNS TABLE("from_user" "uuid", "to_user" "uuid", "amount_cents" bigint)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if (select g.simplify_debts from public.groups g where g.id = gid) then
+    return query select d.from_user, d.to_user, d.amount_cents from public.simplified_debts(gid) d;
+  else
+    return query select d.from_user, d.to_user, d.amount_cents from private.pairwise_debts(gid) d;
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."group_debts"("gid" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."group_is_open"("gid" "uuid") RETURNS boolean
@@ -1304,6 +1402,7 @@ begin
     gid := coalesce(
       (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
       (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (select s.group_id from public.settlements s where s.id = (row ->> 'settlement_id')::uuid),
       (row ->> 'group_id')::uuid
     );
   else
@@ -1922,6 +2021,21 @@ $$;
 ALTER FUNCTION "private"."my_group_ids"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."my_time_zone"() RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(
+    (select p.timezone from public.profiles p
+     where p.id = (select auth.uid()) and private.is_time_zone(p.timezone)),
+    'UTC'
+  );
+$$;
+
+
+ALTER FUNCTION "private"."my_time_zone"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") RETURNS "text"[]
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -1969,6 +2083,262 @@ $$;
 
 
 ALTER FUNCTION "private"."notify"("recipients" "uuid"[], "kind" "text", "payload" "jsonb", "actor" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."pairwise_debts"("gid" "uuid") RETURNS TABLE("from_user" "uuid", "to_user" "uuid", "amount_cents" bigint)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  owed jsonb := '{}'::jsonb;
+  e record;
+  st record;
+  cred_ids uuid[];
+  cred_left numeric[];
+  shares numeric[];
+  rems numeric[];
+  owes numeric;
+  wsum numeric;
+  leftover numeric;
+  i int;
+  j int;
+begin
+  -- Each expense's effect per person, exactly as group_balances: the converted total spread over
+  -- the payers (credited) and over the split (debited), largest remainder, ties to the smaller id;
+  -- a refund flips both. Expenses whose payers or split weigh nothing are skipped, as in core.
+  for e in
+    with expense_totals as (
+      select x.id, case when x.is_refund then -1 else 1 end as sign,
+        private.convert_minor(x.amount_cents, x.fx_rate, x.currency::text, g.currency::text) as total
+      from public.expenses x
+      join public.groups g on g.id = x.group_id
+      where x.group_id = gid and x.deleted_at is null
+        and (select sum(s.share_cents) from public.expense_splits s where s.expense_id = x.id) > 0
+        and (select sum(y.paid_cents) from public.expense_payers y where y.expense_id = x.id) > 0
+    ), split_parts as (
+      select t.id, t.total, t.sign, s.user_id,
+        div(t.total::numeric * s.share_cents::numeric, sum(s.share_cents) over w) as base,
+        mod(t.total::numeric * s.share_cents::numeric, sum(s.share_cents) over w) as rem
+      from expense_totals t
+      join public.expense_splits s on s.expense_id = t.id
+      window w as (partition by t.id)
+    ), split_shares as (
+      select p.id, p.user_id, p.sign,
+        p.base + case
+          when row_number() over (partition by p.id order by p.rem desc, p.user_id)
+               <= p.total::numeric - sum(p.base) over (partition by p.id) then 1
+          else 0
+        end as share
+      from split_parts p
+    ), payer_parts as (
+      select t.id, t.total, t.sign, y.user_id,
+        div(t.total::numeric * y.paid_cents::numeric, sum(y.paid_cents) over w) as base,
+        mod(t.total::numeric * y.paid_cents::numeric, sum(y.paid_cents) over w) as rem
+      from expense_totals t
+      join public.expense_payers y on y.expense_id = t.id
+      window w as (partition by t.id)
+    ), payer_shares as (
+      select p.id, p.user_id, p.sign,
+        p.base + case
+          when row_number() over (partition by p.id order by p.rem desc, p.user_id)
+               <= p.total::numeric - sum(p.base) over (partition by p.id) then 1
+          else 0
+        end as share
+      from payer_parts p
+    ), effects as (
+      select d.id, d.user_id, sum(d.delta) as eff
+      from (
+        select x.id, x.user_id, x.sign * x.share as delta from payer_shares x
+        union all
+        select s.id, s.user_id, -s.sign * s.share from split_shares s
+      ) d
+      group by d.id, d.user_id
+    )
+    select f.id, array_agg(f.user_id order by f.user_id) as users, array_agg(f.eff order by f.user_id) as effs
+    from effects f
+    group by f.id
+  loop
+    -- Inside one expense the people who came out behind pay the people who came out ahead:
+    -- debtors in id order, each spread over the creditors by what they are still owed.
+    cred_ids := '{}';
+    cred_left := '{}';
+    for i in 1 .. cardinality(e.users) loop
+      if e.effs[i] > 0 then
+        cred_ids := cred_ids || e.users[i];
+        cred_left := cred_left || e.effs[i];
+      end if;
+    end loop;
+
+    for i in 1 .. cardinality(e.users) loop
+      continue when e.effs[i] >= 0;
+      owes := -e.effs[i];
+      wsum := 0;
+      for j in 1 .. coalesce(cardinality(cred_ids), 0) loop
+        wsum := wsum + greatest(cred_left[j], 0);
+      end loop;
+      continue when wsum = 0;
+
+      shares := array_fill(0::numeric, array[cardinality(cred_ids)]);
+      rems := array_fill(-1::numeric, array[cardinality(cred_ids)]);
+      leftover := owes;
+      for j in 1 .. cardinality(cred_ids) loop
+        if cred_left[j] > 0 then
+          shares[j] := div(owes * cred_left[j], wsum);
+          rems[j] := mod(owes * cred_left[j], wsum);
+          leftover := leftover - shares[j];
+        end if;
+      end loop;
+      -- Largest remainder first; creditors are in id order, so ties go to the smaller id.
+      for j in
+        select r.k from unnest(rems) with ordinality as r(rem, k)
+        where r.rem >= 0
+        order by r.rem desc, r.k
+      loop
+        exit when leftover = 0;
+        shares[j] := shares[j] + 1;
+        leftover := leftover - 1;
+      end loop;
+
+      for j in 1 .. cardinality(cred_ids) loop
+        if shares[j] > 0 then
+          cred_left[j] := cred_left[j] - shares[j];
+          owed := private.add_pair_debt(owed, e.users[i], cred_ids[j], shares[j]);
+        end if;
+      end loop;
+    end loop;
+  end loop;
+
+  -- Paying someone reduces what you owe them.
+  for st in
+    select s.from_user, s.to_user,
+      private.convert_minor(s.amount_cents, s.fx_rate, s.currency::text, g.currency::text)::numeric as cents
+    from public.settlements s
+    join public.groups g on g.id = s.group_id
+    where s.group_id = gid and s.deleted_at is null
+  loop
+    owed := private.add_pair_debt(owed, st.to_user, st.from_user, st.cents);
+  end loop;
+
+  return query
+    select
+      case when p.net > 0 then p.lo else p.hi end,
+      case when p.net > 0 then p.hi else p.lo end,
+      abs(p.net)::bigint
+    from (
+      select split_part(o.key, '|', 1)::uuid as lo, split_part(o.key, '|', 2)::uuid as hi,
+        o.value::numeric as net
+      from jsonb_each_text(owed) o
+    ) p
+    where p.net <> 0
+    order by abs(p.net) desc, 1, 2;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."pairwise_debts"("gid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_currency"("requested" "text", "group_currency" "text") RETURNS "text"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $_$
+declare
+  cur text := upper(coalesce(nullif(btrim(requested), ''), group_currency));
+begin
+  if cur !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+  return cur;
+end;
+$_$;
+
+
+ALTER FUNCTION "private"."payment_currency"("requested" "text", "group_currency" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_day"("settled_at" timestamp with time zone) RETURNS "date"
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select (settled_at at time zone private.my_time_zone())::date;
+$$;
+
+
+ALTER FUNCTION "private"."payment_day"("settled_at" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_fx"("cur" "text", "group_currency" "text", "on_day" "date") RETURNS numeric
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  fx numeric := private.fx_rate(cur::char(3), group_currency::char(3), on_day);
+begin
+  if fx is null then
+    raise exception using
+      message = 'fx_rate_unavailable',
+      detail = format('No exchange rate from %s to %s yet', cur, group_currency),
+      errcode = '23514';
+  end if;
+  return fx;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."payment_fx"("cur" "text", "group_currency" "text", "on_day" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_methods_check"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO ''
+    AS $$
+begin
+  if not private.valid_payment_handle(new.kind, new.handle) then
+    raise exception using
+      message = 'invalid_payment_handle',
+      detail = 'That does not look like a handle for this app',
+      errcode = '22023';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."payment_methods_check"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_note"("raw" "text") RETURNS "text"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  note text := nullif(btrim(raw), '');
+begin
+  if char_length(note) > 500 then
+    raise exception using message = 'note_too_long', detail = 'Keep the note under 500 characters', errcode = '22023';
+  end if;
+  return note;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."payment_note"("raw" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."payment_time"("paid_on" "date") RETURNS timestamp with time zone
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select case
+    when paid_on is null then now()
+    else (paid_on + time '12:00') at time zone private.my_time_zone()
+  end;
+$$;
+
+
+ALTER FUNCTION "private"."payment_time"("paid_on" "date") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."push_notification"() RETURNS "trigger"
@@ -3056,6 +3426,13 @@ begin
     verb := 'settlement.created';
   elsif old.deleted_at is null and new.deleted_at is not null then
     verb := 'settlement.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    verb := 'settlement.restored';
+  elsif new.deleted_at is null
+    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.fx_rate, new.note, new.settled_at)
+        is distinct from
+        (old.from_user, old.to_user, old.amount_cents, old.currency, old.fx_rate, old.note, old.settled_at) then
+    verb := 'settlement.updated';
   else
     return null;
   end if;
@@ -3099,6 +3476,47 @@ $$;
 
 
 ALTER FUNCTION "private"."settlements_notify"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."settlements_notify_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  kind text;
+begin
+  if old.deleted_at is null and new.deleted_at is not null then
+    kind := 'settlement.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    kind := 'settlement.restored';
+  elsif new.deleted_at is null
+    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.settled_at)
+        is distinct from
+        (old.from_user, old.to_user, old.amount_cents, old.currency, old.settled_at) then
+    kind := 'settlement.updated';
+  else
+    return null;
+  end if;
+
+  perform private.notify(
+    array[old.from_user, old.to_user, new.from_user, new.to_user],
+    kind,
+    jsonb_build_object(
+      'settlement_id', new.id,
+      'group_id', new.group_id,
+      'from_user', new.from_user,
+      'to_user', new.to_user,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."settlements_notify_change"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."shares_group_with"("other" "uuid") RETURNS boolean
@@ -3197,6 +3615,41 @@ $$;
 
 
 ALTER FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."utc_today"() RETURNS "date"
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select (now() at time zone 'UTC')::date;
+$$;
+
+
+ALTER FUNCTION "private"."utc_today"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $_$
+  select handle is not null
+    and handle = btrim(handle)
+    and char_length(handle) between 1 and 256
+    and case kind
+      when 'paypal' then handle ~ '^[A-Za-z0-9]{1,20}$'
+      when 'venmo' then handle ~ '^[A-Za-z0-9_-]{5,30}$'
+      when 'cashapp' then handle ~ '^[A-Za-z][A-Za-z0-9_]{0,19}$'
+      when 'revolut' then handle ~ '^[A-Za-z0-9]{3,32}$'
+      when 'monzo' then handle ~ '^[A-Za-z0-9]{3,32}$'
+      when 'upi' then handle ~ '^[A-Za-z0-9._-]{2,200}@[A-Za-z]{2,50}$'
+      when 'interac' then handle ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or handle ~ '^\+?[0-9]{10,15}$'
+      when 'bank' then char_length(handle) <= 200
+      else false
+    end;
+$_$;
+
+
+ALTER FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."accept_invite"("code" "text") RETURNS "uuid"
@@ -3961,6 +4414,38 @@ $$;
 ALTER FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."friend_balances"() RETURNS TABLE("friend_id" "uuid", "group_id" "uuid", "currency" "text", "net_cents" bigint, "archived" boolean)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  g record;
+begin
+  for g in
+    select x.id, x.currency, x.archived_at
+    from public.groups x
+    join public.group_members m on m.group_id = x.id and m.user_id = uid
+    order by x.id
+  loop
+    return query
+      select
+        case when d.from_user = uid then d.to_user else d.from_user end,
+        g.id,
+        g.currency::text,
+        case when d.from_user = uid then -d.amount_cents else d.amount_cents end,
+        g.archived_at is not null
+      from private.group_debts(g.id) d
+      where uid in (d.from_user, d.to_user);
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."friend_balances"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4275,6 +4760,93 @@ $$;
 ALTER FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."debt_reminders" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "from_user" "uuid" NOT NULL,
+    "to_user" "uuid" NOT NULL,
+    "amount_cents" bigint NOT NULL,
+    "currency" character(3) NOT NULL,
+    "note" "text",
+    "sent_on" "date" DEFAULT (("now"() AT TIME ZONE 'UTC'::"text"))::"date" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "debt_reminders_amount_cents_check" CHECK (("amount_cents" > 0)),
+    CONSTRAINT "debt_reminders_check" CHECK (("from_user" <> "to_user")),
+    CONSTRAINT "debt_reminders_note_check" CHECK (("char_length"("note") <= 280))
+);
+
+
+ALTER TABLE "public"."debt_reminders" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."debt_reminders" IS 'One row per reminder sent; the unique key keeps it to once a day per group and pair.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text" DEFAULT NULL::"text") RETURNS "public"."debt_reminders"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  g public.groups;
+  owed bigint;
+  v_note text := nullif(btrim(remind_debt.note), '');
+  result public.debt_reminders;
+begin
+  perform private.require_member(remind_debt.group_id);
+  perform private.require_group_open(remind_debt.group_id);
+  select * into g from public.groups x where x.id = remind_debt.group_id;
+
+  if char_length(v_note) > 280 then
+    raise exception using message = 'note_too_long', detail = 'Keep the note short', errcode = '22023';
+  end if;
+  if remind_debt.user_id is null or remind_debt.user_id = uid then
+    raise exception using message = 'invalid_parties', detail = 'Pick someone who owes you', errcode = '22023';
+  end if;
+  if not exists (
+    select 1 from public.group_members m
+    where m.group_id = g.id and m.user_id = remind_debt.user_id
+  ) then
+    raise exception using message = 'member_not_in_group', detail = 'They are not in this group', errcode = '23514';
+  end if;
+
+  select d.amount_cents into owed
+  from private.group_debts(g.id) d
+  where d.from_user = remind_debt.user_id and d.to_user = uid;
+  if coalesce(owed, 0) <= 0 then
+    raise exception using message = 'nothing_owed', detail = 'They do not owe you anything here', errcode = '23514';
+  end if;
+
+  insert into public.debt_reminders (group_id, from_user, to_user, amount_cents, currency, note)
+  values (g.id, uid, remind_debt.user_id, owed, g.currency, v_note)
+  on conflict on constraint debt_reminders_once_a_day do nothing
+  returning * into result;
+  if result.id is null then
+    raise exception using message = 'already_reminded', detail = 'You already sent a reminder today', errcode = '23514';
+  end if;
+
+  perform private.notify(
+    array[remind_debt.user_id],
+    'debt.reminder',
+    jsonb_build_object(
+      'group_id', g.id,
+      'from_user', uid,
+      'amount_cents', owed,
+      'currency', g.currency,
+      'note', v_note
+    ),
+    uid
+  );
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4426,6 +4998,51 @@ $$;
 
 
 ALTER FUNCTION "public"."restore_expense"("id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."restore_settlement"("id" "uuid") RETURNS "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  my_role public.group_role;
+  gid uuid;
+  s public.settlements;
+begin
+  select x.group_id into gid from public.settlements x where x.id = restore_settlement.id;
+  if gid is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups g where g.id = gid for share;
+  my_role := private.require_member(gid);
+
+  select * into s from public.settlements x where x.id = restore_settlement.id for update;
+  if s.id is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and uid not in (s.from_user, s.to_user) and uid is distinct from s.created_by then
+    raise exception using message = 'not_allowed', detail = 'You can only restore payments you were part of', errcode = '42501';
+  end if;
+  perform private.require_unarchived(gid);
+
+  if s.deleted_at is not null and (
+    select count(*) from public.group_members m
+    where m.group_id = gid and m.user_id in (s.from_user, s.to_user)
+  ) <> 2 then
+    raise exception using message = 'member_not_in_group', detail = 'Someone in this payment has left the group', errcode = '23514';
+  end if;
+
+  update public.settlements x set deleted_at = null
+  where x.id = s.id
+  returning * into s;
+  return s;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."restore_settlement"("id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) RETURNS "public"."events"
@@ -4689,6 +5306,45 @@ $$;
 ALTER FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date" DEFAULT NULL::"date", "note" "text" DEFAULT NULL::"text") RETURNS SETOF "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  v_note text := private.payment_note(settle_all.note);
+  v_at timestamptz := private.payment_time(settle_all.settled_on);
+  cur text;
+  d record;
+  paid public.settlements;
+begin
+  perform 1 from public.groups g where g.id = settle_all.group_id for share;
+  perform private.require_member(settle_all.group_id);
+  perform private.require_unarchived(settle_all.group_id);
+  select g.currency into cur from public.groups g where g.id = settle_all.group_id;
+
+  for d in
+    select x.from_user, x.to_user, x.amount_cents from private.group_debts(settle_all.group_id) x
+    where uid in (x.from_user, x.to_user)
+  loop
+    -- Nothing may move the balance of someone who left.
+    continue when (
+      select count(*) from public.group_members m
+      where m.group_id = settle_all.group_id and m.user_id in (d.from_user, d.to_user)
+    ) <> 2;
+    insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
+    values (settle_all.group_id, d.from_user, d.to_user, d.amount_cents, cur, 1, v_note, v_at, uid)
+    returning * into paid;
+    return next paid;
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date", "note" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text" DEFAULT NULL::"text", "note" "text" DEFAULT NULL::"text") RETURNS "public"."settlements"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4745,6 +5401,125 @@ $_$;
 
 
 ALTER FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text" DEFAULT NULL::"text", "note" "text" DEFAULT NULL::"text", "settled_on" "date" DEFAULT NULL::"date") RETURNS "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  my_role public.group_role;
+  g public.groups;
+  cur text;
+  fx numeric;
+  result public.settlements;
+begin
+  perform 1 from public.groups x where x.id = settle_up_v2.group_id for share;
+  my_role := private.require_member(settle_up_v2.group_id);
+  perform private.require_unarchived(settle_up_v2.group_id);
+  select * into g from public.groups x where x.id = settle_up_v2.group_id;
+
+  perform private.check_payment(g.id, my_role, settle_up_v2.from_user, settle_up_v2.to_user, settle_up_v2.amount_cents);
+  cur := private.payment_currency(settle_up_v2.currency, g.currency);
+  fx := private.payment_fx(cur, g.currency, coalesce(settle_up_v2.settled_on, private.utc_today()));
+
+  insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
+  values (
+    g.id, settle_up_v2.from_user, settle_up_v2.to_user, settle_up_v2.amount_cents, cur, fx,
+    private.payment_note(settle_up_v2.note), private.payment_time(settle_up_v2.settled_on), uid
+  )
+  returning * into result;
+
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date" DEFAULT NULL::"date", "note" "text" DEFAULT NULL::"text", "amounts" "jsonb" DEFAULT NULL::"jsonb") RETURNS SETOF "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  v_note text := private.payment_note(settle_with_friend.note);
+  v_at timestamptz := private.payment_time(settle_with_friend.settled_on);
+  picked jsonb := settle_with_friend.amounts;
+  gids uuid[];
+  gid uuid;
+  cur text;
+  d record;
+  amt bigint;
+  matched int := 0;
+  paid public.settlements;
+begin
+  if settle_with_friend.friend_id is null or settle_with_friend.friend_id = uid then
+    raise exception using message = 'invalid_parties', detail = 'A payment needs two different people', errcode = '22023';
+  end if;
+  if picked is not null and (jsonb_typeof(picked) <> 'object' or picked = '{}'::jsonb) then
+    raise exception using message = 'invalid_payload', detail = 'Pick at least one group', errcode = '22023';
+  end if;
+
+  select coalesce(array_agg(mine.group_id order by mine.group_id), '{}') into gids
+  from public.group_members mine
+  join public.group_members theirs
+    on theirs.group_id = mine.group_id and theirs.user_id = settle_with_friend.friend_id
+  where mine.user_id = uid;
+
+  -- Lock order: every group row, in id order, before reading any balance.
+  foreach gid in array gids loop
+    perform 1 from public.groups g where g.id = gid for share;
+  end loop;
+
+  foreach gid in array gids loop
+    continue when picked is not null and not (picked ? gid::text);
+    select g.currency into cur from public.groups g where g.id = gid and g.archived_at is null;
+    -- Archived groups are read only; a member may have left before the lock.
+    continue when cur is null;
+    continue when (
+      select count(*) from public.group_members m
+      where m.group_id = gid and m.user_id in (uid, settle_with_friend.friend_id)
+    ) <> 2;
+
+    for d in
+      select x.from_user, x.to_user, x.amount_cents from private.group_debts(gid) x
+      where (x.from_user = uid and x.to_user = settle_with_friend.friend_id)
+         or (x.from_user = settle_with_friend.friend_id and x.to_user = uid)
+    loop
+      amt := d.amount_cents;
+      if picked is not null then
+        begin
+          amt := (picked ->> gid::text)::bigint;
+        exception
+          when invalid_text_representation or numeric_value_out_of_range then
+            raise exception using message = 'invalid_payload', detail = 'The amounts are not valid', errcode = '22023';
+        end;
+        if amt is null or amt <= 0 or amt > d.amount_cents then
+          raise exception using message = 'invalid_amount', detail = 'Pay more than zero and no more than is owed', errcode = '22023';
+        end if;
+        matched := matched + 1;
+      end if;
+      insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
+      values (gid, d.from_user, d.to_user, amt, cur, 1, v_note, v_at, uid)
+      returning * into paid;
+      return next paid;
+    end loop;
+  end loop;
+
+  -- A picked group that is not shared, is archived, or has nothing owed any more.
+  if picked is not null and matched <> (select count(*) from jsonb_object_keys(picked)) then
+    raise exception using message = 'nothing_owed', detail = 'Nothing is owed in one of those groups any more', errcode = '23514';
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."simplified_debts"("group_id" "uuid") RETURNS TABLE("from_user" "uuid", "to_user" "uuid", "amount_cents" bigint)
@@ -4878,6 +5653,107 @@ $$;
 
 
 ALTER FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") RETURNS "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  p jsonb := coalesce(payload, '{}'::jsonb);
+  my_role public.group_role;
+  gid uuid;
+  g public.groups;
+  prev public.settlements;
+  prev_day date;
+  v_from uuid;
+  v_to uuid;
+  v_amount bigint;
+  v_currency text;
+  v_note text;
+  v_on date;
+  v_at timestamptz;
+  v_fx numeric;
+  result public.settlements;
+begin
+  select x.group_id into gid from public.settlements x where x.id = update_settlement.id;
+  if gid is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups x where x.id = gid for share;
+  my_role := private.require_member(gid);
+
+  select * into prev from public.settlements x where x.id = update_settlement.id for update;
+  if prev.id is null then
+    raise exception using message = 'settlement_not_found', detail = 'Payment not found', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and uid not in (prev.from_user, prev.to_user) and uid is distinct from prev.created_by then
+    raise exception using message = 'not_allowed', detail = 'You can only change payments you were part of', errcode = '42501';
+  end if;
+  perform private.require_unarchived(gid);
+  if prev.deleted_at is not null then
+    raise exception using message = 'settlement_deleted', detail = 'Restore this payment before editing it', errcode = '23514';
+  end if;
+  select * into g from public.groups x where x.id = gid;
+
+  begin
+    v_from := coalesce((p ->> 'from_user')::uuid, prev.from_user);
+    v_to := coalesce((p ->> 'to_user')::uuid, prev.to_user);
+    v_amount := coalesce((p ->> 'amount_cents')::bigint, prev.amount_cents);
+    v_on := (p ->> 'settled_on')::date;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+      or numeric_value_out_of_range then
+      raise exception using message = 'invalid_payload', detail = 'The payment is not valid', errcode = '22023';
+  end;
+  v_currency := private.payment_currency(coalesce(nullif(btrim(p ->> 'currency'), ''), prev.currency), g.currency);
+  v_note := case when p ? 'note' then private.payment_note(p ->> 'note') else prev.note end;
+
+  -- Keep the stored time unless the day really changes.
+  prev_day := private.payment_day(prev.settled_at);
+  if v_on is null or v_on = prev_day then
+    v_on := prev_day;
+    v_at := prev.settled_at;
+  else
+    v_at := private.payment_time(v_on);
+  end if;
+
+  if v_currency = prev.currency and v_on = prev_day then
+    v_fx := prev.fx_rate;
+  else
+    v_fx := private.payment_fx(v_currency, g.currency, v_on);
+  end if;
+
+  if (v_from, v_to, v_amount, v_currency, v_fx)
+     is distinct from (prev.from_user, prev.to_user, prev.amount_cents, prev.currency::text, prev.fx_rate) then
+    -- Nothing may move the balance of someone who left, old pair or new.
+    if (
+      select count(*) from public.group_members m
+      where m.group_id = gid and m.user_id in (prev.from_user, prev.to_user)
+    ) <> 2 then
+      raise exception using message = 'member_not_in_group', detail = 'Someone in this payment has left the group', errcode = '23514';
+    end if;
+    perform private.check_payment(gid, my_role, v_from, v_to, v_amount);
+  end if;
+
+  update public.settlements x set
+    from_user = v_from,
+    to_user = v_to,
+    amount_cents = v_amount,
+    currency = v_currency,
+    fx_rate = v_fx,
+    note = v_note,
+    settled_at = v_at
+  where x.id = prev.id
+  returning * into result;
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."email_outbox" (
@@ -5133,8 +6009,9 @@ CREATE TABLE IF NOT EXISTS "public"."comments" (
     "body" "text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "deleted_at" timestamp with time zone,
+    "settlement_id" "uuid",
     CONSTRAINT "comments_body_check" CHECK ((("char_length"("btrim"("body")) >= 1) AND ("char_length"("btrim"("body")) <= 2000))),
-    CONSTRAINT "comments_check" CHECK ((("expense_id" IS NULL) <> ("event_id" IS NULL)))
+    CONSTRAINT "comments_one_subject" CHECK (("num_nonnulls"("expense_id", "event_id", "settlement_id") = 1))
 );
 
 
@@ -5390,6 +6267,24 @@ COMMENT ON COLUMN "public"."notifications"."channels" IS 'Where this notificatio
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."payment_methods" (
+    "user_id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
+    "kind" "text" NOT NULL,
+    "handle" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "payment_methods_handle_check" CHECK ("private"."valid_payment_handle"("kind", "handle")),
+    CONSTRAINT "payment_methods_kind_check" CHECK (("kind" = ANY (ARRAY['paypal'::"text", 'venmo'::"text", 'cashapp'::"text", 'revolut'::"text", 'monzo'::"text", 'upi'::"text", 'interac'::"text", 'bank'::"text"])))
+);
+
+
+ALTER TABLE "public"."payment_methods" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."payment_methods" IS 'Where a person can be paid. Read by the owner and people who share a group with them.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "id" "uuid" NOT NULL,
     "display_name" "text" NOT NULL,
@@ -5536,6 +6431,16 @@ ALTER TABLE ONLY "public"."comments"
 
 
 
+ALTER TABLE ONLY "public"."debt_reminders"
+    ADD CONSTRAINT "debt_reminders_once_a_day" UNIQUE ("group_id", "from_user", "to_user", "sent_on");
+
+
+
+ALTER TABLE ONLY "public"."debt_reminders"
+    ADD CONSTRAINT "debt_reminders_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."event_rsvps"
     ADD CONSTRAINT "event_rsvps_pkey" PRIMARY KEY ("event_id", "user_id");
 
@@ -5603,6 +6508,11 @@ ALTER TABLE ONLY "public"."notification_prefs"
 
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."payment_methods"
+    ADD CONSTRAINT "payment_methods_pkey" PRIMARY KEY ("user_id", "kind");
 
 
 
@@ -5696,6 +6606,18 @@ CREATE INDEX "comments_expense_id_idx" ON "public"."comments" USING "btree" ("ex
 
 
 CREATE INDEX "comments_group_id_idx" ON "public"."comments" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "comments_settlement_id_idx" ON "public"."comments" USING "btree" ("settlement_id", "created_at");
+
+
+
+CREATE INDEX "debt_reminders_from_user_idx" ON "public"."debt_reminders" USING "btree" ("from_user");
+
+
+
+CREATE INDEX "debt_reminders_to_user_idx" ON "public"."debt_reminders" USING "btree" ("to_user");
 
 
 
@@ -5979,6 +6901,10 @@ CREATE OR REPLACE TRIGGER "notifications_route" BEFORE INSERT ON "public"."notif
 
 
 
+CREATE OR REPLACE TRIGGER "payment_methods_check" BEFORE INSERT OR UPDATE ON "public"."payment_methods" FOR EACH ROW EXECUTE FUNCTION "private"."payment_methods_check"();
+
+
+
 CREATE OR REPLACE TRIGGER "profiles_forget_closed_account" AFTER UPDATE OF "deleted_at" ON "public"."profiles" FOR EACH ROW WHEN ((("old"."deleted_at" IS NULL) AND ("new"."deleted_at" IS NOT NULL))) EXECUTE FUNCTION "private"."forget_closed_account"();
 
 
@@ -6008,6 +6934,10 @@ CREATE OR REPLACE TRIGGER "settlements_activity" AFTER INSERT OR UPDATE ON "publ
 
 
 CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify"();
+
+
+
+CREATE OR REPLACE TRIGGER "settlements_notify_change" AFTER UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify_change"();
 
 
 
@@ -6131,6 +7061,26 @@ ALTER TABLE ONLY "public"."comments"
 
 
 
+ALTER TABLE ONLY "public"."comments"
+    ADD CONSTRAINT "comments_settlement_id_fkey" FOREIGN KEY ("settlement_id") REFERENCES "public"."settlements"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."debt_reminders"
+    ADD CONSTRAINT "debt_reminders_from_user_fkey" FOREIGN KEY ("from_user") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."debt_reminders"
+    ADD CONSTRAINT "debt_reminders_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."debt_reminders"
+    ADD CONSTRAINT "debt_reminders_to_user_fkey" FOREIGN KEY ("to_user") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."event_rsvps"
     ADD CONSTRAINT "event_rsvps_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
 
@@ -6248,6 +7198,11 @@ ALTER TABLE ONLY "public"."notification_prefs"
 
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."payment_methods"
+    ADD CONSTRAINT "payment_methods_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
 
 
@@ -6424,6 +7379,13 @@ CREATE POLICY "comments: members write own" ON "public"."comments" FOR INSERT TO
 
 
 
+ALTER TABLE "public"."debt_reminders" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "debt_reminders: the pair reads" ON "public"."debt_reminders" FOR SELECT TO "authenticated" USING (((("from_user" = ( SELECT "auth"."uid"() AS "uid")) OR ("to_user" = ( SELECT "auth"."uid"() AS "uid"))) AND ("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids")))));
+
+
+
 ALTER TABLE "public"."event_rsvps" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6597,6 +7559,25 @@ CREATE POLICY "owners read their feed token" ON "public"."calendar_feed_tokens" 
 
 
 
+ALTER TABLE "public"."payment_methods" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "payment_methods: add own" ON "public"."payment_methods" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
+CREATE POLICY "payment_methods: change own" ON "public"."payment_methods" FOR UPDATE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid"))) WITH CHECK (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
+CREATE POLICY "payment_methods: owner and group mates read" ON "public"."payment_methods" FOR SELECT TO "authenticated" USING ((("user_id" = ( SELECT "auth"."uid"() AS "uid")) OR "private"."can_see_payment_methods"("user_id")));
+
+
+
+CREATE POLICY "payment_methods: remove own" ON "public"."payment_methods" FOR DELETE TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
@@ -6686,6 +7667,16 @@ GRANT ALL ON FUNCTION "private"."can_manage_event"("eid" "uuid") TO "service_rol
 
 
 
+REVOKE ALL ON FUNCTION "private"."can_see_payment_methods"("owner" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."can_see_payment_methods"("owner" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."can_see_payment_methods"("owner" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."check_payment"("gid" "uuid", "my_role" "public"."group_role", "payer" "uuid", "payee" "uuid", "amount" bigint) FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."check_request"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."check_request"() TO "anon";
 GRANT ALL ON FUNCTION "private"."check_request"() TO "authenticated";
@@ -6734,6 +7725,10 @@ REVOKE ALL ON FUNCTION "private"."forget_closed_account"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."forget_notification_prefs"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_debts"("gid" "uuid") FROM PUBLIC;
 
 
 
@@ -6903,6 +7898,14 @@ REVOKE ALL ON FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "t
 
 
 
+REVOKE ALL ON FUNCTION "private"."pairwise_debts"("gid" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."payment_fx"("cur" "text", "group_currency" "text", "on_day" "date") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."push_notification"() FROM PUBLIC;
 
 
@@ -7010,6 +8013,11 @@ GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "service_role";
 
 
 REVOKE ALL ON FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") FROM PUBLIC;
+
+
+
+GRANT ALL ON FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") TO "service_role";
 
 
 
@@ -7165,6 +8173,12 @@ GRANT ALL ON FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") TO "
 
 
 
+REVOKE ALL ON FUNCTION "public"."friend_balances"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."friend_balances"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."friend_balances"() TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "service_role";
@@ -7217,6 +8231,52 @@ GRANT ALL ON FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") TO 
 
 
 
+GRANT ALL ON TABLE "public"."debt_reminders" TO "service_role";
+
+
+
+GRANT SELECT("id") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("group_id") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("from_user") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("to_user") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("amount_cents") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("currency") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("note") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("sent_on") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."debt_reminders" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "service_role";
@@ -7232,6 +8292,12 @@ GRANT ALL ON FUNCTION "public"."request_availability"("event_id" "uuid", "user_i
 REVOKE ALL ON FUNCTION "public"."restore_expense"("id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."restore_expense"("id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."restore_expense"("id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "service_role";
 
 
 
@@ -7265,9 +8331,27 @@ GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push"
 
 
 
+REVOKE ALL ON FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date", "note" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date", "note" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date", "note" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") TO "service_role";
 
 
 
@@ -7292,6 +8376,12 @@ GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") 
 REVOKE ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") TO "service_role";
 
 
 
@@ -7407,6 +8497,10 @@ GRANT UPDATE("deleted_at") ON TABLE "public"."comments" TO "authenticated";
 
 
 
+GRANT INSERT("settlement_id") ON TABLE "public"."comments" TO "authenticated";
+
+
+
 GRANT ALL ON TABLE "public"."event_rsvps" TO "service_role";
 GRANT SELECT,INSERT,DELETE ON TABLE "public"."event_rsvps" TO "authenticated";
 
@@ -7492,6 +8586,27 @@ GRANT SELECT,DELETE ON TABLE "public"."notifications" TO "authenticated";
 
 
 GRANT UPDATE("read_at") ON TABLE "public"."notifications" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."payment_methods" TO "service_role";
+GRANT DELETE ON TABLE "public"."payment_methods" TO "authenticated";
+
+
+
+GRANT SELECT("user_id") ON TABLE "public"."payment_methods" TO "authenticated";
+
+
+
+GRANT SELECT("kind"),INSERT("kind"),UPDATE("kind") ON TABLE "public"."payment_methods" TO "authenticated";
+
+
+
+GRANT SELECT("handle"),INSERT("handle"),UPDATE("handle") ON TABLE "public"."payment_methods" TO "authenticated";
+
+
+
+GRANT SELECT("updated_at") ON TABLE "public"."payment_methods" TO "authenticated";
 
 
 

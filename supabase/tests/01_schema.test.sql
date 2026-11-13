@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(80);
+select plan(87);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
