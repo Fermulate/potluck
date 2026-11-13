@@ -31,7 +31,7 @@ describe('parseCsv', () => {
   })
 
   it('drops a byte order mark and keeps blank lines as blank rows', () => {
-    const rows = parseCsv('﻿a,b\n\nc,d')
+    const rows = parseCsv(`${String.fromCharCode(0xfeff)}a,b\n\nc,d`)
     expect(rows).toEqual([['a', 'b'], [''], ['c', 'd']])
     expect(isBlankRow(rows[1]!)).toBe(true)
     expect(isBlankRow(rows[0]!)).toBe(false)

@@ -9,11 +9,23 @@ import {
   type SourceIssue,
 } from '@potluck/core'
 import { formatDate, formatMoney, t } from '@potluck/i18n'
-import { Avatar, Badge, Button, Card, Field, Select, Skeleton, cn, toast } from '@potluck/ui'
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Field,
+  LoadingDots,
+  Select,
+  Skeleton,
+  buttonClassName,
+  cn,
+  toast,
+} from '@potluck/ui'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Upload } from 'lucide-react'
-import { useId, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useId, useMemo, useState, type DragEvent, type ReactNode } from 'react'
 import {
   invalidateMoney,
   moneyErrorMessage,
@@ -57,7 +69,6 @@ function Step({ title, help, children }: { title: string; help?: ReactNode; chil
 
 /** The file picker: a tap target on phones, a drop zone on desktop. */
 function FilePicker({ onFile, busy }: { onFile: (file: File) => void; busy: boolean }) {
-  const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
   const onDrop = (event: DragEvent) => {
     event.preventDefault()
@@ -86,26 +97,29 @@ function FilePicker({ onFile, busy }: { onFile: (file: File) => void; busy: bool
       >
         <FileSpreadsheet className="size-6" />
       </span>
-      <input
-        ref={input}
-        type="file"
-        accept=".csv,text/csv,text/plain"
-        className="sr-only"
-        aria-label={t('transfer.import.pick')}
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) onFile(file)
-          event.target.value = ''
-        }}
-      />
-      <Button
-        variant="ink"
-        leadingIcon={<Upload />}
-        loading={busy}
-        onClick={() => input.current?.click()}
+      {/* The label is the button, so the file input is the one control a screen reader meets. */}
+      <label
+        className={cn(
+          buttonClassName({ variant: 'ink' }),
+          'cursor-pointer has-focus-visible:ring-2 has-focus-visible:ring-tomato has-focus-visible:ring-offset-2 has-focus-visible:ring-offset-paper',
+          busy && 'pointer-events-none',
+        )}
+        aria-busy={busy || undefined}
       >
+        <input
+          type="file"
+          accept=".csv,text/csv,text/plain"
+          className="sr-only"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) onFile(file)
+            event.target.value = ''
+          }}
+        />
+        {busy ? <LoadingDots /> : <Upload aria-hidden className="-ml-1 size-4" />}
         {t('transfer.import.pick')}
-      </Button>
+      </label>
       <p className="hidden text-sm text-mute sm:block">{t('transfer.import.pickHint')}</p>
       <ul className="grid max-w-md gap-1 text-left text-sm text-mute">
         <li>{t('transfer.import.fromSplitwise')}</li>
@@ -405,7 +419,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             >
               <FileSpreadsheet className="size-5" />
             </span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-48">
               <p className="truncate font-semibold">{fileName}</p>
               <p className="text-sm text-mute">
                 {t(`transfer.import.format.${source.format}`)}

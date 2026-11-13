@@ -62,7 +62,7 @@ export function YourDataSection() {
         <p className="text-sm text-mute">{t('transfer.yourData.intro')}</p>
         <Row
           icon={<Archive />}
-          title={t('transfer.yourData.backup')}
+          title={t('transfer.yourData.backupTitle')}
           hint={t('transfer.yourData.backupHint')}
         >
           <Button
@@ -77,7 +77,7 @@ export function YourDataSection() {
         </Row>
         <Row
           icon={<FileSpreadsheet />}
-          title={t('transfer.yourData.everything')}
+          title={t('transfer.yourData.everythingTitle')}
           hint={t('transfer.yourData.everythingHint')}
         >
           <Button

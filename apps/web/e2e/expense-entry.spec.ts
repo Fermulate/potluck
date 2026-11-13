@@ -109,8 +109,9 @@ test.describe('expense entry', () => {
     const file = await download
     const csv = await (await file.createReadStream()).toArray()
     const text = Buffer.concat(csv).toString('utf8')
+    // Paid by, then what each of us paid, our share and the balance it leaves.
     expect(text).toContain(
-      `${me.name} 60.00; ${ben.name} 30.00,90.00,USD,1,90.00,30.00,30.00,30.00`,
+      `,90.00,USD,1,USD,90.00,"${me.name} 60.00; ${ben.name} 30.00",60.00,30.00,30.00,30.00,30.00,0.00,,30.00,-30.00,`,
     )
   })
 

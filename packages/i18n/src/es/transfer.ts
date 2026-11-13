@@ -44,12 +44,14 @@ export const transfer = {
   yourData: {
     title: 'Tus datos',
     intro: 'Todo lo que pones en Potluck es tuyo. Llévatelo cuando quieras.',
+    backupTitle: 'Copia de seguridad',
     backup: 'Descargar una copia',
     backupHint: 'Todos los grupos, gastos, pagos, comentarios y planes, en un archivo JSON.',
+    everythingTitle: 'Todos los grupos en una hoja de cálculo',
     everything: 'Exportar todo',
     everythingHint:
       'Todos tus grupos en una hoja de cálculo, con quién pagó, cada parte y los saldos.',
-    friend: 'Exportar lo que compartes con alguien',
+    friend: 'Lo que compartes con una persona',
     friendHint: 'Cada gasto y pago entre ustedes dos, de todos los grupos.',
     friendLabel: 'Amigo',
     friendPick: 'Elige a alguien',

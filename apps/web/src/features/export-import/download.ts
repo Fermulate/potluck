@@ -2,7 +2,7 @@
 export function fileName(name: string, extension: string, fallback = 'potluck'): string {
   const slug = name
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
@@ -16,7 +16,7 @@ export function fileName(name: string, extension: string, fallback = 'potluck'):
 export function saveFile(name: string, content: string, type: 'csv' | 'json'): void {
   const blob =
     type === 'csv'
-      ? new Blob(['﻿', content], { type: 'text/csv;charset=utf-8' })
+      ? new Blob([String.fromCharCode(0xfeff), content], { type: 'text/csv;charset=utf-8' })
       : new Blob([content], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

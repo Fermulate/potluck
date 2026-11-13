@@ -273,7 +273,7 @@ export function guessMapping(
   const norm = (s: string) =>
     s
       .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/\p{M}/gu, '')
       .toLowerCase()
       .replace(/[^\p{L}\p{N} ]/gu, '')
       .trim()

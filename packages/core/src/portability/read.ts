@@ -19,7 +19,7 @@ export function readImportFile(text: string, labelSets: readonly LedgerLabels[])
     issues: [{ line: 0, code }],
   })
   // Binary files (a spreadsheet saved as .xlsx, an image) have NUL bytes; text never does.
-  if (text.includes('\u0000')) return empty('not_csv')
+  if (text.includes(String.fromCharCode(0))) return empty('not_csv')
   const rows = parseCsv(text)
   if (looksLikeLedger(rows, labelSets)) return parseLedger(rows, labelSets)
   if (looksLikeSplitwise(rows)) return parseSplitwise(rows)

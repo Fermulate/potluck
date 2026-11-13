@@ -243,6 +243,25 @@ test.describe('accessibility', () => {
     await audit(page, testInfo)
   })
 
+  test('import preview', async ({ newUser, openAs }, testInfo) => {
+    const { me, ben, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}/import`)
+    const csv = [
+      `Date,Description,Category,Cost,Currency,${me.name},${ben.name},Someone Else`,
+      '2026-03-01,Dinner,Dining out,90.00,USD,60.00,-30.00,-30.00',
+      '2026-03-02,Ben paid,Payment,30.00,USD,-30.00,30.00,0.00',
+    ].join('\n')
+    await page
+      .getByLabel(t('transfer.import.pick'))
+      .setInputFiles({ name: 'splitwise.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) })
+    // Someone in the file is not matched yet, so the issue list shows too.
+    await expect(
+      page.getByText(t('transfer.import.issues.unmapped', { detail: 'Someone Else' })),
+    ).toBeVisible()
+    await audit(page, testInfo)
+  })
+
   test('unsubscribe link that does not work', async ({ page }, testInfo) => {
     await page.goto('/unsubscribe?token=not-a-token')
     await expect(page.getByRole('heading', { name: t('unsubscribe.invalidTitle') })).toBeVisible()
