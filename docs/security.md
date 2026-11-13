@@ -26,7 +26,7 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 | Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                                                               |
 | Someone guessing unsubscribe links      | turn off another person's emails                            | each link carries an HMAC of user id and category; the key stays in `private.signing_keys`. A preview shows the address masked                        |
 | Someone calling `email_outbox_report`   | mark emails sent or failed                                  | executable by the service role only                                                                                                                   |
-| Someone who learned a password          | sign in as that person                                      | two-step sign in when it is on: the database refuses the half signed in session ([below](#sign-in))    |
+| Someone who learned a password          | sign in as that person                                      | two-step sign in when it is on: the database refuses the half signed in session ([below](#sign-in))                                                   |
 
 Out of scope: a compromised Supabase or Cloudflare account, a malicious maintainer, and a stolen unlocked phone with an active session.
 
@@ -51,25 +51,25 @@ These are real today. Each should become an issue.
 - **Recovery codes.** Ten one-time codes are shown once at setup (and again whenever they are replaced); the dialog only closes once the person says they saved them. They are stored as SHA-256 hashes, which is enough because they are random. One code, together with the first sign in step, removes the authenticator so the person can set it up again. Five tries per account per fifteen minutes, then `too_many_attempts`. Turning two-step sign in off clears them. Without the codes, an operator has to remove the factor by hand after checking who is asking.
 - **Changing the email** sends a link to the old and to the new address (`double_confirm_changes`); in production the switch happens only when both are opened, so a stolen session cannot quietly move the account to another inbox. (The local stack auto-confirms email, and Supabase then takes either link as enough.) A pending change can be called off from Me (`cancel-email-change`), which voids its links.
 - **Changing the password** asks for the current one (accounts that only ever used Google or Apple set a first password without it), and for an emailed code when the session is more than a day old (`secure_password_change`). Then every other session is signed out.
-- **Security emails.** Supabase emails the account when its password or email changes and when an authenticator is added or removed (`[auth.email.notification.*]`).
+- **Security emails.** Supabase emails the account when its password or email changes and when an authenticator is added or removed (`[auth.email.notification.*]`). A recovery code removes the authenticator with the admin API, which sends no email, so `mfa-recover` files an `account.mfa_removed` notice instead: inbox and push right away, email through the app's outbox once email notifications are on. Its `security` category is not in the settings list, so its defaults (push and email) hold.
 - **Sign out everywhere** revokes every session of the account, this one included.
 
 ## Data handling
 
 ### What is stored
 
-| Data                                                      | Where                                      | Visible to                                                                 |
-| --------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------- |
-| Email, password hash, sessions                            | `auth.users` (Supabase Auth)               | nobody through the API. Supabase operators                                 |
-| Display name, avatar, time zone, locale, default currency | `profiles`                                 | you, people you share a group with or who left one of your groups, friends |
-| Groups, members, invites                                  | `groups`, `group_members`, `group_invites` | members. Invites only to admins and the invite's creator                   |
-| Expenses, splits, settlements, comments                   | money tables, `comments`                   | members of that group                                                      |
-| Availability, RSVPs, events                               | plans tables                               | members of that group                                                      |
-| Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`      | only you. OAuth tokens would live in Vault (feature is off)                |
-| Notifications, push subscriptions                         | `notifications`, `push_tokens`             | only you                                                                   |
-| Notification settings                                     | `notification_prefs`                       | only you                                                                   |
-| Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL)                |
-| Avatars, group covers                                     | public buckets                             | anyone with the URL                                                        |
+| Data                                                      | Where                                            | Visible to                                                                 |
+| --------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| Email, password hash, sessions                            | `auth.users` (Supabase Auth)                     | nobody through the API. Supabase operators                                 |
+| Display name, avatar, time zone, locale, default currency | `profiles`                                       | you, people you share a group with or who left one of your groups, friends |
+| Groups, members, invites                                  | `groups`, `group_members`, `group_invites`       | members. Invites only to admins and the invite's creator                   |
+| Expenses, splits, settlements, comments                   | money tables, `comments`                         | members of that group                                                      |
+| Availability, RSVPs, events                               | plans tables                                     | members of that group                                                      |
+| Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`            | only you. OAuth tokens would live in Vault (feature is off)                |
+| Notifications, push subscriptions                         | `notifications`, `push_tokens`                   | only you                                                                   |
+| Notification settings                                     | `notification_prefs`                             | only you                                                                   |
+| Receipts                                                  | private `receipts` bucket                        | members of the group (authenticated download or signed URL)                |
+| Avatars, group covers                                     | public buckets                                   | anyone with the URL                                                        |
 | Authenticator secrets, recovery code hashes               | `auth.mfa_factors`, `private.mfa_recovery_codes` | nobody through the API. Supabase operators                                 |
 
 There is no analytics or tracking code in the app.
