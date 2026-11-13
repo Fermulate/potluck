@@ -17,6 +17,7 @@ export const help = {
     exchangeRates: 'Woher der Kurs kommt',
     recurring: 'So funktioniert Wiederholen',
     receipts: 'Wer einen Beleg sehen kann',
+    receiptScan: 'So funktioniert das Scannen',
     simplifiedDebts: 'Wer wem zahlt',
     settleUp: 'Über das Erfassen einer Zahlung',
     roles: 'Wer was darf',
