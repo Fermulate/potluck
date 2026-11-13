@@ -150,5 +150,5 @@ Recipes in `.agents/skills/` (copied to `.claude/skills/`). Load the one that fi
 
 [development](docs/development.md) (setup, migrations, pgTAP helpers, strings, routes, web feature notes),
 [architecture](docs/architecture.md) (schema, RPCs, security, realtime, money rules, core and SQL twins),
-[testing](docs/testing.md), [security](docs/security.md), [sequences](docs/sequences.md),
+[testing](docs/testing.md), [security](docs/security.md), [sequences](docs/sequences.md), [receipts](docs/receipts.md),
 [ADRs](docs/adr/README.md), [CONTRIBUTING](CONTRIBUTING.md) (branches, commits, PRs).

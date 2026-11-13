@@ -19,6 +19,7 @@ Participants used throughout:
 - [Delete and restore a group](#delete-and-restore-a-group)
 - [Group notes](#group-notes)
 - [Add an expense](#add-an-expense)
+- [Scan a receipt and attach files](#scan-a-receipt-and-attach-files)
 - [Settle up](#settle-up)
 - [Settle with a friend across groups](#settle-with-a-friend-across-groups)
 - [Remind someone who owes you](#remind-someone-who-owes-you)
@@ -330,6 +331,54 @@ sequenceDiagram
 ```
 
 The service worker shows the message. The PWA is built with `vite-plugin-pwa` in `generateSW` mode, and `apps/web/public/push-sw.js` (pulled in through `workbox.importScripts` in `apps/web/vite.config.ts`) handles `push` by showing a notification and `notificationclick` by focusing or opening the app at the payload's `url`, same origin only. The browser subscribes from the Me page, which stores the endpoint in `push_tokens`; sign out drops that row and the subscription first so the next account on the device does not inherit it.
+
+## Scan a receipt and attach files
+
+Scanning happens on the device and only fills the form; the expense is saved by the same `create_expense_v2` call as above ([ADR 21](adr/0021-receipt-scanning-and-attachments.md)).
+
+```mermaid
+sequenceDiagram
+  actor P as Person
+  participant W as Web (expense form)
+  participant SW as Service worker
+  participant O as OCR worker (tesseract.js)
+  participant C as core
+  participant S as Storage (receipts)
+  participant DB as DB
+
+  P->>W: Scan a receipt, pick or take a photo
+  W->>W: prepareImage: at most 2000 px, JPEG on white
+  W->>W: import("tesseract.js") (lazy chunk)
+  W->>O: createWorker(eng, LSTM only) from /ocr/<version>/
+  O->>SW: worker.min.js, core .wasm.js, eng.traineddata.gz
+  alt first scan
+    SW->>SW: fetch from our origin, keep in cache potluck-ocr
+  else later scans, online or not
+    SW-->>O: from cache
+  end
+  O-->>W: text, then the worker is terminated
+  W->>C: parseReceipt(text, currency, date order, today)
+  C-->>W: merchant, date, currency, total, items, tax, tip, discount
+  W->>P: review sheet, one box per part
+  P->>W: Fill in the expense
+  W->>W: description, date, amount, by-item draft (everyone on every line),<br/>photo added to the attachments (nothing saved)
+  P->>W: pick who had what, add more files, Save
+  par each new file
+    W->>S: upload receipts/:groupId/:file (policy: member, two-step done)
+  end
+  W->>DB: rpc create_expense_v2(payload, receipt_path = first file)
+  DB->>DB: trigger: expense_attachments row 0 = receipt_path
+  opt more than one file (or an edit changed them)
+    W->>DB: rpc set_expense_attachments(id, paths in order)
+    DB->>DB: group share lock, member, own expense or admin,<br/>paths in the group folder and uploaded, five at most
+    DB->>DB: rewrite expense_attachments, receipt_path = first,<br/>activity expense.updated {attachments: {from, to}}
+    W->>S: remove files that left the list (uploader or admin only)
+  end
+  DB-->>W: Realtime: expenses change
+  W->>W: invalidate the expense (its attachments key sits under it)
+```
+
+On the expense page each photo opens full screen through a signed URL (one hour). Members of other groups get no rows from `expense_attachments` and no object from the bucket.
 
 ## Settle up
 

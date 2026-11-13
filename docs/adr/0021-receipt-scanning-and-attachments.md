@@ -1,0 +1,25 @@
+# 21. Receipt scanning on the device, and several attachments per expense
+
+- Status: accepted
+- Date: 2026-11-13
+
+## Context
+
+Splitwise Pro reads a receipt photo into the total, the date and the line items, and keeps several high resolution photos per expense. Potluck had one receipt per expense (`expenses.receipt_path`) and no scanning. Hosted OCR APIs cost money per page and would send every receipt (names, card digits, addresses) to a third party. Potluck has no application server, the app must stay light for people who never scan, and the installed PWA should keep working offline. Older clients only know `receipt_path`.
+
+## Decision
+
+- **OCR runs in the browser.** `tesseract.js` (pinned to an exact version with its core and the English `best_int` model) reads the photo in a web worker. It is imported dynamically by the scan button only, so the app bundle and the service worker precache do not carry it. The worker, the WebAssembly core (LSTM builds for plain, SIMD and relaxed SIMD devices; each device fetches one) and the model are copied into the build under `/ocr/<version>/` by `apps/web/ocr-assets.ts` and served from our own origin, not a CDN. The service worker caches `/ocr/` on first use (`CacheFirst`, cache `potluck-ocr`), so after one scan it works offline. Each read starts a worker and terminates it, so its memory (around 100 MB) goes back at once.
+- **Parsing is core code.** `parseReceipt` in `packages/core` turns OCR text into a merchant, a date, a currency, a total and items, with tax, tip and discount kept only when they make the receipt add up the way the by-item editor adds it (VAT already inside the prices is left out). It knows both decimal marks, VAT class letters, quantity lines, yen without decimals and month names in the five app languages, and is tested with receipts from seven countries. It is not a money rule: nothing in SQL mirrors it.
+- **A scan is a suggestion.** The review sheet shows each part with its own box. "Fill in the expense" sets the form (items go into the by-item editor with everyone on every line, a receipt total above its lines becomes an "Everything else" line, a receipt in another currency switches the form's currency); nothing is saved until the person saves. Photos are shrunk to 2000 px JPEG on the device before reading and uploading, which also drops their metadata.
+- **Attachments are a table over the same bucket.** `expense_attachments (expense_id, position, group_id, path, content_type, uploaded_by)` holds up to five files per expense, in order. Files stay in the private `receipts` bucket under `<group_id>/`, so the existing member read and upload, uploader or admin delete, and two-step restrictive policies cover them unchanged. Rows are written only by `set_expense_attachments` (who may edit the expense may change its files; every path in the group folder, uploaded, five at most), which logs one `expense.updated` with the counts.
+- **`receipt_path` stays the first attachment.** The new client sends the first file as `receipt_path` on create and sets the rest with `set_expense_attachments`; the function keeps `receipt_path` equal to the first file. A trigger mirrors an older client's `receipt_path` writes into the list (its file is replaced or dropped, the others stay). Existing receipts were copied in as first attachments.
+
+## Consequences
+
+- No per-scan cost and no receipt leaves the device for reading. The first scan downloads about 7 MB (worker, one core build, model); a device without that cache and without a connection cannot scan and says so.
+- Accuracy is the open source engine's: clean printed till receipts read well, crumpled or handwritten ones do not, and non-Latin scripts are not read (English model only). The review step and the boxes keep a bad read from becoming a bad expense.
+- `tesseract.js` and its core are in `package.json` with exact versions. Upgrading changes the `/ocr/<version>/` path, so an old cache is never mixed with a new worker.
+- Two writes on save (the expense, then its files) are not atomic. If the second fails, the expense is saved with its first file and the person is told to add the rest by editing.
+- Files removed by someone who did not upload them, and is not an admin, stay in storage (the bucket's delete rule), unreferenced but readable by the group.
+- The parser is heuristics. New receipt formats are new test cases in `parse-receipt.test.ts`.
