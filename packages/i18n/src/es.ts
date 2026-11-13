@@ -4,7 +4,7 @@ import { app, toast, common, nav, empty, errors } from './es/shell'
 import { auth, onboarding } from './es/auth'
 import { groups, members, roles, invites, friends } from './es/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './es/money'
-import { events, availability, bestTime, rsvp, timeline, home } from './es/plans'
+import { events, availability, bestTime, rsvp, timeline, home, guests } from './es/plans'
 import { notifications, settings, account, unsubscribe, security } from './es/me'
 import { help } from './es/help'
 
@@ -34,6 +34,7 @@ export const es = {
   availability,
   bestTime,
   rsvp,
+  guests,
   timeline,
   activity,
   notifications,

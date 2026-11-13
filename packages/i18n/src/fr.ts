@@ -4,7 +4,7 @@ import { app, toast, common, nav, empty, errors } from './fr/shell'
 import { auth, onboarding } from './fr/auth'
 import { groups, members, roles, invites, friends } from './fr/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './fr/money'
-import { events, availability, bestTime, rsvp, timeline, home } from './fr/plans'
+import { events, availability, bestTime, rsvp, timeline, home, guests } from './fr/plans'
 import { notifications, settings, account, unsubscribe, security } from './fr/me'
 import { help } from './fr/help'
 
@@ -34,6 +34,7 @@ export const fr = {
   availability,
   bestTime,
   rsvp,
+  guests,
   timeline,
   activity,
   notifications,
