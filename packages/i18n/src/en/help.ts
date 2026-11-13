@@ -17,6 +17,11 @@ export const help = {
     receipts: 'Who can see a receipt',
     simplifiedDebts: 'About who pays whom',
     settleUp: 'About recording a payment',
+    paymentLinks: 'How paying with an app works',
+    remind: 'About reminders',
+    settleEverything: 'About settling everything',
+    settleFriend: 'About settling across groups',
+    paymentMethods: 'Who sees your payment methods',
     roles: 'Who can do what',
     invites: 'How invite links work',
     houseRules: 'About house rules',
@@ -41,6 +46,8 @@ export const help = {
       'Simplifying is off here, so each pair settles on its own. Debts between two people are only netted against each other.',
     settleUp:
       'Potluck does not move money. Pay them your usual way (cash, a transfer, an app), then record it here so the balance goes down.',
+    paymentLinks:
+      'The button opens their app with the amount filled in. Potluck never sees the payment, so it asks you to confirm before recording it.',
     bestTimes:
       'Only times where people are free for the whole plan count. Free counts 1 and Maybe counts a half; the highest score wins and the earlier time breaks a tie.',
   },

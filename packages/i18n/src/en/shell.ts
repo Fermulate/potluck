@@ -202,6 +202,7 @@ export const errors = {
     split_member_not_in_group:
       'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',
     settlement_not_found: 'That payment is gone.',
+    invalid_payment_handle: 'That does not look like a handle for this app.',
     event_not_in_group: 'That plan is not in this group.',
     invalid_notification_category: 'That notification setting does not exist.',
     notification_setting_required:

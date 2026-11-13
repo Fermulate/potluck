@@ -250,4 +250,23 @@ export const friends = {
     body: 'Share a group link and your friends land here the moment they join.',
     action: 'Add a friend',
   },
+  /** The friend's total across every shared group. */
+  and: '{first} and {second}',
+  acrossGroups_one: 'in {count} group',
+  acrossGroups_other: 'across {count} groups',
+  settle: {
+    action: 'Settle up',
+    actionLabel: 'Settle up with {name}',
+    title: 'Settle up with {name}',
+    body: 'One payment in each group, so every balance between you two goes to zero.',
+    youOwe: 'You owe {amount}',
+    owesYou: 'Owes you {amount}',
+    archived_one: '{count} archived group stays as it is. Unarchive it to settle there.',
+    archived_other: '{count} archived groups stay as they are. Unarchive them to settle there.',
+    date: 'Paid on',
+    record_one: 'Record {count} payment',
+    record_other: 'Record {count} payments',
+    done: 'All square with {name}.',
+    nothing: 'Nothing to settle with {name}. Go treat yourselves.',
+  },
 } as const
