@@ -19,6 +19,8 @@ export interface PersonSummary {
   display_name: string
   avatar_path: string | null
   deleted_at: string | null
+  /** Added by name, not on Potluck yet (ADR 19): no account, no notifications. */
+  is_placeholder?: boolean
 }
 
 export interface GroupMember extends PersonSummary {
@@ -46,6 +48,10 @@ export interface InvitePreview {
   first_names: string[]
   status: 'valid' | 'expired' | 'revoked' | 'used_up' | 'archived' | 'blocked'
   is_member: boolean
+  /** First name of the seat a claim link hands over, if it is one. */
+  placeholder_name?: string | null
+  /** The email a claim link is bound to, masked (`s***@example.com`). */
+  email_hint?: string | null
 }
 
 export interface Friend extends PersonSummary {
@@ -66,7 +72,7 @@ export const groupKeys = {
 }
 
 const GROUP_SELECT =
-  '*, group_members(role, joined_at, profiles(id, display_name, avatar_path, deleted_at))' as const
+  '*, group_members(role, joined_at, profiles(id, display_name, avatar_path, deleted_at, is_placeholder))' as const
 
 type GroupWithMembers = GroupRow & {
   group_members: {
@@ -300,12 +306,15 @@ export async function restoreInvite(client: PotluckClient, inviteId: string) {
   if (error) throw error
 }
 
-/** Public preview of an invite. Works signed out. Throws `invite_not_found` for unknown codes. */
+/**
+ * Public preview of an invite, including the seat a claim link hands over (`invite_preview_v2`).
+ * Works signed out. Throws `invite_not_found` for unknown codes.
+ */
 export async function fetchInvitePreview(
   client: PotluckClient,
   code: string,
 ): Promise<InvitePreview> {
-  const { data, error } = await client.rpc('invite_preview', { code })
+  const { data, error } = await client.rpc('invite_preview_v2', { code })
   if (error) throw error
   const row = data?.[0]
   if (!row) throw Object.assign(new Error('invite_not_found'), { code: 'PT404' })

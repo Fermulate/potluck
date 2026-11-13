@@ -168,9 +168,11 @@ describe('can', () => {
         true,
         true,
       ])
-      expect(everyone((r) => can(r, 'placeholder.edit', { ...locked, isCreator: false }))).toEqual(
-        [true, true, false],
-      )
+      expect(everyone((r) => can(r, 'placeholder.edit', { ...locked, isCreator: false }))).toEqual([
+        true,
+        true,
+        false,
+      ])
     })
 
     it('lets admins or whoever added them remove them once settled', () => {

@@ -76,6 +76,8 @@ export interface MoneyPerson {
   display_name: string
   avatar_path: string | null
   deleted_at: string | null
+  /** Added by name, not on Potluck yet (ADR 19). */
+  is_placeholder?: boolean
 }
 
 export interface MoneyMember extends MoneyPerson {
@@ -263,7 +265,7 @@ function unwrap<T>(result: { data: T | null; error: unknown }): T {
   return result.data as T
 }
 
-const PERSON = 'id, display_name, avatar_path, deleted_at'
+const PERSON = 'id, display_name, avatar_path, deleted_at, is_placeholder'
 
 // Reads ---------------------------------------------------------------------------------------
 
