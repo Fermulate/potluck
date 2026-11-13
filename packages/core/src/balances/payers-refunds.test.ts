@@ -9,7 +9,7 @@ import {
 } from '../index'
 
 // The same cases run against the `group_balances` view in
-// supabase/tests/17_expense_entry.test.sql.
+// supabase/tests/19_expense_entry.test.sql.
 const equalThree = [
   { userId: 'ava', shareCents: 3000 },
   { userId: 'ben', shareCents: 3000 },

@@ -71,6 +71,7 @@ import {
   effectiveAmount,
   formerParticipants,
   initialDraft,
+  isEqualBetweenAll,
   itemsPayload,
   matchesDefault,
   previewSplit,
@@ -236,11 +237,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const payerMembers = [...group.members, ...formerPayers.map(formerMember)]
   const defaultSplit = defaultFromDraft(draft)
   const isDefault = matchesDefault(draft, group.default_split)
-  // Equal between everyone is where every group starts, so there is nothing to save.
-  const plainEqual =
-    draft.mode === 'equal' &&
-    draft.participants.length === memberIds.length &&
-    memberIds.every((id) => draft.participants.includes(id))
+  const plainEqual = isEqualBetweenAll(draft, memberIds)
   const canSaveDefault =
     !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 

@@ -141,6 +141,18 @@ export function defaultFromDraft(draft: SplitDraft): DefaultSplit | null {
   }
 }
 
+/**
+ * Equal between every current member: where every group starts, so it is saved as no default
+ * (a stored member list would leave out whoever joins later).
+ */
+export function isEqualBetweenAll(draft: SplitDraft, memberIds: readonly string[]): boolean {
+  return (
+    draft.mode === 'equal' &&
+    draft.participants.length === memberIds.length &&
+    memberIds.every((id) => draft.participants.includes(id))
+  )
+}
+
 /** Whether the draft splits the same way as the saved default (same people and weights). */
 export function matchesDefault(
   draft: SplitDraft,

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { roundedUp, splitAdjustment } from '../index'
 
 // The same cases run against `private.compute_split_rows` in
-// supabase/tests/17_expense_entry.test.sql.
+// supabase/tests/19_expense_entry.test.sql.
 describe('splitAdjustment', () => {
   it('adds each adjustment on top of an equal split of the rest', () => {
     // 100 between three with +10 on a: 90 split equally, then a gets 10 more.

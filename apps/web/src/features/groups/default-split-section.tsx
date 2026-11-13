@@ -8,6 +8,8 @@ import { SplitEditor } from '@/features/expenses/form/split-editor'
 import {
   defaultFromDraft,
   initialDraft,
+  isEqualBetweenAll,
+  matchesDefault,
   splitErrorText,
   previewSplit,
   type SplitDraft,
@@ -79,7 +81,11 @@ export function DefaultSplitSection({ groupId }: { groupId: string }) {
   const current = draft ?? initialDraft(memberIds, data.default_split)
   // The check needs an amount; any positive one tells whether the split itself is valid.
   const problem = splitErrorText(previewSplit(current, 10000))
-  const next = defaultFromDraft(current)
+  const plainEqual = isEqualBetweenAll(current, memberIds)
+  const next = plainEqual ? null : defaultFromDraft(current)
+  const unchanged = plainEqual
+    ? !data.default_split
+    : !next || matchesDefault(current, data.default_split)
 
   return (
     <section className="grid gap-3">
@@ -123,7 +129,7 @@ export function DefaultSplitSection({ groupId }: { groupId: string }) {
               )}
               <Button
                 loading={save.isPending}
-                disabled={!!problem || !next}
+                disabled={!!problem || unchanged}
                 onClick={() => save.mutate(next)}
               >
                 {t('groups.settings.defaultSplit.save')}

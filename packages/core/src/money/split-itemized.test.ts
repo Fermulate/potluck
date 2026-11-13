@@ -105,7 +105,7 @@ describe('splitItemized', () => {
   })
 
   // The same cases run against `private.itemized_splits` in
-  // supabase/tests/17_expense_entry.test.sql.
+  // supabase/tests/19_expense_entry.test.sql.
   it('takes a discount off in proportion to each subtotal', () => {
     expect(
       splitItemized(

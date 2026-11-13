@@ -3,7 +3,7 @@
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
 begin;
-select plan(84);
+select plan(86);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -178,6 +178,39 @@ select is(
 select tests.login('ava');
 select update_expense_v2(tests.id('dinner'), jsonb_build_object('split_type', 'equal',
   'splits', tests.people('ava', 'ben', 'cleo'), 'notes', null));
+-- New percentages sent with a new amount are logged; the same percentages with a new amount are not.
+select tests.remember('pct', (select id from create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('misc'), 'description', 'Taxi', 'amount_cents', 10000, 'split_type', 'percent',
+  'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('ava'), 'weight', 50),
+    jsonb_build_object('user_id', tests.uid('ben'), 'weight', 50))))));
+select update_expense_v2(tests.id('pct'), jsonb_build_object(
+  'amount_cents', 20000, 'split_type', 'percent',
+  'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('ava'), 'weight', 80),
+    jsonb_build_object('user_id', tests.uid('ben'), 'weight', 20))));
+select update_expense_v2(tests.id('pct'), jsonb_build_object(
+  'amount_cents', 30000, 'split_type', 'percent',
+  'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('ava'), 'weight', 80),
+    jsonb_build_object('user_id', tests.uid('ben'), 'weight', 20))));
+reset role;
+select is(
+  (select array_agg(k order by k) from public.activity a, jsonb_object_keys(a.data -> 'changes') k
+   where a.subject_id = tests.id('pct') and a.verb = 'expense.updated'),
+  array['amount_cents', 'amount_cents', 'split'],
+  'a split changed with the amount is logged, a rescale alone is not'
+);
+select is(
+  (select a.data -> 'changes' -> 'split' from public.activity a
+   where a.subject_id = tests.id('pct') and a.verb = 'expense.updated' and a.data -> 'changes' ? 'split'),
+  jsonb_build_object(
+    'from', jsonb_build_object('type', 'percent',
+      'shares', jsonb_build_object(tests.uid('ava'), 5000, tests.uid('ben'), 5000)),
+    'to', jsonb_build_object('type', 'percent',
+      'shares', jsonb_build_object(tests.uid('ava'), 16000, tests.uid('ben'), 4000))),
+  'with the old and new shares'
+);
 select tests.login('cleo');
 select throws_ok(
   $$ select update_expense_v2(tests.id('dinner'), jsonb_build_object('description', 'Mine now')) $$,

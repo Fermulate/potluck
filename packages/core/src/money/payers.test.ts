@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { checkPayers, primaryPayer } from '../index'
 
-// The same cases run against `private.save_expense` in supabase/tests/17_expense_entry.test.sql.
+// The same cases run against `private.save_expense` in supabase/tests/19_expense_entry.test.sql.
 describe('checkPayers', () => {
   it('accepts payers that add up to the total', () => {
     expect(

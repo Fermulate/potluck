@@ -2252,6 +2252,8 @@ declare
   result public.expenses;
   recurring uuid;
   old_shares jsonb;
+  old_split_inputs jsonb;
+  new_split_inputs jsonb;
   old_items jsonb;
   new_items jsonb;
   new_shares jsonb;
@@ -2312,6 +2314,11 @@ begin
     from public.expense_items i where i.expense_id = prev.id;
 
     select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into old_shares
+    from public.expense_splits s where s.expense_id = prev.id;
+
+    select coalesce(jsonb_object_agg(s.user_id, jsonb_build_array(s.weight, s.adjustment_cents,
+             case when prev.split_type in ('exact', 'itemized') then s.share_cents end)), '{}'::jsonb)
+    into old_split_inputs
     from public.expense_splits s where s.expense_id = prev.id;
 
     payer_left := exists (
@@ -2621,10 +2628,15 @@ begin
   end if;
 
   -- One history entry per edit, with the old and new value of every field that changed. Payers
-  -- and the split are listed when their people changed, or when they changed without the amount
-  -- (a new amount alone already rescales them).
+  -- and the split are listed when their people changed, when they changed without the amount
+  -- (a new amount alone already rescales them), or when the caller sent new weights, adjustments
+  -- or exact shares.
   if prev.id is not null then
     changes := private.expense_row_changes(prev, result) - 'paid_by' - 'split_type';
+    select coalesce(jsonb_object_agg(s.user_id, jsonb_build_array(s.weight, s.adjustment_cents,
+             case when result.split_type in ('exact', 'itemized') then s.share_cents end)), '{}'::jsonb)
+    into new_split_inputs
+    from public.expense_splits s where s.expense_id = result.id;
     if payers_changed
        and ((select array_agg(k order by k) from jsonb_object_keys(old_payers) k)
               is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_payers) k)
@@ -2637,7 +2649,8 @@ begin
        and (prev.split_type <> result.split_type
             or (select array_agg(k order by k) from jsonb_object_keys(old_shares) k)
                  is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_shares) k)
-            or (v_amount = prev.amount_cents and new_shares <> old_shares)) then
+            or (v_amount = prev.amount_cents and new_shares <> old_shares)
+            or ((p ? 'splits' or write_items) and new_split_inputs <> old_split_inputs)) then
       changes := changes || jsonb_build_object('split', jsonb_build_object(
         'from', jsonb_build_object('type', prev.split_type, 'shares', old_shares),
         'to', jsonb_build_object('type', result.split_type, 'shares', new_shares)));

@@ -75,6 +75,35 @@ describe('DefaultSplitSection', () => {
     })
   })
 
+  it('never stores equal between everyone as a member list', async () => {
+    renderSection({
+      split_type: 'shares',
+      splits: [
+        { user_id: ME, weight: 2 },
+        { user_id: BEN, weight: 1 },
+        { user_id: CLEO, weight: 1 },
+      ],
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('groups.settings.defaultSplit.change') }))
+    const sheet = await screen.findByRole('dialog')
+    const saveButton = within(sheet).getByRole('button', {
+      name: t('groups.settings.defaultSplit.save'),
+    })
+    expect(saveButton).toBeDisabled()
+    fireEvent.click(within(sheet).getByRole('radio', { name: 'Equal' }))
+    fireEvent.click(saveButton)
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.anything(), GROUP_ID, null))
+  })
+
+  it('has nothing to save when new expenses already split equally between everyone', async () => {
+    renderSection(null)
+    fireEvent.click(screen.getByRole('button', { name: t('groups.settings.defaultSplit.change') }))
+    const sheet = await screen.findByRole('dialog')
+    expect(
+      within(sheet).getByRole('button', { name: t('groups.settings.defaultSplit.save') }),
+    ).toBeDisabled()
+  })
+
   it('goes back to equal', async () => {
     renderSection({ split_type: 'equal', splits: [{ user_id: ME, weight: null }] })
     expect(
