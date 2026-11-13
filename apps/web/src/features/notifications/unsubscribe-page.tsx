@@ -1,10 +1,14 @@
-import { emailUnsubscribe, type NotificationCategory } from '@potluck/api'
+import {
+  emailUnsubscribe,
+  unsubscribePreviewQueryOptions,
+  type UnsubscribeResult,
+} from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, LoadingDots, usePrefersReducedMotion } from '@potluck/ui'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Wordmark } from '@/features/shell/brand'
 import { useSession } from '@/lib/auth'
 import { errorCode } from '@/lib/errors'
@@ -32,32 +36,42 @@ function Frame({ children }: { children: ReactNode }) {
   )
 }
 
-const about = (category: NotificationCategory | 'all' | null) =>
+const what = (category: UnsubscribeResult['category']) =>
   category && category !== 'all'
-    ? t('unsubscribe.doneOne', {
-        what: t(`settings.notificationPrefs.categories.${category}.about`),
-      })
-    : t('unsubscribe.doneAll')
+    ? t(`settings.notificationPrefs.categories.${category}.about`)
+    : null
+
+function Mailbox({ open, reduced }: { open: boolean; reduced: boolean }) {
+  return (
+    <motion.span
+      key={open ? 'open' : 'closed'}
+      aria-hidden
+      className="text-7xl"
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: -12, rotate: -10 }}
+      animate={{ opacity: 1, y: 0, rotate: 0 }}
+      transition={reduced ? { duration: 0.15 } : { type: 'spring', stiffness: 380, damping: 22 }}
+    >
+      {open ? '📬' : '📭'}
+    </motion.span>
+  )
+}
 
 /**
- * Where an email's unsubscribe link lands. Opening it is the one click: the signed token turns
- * that email type off right away, signed in or not, and the page offers to undo it. Mail clients
- * that support one-click unsubscribe POST to the `unsubscribe` edge function instead.
+ * Where an email's unsubscribe link lands. Opening it changes nothing (link scanners open links
+ * too); one tap on Unsubscribe does it, signed in or not, and the page offers to undo it. Mail
+ * clients with a built-in unsubscribe button POST to the `unsubscribe` edge function instead.
  */
 export function UnsubscribePage({ token }: { token: string | undefined }) {
   const session = useSession()
   const reduced = usePrefersReducedMotion()
-  // The token already applied, so a re-render (or React's dev double effect) never sends it twice.
-  const applied = useRef<string | null>(null)
-  const off = useMutation({ mutationFn: (tok: string) => emailUnsubscribe(supabase, tok) })
-  const on = useMutation({ mutationFn: (tok: string) => emailUnsubscribe(supabase, tok, true) })
-  const { mutate: unsubscribe } = off
-
-  useEffect(() => {
-    if (!token || applied.current === token) return
-    applied.current = token
-    unsubscribe(token)
-  }, [token, unsubscribe])
+  const preview = useQuery({
+    ...unsubscribePreviewQueryOptions(supabase, token ?? ''),
+    enabled: !!token,
+  })
+  const off = useMutation({
+    mutationFn: (tok: string) => emailUnsubscribe(supabase, tok, 'unsubscribe'),
+  })
+  const on = useMutation({ mutationFn: (tok: string) => emailUnsubscribe(supabase, tok, 'undo') })
 
   const manage = (
     <Button asChild variant="ghost">
@@ -65,7 +79,7 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
     </Button>
   )
 
-  if (!token || errorCode(off.error) === 'invalid_unsubscribe_link') {
+  if (!token || errorCode(preview.error) === 'invalid_unsubscribe_link') {
     return (
       <Frame>
         <span aria-hidden className="text-7xl">
@@ -78,7 +92,7 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
     )
   }
 
-  if (off.isError) {
+  if (preview.isError) {
     return (
       <Frame>
         <span aria-hidden className="text-7xl">
@@ -86,14 +100,14 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
         </span>
         <h1 className="flourish text-4xl leading-tight">{t('unsubscribe.title')}</h1>
         <p className="max-w-xs text-mute">{t('unsubscribe.failed')}</p>
-        <Button loading={off.isPending} onClick={() => off.mutate(token)}>
+        <Button loading={preview.isFetching} onClick={() => void preview.refetch()}>
           {t('unsubscribe.retry')}
         </Button>
       </Frame>
     )
   }
 
-  if (!off.isSuccess) {
+  if (!preview.data) {
     return (
       <Frame>
         <LoadingDots size={28} className="text-mute" />
@@ -104,32 +118,70 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
     )
   }
 
-  const resubscribed = on.isSuccess
+  const link = preview.data
+  const topic = what(link.category)
+  const account = link.email ? (
+    <p className="text-sm font-semibold text-mute">
+      {t('unsubscribe.account', { email: link.email })}
+    </p>
+  ) : null
+  const failed = (off.isError || on.isError) && (
+    <p role="alert" className="text-sm text-tomato-ink">
+      {t('unsubscribe.failed')}
+    </p>
+  )
+
+  // Back on: either undone here, or resubscribed from an already-off link.
+  if (on.isSuccess) {
+    return (
+      <Frame>
+        <Mailbox open reduced={reduced} />
+        <h1 className="font-display text-5xl leading-[0.95]">{t('unsubscribe.undone')}</h1>
+        {account}
+        <p role="status" className="max-w-xs text-mute">
+          {t('unsubscribe.undoneBody')}
+        </p>
+        {manage}
+      </Frame>
+    )
+  }
+
+  // Off: just now, or the link's emails were already off.
+  if (off.isSuccess || !link.subscribed) {
+    return (
+      <Frame>
+        <Mailbox open={false} reduced={reduced} />
+        <h1 className="font-display text-5xl leading-[0.95]">
+          {off.isSuccess ? t('unsubscribe.done') : t('unsubscribe.alreadyTitle')}
+        </h1>
+        {account}
+        <p role="status" className="max-w-xs text-mute">
+          {topic ? t('unsubscribe.doneOne', { what: topic }) : t('unsubscribe.doneAll')}
+        </p>
+        <div className="grid w-full gap-2">
+          <Button variant="secondary" block loading={on.isPending} onClick={() => on.mutate(token)}>
+            {off.isSuccess ? t('unsubscribe.undo') : t('unsubscribe.resubscribe')}
+          </Button>
+          {failed}
+          {manage}
+        </div>
+      </Frame>
+    )
+  }
+
   return (
     <Frame>
-      <motion.span
-        key={resubscribed ? 'on' : 'off'}
-        aria-hidden
-        className="text-7xl"
-        initial={reduced ? { opacity: 0 } : { opacity: 0, y: -12, rotate: -10 }}
-        animate={{ opacity: 1, y: 0, rotate: 0 }}
-        transition={reduced ? { duration: 0.15 } : { type: 'spring', stiffness: 380, damping: 22 }}
-      >
-        {resubscribed ? '📬' : '📭'}
-      </motion.span>
-      <h1 className="font-display text-5xl leading-[0.95]">
-        {resubscribed ? t('unsubscribe.undone') : t('unsubscribe.done')}
-      </h1>
-      <p role="status" className="max-w-xs text-mute">
-        {resubscribed ? t('unsubscribe.undoneBody') : about(off.data)}
+      <Mailbox open reduced={reduced} />
+      <h1 className="font-display text-5xl leading-[0.95]">{t('unsubscribe.askTitle')}</h1>
+      {account}
+      <p className="max-w-xs text-mute">
+        {topic ? t('unsubscribe.askOne', { what: topic }) : t('unsubscribe.askAll')}
       </p>
       <div className="grid w-full gap-2">
-        {!resubscribed && (
-          <Button variant="secondary" block loading={on.isPending} onClick={() => on.mutate(token)}>
-            {t('unsubscribe.undo')}
-          </Button>
-        )}
-        {on.isError && <p className="text-sm text-tomato-ink">{t('unsubscribe.failed')}</p>}
+        <Button block loading={off.isPending} onClick={() => off.mutate(token)}>
+          {t('unsubscribe.confirm')}
+        </Button>
+        {failed}
         {manage}
       </div>
     </Frame>

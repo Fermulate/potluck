@@ -6,6 +6,7 @@ import {
   notificationPrefKeys,
   notificationPrefsQueryOptions,
   setNotificationPref,
+  unsubscribePreviewQueryOptions,
 } from './notification-prefs'
 import { fakeSupabase } from './testing/fake-supabase'
 
@@ -60,27 +61,58 @@ describe('notification settings', () => {
     await expect(setNotificationPref(failing.client, 'plans', { push: true })).rejects.toBe(boom)
   })
 
-  it('applies and undoes an unsubscribe link', async () => {
+  it('previews, applies and undoes an unsubscribe link', async () => {
     const fake = fakeSupabase()
-      .respond('rpc:email_unsubscribe', { data: 'payments' })
-      .respond('rpc:email_unsubscribe', { data: 'all' })
-      .respond('rpc:email_unsubscribe', { data: 'something_new' })
-    expect(await emailUnsubscribe(fake.client, 'tok')).toBe('payments')
-    expect(await emailUnsubscribe(fake.client, 'tok', true)).toBe('all')
-    expect(await emailUnsubscribe(fake.client, 'tok')).toBeNull()
-    expect(fake.calls[0]).toEqual({
-      kind: 'rpc',
-      name: 'email_unsubscribe',
-      args: { token: 'tok', subscribe: false },
+      .respond('rpc:email_unsubscribe', {
+        data: { category: 'payments', email: 'a***@x.y', subscribed: true },
+      })
+      .respond('rpc:email_unsubscribe', {
+        data: { category: 'all', email: null, subscribed: false },
+      })
+      .respond('rpc:email_unsubscribe', { data: { category: 'something_new' } })
+    expect(await emailUnsubscribe(fake.client, 'tok', 'preview')).toEqual({
+      category: 'payments',
+      email: 'a***@x.y',
+      subscribed: true,
     })
-    expect(fake.calls[1]).toMatchObject({ args: { token: 'tok', subscribe: true } })
+    expect(await emailUnsubscribe(fake.client, 'tok', 'unsubscribe')).toEqual({
+      category: 'all',
+      email: null,
+      subscribed: false,
+    })
+    expect(await emailUnsubscribe(fake.client, 'tok', 'undo')).toEqual({
+      category: null,
+      email: null,
+      subscribed: false,
+    })
+    expect(fake.calls.map((c) => (c as { args: unknown }).args)).toEqual([
+      { token: 'tok', action: 'preview' },
+      { token: 'tok', action: 'unsubscribe' },
+      { token: 'tok', action: 'undo' },
+    ])
 
+    const empty = fakeSupabase()
+    expect(await emailUnsubscribe(empty.client, 'tok', 'preview')).toEqual({
+      category: null,
+      email: null,
+      subscribed: false,
+    })
     const bad = fakeSupabase().respond('rpc:email_unsubscribe', {
       error: { message: 'invalid_unsubscribe_link' },
     })
-    await expect(emailUnsubscribe(bad.client, 'nope')).rejects.toEqual({
+    await expect(emailUnsubscribe(bad.client, 'nope', 'preview')).rejects.toEqual({
       message: 'invalid_unsubscribe_link',
     })
+  })
+
+  it('previews a link through query options keyed by token', async () => {
+    const fake = fakeSupabase().respond('rpc:email_unsubscribe', {
+      data: { category: 'comments', email: 'b***@x.y', subscribed: true },
+    })
+    const options = unsubscribePreviewQueryOptions(fake.client, 'tok')
+    expect(options.queryKey).toEqual(['potluck', 'unsubscribe', 'tok'])
+    expect(await options.queryFn!({} as never)).toMatchObject({ category: 'comments' })
+    expect(fake.calls[0]).toMatchObject({ args: { token: 'tok', action: 'preview' } })
   })
 
   it('knows its categories', () => {

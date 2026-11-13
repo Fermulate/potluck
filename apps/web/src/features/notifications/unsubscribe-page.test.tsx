@@ -1,6 +1,6 @@
 import type * as AuthModule from '@/lib/auth'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb } from '@/test/supabase'
@@ -13,7 +13,18 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   useSession: () => (signedIn ? { user: { id: 'u-ava' } } : null),
 }))
 
-const rpcCalls = () => db().calls.filter((c) => c.kind === 'rpc' && c.name === 'email_unsubscribe')
+const actions = () =>
+  db()
+    .calls.filter((c) => c.kind === 'rpc' && c.name === 'email_unsubscribe')
+    .map((c) => (c as { args: { action: string } }).args.action)
+
+const answer = (category: string, subscribed: boolean) => ({
+  data: { category, email: 'a***@example.com', subscribed },
+})
+
+function open(token: string | undefined) {
+  return renderWithProviders(<UnsubscribePage token={token} />, { path: '/unsubscribe' })
+}
 
 describe('UnsubscribePage', () => {
   beforeEach(() => {
@@ -21,35 +32,42 @@ describe('UnsubscribePage', () => {
     resetDb()
   })
 
-  it('unsubscribes on open and names what stopped', async () => {
-    db().respond('rpc:email_unsubscribe', { data: 'payments' })
-    renderWithProviders(<UnsubscribePage token="u1.payments.sig" />, { path: '/unsubscribe' })
-    expect(await screen.findByRole('heading', { name: t('unsubscribe.done') })).toBeInTheDocument()
+  it('opening the link changes nothing: it asks first, naming the account', async () => {
+    db().respond('rpc:email_unsubscribe', answer('payments', true))
+    open('u1.payments.sig')
+    expect(
+      await screen.findByRole('heading', { name: t('unsubscribe.askTitle') }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(t('unsubscribe.account', { email: 'a***@example.com' })),
+    ).toBeInTheDocument()
     expect(
       screen.getByText(
-        t('unsubscribe.doneOne', {
+        t('unsubscribe.askOne', {
           what: t('settings.notificationPrefs.categories.payments.about'),
         }),
       ),
     ).toBeInTheDocument()
-    expect(rpcCalls()).toEqual([
-      {
-        kind: 'rpc',
-        name: 'email_unsubscribe',
-        args: { token: 'u1.payments.sig', subscribe: false },
-      },
-    ])
+    expect(actions()).toEqual(['preview'])
     expect(screen.getByRole('link', { name: t('unsubscribe.manage') })).toHaveAttribute(
       'href',
       '/sign-in',
     )
   })
 
-  it('can undo it from the same page', async () => {
-    db().respond('rpc:email_unsubscribe', { data: 'all' }, { data: 'all' })
+  it('one tap unsubscribes, and the same page can undo it', async () => {
+    db().respond(
+      'rpc:email_unsubscribe',
+      answer('all', true),
+      answer('all', false),
+      answer('all', true),
+    )
     signedIn = true
-    renderWithProviders(<UnsubscribePage token="u1.all.sig" />, { path: '/unsubscribe' })
-    expect(await screen.findByText(t('unsubscribe.doneAll'))).toBeInTheDocument()
+    open('u1.all.sig')
+    expect(await screen.findByText(t('unsubscribe.askAll'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('unsubscribe.confirm') }))
+    expect(await screen.findByRole('heading', { name: t('unsubscribe.done') })).toBeInTheDocument()
+    expect(screen.getByText(t('unsubscribe.doneAll'))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: t('unsubscribe.manage') })).toHaveAttribute(
       'href',
       '/me',
@@ -58,44 +76,48 @@ describe('UnsubscribePage', () => {
     expect(
       await screen.findByRole('heading', { name: t('unsubscribe.undone') }),
     ).toBeInTheDocument()
-    expect(rpcCalls()[1]).toMatchObject({ args: { token: 'u1.all.sig', subscribe: true } })
-    expect(screen.queryByRole('button', { name: t('unsubscribe.undo') })).toBeNull()
+    expect(actions()).toEqual(['preview', 'unsubscribe', 'undo'])
+  })
+
+  it('a link whose emails are already off says so and offers to send them again', async () => {
+    db().respond('rpc:email_unsubscribe', answer('comments', false), answer('comments', true))
+    open('u1.comments.sig')
+    expect(
+      await screen.findByRole('heading', { name: t('unsubscribe.alreadyTitle') }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('unsubscribe.resubscribe') }))
+    expect(
+      await screen.findByRole('heading', { name: t('unsubscribe.undone') }),
+    ).toBeInTheDocument()
+    expect(actions()).toEqual(['preview', 'undo'])
   })
 
   it('says a broken link is broken, and does nothing without a token', async () => {
     db().respond('rpc:email_unsubscribe', { error: { message: 'invalid_unsubscribe_link' } })
-    const { unmount } = renderWithProviders(<UnsubscribePage token="nope" />, {
-      path: '/unsubscribe',
-    })
+    const { unmount } = open('nope')
     expect(
       await screen.findByRole('heading', { name: t('unsubscribe.invalidTitle') }),
     ).toBeInTheDocument()
     unmount()
 
     resetDb()
-    renderWithProviders(<UnsubscribePage token={undefined} />, { path: '/unsubscribe' })
+    open(undefined)
     expect(
       await screen.findByRole('heading', { name: t('unsubscribe.invalidTitle') }),
     ).toBeInTheDocument()
-    expect(rpcCalls()).toEqual([])
+    expect(actions()).toEqual([])
   })
 
-  it('offers a retry when the network fails', async () => {
+  it('offers a retry when the network fails, and says so when a tap fails', async () => {
     db().respond(
       'rpc:email_unsubscribe',
       { error: { message: 'Failed to fetch' } },
-      { data: 'comments' },
+      answer('plans', true),
+      { error: { message: 'Failed to fetch' } },
     )
-    renderWithProviders(<UnsubscribePage token="u1.comments.sig" />, { path: '/unsubscribe' })
+    open('u1.plans.sig')
     fireEvent.click(await screen.findByRole('button', { name: t('unsubscribe.retry') }))
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          t('unsubscribe.doneOne', {
-            what: t('settings.notificationPrefs.categories.comments.about'),
-          }),
-        ),
-      ).toBeInTheDocument(),
-    )
+    fireEvent.click(await screen.findByRole('button', { name: t('unsubscribe.confirm') }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('unsubscribe.failed'))
   })
 })

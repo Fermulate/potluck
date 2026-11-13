@@ -275,7 +275,7 @@ function NotificationsSection() {
           }
         }}
       />
-      <NotificationPrefs />
+      <NotificationPrefs push={push} />
     </Section>
   )
 }

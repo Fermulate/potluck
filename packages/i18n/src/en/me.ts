@@ -143,6 +143,9 @@ export const settings = {
     channel: '{category}: {channel}',
     emailSoon: 'Email notifications are on their way. Until then, your inbox has it all.',
     failed: 'That setting did not save. Try again?',
+    offline: 'You are offline. Your change will save when you are back.',
+    pushOffHere: 'Push is off on this device, so these only reach your other devices.',
+    turnOnPush: 'Turn on push here',
     categories: {
       expense_added: {
         label: 'New expenses',
@@ -166,7 +169,7 @@ export const settings = {
       },
       groups: {
         label: 'Groups',
-        hint: 'You are added to a group, or someone joins one you run.',
+        hint: 'Someone joins a group you run.',
         about: 'group updates',
       },
       plans: {
@@ -181,7 +184,7 @@ export const settings = {
       },
       monthly_summary: {
         label: 'Monthly summary',
-        hint: 'Your balances, on the first of each month.',
+        hint: 'Your balances on the first of each month, in your inbox and by email once email is on.',
         about: 'the monthly summary',
       },
     },
@@ -212,7 +215,14 @@ export const account = {
 /** The page an email's unsubscribe link opens. Works signed out. */
 export const unsubscribe = {
   title: 'Email settings',
-  working: 'Updating your email settings...',
+  working: 'Checking your link...',
+  askTitle: 'Stop these emails?',
+  askOne: 'You will stop getting emails about {what}. Your Potluck inbox still gets everything.',
+  askAll: 'You will stop getting any email from Potluck. Your Potluck inbox still gets everything.',
+  account: 'For {email}',
+  confirm: 'Unsubscribe',
+  alreadyTitle: 'You are already off the list',
+  resubscribe: 'Send them again',
   done: 'You are off the list',
   doneOne: 'No more emails about {what}. Everything still shows up in your Potluck inbox.',
   doneAll: 'No more email from Potluck. Everything still shows up in your Potluck inbox.',
@@ -225,7 +235,6 @@ export const unsubscribe = {
     'It may have been cut off when it was copied. Try the link in your latest Potluck email, or change your settings on the Me page.',
   failed: 'Your settings did not update. Check your connection and try again.',
   retry: 'Try again',
-  everything: 'everything',
 } as const
 
 /** Empty states: serif italic headline, one line, one clear action. */

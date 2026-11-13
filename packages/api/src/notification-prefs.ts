@@ -33,6 +33,7 @@ export const isNotificationCategory = (value: string): value is NotificationCate
 
 export const notificationPrefKeys = {
   mine: (userId: string) => ['potluck', 'me', 'notification-prefs', userId] as const,
+  unsubscribe: (token: string) => ['potluck', 'unsubscribe', token] as const,
 }
 
 /** Every setting with its effective value. Categories this client cannot label are left out. */
@@ -59,16 +60,42 @@ export async function setNotificationPref(
   if (error) throw error
 }
 
+export type UnsubscribeAction = 'preview' | 'unsubscribe' | 'undo'
+
+export interface UnsubscribeResult {
+  /** The setting the link covers, `all` for every email, null for one this client cannot label. */
+  category: NotificationCategory | 'all' | null
+  /** The account's address, masked ("a***@example.com"). */
+  email: string | null
+  /** Whether any email the link covers is still on, after the action. */
+  subscribed: boolean
+}
+
 /**
- * Applies an unsubscribe link from an email, signed in or not. Returns the category it covered
- * (`all` for every email). `subscribe: true` undoes it.
+ * An email's unsubscribe link, signed in or not. `preview` changes nothing, `unsubscribe` turns
+ * that email off, `undo` puts back exactly what the unsubscribe changed.
  */
 export async function emailUnsubscribe(
   client: PotluckClient,
   token: string,
-  subscribe = false,
-): Promise<NotificationCategory | 'all' | null> {
-  const { data, error } = await client.rpc('email_unsubscribe', { token, subscribe })
+  action: UnsubscribeAction,
+): Promise<UnsubscribeResult> {
+  const { data, error } = await client.rpc('email_unsubscribe', { token, action })
   if (error) throw error
-  return data === 'all' || isNotificationCategory(data) ? data : null
+  const row = (data ?? {}) as { category?: unknown; email?: unknown; subscribed?: unknown }
+  const category = typeof row.category === 'string' ? row.category : ''
+  return {
+    category: category === 'all' || isNotificationCategory(category) ? category : null,
+    email: typeof row.email === 'string' ? row.email : null,
+    subscribed: row.subscribed === true,
+  }
 }
+
+/** What an unsubscribe link covers, without changing anything. */
+export const unsubscribePreviewQueryOptions = (client: PotluckClient, token: string) =>
+  queryOptions({
+    queryKey: notificationPrefKeys.unsubscribe(token),
+    queryFn: () => emailUnsubscribe(client, token, 'preview'),
+    retry: false,
+    staleTime: Infinity,
+  })
