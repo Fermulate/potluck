@@ -35,7 +35,8 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
 - UI copy: `t()` keys only. Visual rules: [docs/design.md](../../docs/design.md).
 - Language: `src/lib/language.ts` starts the app in the remembered (or browser) language before the
   first render; the root keys its outlet by language, so a switch redraws every screen. The profile's
-  `locale` wins once it loads (`features/account/use-profile-language.ts`).
+  `locale` wins once it loads (`features/account/use-profile-language.ts`). Amounts and dates follow
+  it: give components that take a `locale` `intlLocale()`, never `DEFAULT_LOCALE` (landing only).
 - Two-step sign in: signed-in routes check `needsSecondFactor(session)` (`src/lib/auth.ts`) and send
   the person to `/two-factor`; the database refuses that session anyway ([ADR 11](../../docs/adr/0011-two-step-sign-in-enforced-in-the-database.md)).
   Sign in and security sections live in `src/features/account/`, mounted on Me with one line each.
