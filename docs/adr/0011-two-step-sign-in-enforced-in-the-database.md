@@ -25,5 +25,6 @@ Options considered:
 - Every API request does one extra indexed lookup in `auth.mfa_factors` (skipped for `aal2` tokens and for `anon`).
 - Storage is not covered: an `aal1` session can still upload or replace its own avatar. Edge functions that take a user's JWT must use that JWT for their database calls (as `delete-account` does) so the check applies.
 - Another pre-request rule later has to be added to `private.check_request()`; PostgREST runs only one function.
+- The setting lives on the `authenticator` role, not in a schema, so `supabase/schema/current.sql` does not show it (pgTAP checks it). `supabase db reset` recreates role settings, so a branch without this migration gets a clean stack. A database restored from a schema dump needs the `alter role` line again, and dropping `private.check_request()` without resetting the setting would break every API call.
 - Hosted projects need TOTP turned on in Auth (`[auth.mfa.totp]`, also on locally) and the pre-request setting applied by the migration; `supabase db push` does that.
 - A lost phone without the recovery codes still needs a person: an operator removes the factor in the Supabase dashboard after checking who is asking.
