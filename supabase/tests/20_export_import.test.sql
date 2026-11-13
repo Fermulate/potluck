@@ -1,9 +1,9 @@
--- Export, backup and import (ADR 13): import_expenses writes a whole file or nothing, through the
+-- Export, backup and import (ADR 18): import_expenses writes a whole file or nothing, through the
 -- same checks as create_expense_v2, with one activity entry and no per row notifications;
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(48);
+select plan(63);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -279,6 +279,100 @@ select is(
   '1.100000000000',
   'and keeps it'
 );
+
+-- Rates the file brings ----------------------------------------------------------------------
+
+select tests.login('ava');
+select is(
+  public.import_expenses(tests.id('g'), jsonb_build_array(
+    pg_temp.expense('Museum', 1000, jsonb_build_array(pg_temp.cents('ava', 1000, 'paid_cents')),
+      jsonb_build_array(pg_temp.cents('ava', 500, 'share_cents'), pg_temp.cents('ben', 500, 'share_cents')),
+      '{"currency": "EUR", "spent_at": "2025-06-01", "fx_rate": "1.25"}'))),
+  '{"expenses": 1, "payments": 0}'::jsonb,
+  'a row may bring its own rate, even for a day without a stored one'
+);
+select is(
+  (select fx_rate::text from public.expenses where group_id = tests.id('g') and description = 'Museum'),
+  '1.250000000000',
+  'and keeps it exactly'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), jsonb_build_array(
+       pg_temp.expense('Bad rate', 1000, jsonb_build_array(pg_temp.cents('ava', 1000, 'paid_cents')),
+         jsonb_build_array(pg_temp.cents('ava', 1000, 'share_cents')), '{"currency": "EUR", "fx_rate": "-1"}'))) $$,
+  '22023', 'invalid_import', 'a rate has to be a positive number'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), jsonb_build_array(
+       pg_temp.expense('Old', 1000, jsonb_build_array(pg_temp.cents('ava', 1000, 'paid_cents')),
+         jsonb_build_array(pg_temp.cents('ava', 1000, 'share_cents')), '{"currency": "EUR", "spent_at": "2025-06-01"}'))) $$,
+  '23514', 'fx_rate_unavailable', 'without one, an expense before the first known rate fails'
+);
+
+-- A file sent in parts -----------------------------------------------------------------------
+
+select tests.remember('batch', gen_random_uuid());
+select is(
+  public.import_stage(tests.id('batch'), tests.id('g'), jsonb_build_array(pg_temp.payment('ben', 'ava', 100), pg_temp.payment('ben', 'ava', 200))),
+  2,
+  'the first part is kept aside'
+);
+select is(
+  public.import_stage(tests.id('batch'), tests.id('g'), jsonb_build_array(pg_temp.payment('cleo', 'ava', 300))),
+  3,
+  'the next part is added to it'
+);
+select is(
+  (select count(*)::int from public.settlements where group_id = tests.id('g') and amount_cents in (100, 200, 300)),
+  0,
+  'nothing reaches the group yet'
+);
+select throws_ok(
+  $$ select public.import_stage(tests.id('batch'), tests.id('g'), (select jsonb_agg(pg_temp.payment('ben', 'ava', 1))
+       from generate_series(1, 2001))) $$,
+  '22023', 'import_too_large', 'at most 2000 rows a part'
+);
+select is(
+  pg_temp.hint_of($$ select public.import_expenses(tests.id('g'), jsonb_build_array(pg_temp.payment('ava', 'ava', 1)),
+       'csv', tests.id('batch')) $$),
+  'import_row:4',
+  'rows sent with the last call come after the parts'
+);
+reset role;
+select tests.login('ben');
+select throws_ok(
+  $$ select public.import_stage(tests.id('batch'), tests.id('g'), jsonb_build_array(pg_temp.payment('ben', 'ava', 1))) $$,
+  '22023', 'invalid_import', 'someone else cannot add to your import'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), '[]', 'csv', tests.id('batch')) $$,
+  '22023', 'invalid_import', 'or write it'
+);
+reset role;
+select tests.login('ava');
+select is(
+  public.import_expenses(tests.id('g'), '[]', 'splitwise', tests.id('batch'), 'sha256:abc'),
+  '{"expenses": 0, "payments": 3}'::jsonb,
+  'the last call writes every part at once'
+);
+reset role;
+select is(
+  (select count(*)::int from private.import_batches where id = tests.id('batch')),
+  0,
+  'and clears the parts away'
+);
+select is(
+  (select data ->> 'fingerprint' from public.activity where group_id = tests.id('g') and verb = 'expenses.imported'
+   order by created_at desc, (data ->> 'fingerprint') is null limit 1),
+  'sha256:abc',
+  'the entry remembers which file it was'
+);
+select tests.login_anon();
+select throws_ok(
+  $$ select public.import_stage(gen_random_uuid(), tests.id('g'), '[{}]') $$,
+  '42501', null, 'anon cannot send parts'
+);
+reset role;
 
 -- People who left ----------------------------------------------------------------------------
 

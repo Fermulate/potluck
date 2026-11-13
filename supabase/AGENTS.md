@@ -50,9 +50,10 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   heads-up job runs at :05 and :35, per person (`profiles.timezone`), deduplicated by `private.recurring_heads_ups`. Edits go through `update_recurring_expense`, never new direct grants.
 - Guests ([ADR 16](../docs/adr/0016-guest-availability-links.md)) are rows, not users: availability
   reads (`best_slots`, heat) count `event_guest_availability` too.
-- Bulk import (`import_expenses`, [ADR 13](../docs/adr/0013-export-backup-and-import.md)) sets `potluck.importing` to
+- Bulk import (`import_expenses`, [ADR 18](../docs/adr/0018-export-backup-and-import.md)) sets `potluck.importing` to
   the group id; triggers on `activity` and `notifications` then drop per row entries for that group. Keep new
-  per row side effects going through those tables, or check the setting yourself.
+  per row side effects going through those tables, or check the setting yourself. It repeats
+  `save_expense`'s checks as set queries (for speed): a new expense rule goes in both.
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
 - Two-step sign in ([ADR 13](../docs/adr/0013-two-step-sign-in-enforced-in-the-database.md)):

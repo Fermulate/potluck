@@ -1,11 +1,20 @@
--- Export, backup and import (ADR 13).
+-- Export, backup and import (ADR 18).
 --
--- import_expenses(group_id, rows, source): writes a whole file of expenses and payments into one
--- group in one transaction. Expenses go through private.save_expense, the path create_expense_v2
--- takes, so every check it makes (members, payers, departed people, sums, rates) holds for
--- imports too. Payments are written like settle_up writes them, but between any two members and
--- on the day the file gives. If any row fails nothing is written, and the error carries the row
--- number in its hint (`import_row:<n>`, counting from 1).
+-- import_expenses(group_id, rows, source, batch_id, fingerprint) writes a whole file of expenses
+-- and payments into one group in one transaction: every row or none. A file too big for one
+-- request is sent ahead in parts with import_stage(batch_id, group_id, rows) (into
+-- private.import_rows) and written by the import_expenses call that names the batch, so up to
+-- 5,000 rows are one all or nothing write (the app splits a longer file into several imports).
+--
+-- The rows are checked and written as sets, not one save_expense call each, so a full file runs
+-- in well under PostgREST's statement timeout. The checks are the ones save_expense makes when it
+-- creates an exact split with a payers list: description, amount, currency, payers (valid, one per
+-- person, adding up, members), split (valid, one per person, adding up, members), a rate into the
+-- group currency for the day. Payments are checked like settle_up, but between any two members
+-- and on the day the file gives. A row may carry `fx_rate` (the rate a Potluck file was written
+-- with, or one the person typed); otherwise the day's stored rate is used, as for any expense.
+-- The first failing row stops everything; the error keeps save_expense's code and carries the row
+-- in its hint (`import_row:<n>`, counting from 1).
 --
 -- While an import runs, `potluck.importing` holds the group id for the rest of the transaction.
 -- Two new before insert triggers drop the per row activity and notifications it would cause
@@ -49,9 +58,161 @@ create trigger notifications_hold_during_import
   before insert on public.notifications
   for each row execute function private.hold_import_notifications();
 
+-- Imported expenses skip the per row work an import would throw away anyway: the activity line
+-- and the notification (the hold triggers above would drop them) and the lone payer row the
+-- import replaces. Same triggers and functions as before, plus a WHEN clause, which Postgres
+-- checks without calling the function. If a later migration recreates one of them without it,
+-- imports stay quiet through the hold triggers, only slower.
+create or replace trigger expenses_activity
+  after insert or update on public.expenses
+  for each row
+  when (current_setting('potluck.importing', true) is distinct from new.group_id::text)
+  execute function private.expenses_activity();
+
+create or replace trigger expenses_sync_single_payer
+  after insert or update of amount_cents, paid_by on public.expenses
+  for each row
+  when (current_setting('potluck.importing', true) is distinct from new.group_id::text)
+  execute function private.sync_single_payer();
+
+drop trigger expenses_notify on public.expenses;
+create constraint trigger expenses_notify
+  after insert on public.expenses
+  deferrable initially deferred
+  for each row
+  when (current_setting('potluck.importing', true) is distinct from new.group_id::text)
+  execute function private.expenses_notify();
+
+-- Parsing helpers that never raise (an exception block per row would be a subtransaction each) --
+
+-- A YYYY-MM-DD day, or null for anything else (2026-02-30 included).
+create or replace function private.import_day(t text) returns date
+language sql immutable parallel safe set search_path = '' as $$
+  select case
+    when t is null or t !~ '^\d{4}-\d{2}-\d{2}$' then null
+    when substr(t, 1, 4)::int < 1 or substr(t, 6, 2)::int not between 1 and 12 then null
+    when substr(t, 9, 2)::int not between 1 and extract(day from
+      make_date(substr(t, 1, 4)::int, substr(t, 6, 2)::int, 1) + interval '1 month' - interval '1 day')::int then null
+    else t::date
+  end
+$$;
+
+create or replace function private.import_uuid(t text) returns uuid
+language sql immutable parallel safe set search_path = '' as $$
+  select case
+    when t ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then t::uuid
+  end
+$$;
+
+-- Whole minor units from a JSON number between `low` and 100,000,000,000, else null.
+create or replace function private.import_cents(j jsonb, low bigint) returns bigint
+language sql immutable parallel safe set search_path = '' as $$
+  select case
+    when j is null or jsonb_typeof(j) <> 'number' then null
+    when (j #>> '{}')::numeric <> trunc((j #>> '{}')::numeric) then null
+    when (j #>> '{}')::numeric not between low and 100000000000 then null
+    else (j #>> '{}')::bigint
+  end
+$$;
+
+-- A positive rate with at most 12 digits either side of the point (numeric(24,12)), else null.
+create or replace function private.import_rate(t text) returns numeric
+language sql immutable parallel safe set search_path = '' as $$
+  select case
+    when t is null or t !~ '^\d{1,12}(\.\d{1,12})?$' then null
+    when t::numeric <= 0 then null
+    else t::numeric
+  end
+$$;
+
+revoke execute on function private.import_day(text) from public, anon, authenticated;
+revoke execute on function private.import_uuid(text) from public, anon, authenticated;
+revoke execute on function private.import_cents(jsonb, bigint) from public, anon, authenticated;
+revoke execute on function private.import_rate(text) from public, anon, authenticated;
+
+-- Files sent in parts ------------------------------------------------------------------------
+
+create table private.import_batches (
+  id uuid primary key,
+  group_id uuid not null references public.groups (id) on delete cascade,
+  created_by uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index import_batches_group_id_idx on private.import_batches (group_id);
+create index import_batches_created_by_idx on private.import_batches (created_by);
+create index import_batches_created_at_idx on private.import_batches (created_at);
+
+create table private.import_rows (
+  batch_id uuid not null references private.import_batches (id) on delete cascade,
+  position integer not null,
+  row jsonb not null,
+  primary key (batch_id, position)
+);
+
+revoke all on private.import_batches, private.import_rows from public, anon, authenticated;
+
+-- Adds up to 2,000 rows to a batch the caller started in this group. Nothing is written to the
+-- group until import_expenses names the batch. Batches older than a day are dropped.
+create or replace function public.import_stage(batch_id uuid, group_id uuid, rows jsonb)
+returns integer
+language plpgsql security definer set search_path = '' as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  staged integer;
+  incoming integer;
+begin
+  if import_stage.batch_id is null then
+    raise exception using message = 'invalid_import', detail = 'An import needs an id', errcode = '22023';
+  end if;
+  if import_stage.rows is null or jsonb_typeof(import_stage.rows) <> 'array'
+     or jsonb_array_length(import_stage.rows) = 0 then
+    raise exception using message = 'invalid_import', detail = 'There is nothing to import', errcode = '22023';
+  end if;
+  incoming := jsonb_array_length(import_stage.rows);
+  if incoming > 2000 then
+    raise exception using message = 'import_too_large', detail = 'Send at most 2000 rows at a time', errcode = '22023';
+  end if;
+
+  perform private.require_member(import_stage.group_id);
+  perform private.require_unarchived(import_stage.group_id);
+
+  delete from private.import_batches b where b.created_at < now() - interval '1 day';
+  insert into private.import_batches (id, group_id, created_by)
+  values (import_stage.batch_id, import_stage.group_id, uid)
+  on conflict (id) do nothing;
+  if not exists (
+    select 1 from private.import_batches b
+    where b.id = import_stage.batch_id and b.group_id = import_stage.group_id and b.created_by = uid
+  ) then
+    raise exception using message = 'invalid_import', detail = 'That import belongs to someone else', errcode = '22023';
+  end if;
+
+  select count(*) into staged from private.import_rows r where r.batch_id = import_stage.batch_id;
+  if staged + incoming > 5000 then
+    raise exception using message = 'import_too_large', detail = 'Import at most 5000 rows at a time', errcode = '22023';
+  end if;
+
+  insert into private.import_rows (batch_id, position, row)
+  select import_stage.batch_id, staged + e.ord, e.elem
+  from jsonb_array_elements(import_stage.rows) with ordinality as e (elem, ord);
+
+  return staged + incoming;
+end;
+$$;
+
+revoke execute on function public.import_stage(uuid, uuid, jsonb) from public, anon;
+grant execute on function public.import_stage(uuid, uuid, jsonb) to authenticated, service_role;
+
 -- Import -------------------------------------------------------------------------------------
 
-create or replace function public.import_expenses(group_id uuid, rows jsonb, source text default 'csv')
+create or replace function public.import_expenses(
+  group_id uuid,
+  rows jsonb,
+  source text default 'csv',
+  batch_id uuid default null,
+  fingerprint text default null
+)
 returns jsonb
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
@@ -60,29 +221,36 @@ declare
   gid uuid := import_expenses.group_id;
   v_source text := lower(coalesce(nullif(btrim(import_expenses.source), ''), 'csv'));
   g public.groups;
-  r jsonb;
-  i int := 0;
-  n_expenses int := 0;
-  n_payments int := 0;
-  v_kind text;
-  v_from uuid;
-  v_to uuid;
-  v_amount bigint;
-  v_currency text;
-  v_day date;
-  v_fx numeric;
-  err_message text;
-  err_detail text;
-  err_state text;
+  all_rows jsonb := '[]'::jsonb;
+  total integer;
+  bad record;
+  n_expenses integer;
+  n_payments integer;
 begin
   if v_source not in ('splitwise', 'potluck', 'csv') then
     raise exception using message = 'invalid_import', detail = 'Unknown import source', errcode = '22023';
   end if;
-  if import_expenses.rows is null or jsonb_typeof(import_expenses.rows) <> 'array'
-     or jsonb_array_length(import_expenses.rows) = 0 then
+  if import_expenses.batch_id is not null then
+    if not exists (
+      select 1 from private.import_batches b
+      where b.id = import_expenses.batch_id and b.group_id = gid and b.created_by = uid
+    ) then
+      raise exception using message = 'invalid_import', detail = 'That import is gone; choose the file again', errcode = '22023';
+    end if;
+    select coalesce(jsonb_agg(r.row order by r.position), '[]'::jsonb) into all_rows
+    from private.import_rows r where r.batch_id = import_expenses.batch_id;
+  end if;
+  if import_expenses.rows is not null and jsonb_typeof(import_expenses.rows) <> 'null' then
+    if jsonb_typeof(import_expenses.rows) <> 'array' then
+      raise exception using message = 'invalid_import', detail = 'Rows must be a list', errcode = '22023';
+    end if;
+    all_rows := all_rows || import_expenses.rows;
+  end if;
+  total := jsonb_array_length(all_rows);
+  if total = 0 then
     raise exception using message = 'invalid_import', detail = 'There is nothing to import', errcode = '22023';
   end if;
-  if jsonb_array_length(import_expenses.rows) > 5000 then
+  if total > 5000 then
     raise exception using message = 'import_too_large', detail = 'Import at most 5000 rows at a time', errcode = '22023';
   end if;
 
@@ -92,126 +260,228 @@ begin
   perform private.require_unarchived(gid);
   select * into g from public.groups x where x.id = gid;
 
-  perform set_config('potluck.importing', gid::text, true);
+  -- Every row read once.
+  drop table if exists pg_temp.import_input;
+  create temp table import_input on commit drop as
+  select
+    e.ord::integer as ord,
+    e.kind,
+    private.import_day(case e.kind when 'payment' then e.elem ->> 'paid_on' else e.elem ->> 'spent_at' end) as day,
+    left(btrim(coalesce(e.elem ->> 'description', '')), 120) as description,
+    private.import_cents(e.elem -> 'amount_cents', 1) as amount,
+    upper(coalesce(nullif(btrim(e.elem ->> 'currency'), ''), g.currency)) as currency,
+    left(nullif(btrim(e.elem ->> 'category'), ''), 40) as category,
+    left(nullif(e.elem ->> 'notes', ''), 2000) as notes,
+    left(nullif(btrim(e.elem ->> 'note'), ''), 500) as note,
+    coalesce(jsonb_typeof(e.elem -> 'is_refund') = 'boolean' and (e.elem -> 'is_refund') = 'true'::jsonb, false) as is_refund,
+    coalesce(jsonb_typeof(e.elem -> 'fx_rate'), 'null') <> 'null' as rate_given,
+    private.import_rate(e.elem ->> 'fx_rate') as rate,
+    private.import_uuid(e.elem ->> 'from_user') as from_user,
+    private.import_uuid(e.elem ->> 'to_user') as to_user,
+    e.elem -> 'payers' as payers,
+    e.elem -> 'splits' as splits,
+    gen_random_uuid() as eid
+  from (
+    select x.elem, x.ord,
+           case when jsonb_typeof(x.elem) = 'object' then x.elem ->> 'kind' end as kind
+    from jsonb_array_elements(all_rows) with ordinality as x (elem, ord)
+  ) e;
 
-  begin
-    for r in select e.elem from jsonb_array_elements(import_expenses.rows) with ordinality as e (elem, ord)
-             order by e.ord
-    loop
-      i := i + 1;
-      if jsonb_typeof(r) <> 'object' then
-        raise exception using message = 'invalid_import', detail = 'A row is not valid', errcode = '22023';
-      end if;
-      v_kind := r ->> 'kind';
+  drop table if exists pg_temp.import_people;
+  create temp table import_people on commit drop as
+  select i.ord, 'payer'::text as role, p.pos,
+         case when jsonb_typeof(p.elem) = 'object' then private.import_uuid(p.elem ->> 'user_id') end as user_id,
+         case when jsonb_typeof(p.elem) = 'object' then private.import_cents(p.elem -> 'paid_cents', 0) end as cents
+  from pg_temp.import_input i,
+       jsonb_array_elements(case when jsonb_typeof(i.payers) = 'array' then i.payers else '[]'::jsonb end)
+         with ordinality as p (elem, pos)
+  where i.kind = 'expense'
+  union all
+  select i.ord, 'share', s.pos,
+         case when jsonb_typeof(s.elem) = 'object' then private.import_uuid(s.elem ->> 'user_id') end,
+         case when jsonb_typeof(s.elem) = 'object' then private.import_cents(s.elem -> 'share_cents', 0) end
+  from pg_temp.import_input i,
+       jsonb_array_elements(case when jsonb_typeof(i.splits) = 'array' then i.splits else '[]'::jsonb end)
+         with ordinality as s (elem, pos)
+  where i.kind = 'expense';
 
-      if v_kind = 'expense' then
-        if jsonb_typeof(r -> 'payers') is distinct from 'array' then
-          raise exception using message = 'invalid_payers', detail = 'Say who paid', errcode = '22023';
-        end if;
-        if jsonb_typeof(r -> 'splits') is distinct from 'array' then
-          raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
-        end if;
-        begin
-          v_day := (r ->> 'spent_at')::date;
-        exception when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
-          v_day := null;
-        end;
-        if v_day is null then
-          raise exception using message = 'invalid_import', detail = 'Every row needs a date', errcode = '22023';
-        end if;
+  -- Whoever paid the most is paid_by (ties: the smaller id), as save_expense sets it.
+  drop table if exists pg_temp.import_payer;
+  create temp table import_payer on commit drop as
+  select distinct on (p.ord) p.ord, p.user_id
+  from pg_temp.import_people p
+  where p.role = 'payer' and p.cents > 0
+  order by p.ord, p.cents desc, p.user_id;
+  analyze pg_temp.import_input;
+  analyze pg_temp.import_people;
+  analyze pg_temp.import_payer;
 
-        perform private.save_expense(null, jsonb_build_object(
-          'group_id', gid,
-          'description', left(btrim(coalesce(r ->> 'description', '')), 120),
-          'amount_cents', r -> 'amount_cents',
-          'currency', r ->> 'currency',
-          'spent_at', v_day,
-          'category', left(nullif(btrim(r ->> 'category'), ''), 40),
-          'notes', left(nullif(r ->> 'notes', ''), 2000),
-          'is_refund', case when jsonb_typeof(r -> 'is_refund') = 'boolean' then (r ->> 'is_refund')::boolean else false end,
-          'payers', r -> 'payers',
-          'split_type', 'exact',
-          'splits', r -> 'splits'
-        ));
-        n_expenses := n_expenses + 1;
+  -- The rate each row is converted at: 1 in the group currency, else the one the row carries,
+  -- else the stored rate for its day (one lookup per currency and day).
+  drop table if exists pg_temp.import_rates;
+  create temp table import_rates on commit drop as
+  select d.currency, d.day, private.fx_rate(d.currency::char(3), g.currency, d.day) as rate
+  from (
+    select distinct i.currency, i.day from pg_temp.import_input i
+    where i.currency ~ '^[A-Z]{3}$' and i.currency <> g.currency and i.day is not null and not i.rate_given
+  ) d;
 
-      elsif v_kind = 'payment' then
-        v_from := private.try_uuid(r ->> 'from_user');
-        v_to := private.try_uuid(r ->> 'to_user');
-        if v_from is null or v_to is null or v_from = v_to then
-          raise exception using message = 'invalid_recipient', detail = 'Say who paid whom', errcode = '22023';
-        end if;
-        if jsonb_typeof(r -> 'amount_cents') is distinct from 'number'
-           or (r ->> 'amount_cents')::numeric <> trunc((r ->> 'amount_cents')::numeric)
-           or (r ->> 'amount_cents')::numeric <= 0
-           or (r ->> 'amount_cents')::numeric > 100000000000 then
-          raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
-        end if;
-        v_amount := (r ->> 'amount_cents')::bigint;
-        v_currency := upper(coalesce(nullif(btrim(r ->> 'currency'), ''), g.currency));
-        if v_currency !~ '^[A-Z]{3}$' then
-          raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
-        end if;
-        begin
-          v_day := (r ->> 'paid_on')::date;
-        exception when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
-          v_day := null;
-        end;
-        if v_day is null then
-          raise exception using message = 'invalid_import', detail = 'Every row needs a date', errcode = '22023';
-        end if;
-        -- Nothing may move the balance of someone who left.
-        if (
-          select count(*) from public.group_members m
-          where m.group_id = gid and m.user_id in (v_from, v_to)
-        ) <> 2 then
-          raise exception using message = 'member_not_in_group', detail = 'Both people must be in the group', errcode = '23514';
-        end if;
-        v_fx := private.fx_rate(v_currency::char(3), g.currency, v_day);
-        if v_fx is null then
-          raise exception using
-            message = 'fx_rate_unavailable',
-            detail = format('No exchange rate from %s to %s yet', v_currency, g.currency),
-            errcode = '23514';
-        end if;
+  -- The first row that fails, checked in the order save_expense and settle_up check.
+  with
+  people as (
+    select x.ord, x.role,
+           count(*) as n,
+           count(*) filter (where x.user_id is null or x.cents is null) as invalid,
+           count(distinct x.user_id) as distinct_users,
+           coalesce(sum(x.cents), 0) as total,
+           count(*) filter (where x.cents > 0) as positive,
+           count(*) filter (where x.cents > 0 and not exists (
+             select 1 from public.group_members m where m.group_id = gid and m.user_id = x.user_id
+           )) as outsiders
+    from pg_temp.import_people x
+    group by x.ord, x.role
+  ),
+  checked as (
+    select i.*, p.n as payer_n, p.invalid as payer_invalid, p.distinct_users as payer_distinct,
+           p.total as paid_total, p.positive as payer_positive, p.outsiders as payer_outsiders,
+           s.n as share_n, s.invalid as share_invalid, s.distinct_users as share_distinct,
+           s.total as share_total, s.outsiders as share_outsiders,
+           r.rate as stored_rate
+    from pg_temp.import_input i
+    left join people p on p.ord = i.ord and p.role = 'payer'
+    left join people s on s.ord = i.ord and s.role = 'share'
+    left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
+  ),
+  failures as (
+    select ord, 1 as step, 'invalid_import' as code, 'Each row is an expense or a payment' as detail, '22023' as state
+    from checked where kind is null or kind not in ('expense', 'payment')
+    union all
+    select ord, 2, 'invalid_import', 'Every row needs a date', '22023' from checked
+    where kind in ('expense', 'payment') and day is null
+    union all
+    select ord, 3, 'description_required', 'Add a description', '22023' from checked
+    where kind = 'expense' and description = ''
+    union all
+    select ord, 4, 'invalid_amount', 'Enter an amount greater than zero', '22023' from checked
+    where kind in ('expense', 'payment') and amount is null
+    union all
+    select ord, 5, 'invalid_currency', 'Unknown currency code', '22023' from checked
+    where kind in ('expense', 'payment') and currency !~ '^[A-Z]{3}$'
+    union all
+    select ord, 6, 'invalid_recipient', 'Say who paid whom', '22023' from checked
+    where kind = 'payment' and (from_user is null or to_user is null or from_user = to_user)
+    union all
+    select ord, 7, 'invalid_payers', 'Who paid is not valid', '22023' from checked
+    where kind = 'expense' and (jsonb_typeof(payers) is distinct from 'array' or coalesce(payer_n, 0) = 0
+      or payer_n > 100 or payer_invalid > 0 or payer_distinct <> payer_n or payer_positive = 0)
+    union all
+    select ord, 8, 'payers_sum_mismatch', format('Payers add up to %s but the expense is %s', paid_total, amount), '22023'
+    from checked where kind = 'expense' and amount is not null and paid_total <> amount
+    union all
+    select ord, 9, 'payer_not_in_group', 'The payer is not in this group', '23514' from checked
+    where kind = 'expense' and payer_outsiders > 0
+    union all
+    select ord, 10, 'splits_required', 'Add at least one person to the split', '22023' from checked
+    where kind = 'expense' and (jsonb_typeof(splits) is distinct from 'array' or coalesce(share_n, 0) = 0)
+    union all
+    select ord, 11, 'invalid_splits', 'The split is not valid', '22023' from checked
+    where kind = 'expense' and share_invalid > 0
+    union all
+    select ord, 12, 'duplicate_user', 'A person appears twice in the split', '22023' from checked
+    where kind = 'expense' and share_invalid = 0 and share_distinct <> share_n
+    union all
+    select ord, 13, 'splits_sum_mismatch', format('Splits add up to %s but the expense is %s', share_total, amount), '22023'
+    from checked where kind = 'expense' and amount is not null and share_n > 0 and share_total <> amount
+    union all
+    select ord, 14, 'split_member_not_in_group', 'Everyone in the split must be in the group', '23514' from checked
+    where kind = 'expense' and share_outsiders > 0
+    union all
+    select ord, 15, 'member_not_in_group', 'Both people must be in the group', '23514' from checked
+    where kind = 'payment' and from_user is not null and to_user is not null and (
+      select count(*) from public.group_members m
+      where m.group_id = gid and m.user_id in (checked.from_user, checked.to_user)
+    ) <> 2
+    union all
+    select ord, 16, 'invalid_import', 'The rate is not valid', '22023' from checked
+    where kind in ('expense', 'payment') and rate_given and rate is null
+    union all
+    select ord, 17, 'fx_rate_unavailable', format('No exchange rate from %s to %s yet', currency, g.currency), '23514'
+    from checked where kind in ('expense', 'payment') and currency ~ '^[A-Z]{3}$' and currency <> g.currency
+      and day is not null and not rate_given and stored_rate is null
+  )
+  select f.ord, f.code, f.detail, f.state into bad from failures f order by f.ord, f.step limit 1;
 
-        insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
-        values (
-          gid, v_from, v_to, v_amount, v_currency, v_fx,
-          left(nullif(btrim(r ->> 'note'), ''), 500),
-          (v_day + time '12:00') at time zone 'UTC',
-          uid
-        );
-        n_payments := n_payments + 1;
-
-      else
-        raise exception using message = 'invalid_import', detail = 'Each row is an expense or a payment', errcode = '22023';
-      end if;
-    end loop;
-  exception when others then
-    get stacked diagnostics
-      err_message = message_text,
-      err_detail = pg_exception_detail,
-      err_state = returned_sqlstate;
+  if bad.ord is not null then
     raise exception using
-      message = err_message,
-      detail = coalesce(err_detail, ''),
-      hint = format('import_row:%s', i),
-      errcode = err_state;
-  end;
+      message = bad.code,
+      detail = bad.detail,
+      hint = format('import_row:%s', bad.ord),
+      errcode = bad.state;
+  end if;
 
-  perform private.log_activity(gid, uid, 'expenses.imported', null, jsonb_build_object(
+  perform set_config('potluck.importing', gid::text, true);
+  -- The rows below are written one statement per table; the sum checks run at commit.
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check,
+    public.expenses_payers_sum_check, public.expense_payers_sum_check deferred;
+
+  insert into public.expenses (
+    id, group_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
+    category, notes, spent_at, created_by, is_refund
+  )
+  select
+    i.eid, gid, i.description, i.amount, i.currency,
+    case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end,
+    pp.user_id,
+    'exact', i.category, i.notes, i.day, uid, i.is_refund
+  from pg_temp.import_input i
+  join pg_temp.import_payer pp on pp.ord = i.ord
+  left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
+  where i.kind = 'expense'
+  order by i.ord;
+  get diagnostics n_expenses = row_count;
+
+  -- The insert wrote paid_by as the only payer (expenses_sync_single_payer); write them all.
+  delete from public.expense_payers x
+  using pg_temp.import_input i
+  where i.kind = 'expense' and x.expense_id = i.eid;
+  insert into public.expense_payers (expense_id, user_id, paid_cents)
+  select i.eid, p.user_id, p.cents
+  from pg_temp.import_input i
+  join pg_temp.import_people p on p.ord = i.ord and p.role = 'payer'
+  where i.kind = 'expense' and p.cents > 0;
+  insert into public.expense_splits (expense_id, user_id, share_cents)
+  select i.eid, s.user_id, s.cents
+  from pg_temp.import_input i
+  join pg_temp.import_people s on s.ord = i.ord and s.role = 'share'
+  where i.kind = 'expense' and s.cents > 0;
+
+  insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
+  select gid, i.from_user, i.to_user, i.amount, i.currency,
+         case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end,
+         i.note, (i.day + time '12:00') at time zone 'UTC', uid
+  from pg_temp.import_input i
+  left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
+  where i.kind = 'payment'
+  order by i.ord;
+  get diagnostics n_payments = row_count;
+
+  perform private.log_activity(gid, uid, 'expenses.imported', null, jsonb_strip_nulls(jsonb_build_object(
     'expenses', n_expenses,
     'payments', n_payments,
-    'source', v_source
-  ));
+    'source', v_source,
+    'fingerprint', left(nullif(btrim(import_expenses.fingerprint), ''), 128)
+  )));
+
+  if import_expenses.batch_id is not null then
+    delete from private.import_batches b where b.id = import_expenses.batch_id;
+  end if;
 
   return jsonb_build_object('expenses', n_expenses, 'payments', n_payments);
 end;
 $$;
 
-revoke execute on function public.import_expenses(uuid, jsonb, text) from public, anon;
-grant execute on function public.import_expenses(uuid, jsonb, text) to authenticated, service_role;
+revoke execute on function public.import_expenses(uuid, jsonb, text, uuid, text) from public, anon;
+grant execute on function public.import_expenses(uuid, jsonb, text, uuid, text) to authenticated, service_role;
 
 -- Backup -------------------------------------------------------------------------------------
 

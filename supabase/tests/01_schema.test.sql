@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(118);
+select plan(119);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -72,7 +72,8 @@ select has_function('public', 'set_default_split', array['uuid', 'jsonb'], 'set_
 select has_function('public', 'update_recurring_expense', array['uuid', 'jsonb'], 'update_recurring_expense(id, payload)');
 select has_function('public', 'skip_recurring_expense', array['uuid'], 'skip_recurring_expense(id)');
 select has_function('public', 'make_expense_recurring', array['uuid', 'recurrence'], 'make_expense_recurring(expense_id, recurrence)');
-select has_function('public', 'import_expenses', array['uuid', 'jsonb', 'text'], 'import_expenses(group_id, rows, source)');
+select has_function('public', 'import_expenses', array['uuid', 'jsonb', 'text', 'uuid', 'text'], 'import_expenses(group_id, rows, source, batch_id, fingerprint)');
+select has_function('public', 'import_stage', array['uuid', 'uuid', 'jsonb'], 'import_stage(batch_id, group_id, rows)');
 select has_function('public', 'export_my_data', array[]::text[], 'export_my_data');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
