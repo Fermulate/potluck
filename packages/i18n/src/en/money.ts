@@ -662,6 +662,8 @@ export const activity = {
     left: '{actor} left the group',
     removed: '{actor} removed {name}',
     role_changed: '{actor} made {name} {role}',
+    added: '{actor} added {name}',
+    claimed: '{actor} joined and took their saved seat',
   },
   expense: {
     created: '{actor} added "{description}" ({amount})',

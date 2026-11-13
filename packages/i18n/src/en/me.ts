@@ -62,6 +62,9 @@ export const notifications = {
       joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
       added: { title: 'Welcome to {group}', body: '{actor} added you. Pull up a chair.' },
     },
+    friend: {
+      added: { title: 'New friend', body: '{actor} accepted your friend link.' },
+    },
     event: {
       created: { title: 'Something is cooking', body: '{actor} is planning {event}' },
       scheduled: { title: "It's a date", body: '{event} is on for {date}' },

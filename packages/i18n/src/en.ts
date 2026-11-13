@@ -6,6 +6,7 @@ import { events, availability, bestTime, rsvp, timeline, home, guests } from './
 import { notifications, settings, account, unsubscribe, security } from './en/me'
 import { help } from './en/help'
 import { search, filters, insights, deletedItems, activityFilter } from './en/insights'
+import { people } from './en/people'
 
 /**
  * English strings. Nested by screen or domain; look them up with dotted keys via `t()`.
@@ -54,6 +55,7 @@ export const en = {
   insights,
   deletedItems,
   activityFilter,
+  people,
   empty,
   errors,
 } as const
