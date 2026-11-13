@@ -160,7 +160,7 @@ describe('CreateGroupSheet', () => {
 
   it('adds people not on Potluck yet once the group exists', async () => {
     db()
-      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:create_group_v2', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
       .respond('rpc:add_placeholder_member', { data: 'p-1' })
     renderSheet()
     const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
@@ -185,7 +185,7 @@ describe('CreateGroupSheet', () => {
 
   it('opens the new group once and names who could not be added', async () => {
     db()
-      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:create_group_v2', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
       .respond('rpc:add_placeholder_member', { error: { message: 'too_many_invites' } })
     const failed = vi.spyOn(toast, 'error')
     const { router, onOpenChange } = renderSheet()
@@ -202,7 +202,7 @@ describe('CreateGroupSheet', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-taco/members'))
     expect(failed).toHaveBeenCalledWith(t('people.createGroup.notAdded', { names: 'Pat and Jo' }))
     failed.mockRestore()
-    expect(db().rpcArgs('create_group')).toHaveLength(1)
+    expect(db().rpcArgs('create_group_v2')).toHaveLength(1)
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
