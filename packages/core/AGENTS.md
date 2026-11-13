@@ -14,13 +14,17 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
   | `money/splitItemized` (tax, tip, discount)     | `private.itemized_splits`                                         |
   | `money/checkPayers`, `primaryPayer`            | payers checks in `private.save_expense`                           |
   | `balances/expenseEffect`, `computeBalances`    | view `public.group_balances` (payers credited, refunds flipped)   |
-  | `balances/pairwiseDebts`                       | client only; sums per person to `group_balances`                  |
+  | `balances/pairwiseDebts`                       | `private.pairwise_debts` (settle all, friend balances)            |
+  | `payments/paymentProblem`, `settleAllPayments` | `private.check_payment`, `public.settle_all`                      |
+  | `payments/isValidHandle`                       | `private.valid_payment_handle` (table `payment_methods`)          |
   | `balances/simplifyDebts`                       | `public.simplified_debts`                                         |
   | `currency/convert`, `minorUnits`, `invertRate` | `private.convert_minor`, `private.minor_units`, `private.fx_rate` |
   | `availability/` slots, `rankSlots`, heat       | `public.set_availability` grid check, `public.best_slots`         |
   | `recurrence/nextOccurrence`                    | `private.materialize_recurring_expenses`                          |
   | `roles/can()`                                  | role checks inside each RPC                                       |
 
+- `payments/paymentAction` and `payableMethods` build pay links (PayPal.me, Venmo, ...) on the client
+  only; Potluck never moves money ([ADR 15](../../docs/adr/0015-payment-links-and-cross-group-settle.md)).
 - Money: integer minor units; intermediate products in `BigInt`; round half away from zero; largest
   remainder with ties to the smaller user id compared as code points. FX rates are decimal text with 12
   places (`numeric(24,12)`); accept `number | string` and keep the text path exact.

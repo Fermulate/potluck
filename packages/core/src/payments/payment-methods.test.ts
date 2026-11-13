@@ -4,13 +4,14 @@ import {
   PAYMENT_KINDS,
   isValidHandle,
   normalizeHandle,
+  payableMethods,
   paymentAction,
   plainAmount,
   type PaymentKind,
 } from '../index'
 
 describe('isValidHandle', () => {
-  // Same cases as "handle rules match the core test cases" in supabase/tests/17_payments.test.sql.
+  // Same cases as "handle rules match the core test cases" in supabase/tests/20_payments.test.sql.
   const cases: [string, string, boolean][] = [
     ['paypal', 'avamakes', true],
     ['paypal', 'ava.makes', false],
@@ -73,6 +74,35 @@ describe('normalizeHandle', () => {
         expect(normalizeHandle(kind, raw).length).toBeLessThanOrEqual(raw.length)
       }),
     )
+  })
+})
+
+describe('payableMethods', () => {
+  const methods = [
+    { kind: 'bank' as const, handle: 'x' },
+    { kind: 'upi' as const, handle: 'ava@okhdfc' },
+    { kind: 'interac' as const, handle: 'ava@example.ca' },
+    { kind: 'venmo' as const, handle: 'Ava-Lee' },
+    { kind: 'paypal' as const, handle: 'avamakes' },
+  ]
+
+  it('puts apps with links first and details to copy last', () => {
+    expect(payableMethods(methods, 'USD').map((m) => m.kind)).toEqual([
+      'paypal',
+      'venmo',
+      'interac',
+      'bank',
+    ])
+  })
+
+  it('offers UPI only for rupees', () => {
+    expect(payableMethods(methods, 'inr').map((m) => m.kind)).toEqual([
+      'paypal',
+      'venmo',
+      'upi',
+      'interac',
+      'bank',
+    ])
   })
 })
 

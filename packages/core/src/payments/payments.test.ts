@@ -8,7 +8,7 @@ import {
 } from '../index'
 
 describe('paymentProblem', () => {
-  // Same order and cases as private.check_payment (17_payments.test.sql, settle_up_v2).
+  // Same order and cases as private.check_payment (20_payments.test.sql, settle_up_v2).
   const base: PaymentCheck = {
     viewerId: 'a',
     viewerRole: 'member',
@@ -55,7 +55,7 @@ describe('paymentProblem', () => {
 
 describe('settleAllPayments', () => {
   it('keeps the debts you are in, between current members', () => {
-    // Same group as "settle_all records every debt involving you" in 17_payments.test.sql.
+    // Same group as "settle_all records every debt involving you" in 20_payments.test.sql.
     const debts = [
       { fromUser: 'b', toUser: 'a', amountCents: 300 },
       { fromUser: 'c', toUser: 'a', amountCents: 300 },
@@ -72,7 +72,7 @@ describe('settleAllPayments', () => {
 
 describe('friendTotals', () => {
   it('adds up per friend and currency, keeping archived groups apart', () => {
-    // The friend_balances rows from 17_payments.test.sql.
+    // The friend_balances rows from 20_payments.test.sql.
     const totals = friendTotals([
       { friendId: 'fb', groupId: 'f1', currency: 'USD', netCents: 500, archived: false },
       { friendId: 'fb', groupId: 'f2', currency: 'EUR', netCents: 300, archived: false },

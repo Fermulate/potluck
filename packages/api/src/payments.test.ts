@@ -96,7 +96,10 @@ describe('restore, bulk settle and reminders', () => {
     await settleAll(fake.client, 'g1', { settledOn: '2026-11-01', note: 'square' })
     expect(await settleWithFriend(fake.client, 'b')).toHaveLength(2)
     await settleWithFriend(fake.client, 'b', { settledOn: '2026-11-01', note: 'all of it' })
+    await settleWithFriend(fake.client, 'b', { amounts: { g1: 200 } })
     expect(await remindDebt(fake.client, 'g1', 'b')).toEqual({ id: 'r1' })
+    await remindDebt(fake.client, 'g1', 'b', '  Rent is due  ')
+    await remindDebt(fake.client, 'g1', 'b', '   ')
 
     expect(fake.rpcArgs('restore_settlement')).toEqual([{ id: 's1' }])
     expect(fake.rpcArgs('settle_all')).toEqual([
@@ -106,8 +109,13 @@ describe('restore, bulk settle and reminders', () => {
     expect(fake.rpcArgs('settle_with_friend')).toEqual([
       { friend_id: 'b' },
       { friend_id: 'b', settled_on: '2026-11-01', note: 'all of it' },
+      { friend_id: 'b', amounts: { g1: 200 } },
     ])
-    expect(fake.rpcArgs('remind_debt')).toEqual([{ group_id: 'g1', user_id: 'b' }])
+    expect(fake.rpcArgs('remind_debt')).toEqual([
+      { group_id: 'g1', user_id: 'b' },
+      { group_id: 'g1', user_id: 'b', note: 'Rent is due' },
+      { group_id: 'g1', user_id: 'b' },
+    ])
   })
 })
 

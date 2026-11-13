@@ -2,11 +2,11 @@ import { minorUnits } from '../currency'
 
 /**
  * Where someone can be paid, and the link that opens that app with the amount filled in.
- * Potluck never moves money (ADR 11): links only save typing, and the payer still confirms the
+ * Potluck never moves money (ADR 15): links only save typing, and the payer still confirms the
  * payment went through before it is recorded.
  *
  * Handle rules mirror `private.valid_payment_handle` in SQL; both are tested with the same cases
- * (`payment-methods.test.ts`, `supabase/tests/17_payments.test.sql`).
+ * (`payment-methods.test.ts`, `supabase/tests/20_payments.test.sql`).
  */
 export const PAYMENT_KINDS = [
   'paypal',
@@ -115,6 +115,23 @@ export interface PaymentLinkInput {
   note?: string
   /** The recipient's name, for UPI. */
   payeeName?: string
+}
+
+/** Methods that only show details to copy, never a link. */
+const COPY_ONLY: readonly PaymentKind[] = ['interac', 'bank']
+
+/**
+ * The methods worth offering for a payment in `currency`, in the order to show them: apps that
+ * open with a link first, then details to copy (Interac, bank). UPI only works in rupees, so it
+ * is left out for any other currency.
+ */
+export function payableMethods<M extends PaymentMethod>(
+  methods: readonly M[],
+  currency: string,
+): M[] {
+  const cur = currency.toUpperCase()
+  const rank = (m: M) => (COPY_ONLY.includes(m.kind) ? 1 : 0) * 100 + PAYMENT_KINDS.indexOf(m.kind)
+  return methods.filter((m) => m.kind !== 'upi' || cur === 'INR').sort((a, b) => rank(a) - rank(b))
 }
 
 /** How to pay `method` the given amount. Built on the client only; nothing is sent anywhere. */

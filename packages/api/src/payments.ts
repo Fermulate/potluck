@@ -130,7 +130,7 @@ export async function fetchRemindersSent(
   return unwrap(
     await client
       .from('debt_reminders')
-      .select('id, group_id, from_user, to_user, amount_cents, currency, sent_on, created_at')
+      .select('id, group_id, from_user, to_user, amount_cents, currency, note, sent_on, created_at')
       .eq('group_id', groupId)
       .eq('from_user', viewerId)
       .eq('sent_on', day),
@@ -199,13 +199,17 @@ export async function settleAll(
 export async function settleWithFriend(
   client: PotluckClient,
   friendId: string,
-  options: BulkSettleOptions = {},
+  options: BulkSettleOptions & {
+    /** Only these groups, each with this amount (minor units). Leave out to settle everything. */
+    amounts?: Record<string, number>
+  } = {},
 ): Promise<SettlementRow[]> {
   return unwrap(
     await client.rpc('settle_with_friend', {
       friend_id: friendId,
       ...(options.settledOn ? { settled_on: options.settledOn } : {}),
       ...(options.note ? { note: options.note } : {}),
+      ...(options.amounts ? { amounts: options.amounts } : {}),
     }),
   )
 }
@@ -214,8 +218,15 @@ export async function remindDebt(
   client: PotluckClient,
   groupId: string,
   userId: string,
+  note?: string | null,
 ): Promise<DebtReminder> {
-  return unwrap(await client.rpc('remind_debt', { group_id: groupId, user_id: userId }))
+  return unwrap(
+    await client.rpc('remind_debt', {
+      group_id: groupId,
+      user_id: userId,
+      ...(note?.trim() ? { note: note.trim() } : {}),
+    }),
+  )
 }
 
 /**

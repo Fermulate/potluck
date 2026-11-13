@@ -3,6 +3,7 @@ export {
   isPaymentKind,
   isValidHandle,
   normalizeHandle,
+  payableMethods,
   paymentAction,
   plainAmount,
   type PaymentAction,
