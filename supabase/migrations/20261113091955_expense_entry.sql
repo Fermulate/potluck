@@ -336,6 +336,31 @@ begin
 end;
 $$;
 
+-- Edit history ------------------------------------------------------------------------------------
+
+-- What changed between two versions of an expense row, as {field: {from, to}}, for the
+-- `changes` key of an `expense.updated` activity row. The expense page renders each one.
+create function private.expense_row_changes(o public.expenses, n public.expenses)
+returns jsonb
+language sql immutable set search_path = '' as $$
+  select coalesce(jsonb_object_agg(c.k, jsonb_build_object('from', c.f, 'to', c.t)), '{}'::jsonb)
+  from (
+    values
+      ('description', to_jsonb(o.description), to_jsonb(n.description)),
+      ('amount_cents', to_jsonb(o.amount_cents), to_jsonb(n.amount_cents)),
+      ('currency', to_jsonb(o.currency), to_jsonb(n.currency)),
+      ('spent_at', to_jsonb(o.spent_at), to_jsonb(n.spent_at)),
+      ('category', to_jsonb(o.category), to_jsonb(n.category)),
+      ('notes', to_jsonb(o.notes), to_jsonb(n.notes)),
+      ('is_refund', to_jsonb(o.is_refund), to_jsonb(n.is_refund)),
+      ('paid_by', to_jsonb(o.paid_by), to_jsonb(n.paid_by)),
+      ('split_type', to_jsonb(o.split_type), to_jsonb(n.split_type)),
+      ('receipt', to_jsonb(o.receipt_path is not null), to_jsonb(n.receipt_path is not null)),
+      ('event_id', to_jsonb(o.event_id), to_jsonb(n.event_id))
+  ) as c (k, f, t)
+  where c.f is distinct from c.t;
+$$;
+
 -- Saving an expense -----------------------------------------------------------------------------
 
 -- Body as in schema/current.sql plus payers, refunds,
@@ -380,6 +405,7 @@ declare
   payers_changed boolean;
   payer_left boolean := false;
   sharer_left boolean := false;
+  changes jsonb;
 begin
   if jsonb_typeof(p) <> 'object' then
     raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
@@ -684,6 +710,8 @@ begin
     )
     returning * into result;
   else
+    -- This function logs the edit itself, once, with payers and split (expenses_activity skips it).
+    perform set_config('potluck.expense_logged', prev.id::text, true);
     update public.expenses e set
       description = v_description,
       amount_cents = v_amount,
@@ -732,28 +760,47 @@ begin
     delete from public.expense_items i where i.expense_id = result.id;
   end if;
 
-  -- The expenses triggers only see the expense row. When the edit changed who owes or paid
-  -- what and nothing they compare, log and notify here instead, with the same verb and payload
-  -- (people dropped from the split or the payers hear about it too).
-  if prev.id is not null
-     and ((rewrite_splits and new_shares <> old_shares) or payers_changed) then
-    if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
-        result.split_type, result.category, result.notes, result.spent_at, result.receipt_path,
-        result.event_id, result.is_refund, result.tax_cents, result.tip_cents, result.discount_cents)
-       is not distinct from
-       (prev.description, prev.amount_cents, prev.currency, prev.fx_rate, prev.paid_by,
-        prev.split_type, prev.category, prev.notes, prev.spent_at, prev.receipt_path,
-        prev.event_id, prev.is_refund, prev.tax_cents, prev.tip_cents, prev.discount_cents) then
+  -- One history entry per edit, with the old and new value of every field that changed. Payers
+  -- and the split are listed when their people changed, or when they changed without the amount
+  -- (a new amount alone already rescales them).
+  if prev.id is not null then
+    changes := private.expense_row_changes(prev, result) - 'paid_by' - 'split_type';
+    if payers_changed
+       and ((select array_agg(k order by k) from jsonb_object_keys(old_payers) k)
+              is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_payers) k)
+            or v_amount = prev.amount_cents
+            or (select count(*) from jsonb_object_keys(new_payers)) > 1
+            or (select count(*) from jsonb_object_keys(old_payers)) > 1) then
+      changes := changes || jsonb_build_object('payers', jsonb_build_object('from', old_payers, 'to', new_payers));
+    end if;
+    if rewrite_splits
+       and (prev.split_type <> result.split_type
+            or (select array_agg(k order by k) from jsonb_object_keys(old_shares) k)
+                 is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_shares) k)
+            or (v_amount = prev.amount_cents and new_shares <> old_shares)) then
+      changes := changes || jsonb_build_object('split', jsonb_build_object(
+        'from', jsonb_build_object('type', prev.split_type, 'shares', old_shares),
+        'to', jsonb_build_object('type', result.split_type, 'shares', new_shares)));
+    end if;
+    if changes <> '{}'::jsonb then
       perform private.log_activity(gid, uid, 'expense.updated', result.id,
         jsonb_build_object(
           'description', result.description,
           'amount_cents', result.amount_cents,
           'currency', result.currency,
           'paid_by', result.paid_by,
-          'is_refund', result.is_refund
+          'is_refund', result.is_refund,
+          'changes', changes
         ));
     end if;
+    perform set_config('potluck.expense_logged', '', true);
+  end if;
 
+  -- The notification triggers only see the expense row. When the edit changed who owes or paid
+  -- what and nothing they compare, notify here instead (people dropped from the split or the
+  -- payers hear about it too).
+  if prev.id is not null
+     and ((rewrite_splits and new_shares <> old_shares) or payers_changed) then
     if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
         result.split_type, result.spent_at, result.is_refund)
        is not distinct from
@@ -1090,13 +1137,19 @@ group by l.group_id, l.user_id;
 
 -- Triggers that name the payer ------------------------------------------------------------------
 
--- Body as in schema/current.sql plus is_refund and the by-item extras in the compared columns
--- and the payload.
+-- Body as in schema/current.sql plus is_refund and the by-item extras in the compared columns,
+-- `changes` (old and new values) on updates, and no row for an edit save_expense logs itself.
 create or replace function private.expenses_activity() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
   verb text;
+  changes jsonb;
 begin
+  if tg_op = 'UPDATE' and current_setting('potluck.expense_logged', true) = new.id::text
+     and (old.deleted_at is null) = (new.deleted_at is null) then
+    return null;
+  end if;
+
   if tg_op = 'INSERT' then
     verb := 'expense.created';
   elsif old.deleted_at is null and new.deleted_at is not null then
@@ -1111,6 +1164,7 @@ begin
          old.category, old.notes, old.spent_at, old.receipt_path, old.event_id, old.is_refund,
          old.tax_cents, old.tip_cents, old.discount_cents) then
     verb := 'expense.updated';
+    changes := private.expense_row_changes(old, new);
   else
     return null;
   end if;
@@ -1122,7 +1176,7 @@ begin
       'currency', new.currency,
       'paid_by', new.paid_by,
       'is_refund', new.is_refund
-    ));
+    ) || case when changes is null then '{}'::jsonb else jsonb_build_object('changes', changes) end);
   return null;
 end;
 $$;

@@ -3,7 +3,7 @@
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
 begin;
-select plan(77);
+select plan(80);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -145,6 +145,39 @@ select is(
   2,
   'a payers-only change is logged as an update'
 );
+select is(
+  (select data -> 'changes' -> 'description' from public.activity
+   where subject_id = tests.id('dinner') and verb = 'expense.updated' and data -> 'changes' ? 'description'),
+  '{"from": "Dinner", "to": "Dinner out"}'::jsonb,
+  'the history keeps the old and new description'
+);
+select is(
+  (select data -> 'changes' -> 'payers' from public.activity
+   where subject_id = tests.id('dinner') and verb = 'expense.updated' and data -> 'changes' ? 'payers'),
+  jsonb_build_object(
+    'from', jsonb_build_object(tests.uid('ava'), 6000, tests.uid('ben'), 3000),
+    'to', jsonb_build_object(tests.uid('ava'), 5000, tests.uid('ben'), 4000)),
+  'and the old and new payers'
+);
+select tests.login('ava');
+select update_expense_v2(tests.id('dinner'), jsonb_build_object(
+  'spent_at', '2026-01-02', 'category', 'food', 'notes', 'window seat',
+  'split_type', 'exact', 'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('ava'), 'share_cents', 5000),
+    jsonb_build_object('user_id', tests.uid('ben'), 'share_cents', 2000),
+    jsonb_build_object('user_id', tests.uid('cleo'), 'share_cents', 2000))));
+reset role;
+select is(
+  (select array_agg(k order by k) from public.activity a, jsonb_object_keys(a.data -> 'changes') k
+   where a.subject_id = tests.id('dinner') and a.verb = 'expense.updated'
+     and a.created_at = (select max(created_at) from public.activity where subject_id = tests.id('dinner'))
+     and a.data -> 'changes' ? 'split'),
+  array['category', 'notes', 'spent_at', 'split'],
+  'one entry lists every field an edit changed, the split included'
+);
+select tests.login('ava');
+select update_expense_v2(tests.id('dinner'), jsonb_build_object('split_type', 'equal',
+  'splits', tests.people('ava', 'ben', 'cleo'), 'notes', null));
 select tests.login('cleo');
 select throws_ok(
   $$ select update_expense_v2(tests.id('dinner'), jsonb_build_object('description', 'Mine now')) $$,
