@@ -126,10 +126,12 @@ export const transfer = {
       skip: 'Écarter ces lignes',
       pending: 'Récupération des taux de change',
       apply: 'Utiliser ce taux',
-      invalid: 'Utilise un nombre positif, comme 0.0091.',
+      invalid: 'Utilise un nombre positif, comme {example}.',
       using: 'On utilise 1 {currency} = {rate} {group}.',
-      far: '1 {currency} = {rate} {group} est loin de {reference}, le dernier taux connu de Potluck. Vérifie-le.',
+      far: '1 {currency} = {rate} {group} est loin de {reference}, le taux de Potluck le plus proche de ces dates. Vérifie-le.',
       noReference: 'Potluck n’a pas de taux {currency} vers {group} pour comparer. Vérifie-le.',
+      unsupported:
+        'Potluck n’a aucun taux de change pour {currency}, donc ces lignes ne peuvent pas entrer ici. Écarte-les ci-dessous, ou importe le fichier dans un groupe en {currency}.',
       confirm: 'Ce taux est le bon',
       file_one: '{count} ligne garde le taux de son export, elle revient donc à l’identique.',
       file_other:
@@ -139,6 +141,7 @@ export const transfer = {
     },
     duplicates: {
       sameFile: 'Ce fichier est déjà entré dans {group} {when}.',
+      partSameFile: 'Une partie de ce fichier est entrée dans {group} {when}.',
       rows_one: '{count} ligne ressemble à une dépense ou un paiement déjà dans {group}.',
       rows_other: '{count} lignes ressemblent à des dépenses ou paiements déjà dans {group}.',
       leaveOut: 'Écarter ces lignes',
@@ -157,6 +160,8 @@ export const transfer = {
       timeout:
         'C’était trop long, donc cet import n’a pas été enregistré. Réessaie dans un instant.',
       rate: 'Ligne {line} : son taux de change est loin de celui de Potluck. Vérifie le taux, puis coche « Ce taux est le bon ».',
+      currency:
+        'Ligne {line} : Potluck n’a aucun taux de change pour {currency}. Écarte ces lignes, ou importe le fichier dans un groupe en {currency}.',
       partly_one: '{count} ligne plus haut dans le fichier est bien entrée.',
       partly_other: '{count} lignes plus haut dans le fichier sont bien entrées.',
     },
@@ -165,6 +170,10 @@ export const transfer = {
     more_other: 'et {count} lignes de plus',
     rowPaid: '{names} a payé',
     rowPayment: '{from} a payé {to}',
+    rowPaidYou: 'Tu as payé',
+    rowPaidMany: 'Payé par {names}',
+    rowPaymentYou: 'Tu as payé {to}',
+    rowPaymentToYou: '{from} t’a payé',
     rowRefund: 'Remboursement à {names}',
     submit_one: 'Importer {count} ligne',
     submit_other: 'Importer {count} lignes',

@@ -9,6 +9,7 @@ import {
   peopleInScope,
   planImport,
   rateIsOutlier,
+  nearestRate,
   rateOnDay,
   rowEffectIn,
 } from './import-plan'
@@ -102,6 +103,7 @@ describe('rates', () => {
         currency: 'EUR',
         from: '2024-01-05',
         to: '2024-02-01',
+        days: ['2024-01-05', '2024-02-01'],
         rows: 2,
         typed: null,
         skipped: false,
@@ -124,6 +126,7 @@ describe('rates', () => {
         currency: 'EUR',
         from: '2024-01-05',
         to: '2024-01-05',
+        days: ['2024-01-05'],
         rows: 1,
         typed: '1.2',
         skipped: false,
@@ -238,6 +241,33 @@ describe('rates', () => {
     expect(rateOnDay(history, '2026-03-09')).toBe('1.2')
     expect(rateOnDay(history, '2026-02-01')).toBe('1.250000000000')
     expect(rateOnDay(history, '2025-12-31')).toBeNull()
+  })
+
+  it('holds a typed rate against the nearest stored one either side, like the server', () => {
+    const history = {
+      direct: [
+        { day: '2026-03-01', rate: '1.1' },
+        { day: '2026-03-05', rate: '1.2' },
+      ],
+      inverse: [
+        { day: '2026-01-01', rate: '0.8' },
+        { day: '2026-03-03', rate: '0.5' },
+      ],
+    }
+    // Before every stored day the server still compares with the first one after it.
+    expect(nearestRate(history, '2025-12-01')).toBe('1.250000000000')
+    expect(nearestRate(history, '2026-03-04')).toBe('1.2')
+    // A day off either side: the later day wins.
+    expect(nearestRate(history, '2026-03-02')).toBe('2.000000000000')
+    expect(nearestRate(history, '2026-03-31')).toBe('1.2')
+    // The direct rate before the inverse one on the same day.
+    expect(
+      nearestRate(
+        { direct: [{ day: '2026-03-03', rate: '3' }], inverse: history.inverse },
+        '2026-03-03',
+      ),
+    ).toBe('3')
+    expect(nearestRate({ direct: [], inverse: [] }, '2026-03-03')).toBeNull()
   })
 
   it('checks a typed rate', () => {

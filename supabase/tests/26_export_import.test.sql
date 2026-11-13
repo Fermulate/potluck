@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(74);
+select plan(76);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -344,7 +344,7 @@ select is(
   'a far rate goes in once the person confirms it'
 );
 reset role;
-insert into public.fx_rates (base, quote, day, rate) values ('GBP', 'EUR', '2026-01-01', 1.15);
+insert into public.fx_rates (base, quote, day, rate) values ('GBP', 'EUR', '2026-01-01', 1.15), ('USD', 'EUR', '2026-06-01', 0.25);
 select tests.login('ava');
 select throws_ok(
   $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000, '{"currency": "GBP", "fx_rate": "1.3"}')) $$,
@@ -355,6 +355,18 @@ select is(
     '{"currency": "GBP", "fx_rate": "1.3", "fx_rate_confirmed": true}')),
   '{"expenses": 1, "payments": 0}'::jsonb,
   'and goes in when it is'
+);
+-- The stored rate nearest the row's day, either side (the inverse USD to EUR one here, 4 dollars).
+select is(
+  public.import_expenses(tests.id('g'), pg_temp.museum(1000,
+    '{"currency": "EUR", "spent_at": "2026-05-30", "fx_rate": "12"}')),
+  '{"expenses": 1, "payments": 0}'::jsonb,
+  'a rate is held against the stored one nearest its day, even a later one'
+);
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.museum(1000,
+       '{"currency": "EUR", "spent_at": "2026-01-10", "fx_rate": "12"}')) $$,
+  '23514', 'fx_rate_out_of_range', 'and against the earlier one when that is nearer'
 );
 
 -- A file sent in parts -----------------------------------------------------------------------

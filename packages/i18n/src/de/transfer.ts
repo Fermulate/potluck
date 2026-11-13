@@ -126,10 +126,12 @@ export const transfer = {
       skip: 'Diese Zeilen weglassen',
       pending: 'Wechselkurse werden geholt',
       apply: 'Diesen Kurs nehmen',
-      invalid: 'Gib eine positive Zahl ein, etwa 0.0091.',
+      invalid: 'Gib eine positive Zahl ein, etwa {example}.',
       using: 'Es gilt 1 {currency} = {rate} {group}.',
-      far: '1 {currency} = {rate} {group} liegt weit weg von {reference}, dem neuesten Kurs in Potluck. Prüf ihn.',
+      far: '1 {currency} = {rate} {group} liegt weit weg von {reference}, dem Kurs in Potluck, der diesen Tagen am nächsten liegt. Prüf ihn.',
       noReference: 'Potluck hat keinen Kurs von {currency} nach {group} zum Vergleichen. Prüf ihn.',
+      unsupported:
+        'Potluck hat keine Wechselkurse für {currency}, deshalb können diese Zeilen hier nicht rein. Lass sie unten weg oder importiere die Datei in eine Gruppe mit {currency}.',
       confirm: 'Dieser Kurs stimmt',
       file_one: '{count} Zeile behält den Kurs aus dem Export und kommt genau so zurück.',
       file_other: '{count} Zeilen behalten den Kurs aus dem Export und kommen genau so zurück.',
@@ -138,6 +140,7 @@ export const transfer = {
     },
     duplicates: {
       sameFile: 'Diese Datei ist schon in {group} eingegangen, {when}.',
+      partSameFile: 'Ein Teil dieser Datei ist schon in {group} eingegangen, {when}.',
       rows_one: '{count} Zeile sieht aus wie eine Ausgabe oder Zahlung, die schon in {group} ist.',
       rows_other:
         '{count} Zeilen sehen aus wie Ausgaben oder Zahlungen, die schon in {group} sind.',
@@ -157,6 +160,8 @@ export const transfer = {
       timeout:
         'Das hat zu lange gedauert, dieser Import wurde nicht gespeichert. Versuch es gleich noch mal.',
       rate: 'Zeile {line}: Ihr Wechselkurs liegt weit weg von dem in Potluck. Prüf den Kurs und hak dann „Dieser Kurs stimmt“ an.',
+      currency:
+        'Zeile {line}: Potluck hat keine Wechselkurse für {currency}. Lass diese Zeilen weg oder importiere die Datei in eine Gruppe mit {currency}.',
       partly_one: '{count} Zeile weiter oben in der Datei ist hineingekommen.',
       partly_other: '{count} Zeilen weiter oben in der Datei sind hineingekommen.',
     },
@@ -165,6 +170,10 @@ export const transfer = {
     more_other: 'und {count} weitere Zeilen',
     rowPaid: '{names} hat bezahlt',
     rowPayment: '{from} hat {to} bezahlt',
+    rowPaidYou: 'Du hast bezahlt',
+    rowPaidMany: 'Bezahlt haben: {names}',
+    rowPaymentYou: 'Du hast {to} bezahlt',
+    rowPaymentToYou: '{from} hat dich bezahlt',
     rowRefund: 'Erstattung an {names}',
     submit_one: '{count} Zeile importieren',
     submit_other: '{count} Zeilen importieren',

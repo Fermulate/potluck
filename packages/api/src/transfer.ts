@@ -128,17 +128,19 @@ export async function exportMyData(client: PotluckClient): Promise<Backup> {
   return backupSchema.parse(unwrap(await client.rpc('export_my_data')))
 }
 
-/** Every stored rate from `from` into `to` (and the inverse pair) up to `until`, newest first. */
+/** Every stored rate from `from` into `to` and the inverse pair, newest first: the import looks up the
+ * rate on or before a day and the nearest rate either side, as the server does. */
 export interface FxHistory {
   direct: { day: string; rate: string }[]
   inverse: { day: string; rate: string }[]
+  /** Potluck has rates for `from` against some currency (`import_expenses` refuses it otherwise). */
+  known: boolean
 }
 
 export async function fetchFxHistory(
   client: PotluckClient,
   from: string,
   to: string,
-  until: string,
 ): Promise<FxHistory> {
   const pair = (base: string, quote: string) =>
     fetchAllPages((start, end) =>
@@ -147,12 +149,15 @@ export async function fetchFxHistory(
         .select('day, rate::text')
         .eq('base', base)
         .eq('quote', quote)
-        .lte('day', until)
         .order('day', { ascending: false })
         .range(start, end),
     )
   const [direct, inverse] = await Promise.all([pair(from, to), pair(to, from)])
-  return { direct, inverse }
+  if (direct.length > 0 || inverse.length > 0) return { direct, inverse, known: true }
+  const any = unwrap(
+    await client.from('fx_rates').select('day').or(`base.eq.${from},quote.eq.${from}`).limit(1),
+  )
+  return { direct, inverse, known: any.length > 0 }
 }
 
 /** An earlier import into a group (its `expenses.imported` activity entry). */
@@ -189,16 +194,15 @@ export async function fetchPastImports(
 }
 
 export const transferKeys = {
-  fx: (from: string, to: string, until: string) =>
-    ['potluck', 'money', 'fx-history', from, to, until] as const,
+  fx: (from: string, to: string) => ['potluck', 'money', 'fx-history', from, to] as const,
   imports: (groupId: string) => ['potluck', 'money', 'group', groupId, 'imports'] as const,
 }
 
 export const transferQueries = {
-  fxHistory: (client: PotluckClient, from: string, to: string, until: string) =>
+  fxHistory: (client: PotluckClient, from: string, to: string) =>
     queryOptions({
-      queryKey: transferKeys.fx(from, to, until),
-      queryFn: () => fetchFxHistory(client, from, to, until),
+      queryKey: transferKeys.fx(from, to),
+      queryFn: () => fetchFxHistory(client, from, to),
       staleTime: 60 * 60 * 1000,
     }),
   pastImports: (client: PotluckClient, groupId: string) =>

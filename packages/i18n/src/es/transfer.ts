@@ -125,10 +125,12 @@ export const transfer = {
       skip: 'Dejar fuera estas filas',
       pending: 'Buscando tipos de cambio',
       apply: 'Usar este cambio',
-      invalid: 'Usa un número positivo, como 0.0091.',
+      invalid: 'Usa un número positivo, como {example}.',
       using: 'Usando 1 {currency} = {rate} {group}.',
-      far: '1 {currency} = {rate} {group} está lejos de {reference}, el último cambio que tiene Potluck. Revísalo.',
+      far: '1 {currency} = {rate} {group} está lejos de {reference}, el cambio de Potluck más cercano a esos días. Revísalo.',
       noReference: 'Potluck no tiene un cambio de {currency} a {group} para compararlo. Revísalo.',
+      unsupported:
+        'Potluck no tiene tipos de cambio para {currency}, así que estas filas no pueden entrar aquí. Déjalas fuera abajo, o importa el archivo en un grupo que use {currency}.',
       confirm: 'Este cambio es correcto',
       file_one: '{count} fila conserva el cambio con el que se exportó, así que vuelve exacta.',
       file_other:
@@ -138,6 +140,7 @@ export const transfer = {
     },
     duplicates: {
       sameFile: 'Este archivo ya entró en {group} {when}.',
+      partSameFile: 'Parte de este archivo entró en {group} {when}.',
       rows_one: '{count} fila parece un gasto o pago que ya está en {group}.',
       rows_other: '{count} filas parecen gastos o pagos que ya están en {group}.',
       leaveOut: 'Dejar fuera esas filas',
@@ -156,6 +159,8 @@ export const transfer = {
       timeout:
         'Tardó demasiado, así que esta importación no se guardó. Inténtalo de nuevo en un momento.',
       rate: 'Fila {line}: su tipo de cambio está lejos del que tiene Potluck. Revísalo y marca "Este cambio es correcto".',
+      currency:
+        'Fila {line}: Potluck no tiene tipos de cambio para {currency}. Deja fuera esas filas, o importa el archivo en un grupo que use {currency}.',
       partly_one: '{count} fila de antes en el archivo sí entró.',
       partly_other: '{count} filas de antes en el archivo sí entraron.',
     },
@@ -164,6 +169,10 @@ export const transfer = {
     more_other: 'y {count} filas más',
     rowPaid: 'Pagó {names}',
     rowPayment: '{from} pagó a {to}',
+    rowPaidYou: 'Pagaste',
+    rowPaidMany: 'Pagaron {names}',
+    rowPaymentYou: 'Le pagaste a {to}',
+    rowPaymentToYou: '{from} te pagó',
     rowRefund: 'Reembolso a {names}',
     submit_one: 'Importar {count} fila',
     submit_other: 'Importar {count} filas',

@@ -138,7 +138,7 @@ describe('exportMyData', () => {
 })
 
 describe('rates and earlier imports', () => {
-  it('reads every stored rate for a pair and its inverse up to a day', async () => {
+  it('reads every stored rate for a pair and its inverse', async () => {
     const fake = fakeSupabase({
       tables: {
         fx_rates: [
@@ -148,12 +148,27 @@ describe('rates and earlier imports', () => {
         ],
       },
     })
-    expect(await fetchFxHistory(fake.client, 'EUR', 'USD', '2026-03-15')).toMatchObject({
-      direct: [{ day: '2026-03-01', rate: '1.1' }],
+    expect(await fetchFxHistory(fake.client, 'EUR', 'USD')).toMatchObject({
+      direct: [
+        { day: '2026-04-01', rate: '1.2' },
+        { day: '2026-03-01', rate: '1.1' },
+      ],
       inverse: [{ day: '2026-02-01', rate: '0.9' }],
+      known: true,
     })
-    const options = transferQueries.fxHistory(fake.client, 'EUR', 'USD', '2026-03-15')
-    expect(options.queryKey).toEqual(transferKeys.fx('EUR', 'USD', '2026-03-15'))
+    // No rate for the pair: whether Potluck knows the currency at all.
+    expect(await fetchFxHistory(fake.client, 'GBP', 'USD')).toEqual({
+      direct: [],
+      inverse: [],
+      known: false,
+    })
+    expect(await fetchFxHistory(fake.client, 'EUR', 'JPY')).toEqual({
+      direct: [],
+      inverse: [],
+      known: true,
+    })
+    const options = transferQueries.fxHistory(fake.client, 'EUR', 'USD')
+    expect(options.queryKey).toEqual(transferKeys.fx('EUR', 'USD'))
     expect(await options.queryFn!({} as never)).toHaveProperty('direct')
   })
 

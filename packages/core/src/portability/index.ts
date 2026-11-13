@@ -22,6 +22,7 @@ export {
   peopleInScope,
   planImport,
   rateIsOutlier,
+  nearestRate,
   rateOnDay,
   rowEffect,
   rowEffectIn,

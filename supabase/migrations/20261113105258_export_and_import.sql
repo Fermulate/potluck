@@ -399,12 +399,12 @@ begin
   select v_run, d.currency, d.day,
          private.fx_rate(d.currency::char(3), g.currency, d.day),
          (select n.rate from (
-            select f.rate, f.day from public.fx_rates f
+            select f.rate, f.day, 0 as inverse from public.fx_rates f
             where f.base = d.currency and f.quote = g.currency
             union all
-            select round(1 / f.rate, 12), f.day from public.fx_rates f
+            select round(1 / f.rate, 12), f.day, 1 from public.fx_rates f
             where f.base = g.currency and f.quote = d.currency
-          ) n order by abs(n.day - d.day), n.day desc limit 1),
+          ) n order by abs(n.day - d.day), n.day desc, n.inverse limit 1),
          exists (select 1 from public.fx_rates f where f.base = d.currency or f.quote = d.currency)
   from (
     select distinct i.currency, i.day from private.import_input i

@@ -3,6 +3,7 @@ import {
   moneyQueries,
   transferKeys,
   transferQueries,
+  type FxHistory,
   type ImportFailure,
   type MoneyGroup,
 } from '@potluck/api'
@@ -12,6 +13,7 @@ import {
   alreadyThere,
   failedLine,
   guessMapping,
+  nearestRate,
   peopleInScope,
   planImport,
   rateIsOutlier,
@@ -21,6 +23,7 @@ import {
   type ExistingRow,
   type ImportPlan,
   type ImportRow,
+  type MissingRate,
   type SkipReason,
   type SourceFile,
   type SourceIssue,
@@ -69,6 +72,8 @@ import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { importLabelSets } from './labels'
 import { RateCard } from './rate-card'
+
+type RateCheck = Parameters<typeof RateCard>[0]['check']
 import { fingerprint, readFile } from './read-file'
 
 /** How many rows of the file the preview lists before "and N more". */
@@ -88,6 +93,12 @@ function issueText(issue: SourceIssue): string {
   return issue.line > 0 ? t('transfer.import.rowFailed', { line: issue.line, message }) : message
 }
 
+/** The row a server error points at (`import_row:<n>`). */
+function rowOf(plan: ImportPlan, hint: unknown): ImportRow | undefined {
+  const match = typeof hint === 'string' ? /^import_row:(\d+)$/.exec(hint) : null
+  return match ? plan.rows[Number(match[1]) - 1] : undefined
+}
+
 /** What to say when the server refuses the import. */
 function failureText(error: unknown, plan: ImportPlan): string {
   const e = (error ?? {}) as Partial<ImportFailure>
@@ -96,6 +107,8 @@ function failureText(error: unknown, plan: ImportPlan): string {
   if (e.code === '57014') text = t('transfer.import.errors.timeout')
   else if (line && e.message === 'fx_rate_out_of_range')
     text = t('transfer.import.errors.rate', { line })
+  else if (line && e.message === 'invalid_currency')
+    text = t('transfer.import.errors.currency', { line, currency: rowOf(plan, e.hint)!.currency })
   else if (line && e.message && LEFT_CODES.has(e.message))
     text = t('transfer.import.errors.left', { line })
   else {
@@ -221,18 +234,21 @@ function IssueList({ issues }: { issues: readonly string[] }) {
   )
 }
 
-/** "Ava paid", "You and Ben paid", "Ben paid Ava", "Refund to Cleo". */
+/** "You paid", "Ava paid", "Paid by you and Ben", "Ben paid you", "Refund to Cleo". */
 function rowLine(row: ImportRow, me: string, nameOf: ReturnType<typeof useNameOf>): string {
   if (row.kind === 'payment') {
-    return t('transfer.import.rowPayment', {
-      from: nameOf(row.from_user),
-      to: nameOf(row.to_user, { lower: true }),
-    })
+    if (row.from_user === me) return t('transfer.import.rowPaymentYou', { to: nameOf(row.to_user) })
+    if (row.to_user === me)
+      return t('transfer.import.rowPaymentToYou', { from: nameOf(row.from_user) })
+    return t('transfer.import.rowPayment', { from: nameOf(row.from_user), to: nameOf(row.to_user) })
   }
   const ids = row.payers.map((p) => p.user_id)
-  return row.is_refund
-    ? t('transfer.import.rowRefund', { names: namesOf(ids, me, nameOf, { start: false }) })
-    : t('transfer.import.rowPaid', { names: namesOf(ids, me, nameOf) })
+  if (row.is_refund) {
+    return t('transfer.import.rowRefund', { names: namesOf(ids, me, nameOf, { start: false }) })
+  }
+  if (ids.length === 1 && ids[0] === me) return t('transfer.import.rowPaidYou')
+  if (ids.length === 1) return t('transfer.import.rowPaid', { names: nameOf(ids[0]!) })
+  return t('transfer.import.rowPaidMany', { names: namesOf(ids, me, nameOf, { start: false }) })
 }
 
 /** Everyone's balance after the import, in the group currency, drawn like the balances tab. */
@@ -312,27 +328,43 @@ function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup })
  */
 function useRates(source: SourceFile | null, groupCurrency: string) {
   const needed = useMemo(() => {
-    const until = new Map<string, string>()
+    const currencies = new Set<string>()
     for (const e of source?.entries ?? []) {
-      if (e.currency === groupCurrency) continue
-      const seen = until.get(e.currency)
-      if (!seen || e.date > seen) until.set(e.currency, e.date)
+      if (e.currency !== groupCurrency) currencies.add(e.currency)
     }
-    return [...until].sort(([a], [b]) => a.localeCompare(b))
+    return [...currencies].sort()
   }, [source, groupCurrency])
   const loaded = useQueries({
-    queries: needed.map(([currency, until]) =>
-      transferQueries.fxHistory(supabase, currency, groupCurrency, until),
-    ),
+    queries: needed.map((currency) => transferQueries.fxHistory(supabase, currency, groupCurrency)),
     combine: (results) => results.map((r) => r.data),
   })
   return useMemo(() => {
-    const byCurrency = new Map(needed.map(([currency], i) => [currency, loaded[i]]))
-    return (currency: string, day: string): string | null | undefined => {
-      const history = byCurrency.get(currency)
+    const byCurrency = new Map(needed.map((currency, i) => [currency, loaded[i]]))
+    const historyOf = (currency: string): FxHistory | undefined => byCurrency.get(currency)
+    const rateOn = (currency: string, day: string): string | null | undefined => {
+      const history = historyOf(currency)
       return history ? rateOnDay(history, day) : undefined
     }
+    return { rateOn, historyOf }
   }, [needed, loaded])
+}
+
+/**
+ * A typed rate against Potluck's own, as `import_expenses` will hold it: each day it is used for
+ * against the stored rate nearest that day. Undefined while the rates load.
+ */
+function rateCheck(missing: MissingRate, history: FxHistory | undefined): RateCheck | undefined {
+  if (!history) return undefined
+  if (!history.known) return { unsupported: true }
+  const references = missing.days.map((day) => nearestRate(history, day))
+  const far = missing.typed
+    ? references.findIndex((reference) => rateIsOutlier(missing.typed!, reference))
+    : -1
+  return {
+    unsupported: false,
+    outlier: far >= 0,
+    reference: references[Math.max(far, 0)] ?? null,
+  }
 }
 
 export function ImportScreen({ groupId }: { groupId: string }) {
@@ -421,7 +453,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
     }
   }
 
-  const rateOn = useRates(source, group.currency)
+  const { rateOn, historyOf } = useRates(source, group.currency)
   const existing = useMemo<ExistingRow[]>(
     () => [
       ...(expenses.data ?? []).map((e) => ({
@@ -482,36 +514,25 @@ function ImportBody({ group }: { group: MoneyGroup }) {
     .map((i) => t('transfer.import.left', { name: source!.people[i]!, group: group.name }))
   const issues = [...leftIssues, ...(plan?.issues ?? []).map(issueText)]
   const total = plan?.rows.length ?? 0
-  const missingCurrencies = (plan?.missingRates ?? []).map((m) => m.currency).join(',')
-  const references = useQueries({
-    queries: missingCurrencies
-      .split(',')
-      .filter(Boolean)
-      .map((currency) =>
-        moneyQueries.fxRate(
-          supabase,
-          currency,
-          group.currency,
-          new Date().toISOString().slice(0, 10),
-        ),
-      ),
-    combine: (results) => results.map((r) => (r.isPending ? undefined : (r.data?.rate ?? null))),
-  })
-  const referenceOf = (currency: string) =>
-    references[missingCurrencies.split(',').indexOf(currency)]
-  const ratesOpen = (plan?.missingRates ?? []).some(
-    (m) =>
-      !m.skipped &&
-      (!m.typed ||
-        (!confirmedRates.has(m.currency) &&
-          (referenceOf(m.currency) === undefined ||
-            rateIsOutlier(m.typed, referenceOf(m.currency))))),
+  const checks = new Map(
+    (plan?.missingRates ?? []).map((m) => [m.currency, rateCheck(m, historyOf(m.currency))]),
   )
+  const ratesOpen = (plan?.missingRates ?? []).some((m) => {
+    if (m.skipped) return false
+    const check = checks.get(m.currency)
+    if (!check || check.unsupported || !m.typed) return true
+    return check.outlier && !confirmedRates.has(m.currency)
+  })
   const blocked = !plan || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
   const leftOut = (['person', 'rate', 'duplicate'] as const).some((r) =>
     plan?.skipped.some((s) => s.reason === r),
   )
-  const sameFile = fileId ? pastImports.data?.find((p) => p.fingerprint === fileId) : undefined
+  const earlier = fileId ? (pastImports.data ?? []).filter((p) => p.fingerprint === fileId) : []
+  const sameFile = earlier[0]
+  // An import that stopped part way (or one before this screen) brought in only some rows.
+  const partOfFile =
+    partlyImported ||
+    earlier.reduce((sum, p) => sum + p.expenses + p.payments, 0) < (basePlan?.rows.length ?? 0)
   const parts = Math.ceil(total / MAX_IMPORT_ROWS)
 
   const submit = useMutation({
@@ -635,13 +656,18 @@ function ImportBody({ group }: { group: MoneyGroup }) {
           {sameFile && (
             <p className="flex items-start gap-2 rounded-card bg-saffron-soft p-4 text-sm text-saffron-ink">
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-              {t('transfer.import.duplicates.sameFile', {
-                group: group.name,
-                when:
-                  Date.now() - new Date(sameFile.at).getTime() < 60_000
-                    ? t('transfer.import.justNow')
-                    : formatRelative(sameFile.at, { timeZone }),
-              })}
+              {t(
+                partOfFile
+                  ? 'transfer.import.duplicates.partSameFile'
+                  : 'transfer.import.duplicates.sameFile',
+                {
+                  group: group.name,
+                  when:
+                    Date.now() - new Date(sameFile.at).getTime() < 60_000
+                      ? t('transfer.import.justNow')
+                      : formatRelative(sameFile.at, { timeZone }),
+                },
+              )}
             </p>
           )}
 
@@ -696,7 +722,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                   key={m.currency}
                   missing={m}
                   groupCurrency={group.currency}
-                  reference={referenceOf(m.currency)}
+                  check={checks.get(m.currency)}
                   confirmed={confirmedRates.has(m.currency)}
                   onApply={(rate) =>
                     setTypedRates((r) => {

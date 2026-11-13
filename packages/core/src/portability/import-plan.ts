@@ -73,6 +73,8 @@ export interface MissingRate {
   /** First and last such day. */
   from: string
   to: string
+  /** Every such day, in order: the server holds a typed rate against the stored one nearest each. */
+  days: string[]
   rows: number
   /** The rate typed for them, once it is a valid one. */
   typed: string | null
@@ -325,6 +327,7 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
   const skipped: ImportPlan['skipped'] = []
   const balances: Shares = {}
   const missing = new Map<string, MissingRate>()
+  const missingDays = new Map<string, Set<string>>()
   const fileRates = { rows: 0, differ: 0 }
   let ratesPending = false
   const counts = { expenses: 0, refunds: 0, payments: 0 }
@@ -366,10 +369,12 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
           const usable = isRate(typed) ? typed.trim() : null
           const leftOut = !usable && !!options.skipCurrencies?.has(row.currency)
           const seen = missing.get(row.currency)
+          missingDays.set(row.currency, (missingDays.get(row.currency) ?? new Set()).add(day))
           missing.set(row.currency, {
             currency: row.currency,
             from: !seen || day < seen.from ? day : seen.from,
             to: !seen || day > seen.to ? day : seen.to,
+            days: [],
             rows: (seen?.rows ?? 0) + 1,
             typed: usable,
             skipped: leftOut,
@@ -421,7 +426,9 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
     issues,
     balances,
     ratesPending,
-    missingRates: [...missing.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
+    missingRates: [...missing.values()]
+      .map((m) => ({ ...m, days: [...missingDays.get(m.currency)!].sort() }))
+      .sort((a, b) => a.currency.localeCompare(b.currency)),
     fileRates,
     totals,
     counts,
@@ -552,4 +559,35 @@ export function rateOnDay(
   if (direct) return direct.rate
   const inverse = latest(history.inverse)
   return inverse ? invertRate(inverse.rate) : null
+}
+
+/**
+ * The stored rate a typed one is held against, as `import_expenses` picks it: the `from` to `to`
+ * rate (or the inverse one turned round) whose day is nearest `day` on either side, the later day
+ * on a tie and the direct rate before the inverse one on the same day. Null when there is none.
+ */
+export function nearestRate(
+  history: {
+    direct: readonly { day: string; rate: string }[]
+    inverse: readonly { day: string; rate: string }[]
+  },
+  day: string,
+): string | null {
+  const target = Date.parse(`${day}T00:00:00Z`)
+  let best: { gap: number; day: string; inverse: number; rate: string } | null = null
+  const consider = (rows: readonly { day: string; rate: string }[], inverse: number) => {
+    for (const r of rows) {
+      const gap = Math.abs(Date.parse(`${r.day}T00:00:00Z`) - target)
+      const better =
+        !best ||
+        gap < best.gap ||
+        (gap === best.gap && (r.day > best.day || (r.day === best.day && inverse < best.inverse)))
+      if (better) best = { gap, day: r.day, inverse, rate: r.rate }
+    }
+  }
+  consider(history.direct, 0)
+  consider(history.inverse, 1)
+  if (!best) return null
+  const found: { inverse: number; rate: string } = best
+  return found.inverse ? invertRate(found.rate) : found.rate
 }
