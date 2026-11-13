@@ -147,6 +147,9 @@ test('Remind sends one nudge a day and says so the second time', async ({ newUse
   await page.goto(`/groups/${group.id}/balances`)
   const remind = page.getByRole('button', { name: t('balances.remindLabel', { name: ben.name }) })
   await remind.click()
+  const sheet = page.getByRole('dialog', { name: t('balances.remindTitle', { name: ben.name }) })
+  await sheet.getByRole('textbox', { name: t('balances.remindNote') }).fill('Rent is due Friday')
+  await sheet.getByRole('button', { name: t('balances.remindSend') }).click()
   await expect(page.getByText(t('balances.remindSent', { name: ben.name }))).toBeVisible()
   await expect(remind).toContainText(t('balances.reminded'))
   await remind.click()
@@ -155,6 +158,7 @@ test('Remind sends one nudge a day and says so the second time', async ({ newUse
   const bens = await openAs(ben)
   await bens.goto('/notifications')
   await expect(bens.getByText(t('notifications.types.debt.reminder.title'))).toBeVisible()
+  await expect(bens.getByText(/Rent is due Friday/)).toBeVisible()
 })
 
 test('settling with a friend across three groups records three payments', async ({

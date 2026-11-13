@@ -93,6 +93,21 @@ test.describe('accessibility', () => {
     await audit(page, testInfo)
   })
 
+  test('friends, owing one way in one currency and the other way in another', async ({
+    newUser,
+    openAs,
+  }, testInfo) => {
+    const { me, ben } = await setup(newUser)
+    const euros = await groupWith(me, [ben], { name: unique('Trip'), currency: 'EUR' })
+    await addEqualExpense(me, euros, [me, ben], 3000, unique('Ferry'), { currency: 'EUR' })
+    const page = await openAs(me)
+    await page.goto('/friends')
+    await expect(
+      page.getByRole('button', { name: t('friends.settle.actionLabel', { name: ben.name }) }),
+    ).toBeVisible()
+    await audit(page, testInfo)
+  })
+
   test('event page', async ({ newUser, openAs }, testInfo) => {
     const { me, group } = await setup(newUser)
     const day = (offset: number) =>
