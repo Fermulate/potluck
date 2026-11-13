@@ -25,6 +25,12 @@ export interface ReceiptScan {
   tipCents: number | null
   discountCents: number | null
   items: ReceiptItem[]
+  /**
+   * Whether the items (with tax, tip and discount) come to the total: `exact`, `close` (within
+   * 5%), `off`, or null when there is no total or no item to compare. Anything but `exact` means
+   * a line was misread or missed, and the review says so.
+   */
+  itemsMatch: 'exact' | 'close' | 'off' | null
 }
 
 export interface ParseReceiptOptions {
@@ -174,13 +180,27 @@ const DISCOUNT =
 const TOTAL =
   /\b(total|totale|totaal|gesamt\w*|summe|betrag|amount\s+due|balance\s+due|to\s+pay|a\s+pagar|zu\s+zahlen|montant|net\s+a\s+payer)\b/
 const PAYMENT =
-  /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|tendered|tend|payment|paid|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|girocard|kartenzahlung|cambio|efectivo|tarjeta|troco|dinheiro|cartao|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b/
+  /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b|\bbar\s+(eur|chf)\b/
 const NOT_AN_ITEM =
   /\b(tel|phone|fax|www|http|order|table|server|guest|guests|cashier|kasse|receipt|invoice|facture|rechnung|ticket|recibo|qty|items|articles|artikel|anzahl)\b/
 
-type Kind = 'subtotal' | 'tax' | 'tip' | 'discount' | 'total' | 'payment' | 'item'
+/** An amount with two decimals, as tax summary rows print them (not a rate like 8.25%). */
+const AMOUNTS = /\d[.,]\d{2}(?![\d%])/g
+
+/**
+ * A VAT summary row ("A= 7,0%  7,61  0,52  8,13", "B 19%  5,87  1,12  6,99"): a rate and several
+ * amounts, or a class letter and an equals sign. It restates the bill, so it is neither an item
+ * nor tax on top.
+ */
+function isTaxTable(key: string): boolean {
+  if (/^[a-z0-9]{1,2}\s*=/.test(key)) return true
+  return key.includes('%') && (key.match(AMOUNTS) ?? []).length >= 2
+}
+
+type Kind = 'subtotal' | 'tax' | 'tip' | 'discount' | 'total' | 'payment' | 'item' | 'table'
 
 function kindOf(key: string): Kind {
+  if (isTaxTable(key)) return 'table'
   if (SUBTOTAL.test(key)) return 'subtotal'
   if (TOTAL.test(key) && INCLUSIVE.test(key)) return 'total'
   if (TAX.test(key)) return 'tax'
@@ -300,6 +320,12 @@ const QTY_AT_END = new RegExp(
   'iu',
 )
 const QTY_SUFFIX = /\s+[x×]\s*(\d{1,2})$/i
+/**
+ * What is left of a unit price line once its price is cut off: "2 Stk x", "3 x", "2 @", "2 un x",
+ * "> stk x" (the count lost to the scan). It belongs to the item above it, or the one below.
+ */
+const QTY_LINE =
+  /^[^\p{L}\d]*(\d{1,3})?\s*(?:stk|st|pcs?|pz|ea|un|uds?|und|units?)?\.?\s*[x×@*]\s*$/iu
 const UNIT_AT_END = new RegExp(String.raw`\s+@\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`, 'u')
 
 function itemOf(rest: string): { description: string; quantity: number } {
@@ -355,6 +381,9 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   let itemsEnd = lines.length
   const items: ReceiptItem[] = []
   let pending: string | null = null
+  // The line the last item came from, and a unit price line still waiting for its item.
+  let lastItemLine = -2
+  let pendingQty: { count: number | null; unit: number } | null = null
 
   for (const [index, line] of lines.entries()) {
     const key = keys[index]!
@@ -365,6 +394,10 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       continue
     }
     const kind = kindOf(key)
+    if (kind === 'table') {
+      pending = null
+      continue
+    }
     largest = Math.max(largest ?? 0, price.cents)
     switch (kind) {
       case 'subtotal':
@@ -394,14 +427,32 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
           discount = (discount ?? 0) + price.cents
           break
         }
+        const qty = QTY_LINE.exec(price.rest)
+        if (qty) {
+          // "2 Stk x 0,90" under "BROETCHEN 1,80": a count for the item above, not an item.
+          const count = qty[1] ? Number(qty[1]) : null
+          const above = lastItemLine === index - 1 ? items.at(-1) : undefined
+          if (above && above.amountCents % price.cents === 0) {
+            above.quantity = count ?? above.amountCents / price.cents
+          } else {
+            pendingQty = { count, unit: price.cents }
+          }
+          break
+        }
         const read = itemOf(price.rest)
         const description =
           !/\p{L}{2}/u.test(read.description) && pending
             ? itemOf(pending).description
             : read.description
-        const quantity = read.quantity
+        // A unit price line printed above its item ("2 x 0,90" then "BROETCHEN 1,80").
+        const quantity =
+          pendingQty && price.cents % pendingQty.unit === 0
+            ? (pendingQty.count ?? price.cents / pendingQty.unit)
+            : read.quantity
+        pendingQty = null
         if (/\p{L}{2}/u.test(description) && price.cents > 0) {
           items.push({ description, amountCents: price.cents, quantity })
+          lastItemLine = index
         }
         break
       }
@@ -409,9 +460,12 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     pending = null
   }
 
-  const offered = items.slice(0, MAX_RECEIPT_ITEMS)
-  const itemsSum = offered.reduce((a, i) => a + i.amountCents, 0)
   if (total === null && largest !== null) total = largest
+  // A line dearer than the whole bill is a misread (a smudge read as 81.89).
+  const offered = items
+    .filter((i) => total === null || i.amountCents <= total)
+    .slice(0, MAX_RECEIPT_ITEMS)
+  const itemsSum = offered.reduce((a, i) => a + i.amountCents, 0)
   const base = subtotal ?? itemsSum
   // Tax, tip and discount are kept only when they make the receipt add up the way the expense
   // form adds it (items + tax + tip - discount). VAT already inside the prices is left out.
@@ -425,6 +479,12 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       else if (sums(null, null, discount)) [tax, tip] = [null, null]
       else if (sums(null, null, null)) [tax, tip, discount] = [null, null, null]
     }
+  }
+
+  let itemsMatch: ReceiptScan['itemsMatch'] = null
+  if (total !== null && total > 0 && offered.length > 0) {
+    const diff = Math.abs(itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0) - total)
+    itemsMatch = diff === 0 ? 'exact' : diff * 20 <= total ? 'close' : 'off'
   }
 
   return {
@@ -443,5 +503,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     tipCents: tip,
     discountCents: discount,
     items: offered,
+    itemsMatch,
   }
 }

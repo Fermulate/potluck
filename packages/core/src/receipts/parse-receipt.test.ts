@@ -120,6 +120,7 @@ describe('parseReceipt', () => {
       taxCents: 367,
       tipCents: 800,
       discountCents: null,
+      itemsMatch: 'exact',
       items: [
         { description: 'Cheeseburger', amountCents: 2500, quantity: 2 },
         { description: 'Caesar Salad', amountCents: 1150, quantity: 1 },
@@ -288,6 +289,7 @@ describe('parseReceipt', () => {
       tipCents: null,
       discountCents: null,
       items: [],
+      itemsMatch: null,
     })
     const scan = parseReceipt('12\n****\nhello there', { currency: 'USD' })
     expect(scan.totalCents).toBeNull()
@@ -320,6 +322,151 @@ describe('parseReceipt', () => {
   it('ignores yen-like numbers that carry no symbol', () => {
     const scan = parseReceipt('Shop\nTable 12\nRamen ¥980\nTotal ¥980', { currency: 'JPY' })
     expect(items(scan.items)).toEqual([['Ramen', 980, 1]])
+  })
+})
+
+// A REWE till roll as the scanner reads it: unit price under an item, a card line, the VAT table.
+const DE_REWE = `REWE Markt GmbH
+Hauptstr. 12, 10115 Berlin
+EUR
+BIO VOLLMILCH 1,19 A
+BROETCHEN 1,80 A
+  2 Stk x 0,90
+KAESE GOUDA 3,49 A
+BANANEN 1,65 A
+WEIN ROT 6,99 B
+SUMME EUR 15,12
+Geg. Karte EUR 15,12
+Steuer % Netto Steuer Brutto
+A= 7,0% 7,61 0,52 8,13
+B= 19,0% 5,87 1,12 6,99
+10.11.2026 18:03 Bon-Nr 4711`
+
+describe('lines that are not items', () => {
+  it('reads a unit price line as the count of the item above it', () => {
+    const scan = parseReceipt(DE_REWE, { currency: 'EUR' })
+    expect(items(scan.items)).toEqual([
+      ['Bio Vollmilch', 119, 1],
+      ['Broetchen', 180, 2],
+      ['Kaese Gouda', 349, 1],
+      ['Bananen', 165, 1],
+      ['Wein Rot', 699, 1],
+    ])
+    expect(scan.totalCents).toBe(1512)
+    expect(scan.taxCents).toBeNull()
+    expect(scan.itemsMatch).toBe('exact')
+  })
+
+  it.each([
+    [
+      'English',
+      'Bagels 4.50\n3 @ 1.50\nCoffee 2.00\nTotal 6.50',
+      'USD',
+      [
+        ['Bagels', 450, 3],
+        ['Coffee', 200, 1],
+      ],
+    ],
+    [
+      'French',
+      'Croissant 3,60\n3 x 1,20\nThé 2,50\nTotal 6,10',
+      'EUR',
+      [
+        ['Croissant', 360, 3],
+        ['Thé', 250, 1],
+      ],
+    ],
+    [
+      'Spanish',
+      'Cañas 6,00\n3 uds x 2,00\nPan 1,00\nTotal 7,00',
+      'EUR',
+      [
+        ['Cañas', 600, 3],
+        ['Pan', 100, 1],
+      ],
+    ],
+    [
+      'Portuguese',
+      'Pão 2,40\n4 un x 0,60\nLeite 1,10\nTotal 3,50',
+      'EUR',
+      [
+        ['Pão', 240, 4],
+        ['Leite', 110, 1],
+      ],
+    ],
+    [
+      'a count lost to the scan',
+      'Broetchen 1,80\n> stk x 0,90\nTotal 1,80',
+      'EUR',
+      [['Broetchen', 180, 2]],
+    ],
+    [
+      'a unit price above its item',
+      'Shop\n2 x 0,90\nBroetchen 1,80\nTotal 1,80',
+      'EUR',
+      [['Broetchen', 180, 2]],
+    ],
+  ])('skips unit price lines (%s)', (_, text, currency, expected) => {
+    const scan = parseReceipt(text, { currency })
+    expect(items(scan.items)).toEqual(expected)
+    expect(scan.itemsMatch).toBe('exact')
+  })
+
+  it.each([
+    ['Card 7.00'],
+    ['VISA **** 4421 7.00'],
+    ['Cash 10.00'],
+    ['Change 3.00'],
+    ['Geg. Karte EUR 7,00'],
+    ['Geg. BAR EUR 10,00'],
+    ['Bar 10,00'],
+    ['Espèces 10,00'],
+    ['Carte bancaire 7,00'],
+    ['Efectivo 10,00'],
+    ['Tarjeta 7,00'],
+    ['Dinheiro 10,00'],
+    ['Troco 3,00'],
+    ['Kartenzahlung 7,00'],
+  ])('never takes a payment line for an item: %s', (line) => {
+    const scan = parseReceipt(`Shop\nTea 3.00\nCake 4.00\n${line}`, { currency: 'USD' })
+    expect(scan.items.map((i) => i.description)).toEqual(['Tea', 'Cake'])
+  })
+
+  it.each([
+    ['German', 'A= 7,0% 7,61 0,52 8,13'],
+    ['German, no equals sign', 'B 19,0% 5,87 1,12 6,99'],
+    ['French', 'TVA 10% 24,55 2,45 27,00'],
+    ['Spanish', 'IVA 21% 10,00 2,10 12,10'],
+    ['Portuguese', 'IVA 23% 8,13 1,87 10,00'],
+  ])('skips a VAT table row (%s)', (_, row) => {
+    const scan = parseReceipt(`Shop\nTea 3,00\nCake 4,00\n${row}\nTotal 7,00`, { currency: 'EUR' })
+    expect(scan.items.map((i) => i.description)).toEqual(['Tea', 'Cake'])
+    expect(scan.taxCents).toBeNull()
+    expect(scan.itemsMatch).toBe('exact')
+  })
+
+  it('keeps a tax line whose rate has decimals', () => {
+    const scan = parseReceipt('Shop\nTea 3.00\nSales Tax 8.25% 0.25\nTotal 3.25', {
+      currency: 'USD',
+    })
+    expect(scan.taxCents).toBe(25)
+  })
+})
+
+describe('do the items match the total', () => {
+  const match = (text: string) => parseReceipt(text, { currency: 'USD' }).itemsMatch
+
+  it('says exact, close (within 5%), off, or cannot tell', () => {
+    expect(match('Shop\nTea 5.00\nCake 5.00\nTotal 10.00')).toBe('exact')
+    expect(match('Shop\nTea 5.00\nCake 4.60\nTotal 10.00')).toBe('close')
+    expect(match('Shop\nTea 5.00\nCake 1.00\nTotal 10.00')).toBe('off')
+    expect(match('Shop\nTotal 10.00')).toBeNull()
+  })
+
+  it('drops a line dearer than the whole bill', () => {
+    const scan = parseReceipt('Shop\nGarlic 81.89\nRice 2.99\nTotal 76.50', { currency: 'USD' })
+    expect(scan.items.map((i) => i.description)).toEqual(['Rice'])
+    expect(scan.itemsMatch).toBe('off')
   })
 })
 
