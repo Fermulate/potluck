@@ -225,7 +225,17 @@ export const errors = {
     no_items: 'Add at least one item.',
     item_no_users: 'Every item needs at least one person.',
     invalid_item_amount: 'Item prices must be zero or more.',
-    invalid_extra: 'Tax and tip must be zero or more.',
+    invalid_extra:
+      'Tax, tip and discount must be zero or more, and the discount no more than the bill.',
+    adjustments_exceed_total: 'The adjustments add up to more than the total.',
+    negative_share: 'A minus adjustment takes someone below zero.',
+  },
+  /** Who paid, checked by core `checkPayers` before saving. */
+  payers: {
+    no_payers: 'Someone has to have paid.',
+    duplicate_payer: 'Someone is in the payers twice.',
+    invalid_paid_amount: 'Amounts paid must be zero or more.',
+    payers_sum_mismatch: 'What everyone paid needs to add up to the total.',
   },
   validation: {
     required: 'Required.',
@@ -237,6 +247,9 @@ export const errors = {
     duplicate_split_user: 'Someone is in this split twice.',
     percent_sum: 'Percentages need to add up to 100%.',
     shares_required: 'Everyone in the split needs at least some shares.',
+    duplicate_payer: 'Someone is in the payers twice.',
+    payers_sum_mismatch: 'What everyone paid needs to add up to the total.',
+    items_need_itemized: 'Items only go with a by-item split.',
     invalid_slot_size: 'Pick 15, 30, or 60 minute slots.',
     window_end_before_start: 'The last day comes before the first day.',
     window_too_long: 'Keep the window to about two months.',

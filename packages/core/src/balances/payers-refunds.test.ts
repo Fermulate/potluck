@@ -33,7 +33,9 @@ describe('multiple payers', () => {
   })
 
   it('has only the people behind pay the people ahead', () => {
-    expect(pairwiseDebts([dinner])).toEqual([{ fromUser: 'cleo', toUser: 'ava', amountCents: 3000 }])
+    expect(pairwiseDebts([dinner])).toEqual([
+      { fromUser: 'cleo', toUser: 'ava', amountCents: 3000 },
+    ])
   })
 
   it('spreads the converted total over the payers by what they paid', () => {

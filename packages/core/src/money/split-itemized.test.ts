@@ -131,9 +131,10 @@ describe('splitItemized', () => {
   })
 
   it('refuses a discount bigger than the bill', () => {
-    expect(splitItemized([{ amountCents: 100, userIds: ['a'] }], { discountCents: 101 })).toEqual(
-      { ok: false, error: { code: 'invalid_extra' } },
-    )
+    expect(splitItemized([{ amountCents: 100, userIds: ['a'] }], { discountCents: 101 })).toEqual({
+      ok: false,
+      error: { code: 'invalid_extra' },
+    })
     expect(splitItemized([{ amountCents: 100, userIds: ['a'] }], { discountCents: -1 })).toEqual({
       ok: false,
       error: { code: 'invalid_extra' },

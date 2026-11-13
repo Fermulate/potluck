@@ -75,7 +75,8 @@ describe('splitAdjustment', () => {
     const result = splitAdjustment(1000, adjustments)
     if (!result.ok) throw new Error('expected a split')
     expect(roundedUp({ mode: 'adjustment', adjustments }, result.shares)).toEqual(['a', 'b'])
-    expect(roundedUp({ mode: 'adjustment', adjustments: { a: 1000, b: 0 } }, { a: 1500, b: 500 }))
-      .toEqual([])
+    expect(
+      roundedUp({ mode: 'adjustment', adjustments: { a: 1000, b: 0 } }, { a: 1500, b: 500 }),
+    ).toEqual([])
   })
 })

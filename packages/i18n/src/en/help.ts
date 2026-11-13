@@ -28,6 +28,10 @@ export const help = {
     push: 'Setting up push',
     deleteAccount: 'What happens to your groups',
     recurringEdit: 'Changing a repeating expense',
+    splitAdjustment: 'How adjustments work',
+    payers: 'When several people paid',
+    refunds: 'How refunds work',
+    defaultSplit: 'About the default split',
   },
   tips: {
     simplifiedDebts:

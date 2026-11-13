@@ -1,4 +1,4 @@
-import { CATEGORY_IDS, SPLIT_TYPES, type SplitError } from '@potluck/core'
+import { CATEGORY_IDS, SPLIT_TYPES, type PayersError, type SplitError } from '@potluck/core'
 import { describe, expect, it } from 'vitest'
 import { en, hasMessage } from './index'
 
@@ -76,6 +76,8 @@ describe('coverage of core domain values', () => {
       'item_no_users',
       'invalid_item_amount',
       'invalid_extra',
+      'adjustments_exceed_total',
+      'negative_share',
     ] satisfies SplitError['code'][]
     expect(missingKeys(codes.map((code) => `errors.split.${code}`))).toEqual([])
   })
@@ -87,6 +89,9 @@ describe('coverage of core domain values', () => {
       'duplicate_split_user',
       'percent_sum',
       'shares_required',
+      'duplicate_payer',
+      'payers_sum_mismatch',
+      'items_need_itemized',
       'invalid_slot_size',
       'window_end_before_start',
       'window_too_long',
@@ -118,6 +123,7 @@ describe('coverage of core domain values', () => {
     const verbs = [
       'group.created',
       'group.updated',
+      'group.default_split',
       'member.joined',
       'member.left',
       'member.removed',
@@ -217,6 +223,16 @@ describe('coverage of core domain values', () => {
         'account.delete.done',
       ]),
     ).toEqual([])
+  })
+
+  it('explains every payer error code from core', () => {
+    const codes = [
+      'no_payers',
+      'duplicate_payer',
+      'invalid_paid_amount',
+      'payers_sum_mismatch',
+    ] satisfies PayersError['code'][]
+    expect(missingKeys(codes.map((code) => `errors.payers.${code}`))).toEqual([])
   })
 
   it('names and describes every group role', () => {
