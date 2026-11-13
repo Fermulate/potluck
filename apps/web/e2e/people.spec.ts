@@ -24,9 +24,7 @@ test('add Sam by name, split with him, and Sam signs up through his invite to fi
   const sheet = page.getByRole('dialog', { name: t('people.placeholder.addTitle') })
   await sheet.getByLabel(t('people.placeholder.nameLabel')).fill(samName)
   await sheet.getByLabel(t('people.placeholder.emailLabel')).fill(samEmail)
-  await page
-    .getByRole('button', { name: t('people.placeholder.submit', { group: group.name }) })
-    .click()
+  await sheet.getByRole('button', { name: t('people.placeholder.submit'), exact: true }).click()
   await expect(
     page.getByText(t('people.placeholder.addedInvited', { name: samName })),
   ).toBeVisible()

@@ -8,6 +8,7 @@ import { group, groupTables, member, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb } from '@/test/supabase'
 import { MembersPage } from './members-page'
+import { AddPlaceholderSheet } from './placeholders'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
 vi.mock('@/lib/auth', async (importOriginal) => ({
@@ -94,9 +95,7 @@ describe('MembersPage with people not on Potluck yet', () => {
     fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.emailLabel')), {
       target: { value: 'Jo@Example.com' },
     })
-    fireEvent.click(
-      screen.getByRole('button', { name: t('people.placeholder.submit', { group: 'Hike crew' }) }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.submit') }))
     expect(
       await screen.findByText(t('people.placeholder.addedInvited', { name: 'Jo' })),
     ).toBeInTheDocument()
@@ -117,9 +116,7 @@ describe('MembersPage with people not on Potluck yet', () => {
     fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.emailLabel')), {
       target: { value: 'not an email' },
     })
-    fireEvent.click(
-      screen.getByRole('button', { name: t('people.placeholder.submit', { group: 'Hike crew' }) }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.submit') }))
     expect(await within(sheet).findByText(t('errors.validation.invalidEmail'))).toBeInTheDocument()
     expect(db().rpcArgs('add_placeholder_member')).toEqual([])
   })
@@ -245,9 +242,7 @@ describe('MembersPage with people not on Potluck yet', () => {
     fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.emailLabel')), {
       target: { value: 'eli@example.com' },
     })
-    fireEvent.click(
-      screen.getByRole('button', { name: t('people.placeholder.submit', { group: 'Hike crew' }) }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.submit') }))
     expect(
       await screen.findByText(t('people.placeholder.addedExisting', { name: 'Eli Moss' })),
     ).toBeInTheDocument()
@@ -281,5 +276,31 @@ describe('MembersPage with people not on Potluck yet', () => {
   it('says leaving closes the group when only seats are left', async () => {
     renderMembers(group({ members: [member(VIEWER, 'Ava Chen', 'owner'), pat] }))
     expect(await screen.findByText(t('people.placeholder.leaveOnlySeats'))).toBeInTheDocument()
+  })
+})
+
+describe('AddPlaceholderSheet over another form', () => {
+  it('adds on Enter without submitting the form behind it', async () => {
+    resetDb({ tables: { profiles: [] } })
+    db().respond('rpc:add_placeholder_member', { data: 'p-new' })
+    const outer = vi.fn((event: { preventDefault: () => void }) => event.preventDefault())
+    const onAdded = vi.fn()
+    renderWithProviders(
+      <form onSubmit={outer}>
+        <AddPlaceholderSheet
+          group={{ id: 'g-hike', name: 'Hike crew' }}
+          open
+          onOpenChange={() => undefined}
+          onAdded={onAdded}
+        />
+      </form>,
+      { path: '/new/expense' },
+    )
+    const sheet = await screen.findByRole('dialog', { name: t('people.placeholder.addTitle') })
+    const name = within(sheet).getByLabelText(t('people.placeholder.nameLabel'))
+    fireEvent.change(name, { target: { value: 'Jo' } })
+    fireEvent.submit(name.closest('form')!)
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith('p-new'))
+    expect(outer).not.toHaveBeenCalled()
   })
 })

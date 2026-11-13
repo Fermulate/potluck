@@ -609,7 +609,7 @@ export const activity = {
       role_changed: 'Du hast {name} zum {role} gemacht',
       added: 'Du hast {name} hinzugefügt',
       claimed: 'Du hast den Platz von {seat} übernommen',
-      invite_changed: 'Du hast geändert, wohin die Einladung von {name} geht',
+      invite_changed: 'Du hast die Einladungs-E-Mail von {name} geändert',
     },
     expense: {
       created: 'Du hast "{description}" hinzugefügt ({amount})',
@@ -646,7 +646,7 @@ export const activity = {
       removed: '{actor} hat dich entfernt',
       role_changed: '{actor} hat dich zum {role} gemacht',
       added: '{actor} hat dich hinzugefügt',
-      invite_changed: '{actor} hat geändert, wohin deine Einladung geht',
+      invite_changed: '{actor} hat deine Einladungs-E-Mail geändert',
     },
     settlement: {
       created: '{actor} hat dir {amount} gezahlt',
@@ -670,7 +670,7 @@ export const activity = {
     role_changed: '{actor} hat {name} zum {role} gemacht',
     added: '{actor} hat {name} hinzugefügt',
     claimed: '{actor} hat den Platz von {seat} übernommen',
-    invite_changed: '{actor} hat geändert, wohin die Einladung von {name} geht',
+    invite_changed: '{actor} hat die Einladungs-E-Mail von {name} geändert',
   },
   expense: {
     created: '{actor} hat "{description}" hinzugefügt ({amount})',

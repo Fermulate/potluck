@@ -429,7 +429,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
                   )}
                   {seat && <Badge tone="neutral">{t('people.placeholder.badge')}</Badge>}
                 </p>
-                <p className="truncate text-xs text-mute">
+                <p className={seat ? 'text-xs text-mute' : 'truncate text-xs text-mute'}>
                   {seat
                     ? placeholderLine(placeholders?.get(member.id), timeZone)
                     : t('members.joined', {

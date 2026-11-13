@@ -112,6 +112,9 @@ export function AddPlaceholderSheet({
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
+    // The sheet can open over another form (the expense form); React bubbles a portal's submit
+    // through the component tree, so stop it here.
+    event.stopPropagation()
     void add(false)
   }
 
@@ -142,9 +145,7 @@ export function AddPlaceholderSheet({
               loading={busy === 'add'}
               disabled={!name.trim() || !!busy}
             >
-              <span className="min-w-0 truncate">
-                {t('people.placeholder.submit', { group: group.name })}
-              </span>
+              <span className="min-w-0 truncate">{t('people.placeholder.submit')}</span>
             </Button>
           </div>
         }
@@ -220,6 +221,7 @@ export function EditPlaceholderSheet({
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
+    event.stopPropagation()
     if (!member) return
     const parsed = placeholderSchema.safeParse({ display_name: name, email })
     if (!parsed.success) {

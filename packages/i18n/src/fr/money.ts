@@ -613,7 +613,7 @@ export const activity = {
       role_changed: 'Tu as nommé {name} {role}',
       added: 'Tu as ajouté {name}',
       claimed: 'Tu as pris la place de {seat}',
-      invite_changed: "Tu as changé l'adresse de l'invitation de {name}",
+      invite_changed: "Tu as changé l'e-mail de l'invitation de {name}",
     },
     expense: {
       created: 'Tu as ajouté « {description} » ({amount})',
@@ -650,7 +650,7 @@ export const activity = {
       removed: "{actor} t'a retiré du groupe",
       role_changed: "{actor} t'a nommé {role}",
       added: "{actor} t'a ajouté",
-      invite_changed: "{actor} a changé l'adresse de ton invitation",
+      invite_changed: "{actor} a changé l'e-mail de ton invitation",
     },
     settlement: {
       created: "{actor} t'a payé {amount}",
@@ -674,7 +674,7 @@ export const activity = {
     role_changed: '{actor} a nommé {name} {role}',
     added: '{actor} a ajouté {name}',
     claimed: '{actor} a pris la place de {seat}',
-    invite_changed: "{actor} a changé l'adresse de l'invitation de {name}",
+    invite_changed: "{actor} a changé l'e-mail de l'invitation de {name}",
   },
   expense: {
     created: '{actor} a ajouté « {description} » ({amount})',
