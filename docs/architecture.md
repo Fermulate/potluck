@@ -565,7 +565,7 @@ Codes:
 - Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left), `invalid_payers`, `payers_sum_mismatch` (what each person paid does not add up to the amount, also from the deferred check).
 - Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `adjustments_exceed_total`, `negative_share`, `items_required`, `invalid_items`.
 - Payments: `invalid_recipient`, `settlement_not_found`, `member_not_in_group` (removing a payment with someone who has left).
-- Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`.
+- Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`, `notification_setting_required` (changing a required category, i.e. security notices).
 - Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
 
 ### RPC details and deviations

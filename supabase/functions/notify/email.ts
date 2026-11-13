@@ -44,6 +44,12 @@ export const CATEGORY_LABELS: Record<string, string> = {
   security: 'account security',
 }
 
+/**
+ * Categories that cannot be switched off (`notification_categories.required`): their emails carry
+ * no unsubscribe links or headers, only a word on why they came.
+ */
+export const REQUIRED_CATEGORIES = new Set(['security'])
+
 const str = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value : undefined
 const num = (value: unknown): number | undefined =>
@@ -332,6 +338,7 @@ export function renderEmail(job: EmailJob, links: EmailLinks): RenderedEmail {
   const unsubscribeAll = `${app}/unsubscribe?token=${encodeURIComponent(job.unsubscribe_all)}`
   const oneClick = `${links.oneClickUrl}?token=${encodeURIComponent(job.unsubscribe)}`
   const what = CATEGORY_LABELS[job.category] ?? 'these emails'
+  const required = REQUIRED_CATEGORIES.has(job.category)
   const greeting = str(job.name) ? `Hi ${str(job.name)!.split(/\s+/)[0]},` : 'Hi,'
 
   const text = [
@@ -344,9 +351,13 @@ export function renderEmail(job: EmailJob, links: EmailLinks): RenderedEmail {
     `${copy.cta}: ${open}`,
     '',
     '--',
-    `You get these because emails about ${what} are on.`,
-    `Stop emails about ${what}: ${unsubscribe}`,
-    `Stop all Potluck email: ${unsubscribeAll}`,
+    ...(required
+      ? ['We always send this: it is about the security of your Potluck account.']
+      : [
+          `You get these because emails about ${what} are on.`,
+          `Stop emails about ${what}: ${unsubscribe}`,
+          `Stop all Potluck email: ${unsubscribeAll}`,
+        ]),
     `All notification settings: ${settings}`,
   ].join('\n')
 
@@ -388,10 +399,14 @@ ${rows ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0
 <p style="margin:22px 0 0"><a href="${e(open)}" style="display:inline-block;background:#e8492f;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:12px 22px;border-radius:999px">${e(copy.cta)}</a></p>
 </td></tr>
 <tr><td class="mute" style="padding:18px 4px 0;font-size:13px;line-height:1.6;color:#716759">
-You get these because emails about ${e(what)} are on.<br>
+${
+  required
+    ? 'We always send this: it is about the security of your Potluck account.<br>\n'
+    : `You get these because emails about ${e(what)} are on.<br>
 <a href="${e(unsubscribe)}" class="mute" style="color:#716759">Stop emails about ${e(what)}</a> &middot;
 <a href="${e(unsubscribeAll)}" class="mute" style="color:#716759">Stop all Potluck email</a> &middot;
-<a href="${e(settings)}" class="mute" style="color:#716759">Notification settings</a>
+`
+}<a href="${e(settings)}" class="mute" style="color:#716759">Notification settings</a>
 </td></tr>
 </table>
 </td></tr>
@@ -403,9 +418,11 @@ You get these because emails about ${e(what)} are on.<br>
     subject: copy.subject,
     text,
     html,
-    headers: {
-      'List-Unsubscribe': `<${oneClick}>, <${unsubscribe}>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-    },
+    headers: required
+      ? {}
+      : {
+          'List-Unsubscribe': `<${oneClick}>, <${unsubscribe}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
   }
 }

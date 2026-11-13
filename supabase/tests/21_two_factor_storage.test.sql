@@ -1,7 +1,7 @@
 -- Two-step sign in, continued (20261113100301_two_factor_storage_and_limits): storage refuses an
 -- unfinished sign in, recovery tries are limited, and codes go when two-step sign in goes.
 begin;
-select plan(20);
+select plan(28);
 
 select tests.create_user('alice');
 select tests.create_user('bob');
@@ -128,6 +128,60 @@ select ok(
   (select 'push' = any (n.channels) from public.notifications n
    where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed'),
   'security notices push by default'
+);
+
+-- Security notices cannot be turned off.
+select ok(
+  (select c.required from private.notification_categories c where c.category = 'security'),
+  'the security category is required'
+);
+update public.app_config set value = 'true' where key = 'email_notifications';
+
+select tests.login('bob');
+select throws_ok(
+  $$ select public.set_notification_pref('security', email => false) $$,
+  '23514', 'notification_setting_required', 'nobody can switch security email off'
+);
+select throws_ok(
+  $$ select public.set_notification_pref('security', push => false) $$,
+  '23514', 'notification_setting_required', 'nor its push'
+);
+select is(
+  (select count(*)::int from public.my_notification_prefs() p where p.category = 'security'),
+  0,
+  'it is not listed with the settings'
+);
+
+reset role;
+select set_config('tests.tok_sec', private.unsubscribe_token(tests.uid('bob'), 'security'), true);
+select set_config('tests.tok_all', private.unsubscribe_token(tests.uid('bob'), 'all'), true);
+select tests.login_anon();
+select throws_ok(
+  $$ select public.email_unsubscribe(current_setting('tests.tok_sec')) $$,
+  '22023', 'invalid_unsubscribe_link', 'a security unsubscribe link is not valid'
+);
+select is(
+  public.email_unsubscribe(current_setting('tests.tok_all')) ->> 'subscribed',
+  'false',
+  'an all link turns every other email off'
+);
+reset role;
+select is(
+  (select count(*)::int from public.notification_prefs p
+   where p.user_id = tests.uid('bob') and p.category = 'security'),
+  0,
+  'the all link leaves security alone'
+);
+-- Even a setting stored behind the API's back is ignored.
+insert into public.notification_prefs (user_id, category, push, email)
+values (tests.uid('bob'), 'security', false, false);
+delete from public.notifications n where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed';
+select public.notify_mfa_recovered(tests.uid('bob'));
+select is(
+  (select n.channels from public.notifications n
+   where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed'),
+  array['push', 'email'],
+  'security notices still push and email after unsubscribing from everything'
 );
 
 select * from finish();

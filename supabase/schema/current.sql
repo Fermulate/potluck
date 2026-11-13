@@ -1894,10 +1894,13 @@ CREATE OR REPLACE FUNCTION "private"."notification_channels"("uid" "uuid", "kind
     AS $$
   select array_remove(array[
     case
-      when c.category is null or (c.push_allowed and coalesce(p.push, c.push_default)) then 'push'
+      when c.category is null
+        or (c.push_allowed and coalesce(case when c.required then null else p.push end, c.push_default))
+      then 'push'
     end,
     case
-      when c.email_allowed and coalesce(p.email, c.email_default)
+      when c.email_allowed
+        and coalesce(case when c.required then null else p.email end, c.email_default)
         and private.email_enabled()
         and exists (
           select 1 from auth.users u
@@ -3771,7 +3774,8 @@ begin
 
   if uid is null
      or not (cat = 'all' or exists (
-       select 1 from private.notification_categories c where c.category = cat and c.email_allowed
+       select 1 from private.notification_categories c
+       where c.category = cat and c.email_allowed and not c.required
      ))
      or token is distinct from private.unsubscribe_token(uid, cat) then
     raise exception using message = 'invalid_unsubscribe_link', detail = 'This unsubscribe link is not valid', errcode = '22023';
@@ -3782,7 +3786,7 @@ begin
 
   select array_agg(c.category order by c.position) into cats
   from private.notification_categories c
-  where c.email_allowed and (cat = 'all' or c.category = cat);
+  where c.email_allowed and not c.required and (cat = 'all' or c.category = cat);
 
   active := exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null);
 
@@ -4028,6 +4032,7 @@ begin
     c.email_allowed
   from private.notification_categories c
   left join public.notification_prefs p on p.user_id = uid and p.category = c.category
+  where not c.required
   order by c.position;
 end;
 $$;
@@ -4479,6 +4484,12 @@ begin
   ) then
     raise exception using message = 'invalid_notification_category', detail = 'Unknown notification setting', errcode = '22023';
   end if;
+  if exists (
+    select 1 from private.notification_categories c
+    where c.category = set_notification_pref.category and c.required
+  ) then
+    raise exception using message = 'notification_setting_required', detail = 'Security notices cannot be turned off', errcode = '23514';
+  end if;
 
   insert into public.notification_prefs as p (user_id, category, push, email)
   values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email)
@@ -4735,6 +4746,7 @@ CREATE TABLE IF NOT EXISTS "private"."notification_categories" (
     "email_default" boolean NOT NULL,
     "push_allowed" boolean DEFAULT true NOT NULL,
     "email_allowed" boolean DEFAULT true NOT NULL,
+    "required" boolean DEFAULT false NOT NULL,
     CONSTRAINT "notification_categories_category_check" CHECK (("category" ~ '^[a-z_]+$'::"text"))
 );
 
@@ -4743,6 +4755,10 @@ ALTER TABLE "private"."notification_categories" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "private"."notification_categories" IS 'One row per notification setting people see, with its defaults. Labels live in packages/i18n (settings.notificationPrefs.categories).';
+
+
+
+COMMENT ON COLUMN "private"."notification_categories"."required" IS 'Always delivered with its defaults (security notices): no setting, no unsubscribe link.';
 
 
 

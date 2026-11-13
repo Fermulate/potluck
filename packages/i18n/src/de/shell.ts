@@ -208,6 +208,8 @@ export const errors = {
     settlement_not_found: 'Diese Zahlung gibt es nicht mehr.',
     event_not_in_group: 'Dieser Plan gehört nicht zu dieser Gruppe.',
     invalid_notification_category: 'Diese Benachrichtigungseinstellung gibt es nicht.',
+    notification_setting_required:
+      'Sicherheitshinweise kommen immer an, sie lassen sich nicht abschalten.',
     invalid_unsubscribe_link:
       'Dieser Abmeldelink funktioniert nicht. Ändere deine E-Mail-Einstellungen stattdessen auf der Ich-Seite.',
     mfa_required: 'Schließ zuerst die Anmeldung in zwei Schritten ab.',

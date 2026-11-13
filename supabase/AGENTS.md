@@ -57,8 +57,10 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 
 ## Notifications
 
-- The `security` category (account notices such as `account.mfa_removed`) has no switch on Me, so
-  its defaults (push and email) always hold.
+- A category with `notification_categories.required` (today `security`: `account.mfa_removed`) cannot be
+  switched off: `my_notification_prefs` leaves it out, `set_notification_pref` raises
+  `notification_setting_required`, unsubscribe links skip it, stored settings are ignored, and its
+  emails carry no unsubscribe links (`REQUIRED_CATEGORIES` in `functions/notify/email.ts`).
 - Settings are per category ([ADR 11](../docs/adr/0011-notification-prefs-and-email.md)). A new
   notification type is ONE row in your migration:
   `insert into private.notification_types (type, category) values ('<type>', '<category>') on conflict (type) do nothing;`

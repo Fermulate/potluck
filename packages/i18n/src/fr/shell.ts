@@ -208,6 +208,8 @@ export const errors = {
     settlement_not_found: "Ce paiement n'existe plus.",
     event_not_in_group: "Cette sortie n'est pas dans ce groupe.",
     invalid_notification_category: "Ce réglage de notification n'existe pas.",
+    notification_setting_required:
+      'Les alertes de sécurité arrivent toujours, on ne peut pas les couper.',
     invalid_unsubscribe_link:
       'Ce lien de désabonnement ne marche pas. Change plutôt tes réglages e-mail sur la page Moi.',
     mfa_required: "Termine d'abord la connexion en deux étapes.",

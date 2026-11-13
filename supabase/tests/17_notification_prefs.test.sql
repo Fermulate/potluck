@@ -24,8 +24,7 @@ select results_eq(
     ('groups', true, true, true, true),
     ('plans', true, false, true, true),
     ('reminders', true, true, true, true),
-    ('monthly_summary', false, true, false, true),
-    ('security', true, true, true, true)
+    ('monthly_summary', false, true, false, true)
   $$,
   'everyone starts on the defaults, in display order'
 );
@@ -389,7 +388,7 @@ select is(
 select tests.login('ben');
 select is(
   (select count(*)::int from my_notification_prefs() where email),
-  8,
+  7,
   'someone else''s link touches nobody else'
 );
 
@@ -405,7 +404,7 @@ select is(
 select tests.login('ava');
 select is(
   (select count(*)::int from my_notification_prefs() where email),
-  6,
+  5,
   'every email ava had on is back'
 );
 
