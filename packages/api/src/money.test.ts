@@ -645,7 +645,6 @@ describe('recurring expenses', () => {
       splits: [{ user_id: 'u1' }, { user_id: 'u2' }],
       recurrence: 'biweekly' as const,
       next_run_on: '2026-12-01',
-      remind: false,
     }
     expect(await updateRecurring(fake.client, 'r1', payload)).toEqual({ id: 'r1' })
     expect(fake.rpcArgs('update_recurring_expense')).toEqual([{ id: 'r1', payload }])

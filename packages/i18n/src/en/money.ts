@@ -188,8 +188,6 @@ export const expenses = {
     editTitle: 'Edit repeating expense',
     futureOnly: 'Changes start with the next one. Expenses already added stay exactly as they are.',
     nextLabel: 'Next one',
-    remindLabel: 'Heads-up the day before',
-    remindHint: 'Everyone in it hears at 9 in the morning, their time, the day before it goes in.',
     savedToast: 'Saved. The next "{description}" uses the new numbers.',
     pausedNote: 'Paused. Nothing goes in until you resume it.',
     formerNote: '{names} left the group. Take them out of the split, then resume it.',

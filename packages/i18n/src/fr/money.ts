@@ -193,8 +193,6 @@ export const expenses = {
     futureOnly:
       'Les changements commencent à la prochaine. Les dépenses déjà ajoutées restent telles quelles.',
     nextLabel: 'La prochaine',
-    remindLabel: 'Rappel la veille',
-    remindHint: 'Chaque personne concernée est prévenue la veille à 9 h, à son heure.',
     savedToast: 'Enregistré. La prochaine « {description} » prend les nouveaux montants.',
     pausedNote: "En pause. Rien n'est ajouté tant que tu ne la relances pas.",
     formerNote: '{names} a quitté le groupe. Retire cette personne du partage, puis relance.',

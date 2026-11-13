@@ -191,9 +191,6 @@ export const expenses = {
     editTitle: 'Editar gasto recurrente',
     futureOnly: 'Los cambios empiezan con el próximo. Los gastos ya añadidos se quedan tal cual.',
     nextLabel: 'El próximo',
-    remindLabel: 'Aviso el día antes',
-    remindHint:
-      'Todos los que participan reciben un aviso a las 9 de la mañana, su hora, el día antes.',
     savedToast: 'Guardado. El próximo "{description}" usa las cifras nuevas.',
     pausedNote: 'En pausa. No se añade nada hasta que lo reanudes.',
     formerNote: '{names} dejó el grupo. Quítalo del reparto y luego reanúdalo.',

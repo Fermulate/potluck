@@ -191,8 +191,6 @@ export const expenses = {
     editTitle: 'Editar despesa recorrente',
     futureOnly: 'As mudanças começam na próxima. As despesas já lançadas ficam como estão.',
     nextLabel: 'A próxima',
-    remindLabel: 'Aviso na véspera',
-    remindHint: 'Todos os envolvidos são avisados às 9 da manhã, no horário deles, na véspera.',
     savedToast: 'Salvo. A próxima "{description}" usa os novos valores.',
     pausedNote: 'Pausada. Nada entra até você retomar.',
     formerNote: '{names} saiu do grupo. Tire da divisão e depois retome.',

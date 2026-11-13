@@ -237,7 +237,6 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     existingPath: expense?.receipt_path ?? null,
   })
   const [recurrence, setRecurrence] = useState<Recurrence>(template?.recurrence ?? 'none')
-  const [remind, setRemind] = useState(template?.remind ?? true)
   const [savedDraft] = useState<SplitDraft>(() =>
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
@@ -299,7 +298,6 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         recurrence: recurrence === 'none' ? current.recurrence : recurrence,
         // Only a date that was changed here, so a skip made meanwhile is not undone.
         ...(dateTouched && spentAt !== current.next_run_on ? { next_run_on: spentAt } : {}),
-        remind,
         notes: notes.trim() || null,
       }
       // An unchanged split is not resent, so the details stay editable while it names someone
@@ -757,12 +755,6 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                   }))}
                 />
               </Field>
-              <Switch
-                label={t('expenses.recurring.remindLabel')}
-                description={t('expenses.recurring.remindHint')}
-                checked={remind}
-                onCheckedChange={setRemind}
-              />
               {props.mode === 'recurring' && props.actions}
             </>
           ) : (

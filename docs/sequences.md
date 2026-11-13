@@ -482,7 +482,7 @@ sequenceDiagram
   DB->>DB: expenses.recurring_id = template, activity recurring.created
 
   CR->>DB: at :05 and :35: private.send_recurring_heads_ups(now())
-  loop templates due within 2 days, active, remind on, group open, nobody left
+  loop templates due within 2 days, active, group open, nobody left
     loop payers and people with a share, not yet told about this date
       alt 09:00 on their local day before has come, and it is before 00:10 UTC on the date
         DB->>DB: notify recurring.upcoming (share, posts_on, deadline, their zone,<br/>quiet if 22:00 to 07:00 there: inbox only); insert private.recurring_heads_ups

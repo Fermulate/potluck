@@ -194,8 +194,6 @@ export const expenses = {
     futureOnly:
       'Änderungen gelten ab der nächsten. Bereits eingetragene Ausgaben bleiben, wie sie sind.',
     nextLabel: 'Die nächste',
-    remindLabel: 'Hinweis am Vortag',
-    remindHint: 'Alle Beteiligten hören am Vortag um 9 Uhr ihrer Zeit davon.',
     savedToast: 'Gespeichert. Die nächste „{description}“ nimmt die neuen Beträge.',
     pausedNote: 'Pausiert. Es kommt nichts dazu, bis du sie fortsetzt.',
     formerNote:

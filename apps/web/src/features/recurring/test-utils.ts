@@ -22,7 +22,6 @@ export function template(patch: Partial<RecurringExpense> = {}): RecurringExpens
     next_run_on: '2099-12-01',
     anchor_day: 1,
     active: true,
-    remind: true,
     notes: null,
     created_by: ME,
     created_at: '2026-11-01T00:00:00Z',

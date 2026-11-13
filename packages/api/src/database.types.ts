@@ -1198,7 +1198,6 @@ export type Database = {
           paid_by: string
           payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
-          remind: boolean
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
           tax_cents: number | null
@@ -1224,7 +1223,6 @@ export type Database = {
           paid_by: string
           payers?: Json | null
           recurrence: Database['public']['Enums']['recurrence']
-          remind?: boolean
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
           tax_cents?: number | null
@@ -1249,7 +1247,6 @@ export type Database = {
           paid_by?: string
           payers?: Json | null
           recurrence?: Database['public']['Enums']['recurrence']
-          remind?: boolean
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
           tax_cents?: number | null
@@ -1695,7 +1692,6 @@ export type Database = {
           paid_by: string
           payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
-          remind: boolean
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
           tax_cents: number | null
@@ -2002,7 +1998,6 @@ export type Database = {
           paid_by: string
           payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
-          remind: boolean
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
           tax_cents: number | null
@@ -2103,7 +2098,6 @@ export type Database = {
           paid_by: string
           payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
-          remind: boolean
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
           tax_cents: number | null

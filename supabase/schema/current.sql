@@ -1302,6 +1302,20 @@ $$;
 ALTER FUNCTION "private"."group_members_notify_added"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."group_members_pause_recurring"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform private.pause_recurring_naming(old.user_id, old.group_id);
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."group_members_pause_recurring"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."group_role"("gid" "uuid") RETURNS "public"."group_role"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -1643,8 +1657,7 @@ CREATE OR REPLACE FUNCTION "private"."local_today"("uid" "uuid") RETURNS "date"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-  select (now() at time zone coalesce(
-    (select p.timezone from public.profiles p where p.id = uid), 'UTC'))::date;
+  select (now() at time zone private.user_time_zone(uid))::date;
 $$;
 
 
@@ -1774,7 +1787,6 @@ declare
   anchor_day int;
   runs int;
   made int := 0;
-  gone uuid[];
 begin
   set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check,
     public.expenses_payers_sum_check, public.expense_payers_sum_check deferred;
@@ -1803,33 +1815,9 @@ begin
         continue;
       end if;
 
-      -- Someone in it left: pause it, say so in the group's activity, and tell whoever set it
-      -- up (or the owner and admins, if they left too) so they can take that person out.
+      -- Someone in it left and it was not paused then (a backstop): pause it now.
       if private.recurring_blocked(r) then
-        gone := private.recurring_departed(r);
-        update public.recurring_expenses x set active = false where x.id = r.id;
-        perform private.log_activity(r.group_id, null, 'recurring.paused', r.id, jsonb_build_object(
-          'description', r.description,
-          'reason', 'member_left',
-          'user_ids', to_jsonb(gone)
-        ));
-        perform private.notify(
-          array(
-            select m.user_id from public.group_members m
-            where m.group_id = r.group_id
-              and (m.user_id = r.created_by
-                   or (m.role in ('owner', 'admin')
-                       and not exists (select 1 from public.group_members c
-                                       where c.group_id = r.group_id and c.user_id = r.created_by)))
-          ),
-          'recurring.paused',
-          jsonb_build_object(
-            'recurring_id', r.id,
-            'group_id', r.group_id,
-            'description', r.description,
-            'user_ids', to_jsonb(gone)
-          )
-        );
+        perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
         continue;
       end if;
 
@@ -2298,6 +2286,130 @@ $$;
 ALTER FUNCTION "private"."pairwise_debts"("gid" "uuid") OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "description" "text" NOT NULL,
+    "amount_cents" bigint NOT NULL,
+    "currency" character(3) NOT NULL,
+    "paid_by" "uuid" NOT NULL,
+    "split_type" "public"."split_type" DEFAULT 'equal'::"public"."split_type" NOT NULL,
+    "category" "text",
+    "splits" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "recurrence" "public"."recurrence" NOT NULL,
+    "next_run_on" "date" NOT NULL,
+    "active" boolean DEFAULT true NOT NULL,
+    "created_by" "uuid" DEFAULT "auth"."uid"(),
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "payers" "jsonb",
+    "items" "jsonb",
+    "tax_cents" bigint,
+    "tip_cents" bigint,
+    "discount_cents" bigint,
+    "anchor_day" smallint,
+    "notes" "text",
+    CONSTRAINT "recurring_expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_anchor_day_check" CHECK ((("anchor_day" >= 1) AND ("anchor_day" <= 31))),
+    CONSTRAINT "recurring_expenses_category_check" CHECK (("char_length"("category") <= 40)),
+    CONSTRAINT "recurring_expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
+    CONSTRAINT "recurring_expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
+    CONSTRAINT "recurring_expenses_discount_cents_check" CHECK ((("discount_cents" >= 0) AND ("discount_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_items_check" CHECK ((("items" IS NULL) OR (("jsonb_typeof"("items") = 'array'::"text") AND (("jsonb_array_length"("items") >= 1) AND ("jsonb_array_length"("items") <= 200))))),
+    CONSTRAINT "recurring_expenses_notes_check" CHECK (("char_length"("notes") <= 2000)),
+    CONSTRAINT "recurring_expenses_payers_check" CHECK ((("payers" IS NULL) OR ("jsonb_typeof"("payers") = 'array'::"text"))),
+    CONSTRAINT "recurring_expenses_splits_check" CHECK (("jsonb_typeof"("splits") = 'array'::"text")),
+    CONSTRAINT "recurring_expenses_tax_cents_check" CHECK ((("tax_cents" >= 0) AND ("tax_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_tip_cents_check" CHECK ((("tip_cents" >= 0) AND ("tip_cents" <= '100000000000'::bigint)))
+);
+
+
+ALTER TABLE "public"."recurring_expenses" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."splits" IS 'Array of {user_id, share_cents?, weight?} in the create_expense payload format.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."payers" IS 'Several payers as [{user_id, paid_cents}]; null means paid_by paid it all.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."items" IS 'A by-item bill as entered: [{description, amount_cents, user_ids}], or null. splits then holds the shares worked out from it.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."anchor_day" IS 'Day of the month monthly and yearly templates repeat on (short months clamp to their last day). Kept when only the interval changes. Null: the day of the first posted expense.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."notes" IS 'Copied to every posted expense.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  update public.recurring_expenses x set active = false where x.id = r.id;
+  perform private.log_activity(r.group_id, null, 'recurring.paused', r.id, jsonb_build_object(
+    'description', r.description,
+    'reason', 'member_left',
+    'user_ids', to_jsonb(gone)
+  ));
+  perform private.notify(
+    array(
+      select m.user_id from public.group_members m
+      join public.profiles p on p.id = m.user_id and p.deleted_at is null
+      where m.group_id = r.group_id
+        and (m.user_id = r.created_by
+             or (m.role in ('owner', 'admin')
+                 and not exists (
+                   select 1 from public.group_members c
+                   join public.profiles cp on cp.id = c.user_id and cp.deleted_at is null
+                   where c.group_id = r.group_id and c.user_id = r.created_by)))
+    ),
+    'recurring.paused',
+    jsonb_build_object(
+      'recurring_id', r.id,
+      'group_id', r.group_id,
+      'description', r.description,
+      'user_ids', to_jsonb(gone)
+    )
+  );
+end;
+$$;
+
+
+ALTER FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid" DEFAULT NULL::"uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  r public.recurring_expenses;
+begin
+  for r in
+    select x.* from public.recurring_expenses x
+    join public.groups g on g.id = x.group_id and g.archived_at is null
+    where x.active
+      and (gid is null or x.group_id = gid)
+      and exists (select 1 from private.recurring_people(x) as people (u) where people.u = uid)
+    order by x.group_id, x.id
+    for update of x
+  loop
+    perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."payment_currency"("requested" "text", "group_currency" "text") RETURNS "text"
     LANGUAGE "plpgsql" IMMUTABLE
     SET "search_path" TO ''
@@ -2466,72 +2578,6 @@ $$;
 
 
 ALTER FUNCTION "private"."recovery_code_hash"("code" "text") OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "group_id" "uuid" NOT NULL,
-    "description" "text" NOT NULL,
-    "amount_cents" bigint NOT NULL,
-    "currency" character(3) NOT NULL,
-    "paid_by" "uuid" NOT NULL,
-    "split_type" "public"."split_type" DEFAULT 'equal'::"public"."split_type" NOT NULL,
-    "category" "text",
-    "splits" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "recurrence" "public"."recurrence" NOT NULL,
-    "next_run_on" "date" NOT NULL,
-    "active" boolean DEFAULT true NOT NULL,
-    "created_by" "uuid" DEFAULT "auth"."uid"(),
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "payers" "jsonb",
-    "items" "jsonb",
-    "tax_cents" bigint,
-    "tip_cents" bigint,
-    "discount_cents" bigint,
-    "anchor_day" smallint,
-    "remind" boolean DEFAULT true NOT NULL,
-    "notes" "text",
-    CONSTRAINT "recurring_expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
-    CONSTRAINT "recurring_expenses_anchor_day_check" CHECK ((("anchor_day" >= 1) AND ("anchor_day" <= 31))),
-    CONSTRAINT "recurring_expenses_category_check" CHECK (("char_length"("category") <= 40)),
-    CONSTRAINT "recurring_expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
-    CONSTRAINT "recurring_expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
-    CONSTRAINT "recurring_expenses_discount_cents_check" CHECK ((("discount_cents" >= 0) AND ("discount_cents" <= '100000000000'::bigint))),
-    CONSTRAINT "recurring_expenses_items_check" CHECK ((("items" IS NULL) OR (("jsonb_typeof"("items") = 'array'::"text") AND (("jsonb_array_length"("items") >= 1) AND ("jsonb_array_length"("items") <= 200))))),
-    CONSTRAINT "recurring_expenses_notes_check" CHECK (("char_length"("notes") <= 2000)),
-    CONSTRAINT "recurring_expenses_payers_check" CHECK ((("payers" IS NULL) OR ("jsonb_typeof"("payers") = 'array'::"text"))),
-    CONSTRAINT "recurring_expenses_splits_check" CHECK (("jsonb_typeof"("splits") = 'array'::"text")),
-    CONSTRAINT "recurring_expenses_tax_cents_check" CHECK ((("tax_cents" >= 0) AND ("tax_cents" <= '100000000000'::bigint))),
-    CONSTRAINT "recurring_expenses_tip_cents_check" CHECK ((("tip_cents" >= 0) AND ("tip_cents" <= '100000000000'::bigint)))
-);
-
-
-ALTER TABLE "public"."recurring_expenses" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."splits" IS 'Array of {user_id, share_cents?, weight?} in the create_expense payload format.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."payers" IS 'Several payers as [{user_id, paid_cents}]; null means paid_by paid it all.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."items" IS 'A by-item bill as entered: [{description, amount_cents, user_ids}], or null. splits then holds the shares worked out from it.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."anchor_day" IS 'Day of the month monthly and yearly templates repeat on (short months clamp to their last day). Kept when only the interval changes. Null: the day of the first posted expense.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."remind" IS 'Whether the people in it get a recurring.upcoming heads-up before it posts.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."notes" IS 'Copied to every posted expense.';
-
 
 
 CREATE OR REPLACE FUNCTION "private"."recurring_anchor_day"("r" "public"."recurring_expenses") RETURNS integer
@@ -3612,7 +3658,7 @@ begin
   for r in
     select x.* from public.recurring_expenses x
     join public.groups g on g.id = x.group_id
-    where x.active and x.remind
+    where x.active
       -- UTC+14 is 38 hours ahead of the post at the earliest; nothing earlier can be due.
       and x.next_run_on between today and today + 2
       and g.archived_at is null
@@ -3634,13 +3680,13 @@ begin
           from jsonb_array_elements(coalesce(r.payers,
             jsonb_build_array(jsonb_build_object('user_id', r.paid_by, 'paid_cents', r.amount_cents)))) e
         )
-        select u.user_id, coalesce(s.share_cents, 0) as share_cents, coalesce(pd.paid_cents, 0) as paid_cents,
-               coalesce(p.timezone, 'UTC') as tz
+        select u.user_id, coalesce(s.share_cents, 0) as share_cents, coalesce(pd.paid_cents, 0) as paid_cents, z.tz
         from (select x.user_id from shares x where x.share_cents > 0 union select y.user_id from paid y) u
         join public.profiles p on p.id = u.user_id and p.deleted_at is null
+        cross join lateral (select private.user_time_zone(u.user_id) as tz) z
         left join shares s on s.user_id = u.user_id
         left join paid pd on pd.user_id = u.user_id
-        where ((r.next_run_on - 1)::timestamp + interval '9 hours') at time zone coalesce(p.timezone, 'UTC') <= run_at
+        where ((r.next_run_on - 1)::timestamp + interval '9 hours') at time zone z.tz <= run_at
           and not exists (
             select 1 from private.recurring_heads_ups h
             where h.recurring_id = r.id and h.posts_on = r.next_run_on and h.user_id = u.user_id
@@ -3893,6 +3939,19 @@ $$;
 
 
 ALTER FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."user_time_zone"("uid" "uuid") RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(
+    (select p.timezone from public.profiles p where p.id = uid and private.is_time_zone(p.timezone)),
+    'UTC');
+$$;
+
+
+ALTER FUNCTION "private"."user_time_zone"("uid" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."utc_today"() RETURNS "date"
@@ -4451,11 +4510,6 @@ begin
     end if;
   end loop;
 
-  update public.recurring_expenses r set active = false
-  where r.active
-    and private.group_is_open(r.group_id)
-    and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
-
   delete from public.group_members m
   where m.user_id = uid
     and private.member_balance(m.group_id, uid) = 0;
@@ -4480,6 +4534,8 @@ begin
     locale = 'en',
     deleted_at = now()
   where p.id = uid;
+
+  perform private.pause_recurring_naming(uid);
 end;
 $$;
 
@@ -6124,7 +6180,6 @@ declare
   v_split_type public.split_type;
   v_recurrence public.recurrence;
   v_next date;
-  v_remind boolean;
   v_refund boolean;
   v_category text;
   v_notes text;
@@ -6164,7 +6219,6 @@ begin
     v_split_type := coalesce((p ->> 'split_type')::public.split_type, r.split_type);
     v_recurrence := coalesce((p ->> 'recurrence')::public.recurrence, r.recurrence);
     v_next := coalesce((p ->> 'next_run_on')::date, r.next_run_on);
-    v_remind := coalesce((p ->> 'remind')::boolean, r.remind);
     v_refund := coalesce((p ->> 'is_refund')::boolean, false);
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
@@ -6340,8 +6394,7 @@ begin
         then extract(day from v_next)::smallint
       else private.recurring_anchor_day(r)::smallint
     end,
-    notes = v_notes,
-    remind = v_remind
+    notes = v_notes
   where x.id = r.id
   returning * into result;
 
@@ -7590,6 +7643,10 @@ CREATE CONSTRAINT TRIGGER "group_members_owner_check" AFTER INSERT OR DELETE OR 
 
 
 
+CREATE OR REPLACE TRIGGER "group_members_pause_recurring" AFTER DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_pause_recurring"();
+
+
+
 CREATE OR REPLACE TRIGGER "group_members_track_former" AFTER INSERT OR DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."track_former_members"();
 
 
@@ -8488,6 +8545,10 @@ REVOKE ALL ON FUNCTION "private"."group_members_notify_added"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."group_members_pause_recurring"() FROM PUBLIC;
+
+
+
 GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "service_role";
 
@@ -8656,6 +8717,23 @@ REVOKE ALL ON FUNCTION "private"."pairwise_debts"("gid" "uuid") FROM PUBLIC;
 
 
 
+GRANT ALL ON TABLE "public"."recurring_expenses" TO "service_role";
+GRANT SELECT,DELETE ON TABLE "public"."recurring_expenses" TO "authenticated";
+
+
+
+GRANT UPDATE("active") ON TABLE "public"."recurring_expenses" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."payment_fx"("cur" "text", "group_currency" "text", "on_day" "date") FROM PUBLIC;
 
 
@@ -8669,27 +8747,6 @@ REVOKE ALL ON FUNCTION "private"."queue_email"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."recovery_code_hash"("code" "text") FROM PUBLIC;
-
-
-
-GRANT ALL ON TABLE "public"."recurring_expenses" TO "service_role";
-GRANT SELECT,DELETE ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("description") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("category") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("next_run_on") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("active") ON TABLE "public"."recurring_expenses" TO "authenticated";
 
 
 
@@ -8797,6 +8854,10 @@ GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "service_role";
 
 
 REVOKE ALL ON FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."user_time_zone"("uid" "uuid") FROM PUBLIC;
 
 
 

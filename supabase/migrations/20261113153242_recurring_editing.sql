@@ -25,6 +25,10 @@
 --   private.recurring_next_from(start, kind, anchor, not_before)  same rule as core firstOccurrenceFrom
 --   private.normalized_items(items)                 a by-item bill as stored on a template
 --   trigger recurring_expenses_require_members      a template naming someone who left cannot resume
+--   trigger group_members_pause_recurring           leaving or being removed pauses the templates
+--                                                   naming that person (pause_recurring_naming)
+--   private.pause_recurring_for_departed(r, gone)   pause, log recurring.paused, tell the creator
+--   private.user_time_zone(uid)                     profiles.timezone when valid, otherwise UTC
 --   policies "involved or admin" for update and delete, replacing "creator or admin"
 --
 -- Redefined (bodies as in supabase/schema/current.sql, i.e. 20261113091955_expense_entry.sql and
@@ -37,8 +41,14 @@
 --   private.route_notification       a notification marked quiet (data.quiet) stays in the inbox
 --                                    (body as in 20261113062656_notification_prefs_and_email.sql)
 --   private.materialize_recurring_expenses  the people check moved to recurring_blocked, and a
---                                    template it pauses for that is logged (recurring.paused) and its
---                                    creator told; posted copies carry items, tax, tip, discount, notes
+--                                    template it pauses for that (a backstop) goes through
+--                                    pause_recurring_for_departed; posted copies carry items, tax,
+--                                    tip, discount, notes
+--   public.delete_my_account         (20261106010000_integrity_fixes.sql) pauses through
+--                                    pause_recurring_naming instead of silently
+--
+-- Edits go through update_recurring_expense: the direct column grants on description, category
+-- and next_run_on are revoked (only active stays, for pause and resume).
 
 -- Template columns -------------------------------------------------------------------------------
 
@@ -49,15 +59,12 @@ alter table public.recurring_expenses
   add column tip_cents bigint check (tip_cents >= 0 and tip_cents <= 100000000000),
   add column discount_cents bigint check (discount_cents >= 0 and discount_cents <= 100000000000),
   add column anchor_day smallint check (anchor_day between 1 and 31),
-  add column remind boolean not null default true,
   add column notes text check (char_length(notes) <= 2000);
 
 comment on column public.recurring_expenses.items is
   'A by-item bill as entered: [{description, amount_cents, user_ids}], or null. splits then holds the shares worked out from it.';
 comment on column public.recurring_expenses.anchor_day is
   'Day of the month monthly and yearly templates repeat on (short months clamp to their last day). Kept when only the interval changes. Null: the day of the first posted expense.';
-comment on column public.recurring_expenses.remind is
-  'Whether the people in it get a recurring.upcoming heads-up before it posts.';
 comment on column public.recurring_expenses.notes is
   'Copied to every posted expense.';
 
@@ -74,7 +81,21 @@ alter table private.recurring_heads_ups enable row level security;
 revoke all on table private.recurring_heads_ups from public, anon, authenticated;
 grant all on table private.recurring_heads_ups to service_role;
 
--- The calendar day it is for someone, in their own zone (UTC when unknown).
+-- Someone's own time zone: profiles.timezone when Postgres knows it, otherwise UTC (the app
+-- stores whatever zone the device reports).
+create or replace function private.user_time_zone(uid uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    (select p.timezone from public.profiles p where p.id = uid and private.is_time_zone(p.timezone)),
+    'UTC');
+$$;
+
+-- The calendar day it is for someone, in their own zone.
 create or replace function private.local_today(uid uuid)
 returns date
 language sql
@@ -82,8 +103,7 @@ stable
 security definer
 set search_path = ''
 as $$
-  select (now() at time zone coalesce(
-    (select p.timezone from public.profiles p where p.id = uid), 'UTC'))::date;
+  select (now() at time zone private.user_time_zone(uid))::date;
 $$;
 
 -- Whether someone is in a template: set it up, pays it, or has a place in its split. Used by the
@@ -251,6 +271,88 @@ as $$
   select cardinality(private.recurring_departed(r)) > 0
     or exists (select 1 from private.recurring_people(r) as people (u) where people.u is null);
 $$;
+
+-- Pauses a template that names someone who left, says so in the group's activity and tells
+-- whoever set it up (or the owner and admins, if they are gone too) so they can take that person
+-- out. `gone` is who left, for the copy.
+create or replace function private.pause_recurring_for_departed(r public.recurring_expenses, gone uuid[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.recurring_expenses x set active = false where x.id = r.id;
+  perform private.log_activity(r.group_id, null, 'recurring.paused', r.id, jsonb_build_object(
+    'description', r.description,
+    'reason', 'member_left',
+    'user_ids', to_jsonb(gone)
+  ));
+  perform private.notify(
+    array(
+      select m.user_id from public.group_members m
+      join public.profiles p on p.id = m.user_id and p.deleted_at is null
+      where m.group_id = r.group_id
+        and (m.user_id = r.created_by
+             or (m.role in ('owner', 'admin')
+                 and not exists (
+                   select 1 from public.group_members c
+                   join public.profiles cp on cp.id = c.user_id and cp.deleted_at is null
+                   where c.group_id = r.group_id and c.user_id = r.created_by)))
+    ),
+    'recurring.paused',
+    jsonb_build_object(
+      'recurring_id', r.id,
+      'group_id', r.group_id,
+      'description', r.description,
+      'user_ids', to_jsonb(gone)
+    )
+  );
+end;
+$$;
+
+-- Someone left a group (gid) or closed their account (gid null): every running template in an
+-- open group that names them pauses now, not on its next due date.
+create or replace function private.pause_recurring_naming(uid uuid, gid uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  r public.recurring_expenses;
+begin
+  for r in
+    select x.* from public.recurring_expenses x
+    join public.groups g on g.id = x.group_id and g.archived_at is null
+    where x.active
+      and (gid is null or x.group_id = gid)
+      and exists (select 1 from private.recurring_people(x) as people (u) where people.u = uid)
+    order by x.group_id, x.id
+    for update of x
+  loop
+    perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
+  end loop;
+end;
+$$;
+
+-- Leaving, being removed and closing an account all delete the membership row.
+create or replace function private.group_members_pause_recurring()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.pause_recurring_naming(old.user_id, old.group_id);
+  return null;
+end;
+$$;
+
+create trigger group_members_pause_recurring
+after delete on public.group_members
+for each row
+execute function private.group_members_pause_recurring();
 
 -- A by-item bill as a template stores it, in the order entered. Items are validated by
 -- private.itemized_splits before this runs.
@@ -800,7 +902,8 @@ $_$;
 
 
 -- private.materialize_recurring_expenses: body as in 20261113091955_expense_entry.sql; the people
--- check is private.recurring_blocked and posted copies carry the template's items.
+-- check is private.recurring_blocked (pausing through private.pause_recurring_for_departed) and
+-- posted copies carry the template's items.
 
 CREATE OR REPLACE FUNCTION "private"."materialize_recurring_expenses"("run_on" "date" DEFAULT CURRENT_DATE) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -817,7 +920,6 @@ declare
   anchor_day int;
   runs int;
   made int := 0;
-  gone uuid[];
 begin
   set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check,
     public.expenses_payers_sum_check, public.expense_payers_sum_check deferred;
@@ -846,33 +948,9 @@ begin
         continue;
       end if;
 
-      -- Someone in it left: pause it, say so in the group's activity, and tell whoever set it
-      -- up (or the owner and admins, if they left too) so they can take that person out.
+      -- Someone in it left and it was not paused then (a backstop): pause it now.
       if private.recurring_blocked(r) then
-        gone := private.recurring_departed(r);
-        update public.recurring_expenses x set active = false where x.id = r.id;
-        perform private.log_activity(r.group_id, null, 'recurring.paused', r.id, jsonb_build_object(
-          'description', r.description,
-          'reason', 'member_left',
-          'user_ids', to_jsonb(gone)
-        ));
-        perform private.notify(
-          array(
-            select m.user_id from public.group_members m
-            where m.group_id = r.group_id
-              and (m.user_id = r.created_by
-                   or (m.role in ('owner', 'admin')
-                       and not exists (select 1 from public.group_members c
-                                       where c.group_id = r.group_id and c.user_id = r.created_by)))
-          ),
-          'recurring.paused',
-          jsonb_build_object(
-            'recurring_id', r.id,
-            'group_id', r.group_id,
-            'description', r.description,
-            'user_ids', to_jsonb(gone)
-          )
-        );
+        perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
         continue;
       end if;
 
@@ -932,11 +1010,90 @@ end;
 $$;
 
 
+-- public.delete_my_account: body as in 20261106010000_integrity_fixes.sql, except that templates
+-- naming the closed account are paused at the end through private.pause_recurring_naming (logged,
+-- whoever set them up told) instead of silently up front. Groups it leaves outright are handled by
+-- the group_members_pause_recurring trigger.
+
+CREATE OR REPLACE FUNCTION "public"."delete_my_account"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := auth.uid();
+  owned record;
+  heir uuid;
+begin
+  if uid is null then
+    raise exception using message = 'not_authenticated', detail = 'You need to be signed in', errcode = '42501';
+  end if;
+
+  if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is not null) then
+    return;
+  end if;
+
+  perform 1 from public.groups g
+  where g.id in (select m.group_id from public.group_members m where m.user_id = uid)
+  order by g.id
+  for no key update;
+
+  for owned in
+    select m.group_id from public.group_members m where m.user_id = uid and m.role = 'owner'
+  loop
+    select m.user_id into heir
+    from public.group_members m
+    join public.profiles p on p.id = m.user_id
+    where m.group_id = owned.group_id and m.user_id <> uid and p.deleted_at is null
+    order by (m.role = 'admin') desc, m.joined_at, m.user_id
+    limit 1;
+
+    if heir is null then
+      perform set_config('potluck.closing_account', 'on', true);
+      delete from public.groups g where g.id = owned.group_id;
+      perform set_config('potluck.closing_account', '', true);
+    else
+      update public.group_members m set role = 'member'
+      where m.group_id = owned.group_id and m.user_id = uid;
+      update public.group_members m set role = 'owner'
+      where m.group_id = owned.group_id and m.user_id = heir;
+    end if;
+  end loop;
+
+  delete from public.group_members m
+  where m.user_id = uid
+    and private.member_balance(m.group_id, uid) = 0;
+
+  delete from public.push_tokens t where t.user_id = uid;
+  delete from public.calendar_connections c where c.user_id = uid;
+  delete from public.busy_blocks b where b.user_id = uid;
+  delete from public.notifications n where n.user_id = uid;
+  delete from public.availability a where a.user_id = uid;
+  delete from public.availability_requests r where r.user_id = uid;
+  delete from public.event_rsvps r where r.user_id = uid;
+  delete from public.friendships f where f.user_id = uid or f.friend_id = uid;
+  delete from public.blocks b where b.blocker_id = uid or b.blocked_id = uid;
+
+  update public.group_invites i set revoked_at = now()
+  where i.created_by = uid and i.revoked_at is null;
+
+  update public.profiles p set
+    display_name = 'Former member',
+    avatar_path = null,
+    timezone = 'UTC',
+    locale = 'en',
+    deleted_at = now()
+  where p.id = uid;
+
+  perform private.pause_recurring_naming(uid);
+end;
+$$;
+
+
 -- Editing a template --------------------------------------------------------------------------------
 
 -- Same payload as create_expense_v2 / update_expense_v2 (description, amount_cents, currency,
 -- paid_by, payers, split_type, splits, items, tax_cents, tip_cents, discount_cents, category)
--- plus notes, recurrence, next_run_on and remind. Missing keys keep the stored value. Expenses
+-- plus notes, recurrence and next_run_on. Missing keys keep the stored value. Expenses
 -- that already posted never change. An admin or anyone it involves may edit (as for expenses).
 create or replace function public.update_recurring_expense(id uuid, payload jsonb)
 returns public.recurring_expenses
@@ -960,7 +1117,6 @@ declare
   v_split_type public.split_type;
   v_recurrence public.recurrence;
   v_next date;
-  v_remind boolean;
   v_refund boolean;
   v_category text;
   v_notes text;
@@ -1000,7 +1156,6 @@ begin
     v_split_type := coalesce((p ->> 'split_type')::public.split_type, r.split_type);
     v_recurrence := coalesce((p ->> 'recurrence')::public.recurrence, r.recurrence);
     v_next := coalesce((p ->> 'next_run_on')::date, r.next_run_on);
-    v_remind := coalesce((p ->> 'remind')::boolean, r.remind);
     v_refund := coalesce((p ->> 'is_refund')::boolean, false);
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
@@ -1176,8 +1331,7 @@ begin
         then extract(day from v_next)::smallint
       else private.recurring_anchor_day(r)::smallint
     end,
-    notes = v_notes,
-    remind = v_remind
+    notes = v_notes
   where x.id = r.id
   returning * into result;
 
@@ -1367,15 +1521,15 @@ $$;
 
 -- Before a template posts, everyone it names (payers and people with a share) gets one
 -- recurring.upcoming notification with their own share. It is due at 09:00 on that person's
--- local day before the posting date (profiles.timezone, UTC when unknown), or, when that moment
+-- local day before the posting date (private.user_time_zone), or, when that moment
 -- has passed (the template was set up or moved late), on the next run, but never once the
 -- copy has posted (00:10 UTC on the posting date). The payload carries the posting date, that
 -- deadline and the person's zone, so every channel can say both in their own time. A late one
 -- that would land between 22:00 and 07:00 their time is marked quiet: inbox only, no push or
 -- email (private.route_notification).
 -- private.recurring_heads_ups remembers who heard about which date, so the job never repeats
--- itself. Paused templates, templates with the heads-up off, archived groups and templates naming
--- someone who left are skipped. Runs from cron 'recurring-heads-up' (:05 and :35 every hour).
+-- itself. Paused templates, archived groups and templates naming someone who left are skipped.
+-- Each person turns heads-ups off with their own Reminders setting. Runs from cron 'recurring-heads-up' (:05 and :35 every hour).
 create or replace function private.send_recurring_heads_ups(run_at timestamptz default now())
 returns int
 language plpgsql
@@ -1392,7 +1546,7 @@ begin
   for r in
     select x.* from public.recurring_expenses x
     join public.groups g on g.id = x.group_id
-    where x.active and x.remind
+    where x.active
       -- UTC+14 is 38 hours ahead of the post at the earliest; nothing earlier can be due.
       and x.next_run_on between today and today + 2
       and g.archived_at is null
@@ -1414,13 +1568,13 @@ begin
           from jsonb_array_elements(coalesce(r.payers,
             jsonb_build_array(jsonb_build_object('user_id', r.paid_by, 'paid_cents', r.amount_cents)))) e
         )
-        select u.user_id, coalesce(s.share_cents, 0) as share_cents, coalesce(pd.paid_cents, 0) as paid_cents,
-               coalesce(p.timezone, 'UTC') as tz
+        select u.user_id, coalesce(s.share_cents, 0) as share_cents, coalesce(pd.paid_cents, 0) as paid_cents, z.tz
         from (select x.user_id from shares x where x.share_cents > 0 union select y.user_id from paid y) u
         join public.profiles p on p.id = u.user_id and p.deleted_at is null
+        cross join lateral (select private.user_time_zone(u.user_id) as tz) z
         left join shares s on s.user_id = u.user_id
         left join paid pd on pd.user_id = u.user_id
-        where ((r.next_run_on - 1)::timestamp + interval '9 hours') at time zone coalesce(p.timezone, 'UTC') <= run_at
+        where ((r.next_run_on - 1)::timestamp + interval '9 hours') at time zone z.tz <= run_at
           and not exists (
             select 1 from private.recurring_heads_ups h
             where h.recurring_id = r.id and h.posts_on = r.next_run_on and h.user_id = u.user_id
@@ -1498,12 +1652,19 @@ revoke execute on function
   private.recurring_departed(public.recurring_expenses),
   private.recurring_blocked(public.recurring_expenses),
   private.local_today(uuid),
+  private.user_time_zone(uuid),
+  private.pause_recurring_for_departed(public.recurring_expenses, uuid[]),
+  private.pause_recurring_naming(uuid, uuid),
+  private.group_members_pause_recurring(),
   private.normalized_items(jsonb),
   private.recurring_require_members(),
   private.send_recurring_heads_ups(timestamptz),
   private.materialize_recurring_expenses(date),
   private.save_expense(uuid, jsonb)
 from public, anon, authenticated;
+
+-- Edits go through update_recurring_expense; pause and resume stay a direct update of active.
+revoke update (description, category, next_run_on) on public.recurring_expenses from authenticated;
 
 -- The update and delete policies call this one.
 revoke execute on function private.recurring_involves(uuid, uuid, jsonb, jsonb, uuid) from public, anon;

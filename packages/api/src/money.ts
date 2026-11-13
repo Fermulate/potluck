@@ -207,8 +207,6 @@ export type RecurringUpdate = Partial<
   recurrence?: RecurrenceValue
   /** The next date it posts, today or later. */
   next_run_on?: string
-  /** A heads-up the day before it posts. */
-  remind?: boolean
 }
 
 export interface SettleUpInput {

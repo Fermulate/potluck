@@ -59,7 +59,6 @@ describe('ExpenseForm for a repeating expense', () => {
     expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('1500')
     expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Rent')
     expect(screen.getByLabelText(t('expenses.recurring.nextLabel'))).toHaveValue('2099-12-01')
-    expect(screen.getByRole('switch', { name: t('expenses.recurring.remindLabel') })).toBeChecked()
     expect(screen.getByText(t('expenses.recurring.futureOnly'))).toBeVisible()
     expect(screen.getByText('actions here')).toBeVisible()
     // An expense's extras do not apply to a schedule.
@@ -85,7 +84,6 @@ describe('ExpenseForm for a repeating expense', () => {
       paid_by: ME,
       payers: [{ user_id: ME, paid_cents: 160000 }],
       recurrence: 'monthly',
-      remind: true,
       notes: null,
       split_type: 'equal',
       splits: [{ user_id: ME }, { user_id: BEN }, { user_id: CLEO }],
@@ -96,17 +94,15 @@ describe('ExpenseForm for a repeating expense', () => {
     expect(onDone).toHaveBeenCalledWith('r1')
   })
 
-  it('sends a new schedule, a new date and the heads-up switch', async () => {
+  it('sends a new date', async () => {
     open()
     fireEvent.change(screen.getByLabelText(t('expenses.recurring.nextLabel')), {
       target: { value: '2099-12-05' },
     })
-    fireEvent.click(screen.getByRole('switch', { name: t('expenses.recurring.remindLabel') }))
     save()
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1))
     expect(update.mock.calls[0]![2]).toMatchObject({
       next_run_on: '2099-12-05',
-      remind: false,
     })
   })
 

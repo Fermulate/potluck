@@ -1,9 +1,10 @@
 -- Repeating expenses you can change (ADR 14): every 2 weeks, editing a template's amount, payers
 -- and split (future expenses only), making an existing expense repeat, skipping one, the heads-up
--- the day before, and the departed member and archived group rules for each.
+-- the day before, pausing when someone in it leaves, and the departed member and archived group
+-- rules for each.
 -- Schedule cases match packages/core/src/recurrence/recurrence.test.ts.
 begin;
-select plan(95);
+select plan(103);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -13,10 +14,13 @@ select tests.create_user('ben');
 select tests.create_user('cleo');
 select tests.create_user('dan');
 select tests.create_user('eve');
+select tests.create_user('fay');
+select tests.create_user('gus');
+select tests.create_user('hal');
 select tests.create_user('outsider');
 
 select tests.remember('g', tests.group_with('ava', array['ben', 'cleo', 'eve'], array['dan'], 'Flat', 'USD'));
-select tests.remember('h', tests.group_with('ava', array['ben'], '{}', 'Old flat', 'USD'));
+select tests.remember('h', tests.group_with('ava', array['ben', 'fay', 'gus', 'hal'], '{}', 'Old flat', 'USD'));
 select tests.remember('arch', tests.group_with('ava', array['ben'], '{}', 'Shelved', 'USD'));
 
 create function pg_temp.payer(handle text, cents bigint) returns jsonb language sql as $$
@@ -127,6 +131,10 @@ select throws_ok($$ select pg_temp.edit('rent', '{"amount_cents": 170000}') $$,
   '22023', 'payers_sum_mismatch', 'a new amount needs new payer amounts once several people pay');
 select throws_ok(format($$ select pg_temp.edit('rent', %L) $$, jsonb_build_object('next_run_on', current_date - 1)),
   '22023', 'invalid_next_run', 'the next date cannot be in the past');
+select tests.login('ben');
+select throws_ok($$ update public.recurring_expenses set next_run_on = current_date - 60 where id = tests.id('rent') $$,
+  '42501', null, 'nor backdated with a direct update, which would post the missed copies');
+select tests.login('ava');
 select throws_ok(format($$ select pg_temp.edit('rent', %L) $$, jsonb_build_object(
   'split_type', 'equal', 'splits', tests.people('ava', 'outsider'))),
   '23514', 'split_member_not_in_group', 'everyone in the split must be in the group');
@@ -201,6 +209,9 @@ select throws_ok(format($$ select pg_temp.edit('rent', %L) $$,
   jsonb_build_object('next_run_on', (now() at time zone 'Pacific/Kiritimati')::date - 1)),
   '22023', 'invalid_next_run', 'but not their yesterday');
 reset role;
+update public.profiles set timezone = 'Mars/Olympus_Mons' where id = tests.uid('ava');
+select is(private.local_today(tests.uid('ava')), (now() at time zone 'UTC')::date,
+  'a zone Postgres does not know counts as UTC');
 update public.profiles set timezone = 'UTC' where id = tests.uid('ava');
 select tests.login('ava');
 
@@ -216,10 +227,7 @@ select tests.remember('pizza', (select id from create_expense_v2(jsonb_build_obj
   'group_id', tests.id('h'), 'description', 'Pizza', 'amount_cents', 3000, 'splits', tests.people('ava', 'ben')))));
 reset role;
 delete from public.group_members where group_id = tests.id('h') and user_id = tests.uid('ben');
-update public.recurring_expenses set active = false where id = tests.id('internet');
-select set_config('request.jwt.claims', '', true);
-select private.materialize_recurring_expenses((pg_temp.tpl('water_h')).next_run_on);
-select is((pg_temp.tpl('water_h')).active, false, 'the job pauses a template naming someone who left');
+select is((pg_temp.tpl('water_h')).active, false, 'a template naming someone who leaves pauses right away');
 select ok(
   exists (select 1 from public.activity a where a.verb = 'recurring.paused' and a.subject_id = tests.id('water_h')
           and a.actor_id is null and a.data -> 'user_ids' ? tests.uid('ben')::text),
@@ -245,6 +253,40 @@ select lives_ok($$ update public.recurring_expenses set active = true where id =
   'and then it can resume');
 select throws_ok($$ select public.make_expense_recurring(tests.id('pizza'), 'monthly') $$,
   '23514', 'split_member_not_in_group', 'an expense naming someone who left cannot start repeating');
+
+create function pg_temp.paused_for(key text) returns text language sql as $$
+  select ((select active from public.recurring_expenses where id = tests.id(key)),
+          (select array_agg(n.user_id) from public.notifications n
+           where n.type = 'recurring.paused' and n.data ->> 'recurring_id' = tests.id(key)::text))::text
+$$;
+
+-- Gus pays his own gym, so he is settled up and may leave.
+select tests.remember('gus_t', (select recurring_id from create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('h'), 'description', 'Gym', 'amount_cents', 1000, 'recurrence', 'monthly',
+  'paid_by', tests.uid('gus'), 'splits', tests.people('gus')))));
+select tests.remember('fay_t', (select recurring_id from create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('h'), 'description', 'Phone', 'amount_cents', 2000, 'recurrence', 'monthly',
+  'splits', tests.people('ava', 'fay')))));
+select tests.remember('hal_t', (select recurring_id from create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('h'), 'description', 'Parking', 'amount_cents', 3000, 'recurrence', 'monthly',
+  'splits', tests.people('ava', 'hal')))));
+select tests.login('gus');
+select lives_ok($$ select public.leave_group(tests.id('h')) $$, 'someone settled up leaves the group');
+reset role;
+select is(pg_temp.paused_for('gus_t'), (false, array[tests.uid('ava')])::text,
+  'a template they pay pauses as they leave, and whoever set it up hears');
+select tests.login('fay');
+select lives_ok($$ select public.delete_my_account() $$, 'someone who still owes closes their account');
+reset role;
+select is(pg_temp.paused_for('fay_t'), (false, array[tests.uid('ava')])::text,
+  'their templates pause too, and whoever set them up hears');
+-- Gone some other way: the job still catches it on its date.
+update public.profiles set deleted_at = now() where id = tests.uid('hal');
+select set_config('request.jwt.claims', '', true);
+select private.materialize_recurring_expenses((pg_temp.tpl('hal_t')).next_run_on);
+select is(pg_temp.paused_for('hal_t'), (false, array[tests.uid('ava')])::text,
+  'the job pauses one still naming someone gone, and says so');
+select tests.login('ava');
 
 -- Archived groups -------------------------------------------------------------------------------
 
@@ -373,10 +415,6 @@ select is(
 select tests.remember('water', (select recurring_id from create_expense_v2(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Water', 'amount_cents', 9000, 'recurrence', 'monthly',
   'splits', tests.people('ava', 'ben', 'cleo')))));
-select tests.remember('quiet', (select recurring_id from create_expense_v2(jsonb_build_object(
-  'group_id', tests.id('g'), 'description', 'Quiet', 'amount_cents', 9000, 'recurrence', 'monthly',
-  'splits', tests.people('ava', 'ben')))));
-select pg_temp.edit('quiet', '{"remind": false}');
 select tests.remember('paused', (select recurring_id from create_expense_v2(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Paused', 'amount_cents', 9000, 'recurrence', 'monthly',
   'splits', tests.people('ava', 'ben')))));
@@ -392,11 +430,12 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 update public.profiles set timezone = 'Pacific/Kiritimati' where id = tests.uid('ava');
 update public.profiles set timezone = 'Etc/GMT+12' where id = tests.uid('ben');
-update public.profiles set timezone = 'UTC' where id = tests.uid('cleo');
+-- A zone the device reported that Postgres does not know: treated as UTC, the template still goes out.
+update public.profiles set timezone = 'Mars/Olympus_Mons' where id = tests.uid('cleo');
 update public.profiles set timezone = 'Asia/Kolkata' where id = tests.uid('dan');
 update public.recurring_expenses set active = false where id = tests.id('paused');
 update public.recurring_expenses set next_run_on = '2030-01-10'
-where id in (tests.id('water'), tests.id('quiet'), tests.id('paused'), tests.id('arch_t'), tests.id('tea'));
+where id in (tests.id('water'), tests.id('paused'), tests.id('arch_t'), tests.id('tea'));
 
 create function pg_temp.heard(key text) returns text language sql as $$
   select coalesce(string_agg(u.email, ',' order by u.email), '')
@@ -411,7 +450,11 @@ select is(pg_temp.heard('water'), 'ava@test.local', 'that is Ava');
 select is(private.send_recurring_heads_ups('2030-01-09 03:05+00'), 0, 'a half-hour zone is not due at :05');
 select is(private.send_recurring_heads_ups('2030-01-09 03:35+00'), 1, 'it hears at the :35 run, about 09:05 their time');
 select is(pg_temp.heard('tea'), 'dan@test.local', 'that is Dan in India');
-select is(private.send_recurring_heads_ups('2030-01-09 09:00+00'), 1, 'UTC hears at 09:00 UTC');
+select is(private.send_recurring_heads_ups('2030-01-09 09:00+00'), 1, 'an unknown zone hears at 09:00 UTC');
+select is(
+  (select data ->> 'timezone' from public.notifications
+   where type = 'recurring.upcoming' and user_id = tests.uid('cleo') and data ->> 'recurring_id' = tests.id('water')::text),
+  'UTC', 'and is told in UTC');
 select is(private.send_recurring_heads_ups('2030-01-09 20:59+00'), 0, 'UTC-12 not yet');
 select is(private.send_recurring_heads_ups('2030-01-09 21:00+00'), 1, 'UTC-12 hears at 09:00 their time');
 select is(private.send_recurring_heads_ups('2030-01-09 23:00+00'), 0, 'a later run sends nothing new');
@@ -424,8 +467,8 @@ select is(
   (3000::bigint, '2030-01-10', '2030-01-10 00:10+00'::timestamptz, 'Etc/GMT+12')::text,
   'with their share, the posting date, the deadline and their zone'
 );
-select is(pg_temp.heard('quiet') || pg_temp.heard('paused') || pg_temp.heard('arch_t'), '',
-  'nothing for templates with the heads-up off, paused ones or archived groups');
+select is(pg_temp.heard('paused') || pg_temp.heard('arch_t'), '',
+  'nothing for paused templates or archived groups');
 
 -- Moved to D after everyone's 09:00 passed: told on the next run, but only before it posts.
 update public.recurring_expenses set next_run_on = '2030-01-10' where id = tests.id('late');

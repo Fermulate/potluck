@@ -133,7 +133,6 @@ describe('ExpensesTab', () => {
       next_run_on: '2026-12-05',
       anchor_day: 5,
       active: true,
-      remind: true,
       notes: null,
       created_by: ME,
       created_at: '2026-11-05T00:00:00Z',
