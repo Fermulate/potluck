@@ -70,7 +70,7 @@ select has_function('public', 'my_timeline', array['timestamp with time zone', '
 select has_function('public', 'delete_my_account', array[]::text[], 'delete_my_account');
 select has_function('public', 'delete_group', array['uuid'], 'delete_group');
 select has_function('public', 'my_notification_prefs', array[]::text[], 'my_notification_prefs');
-select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
+select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean', 'boolean'], 'set_notification_pref(category, push, email, inbox)');
 select has_function('public', 'email_unsubscribe', array['text', 'text'], 'email_unsubscribe(token, action)');
 select has_function('public', 'email_outbox_report', array['uuid', 'boolean', 'text', 'uuid[]'], 'email_outbox_report(batch, delivered, error, rejected)');
 select ok(

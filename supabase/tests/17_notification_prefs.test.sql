@@ -1,7 +1,7 @@
 -- Notification settings, routing to push and email, the email outbox, unsubscribe
 -- links, and the expense.deleted / expense.restored / member.added types.
 begin;
-select plan(67);
+select plan(72);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -264,6 +264,30 @@ select results_eq(
   'plans push but do not email by default'
 );
 
+-- An unreported batch keeps its id only if every one of its emails goes out again.
+reset role;
+insert into public.notifications (user_id, type, data) values
+  (tests.uid('ava'), 'comment.created', '{"excerpt": "one"}'),
+  (tests.uid('cleo'), 'comment.created', '{"excerpt": "two"}');
+update private.email_outbox set queued_at = now() - interval '2 minutes' where state = 'pending';
+select is(private.send_email_notifications(), 2, 'two comment emails go out together');
+select set_config('tests.pair', (select o.batch_id::text from private.email_outbox o
+  join public.notifications n on n.id = o.notification_id
+  where n.type = 'comment.created' and n.user_id = tests.uid('cleo')), true);
+update private.email_outbox set claimed_at = now() - interval '11 minutes'
+where batch_id = current_setting('tests.pair')::uuid;
+select tests.login('ava');
+select set_notification_pref('comments', email => false);
+reset role;
+select is(private.send_email_notifications(), 1, 'ava turned comment emails off before the retry');
+select results_eq(
+  $$ select o.state, o.batch_id = current_setting('tests.pair')::uuid from private.email_outbox o
+     join public.notifications n on n.id = o.notification_id
+     where n.type = 'comment.created' order by n.user_id = tests.uid('cleo') $$,
+  $$ values ('dropped', true), ('sending', false) $$,
+  'a batch with a different set of emails gets a new id, so a new idempotency key'
+);
+
 -- Stale rows are dropped, not sent late.
 update private.email_outbox set state = 'pending', handled_at = null, queued_at = now() - interval '2 days'
 where state in ('sent', 'sending');
@@ -281,7 +305,7 @@ select set_config('tests.cleo_all', private.unsubscribe_token(tests.uid('cleo'),
 select tests.login_anon();
 select is(
   email_unsubscribe(current_setting('tests.tok_pay'), 'preview'),
-  '{"category": "payments", "email": "a***@test.local", "subscribed": true}'::jsonb,
+  '{"category": "payments", "email": "a***@test.local", "subscribed": true, "restored": false}'::jsonb,
   'a preview names the setting and a masked address, signed out'
 );
 select tests.login('ava');
@@ -365,6 +389,21 @@ select is(
   (select count(*)::int from public.notification_prefs where user_id = tests.uid('cleo') and category = 'payments' and email is null),
   1,
   'a setting that was on its default goes back to the default'
+);
+select tests.login('cleo');
+select set_notification_pref('payments', email => false);
+select tests.login_anon();
+select is(
+  email_unsubscribe(current_setting('tests.cleo_all'), 'undo') ->> 'restored',
+  'false',
+  'undoing an all link with nothing saved changes nothing'
+);
+select tests.login('cleo');
+select results_eq(
+  $$ select category, email from my_notification_prefs()
+     where category in ('expense_added', 'payments', 'plans') order by category $$,
+  $$ values ('expense_added', false), ('payments', false), ('plans', true) $$,
+  'and does not reset anything to the defaults'
 );
 
 -- member.added
