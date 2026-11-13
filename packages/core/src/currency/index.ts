@@ -1,1 +1,8 @@
-export { convert, invertRate, minorUnits, parseAmount, type ConvertOptions } from './currency'
+export {
+  convert,
+  crossRate,
+  invertRate,
+  minorUnits,
+  parseAmount,
+  type ConvertOptions,
+} from './currency'
