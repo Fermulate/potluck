@@ -1,6 +1,6 @@
 # Backup and spreadsheet formats
 
-What Me, Your data downloads, and what the import screen reads. Decisions and trade-offs: [ADR 13](adr/0013-export-backup-and-import.md). The code that pins each format: core `backupSchema` (`packages/core/src/portability/backup.ts`), `ledgerCsv` / `parseLedger` (`ledger.ts`) and `parseSplitwise` (`splitwise.ts`).
+What Me, Your data downloads, and what the import screen reads. Decisions and trade-offs: [ADR 18](adr/0018-export-backup-and-import.md). The code that pins each format: core `backupSchema` (`packages/core/src/portability/backup.ts`), `ledgerCsv` / `parseLedger` (`ledger.ts`) and `parseSplitwise` (`splitwise.ts`).
 
 ## JSON backup (`potluck-backup`, version 1)
 
@@ -61,7 +61,7 @@ Formulas are neutralised: text that starts with `=`, `+`, `-`, `@`, tab or CR ge
 
 The import screen (group settings, Import) reads:
 
-- **A Potluck spreadsheet** (any language Potluck writes): each row comes back with its payers and shares, refunds as refunds and payments as payments. A file with several groups imports one group at a time. A friend export cannot be imported, since it leaves people out.
-- **A Splitwise export** ("Export as spreadsheet" on a Splitwise group or friend, in any language): Date, Description, Category, Cost, Currency, then one column per person with what the row did to them. Payments are rows with the category Payment. The "Total balance" lines are used to check the file. Who paid is rebuilt from those numbers (ADR 13), categories are mapped to Potluck's (Dining out to Food, Gas/fuel to Gas, and so on; anything else to Other).
+- **A Potluck spreadsheet** (any language Potluck writes): each row comes back with its payers and shares, refunds as refunds and payments as payments. Into a group with the same currency, rows in other currencies keep the Rate they were exported with, so the balances come back exactly even if stored rates change. A file with several groups imports one group at a time. A friend export cannot be imported, since it leaves people out.
+- **A Splitwise export** ("Export as spreadsheet" on a Splitwise group or friend, in any language): Date, Description, Category, Cost, Currency, then one column per person with what the row did to them. Payments are rows with the category Payment; a negative cost is a refund. The "Total balance" lines are used to check the file. Who paid is rebuilt from those numbers (ADR 18), categories are mapped to Potluck's (Dining out to Food, Gas/fuel to Gas, and so on; anything else to Other).
 
-Each person in the file is matched to a current member; the import writes nothing until every person with money in the file is matched, and then writes everything or nothing.
+Dates may be ISO (2026-03-01) or as a spreadsheet saves them (3/1/26, 01/03/2026); month first or day first is worked out from the file, shown, and can be switched. Each person in the file is matched to a member or left out (their rows stay out); someone who left the group cannot be given new rows. Rows in another currency need a rate: the file's, Potluck's stored rate for the day, or one typed in; otherwise they wait or are left out. Rows that look like ones already in the group, and a file imported before, are pointed out. Up to 5,000 rows go in as one import, all or nothing; a longer file (up to 50,000 rows) goes in as several imports of 5,000.

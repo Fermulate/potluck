@@ -89,7 +89,7 @@ There is no analytics or tracking code in the app.
 
 - **Push messages** go through the browser vendor's push service (Google, Mozilla, Apple). Web push payloads are encrypted for the subscribing browser, so the service cannot read the title and body, which may include an expense description or a comment.
 - **FX sync** sends nothing about users to Frankfurter. It requests public reference rates.
-- **Exports and backups** (Me, Your data; group settings) are built in the browser and saved to the person's device; nothing is sent elsewhere. `export_my_data()` returns only groups the caller is in now, with the names of everyone those groups mention, and the caller's own sign in email; anon cannot call it. Imports run as the importing member with every check `create_expense_v2` makes ([ADR 13](adr/0013-export-backup-and-import.md)).
+- **Exports and backups** (Me, Your data; group settings) are built in the browser and saved to the person's device; nothing is sent elsewhere. `export_my_data()` returns only groups the caller is in now, with the names of everyone those groups mention, and the caller's own sign in email; anon cannot call it. Imports run as the importing member with every check `create_expense_v2` makes ([ADR 18](adr/0018-export-backup-and-import.md)).
 - **Calendar feeds** contain event titles, descriptions, locations and group names for whoever has the URL.
 - **Auth emails** go out through Supabase's SMTP.
 - **Notification emails** (off until `app_config.email_notifications` is on) go through the configured provider (Resend). They carry the recipient's address, names, amounts and comment excerpts, so the provider can read them. That includes invites to people who are not on Potluck yet, sent to the address a group mate typed in.
