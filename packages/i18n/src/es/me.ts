@@ -18,9 +18,27 @@ export const notifications = {
   earlier: 'Anteriores',
   new: 'Nuevas',
   types: {
+    account: {
+      mfaRemoved: {
+        title: 'El inicio de sesión en dos pasos está desactivado',
+        body: 'Alguien entró con un código de recuperación. Si no fuiste tú, cambia tu contraseña ya.',
+      },
+    },
+    summary: {
+      monthly: { title: 'Tu mes en Potluck', settled: 'Todo saldado. Bien hecho.' },
+      owed: '{group}: te deben {amount}',
+      owe: '{group}: debes {amount}',
+      more_one: 'y {count} grupo más',
+      more_other: 'y {count} grupos más',
+    },
     expense: {
       created: { title: 'Nuevo gasto en {group}', body: '{actor} añadió {description}: {amount}' },
       updated: { title: 'Gasto actualizado', body: '{actor} cambió {description} en {group}' },
+      deleted: { title: 'Gasto eliminado', body: '{actor} eliminó {description} en {group}' },
+      restored: {
+        title: 'Gasto restaurado',
+        body: '{actor} recuperó {description} en {group}',
+      },
     },
     settlement: {
       created: { title: 'Te pagaron', body: '{payer} te pagó {amount}' },
@@ -35,6 +53,7 @@ export const notifications = {
     },
     member: {
       joined: { title: 'Cara nueva en {group}', body: '{actor} acaba de unirse. Dile hola.' },
+      added: { title: 'Bienvenido a {group}', body: '{actor} te añadió. Toma asiento.' },
     },
     event: {
       created: { title: 'Algo se está cocinando', body: '{actor} está planeando {event}' },
@@ -128,6 +147,64 @@ export const settings = {
     license: 'Software libre bajo la AGPL-3.0',
     feedback: 'Enviar comentarios',
   },
+  notificationPrefs: {
+    title: 'De qué enterarte',
+    hint: 'Tu bandeja recibe todo. Elige qué más suena en tus dispositivos o llega a tu correo.',
+    push: 'Push',
+    email: 'Correo',
+    channel: '{category}: {channel}',
+    emailSoon:
+      'Las notificaciones por correo están en camino. Mientras tanto, tu bandeja lo tiene todo.',
+    failed: 'Ese ajuste no se guardó. ¿Lo intentas de nuevo?',
+    offline: 'Estás sin conexión. Tu cambio se guardará cuando vuelvas.',
+    summaryEmail: 'Por correo',
+    pushOffHere:
+      'Las notificaciones push están desactivadas en este dispositivo, así que estas solo llegan a tus otros dispositivos.',
+    turnOnPush: 'Activar push aquí',
+    categories: {
+      expense_added: {
+        label: 'Gastos nuevos',
+        hint: 'Alguien añade un gasto en el que participas.',
+        about: 'gastos nuevos',
+      },
+      expense_changed: {
+        label: 'Cambios y eliminaciones',
+        hint: 'Un gasto en el que participas se cambia, se elimina o se restaura.',
+        about: 'cambios y eliminaciones de gastos',
+      },
+      payments: {
+        label: 'Pagos',
+        hint: 'Alguien te paga o registra un pago contigo.',
+        about: 'pagos',
+      },
+      comments: {
+        label: 'Comentarios',
+        hint: 'Comentarios nuevos en gastos y planes en los que participas.',
+        about: 'comentarios',
+      },
+      groups: {
+        label: 'Grupos',
+        hint: 'Alguien se une a un grupo que administras.',
+        about: 'novedades de grupos',
+      },
+      plans: {
+        label: 'Planes',
+        hint: 'Planes nuevos, horarios cerrados, cancelaciones y solicitudes de disponibilidad.',
+        about: 'planes',
+      },
+      reminders: {
+        label: 'Recordatorios',
+        hint: 'Planes que se acercan y confirmaciones que aún debes.',
+        about: 'recordatorios',
+      },
+      monthly_summary: {
+        label: 'Resumen mensual',
+        hint: 'Tus saldos el primer día de cada mes, como una tarjeta en tu bandeja.',
+        hintEmail: 'Tus saldos el primer día de cada mes, en tu bandeja y por correo.',
+        about: 'el resumen mensual',
+      },
+    },
+  },
 } satisfies Translation<typeof en.settings>
 
 export const account = {
@@ -150,6 +227,34 @@ export const account = {
     ready: 'Tu exportación está lista.',
   },
 } satisfies Translation<typeof en.account>
+
+/** La página que abre el enlace para darse de baja de un correo. Funciona sin iniciar sesión. */
+export const unsubscribe = {
+  title: 'Ajustes de correo',
+  working: 'Revisando tu enlace...',
+  askTitle: '¿Dejar de recibir estos correos?',
+  askOne: 'Dejarás de recibir correos sobre {what}. Tu bandeja de Potluck no cambia.',
+  askAll: 'Dejarás de recibir cualquier correo de Potluck. Tu bandeja de Potluck no cambia.',
+  account: 'Para {email}',
+  confirm: 'Darme de baja',
+  alreadyTitle: 'Ya no estás en la lista',
+  resubscribe: 'Enviarlos de nuevo',
+  done: 'Te diste de baja',
+  doneOne: 'No más correos sobre {what}. Tu bandeja de Potluck no cambia.',
+  doneAll: 'No más correos de Potluck. Tu bandeja de Potluck no cambia.',
+  nothingToUndo:
+    'No hay nada que deshacer con este enlace: tus ajustes de correo siguen como los dejaste. Cámbialos en la página Yo.',
+  offline: 'Estás sin conexión. Esto se hará cuando vuelvas.',
+  undo: 'Seguir recibiéndolos',
+  undone: 'Vuelves a estar en la lista',
+  undoneBody: 'Estos correos seguirán llegando. Cambia de idea cuando quieras en la página Yo.',
+  manage: 'Todos los ajustes de notificaciones',
+  invalidTitle: 'Este enlace no funciona',
+  invalidBody:
+    'Puede que se cortara al copiarlo. Prueba el enlace de tu último correo de Potluck o cambia tus ajustes en la página Yo.',
+  failed: 'Tus ajustes no se actualizaron. Revisa tu conexión e inténtalo de nuevo.',
+  retry: 'Intentar de nuevo',
+} satisfies Translation<typeof en.unsubscribe>
 
 export const security = {
   title: 'Inicio de sesión y seguridad',

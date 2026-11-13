@@ -207,6 +207,9 @@ export const errors = {
       "Une personne de cette dépense n'est plus dans le groupe, donc le montant, le payeur et le partage restent tels quels.",
     settlement_not_found: "Ce paiement n'existe plus.",
     event_not_in_group: "Cette sortie n'est pas dans ce groupe.",
+    invalid_notification_category: "Ce réglage de notification n'existe pas.",
+    invalid_unsubscribe_link:
+      'Ce lien de désabonnement ne marche pas. Change plutôt tes réglages e-mail sur la page Moi.',
     mfa_required: "Termine d'abord la connexion en deux étapes.",
   },
   auth: {

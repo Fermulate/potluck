@@ -205,6 +205,9 @@ export const errors = {
       'Alguien de este gasto ya no está en el grupo, así que el importe, quién pagó y el reparto se quedan como están.',
     settlement_not_found: 'Ese pago ya no existe.',
     event_not_in_group: 'Ese plan no está en este grupo.',
+    invalid_notification_category: 'Ese ajuste de notificaciones no existe.',
+    invalid_unsubscribe_link:
+      'Este enlace para darte de baja no funciona. Cambia los ajustes de correo en la página Yo.',
     mfa_required: 'Termina primero el inicio de sesión en dos pasos.',
   },
   auth: {

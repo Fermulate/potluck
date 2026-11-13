@@ -18,6 +18,19 @@ export const notifications = {
   earlier: 'Plus tôt',
   new: 'Nouveau',
   types: {
+    account: {
+      mfaRemoved: {
+        title: 'La connexion en deux étapes est désactivée',
+        body: "Un code de secours a servi à se connecter. Si ce n'était pas toi, change ton mot de passe tout de suite.",
+      },
+    },
+    summary: {
+      monthly: { title: 'Ton mois sur Potluck', settled: 'Tout est réglé. Bien joué.' },
+      owed: '{group} : on te doit {amount}',
+      owe: '{group} : tu dois {amount}',
+      more_one: 'et {count} autre groupe',
+      more_other: 'et {count} autres groupes',
+    },
     expense: {
       created: {
         title: 'Nouvelle dépense dans {group}',
@@ -26,6 +39,14 @@ export const notifications = {
       updated: {
         title: 'Dépense modifiée',
         body: '{actor} a modifié {description} dans {group}',
+      },
+      deleted: {
+        title: 'Dépense supprimée',
+        body: '{actor} a supprimé {description} dans {group}',
+      },
+      restored: {
+        title: 'Dépense restaurée',
+        body: '{actor} a restauré {description} dans {group}',
       },
     },
     settlement: {
@@ -44,6 +65,7 @@ export const notifications = {
         title: 'Nouvelle tête dans {group}',
         body: "{actor} vient d'arriver. Dis bonjour.",
       },
+      added: { title: 'Bienvenue dans {group}', body: "{actor} t'a ajouté. Installe-toi." },
     },
     event: {
       created: { title: 'Il se prépare quelque chose', body: '{actor} organise {event}' },
@@ -140,6 +162,65 @@ export const settings = {
     license: 'Logiciel libre sous licence AGPL-3.0',
     feedback: 'Envoyer un avis',
   },
+  notificationPrefs: {
+    title: 'Ce que tu veux suivre',
+    hint: 'Ta boîte de réception reçoit tout. Choisis ce qui arrive aussi sur tes appareils ou par e-mail.',
+    push: 'Push',
+    email: 'E-mail',
+    channel: '{category} : {channel}',
+    emailSoon:
+      'Les notifications par e-mail arrivent bientôt. En attendant, tout est dans ta boîte de réception.',
+    failed: "Ce réglage n'a pas été enregistré. On réessaie ?",
+    offline: 'Tu es hors ligne. Ta modification sera enregistrée à ton retour.',
+    summaryEmail: 'Par e-mail',
+    pushOffHere:
+      "Le push est désactivé sur cet appareil, donc ces notifications n'arrivent que sur tes autres appareils.",
+    turnOnPush: 'Activer le push ici',
+    categories: {
+      expense_added: {
+        label: 'Nouvelles dépenses',
+        hint: "Quelqu'un ajoute une dépense qui te concerne.",
+        about: 'les nouvelles dépenses',
+      },
+      expense_changed: {
+        label: 'Modifications et suppressions',
+        hint: 'Une dépense qui te concerne est modifiée, supprimée ou restaurée.',
+        about: 'les modifications et suppressions de dépenses',
+      },
+      payments: {
+        label: 'Paiements',
+        hint: "Quelqu'un te paie ou enregistre un paiement avec toi.",
+        about: 'les paiements',
+      },
+      comments: {
+        label: 'Commentaires',
+        hint: 'Nouveaux commentaires sur les dépenses et sorties dont tu fais partie.',
+        about: 'les commentaires',
+      },
+      groups: {
+        label: 'Groupes',
+        hint: "Quelqu'un rejoint un groupe que tu gères.",
+        about: 'les nouvelles des groupes',
+      },
+      plans: {
+        label: 'Sorties',
+        hint: 'Nouvelles sorties, horaires calés, annulations et demandes de dispos.',
+        about: 'les sorties',
+      },
+      reminders: {
+        label: 'Rappels',
+        hint: 'Sorties à venir et réponses que tu dois encore donner.',
+        about: 'les rappels',
+      },
+      monthly_summary: {
+        label: 'Résumé mensuel',
+        hint: 'Tes soldes le premier de chaque mois, sous forme de carte dans ta boîte de réception.',
+        hintEmail:
+          'Tes soldes le premier de chaque mois, dans ta boîte de réception et par e-mail.',
+        about: 'le résumé mensuel',
+      },
+    },
+  },
 } satisfies Translation<typeof en.settings>
 
 export const account = {
@@ -162,6 +243,36 @@ export const account = {
     ready: 'Ton export est prêt.',
   },
 } satisfies Translation<typeof en.account>
+
+export const unsubscribe = {
+  title: 'Réglages e-mail',
+  working: 'On vérifie ton lien...',
+  askTitle: 'Arrêter ces e-mails ?',
+  askOne:
+    "Tu ne recevras plus d'e-mails concernant {what}. Ta boîte de réception Potluck n'est pas touchée.",
+  askAll:
+    "Tu ne recevras plus aucun e-mail de Potluck. Ta boîte de réception Potluck n'est pas touchée.",
+  account: 'Pour {email}',
+  confirm: 'Se désabonner',
+  alreadyTitle: "Tu n'es déjà plus sur la liste",
+  resubscribe: 'Les recevoir à nouveau',
+  done: "Tu n'es plus sur la liste",
+  doneOne: "Plus d'e-mails concernant {what}. Ta boîte de réception Potluck n'est pas touchée.",
+  doneAll: "Plus aucun e-mail de Potluck. Ta boîte de réception Potluck n'est pas touchée.",
+  nothingToUndo:
+    'Rien à rétablir avec ce lien : tes réglages e-mail sont comme tu les as laissés. Change-les sur la page Moi.',
+  offline: 'Tu es hors ligne. Ça passera dès ton retour.',
+  undo: 'Continuer à les recevoir',
+  undone: 'Te revoilà sur la liste',
+  undoneBody:
+    "Ces e-mails vont continuer d'arriver. Tu peux changer d'avis quand tu veux sur la page Moi.",
+  manage: 'Tous les réglages de notifications',
+  invalidTitle: 'Ce lien ne marche pas',
+  invalidBody:
+    'Il a peut-être été coupé au moment du copier-coller. Essaie le lien de ton dernier e-mail Potluck, ou change tes réglages sur la page Moi.',
+  failed: "Tes réglages n'ont pas été mis à jour. Vérifie ta connexion et réessaie.",
+  retry: 'Réessayer',
+} satisfies Translation<typeof en.unsubscribe>
 
 export const security = {
   title: 'Connexion et sécurité',

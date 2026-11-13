@@ -13,6 +13,10 @@ recipe: the `add-i18n-strings-and-error-code` skill.
 - `setLocale(code)` loads a language (dynamic import, so English pages never download it) and switches
   `t()`, plural rules, date and money formats. `t()` reads the language when called: never keep its
   result in module scope. A date format kept in module scope goes through `localDateFormat()`.
+- Lines about the viewer: a new activity verb needs `activity.self.<verb>` (the viewer did it) and,
+  if it names someone, `activity.toYou.<verb>` (done to the viewer), in English and every
+  language; `locales.test.ts` fails without them. Elsewhere, pick a "you" key (`expenses.youPaid`,
+  `balances.youOwe`) instead of filling a name placeholder with "You".
 - Push copy for the `notify` edge function lives in `supabase/functions/notify/copy.ts` (functions
   cannot import this package); add a language there too.
 

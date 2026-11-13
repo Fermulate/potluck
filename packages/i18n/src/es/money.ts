@@ -71,6 +71,7 @@ export const expenses = {
   deletedBadge: 'Eliminado',
   restore: 'Restaurar',
   createdBy: 'Añadido por {name} {when}',
+  createdByYou: 'Lo añadiste {when}',
   updatedBy: 'Editado por {name} {when}',
   search: 'Buscar gastos',
   filterCategory: 'Filtrar por categoría',
@@ -351,11 +352,46 @@ export const activity = {
   aPlan: 'un plan',
   anExpense: 'un gasto',
   self: {
+    group: {
+      created: 'Creaste {group}',
+      updated: 'Cambiaste los ajustes del grupo',
+    },
+    member: {
+      joined: 'Te uniste al grupo',
+      left: 'Dejaste el grupo',
+      removed: 'Sacaste a {name}',
+      role_changed: 'Hiciste {role} a {name}',
+    },
+    expense: {
+      created: 'Añadiste "{description}" ({amount})',
+      updated: 'Cambiaste "{description}"',
+      deleted: 'Eliminaste "{description}"',
+      restored: 'Recuperaste "{description}"',
+    },
+    settlement: {
+      created: 'Le pagaste {amount} a {name}',
+      deleted: 'Eliminaste un pago a {name}',
+    },
     event: {
       created: 'Estás planeando {event}',
+      scheduled: '{event} queda para {date}',
+      cancelled: 'Cancelaste {event}',
     },
     availability: {
       requested: 'Preguntaste cuándo pueden todos para {event}',
+    },
+    comment: {
+      created: 'Comentaste en {subject}',
+    },
+  },
+  toYou: {
+    member: {
+      removed: '{actor} te sacó',
+      role_changed: '{actor} te hizo {role}',
+    },
+    settlement: {
+      created: '{actor} te pagó {amount}',
+      deleted: '{actor} eliminó un pago que te hizo',
     },
   },
   group: {

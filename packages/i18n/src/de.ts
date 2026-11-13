@@ -5,7 +5,7 @@ import { auth, onboarding } from './de/auth'
 import { groups, members, roles, invites, friends } from './de/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './de/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './de/plans'
-import { notifications, settings, account, security } from './de/me'
+import { notifications, settings, account, unsubscribe, security } from './de/me'
 import { help } from './de/help'
 
 /**
@@ -39,6 +39,7 @@ export const de = {
   notifications,
   settings,
   account,
+  unsubscribe,
   security,
   help,
   empty,

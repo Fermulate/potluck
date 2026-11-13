@@ -5,7 +5,7 @@ import { auth, onboarding } from './fr/auth'
 import { groups, members, roles, invites, friends } from './fr/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './fr/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './fr/plans'
-import { notifications, settings, account, security } from './fr/me'
+import { notifications, settings, account, unsubscribe, security } from './fr/me'
 import { help } from './fr/help'
 
 /**
@@ -39,6 +39,7 @@ export const fr = {
   notifications,
   settings,
   account,
+  unsubscribe,
   security,
   help,
   empty,

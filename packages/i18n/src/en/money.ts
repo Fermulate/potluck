@@ -69,6 +69,7 @@ export const expenses = {
   deletedBadge: 'Deleted',
   restore: 'Restore',
   createdBy: 'Added by {name} {when}',
+  createdByYou: 'You added this {when}',
   updatedBy: 'Edited by {name} {when}',
   search: 'Search expenses',
   filterCategory: 'Filter by category',
@@ -452,13 +453,52 @@ export const activity = {
   fallback: '{actor} made a change',
   aPlan: 'a plan',
   anExpense: 'an expense',
-  /** Variants for the viewer's own actions, where "{actor}" would read badly. */
+  /**
+   * The viewer's own actions. Every verb needs one: other languages conjugate the verb for "you",
+   * so "{actor}" filled with "You" would read wrong (`activity.test.ts` in the web app checks).
+   */
   self: {
+    group: {
+      created: 'You started {group}',
+      updated: 'You updated the group settings',
+    },
+    member: {
+      joined: 'You joined the group',
+      left: 'You left the group',
+      removed: 'You removed {name}',
+      role_changed: 'You made {name} {role}',
+    },
+    expense: {
+      created: 'You added "{description}" ({amount})',
+      updated: 'You updated "{description}"',
+      deleted: 'You deleted "{description}"',
+      restored: 'You brought back "{description}"',
+    },
+    settlement: {
+      created: 'You paid {name} {amount}',
+      deleted: 'You deleted a payment to {name}',
+    },
     event: {
       created: 'You are planning {event}',
+      scheduled: '{event} is on for {date}',
+      cancelled: 'You called off {event}',
     },
     availability: {
       requested: 'You asked when everyone is free for {event}',
+    },
+    comment: {
+      created: 'You commented on {subject}',
+    },
+  },
+  /** Someone else's action done to the viewer ("{name}" would be "you"). */
+  toYou: {
+    member: {
+      removed: '{actor} removed you',
+      role_changed: '{actor} made you {role}',
+    },
+    settlement: {
+      created: '{actor} paid you {amount}',
+      deleted: '{actor} deleted a payment to you',
     },
   },
   group: {

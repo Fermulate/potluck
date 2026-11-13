@@ -134,7 +134,9 @@ function RecurringRow({ item, groupId }: { item: RecurringExpense; groupId: stri
         </p>
         <p className="truncate text-sm text-mute">
           {t(`expenses.recurring.every.${item.recurrence}`)},{' '}
-          {t('expenses.paidSummary', { name: nameOf(item.paid_by), amount })}
+          {item.paid_by === me
+            ? t('expenses.youPaid', { amount })
+            : t('expenses.paidSummary', { name: nameOf(item.paid_by), amount })}
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">

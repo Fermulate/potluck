@@ -5,7 +5,7 @@ import { auth, onboarding } from './pt/auth'
 import { groups, members, roles, invites, friends } from './pt/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './pt/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './pt/plans'
-import { notifications, settings, account, security } from './pt/me'
+import { notifications, settings, account, unsubscribe, security } from './pt/me'
 import { help } from './pt/help'
 
 /**
@@ -39,6 +39,7 @@ export const pt = {
   notifications,
   settings,
   account,
+  unsubscribe,
   security,
   help,
   empty,

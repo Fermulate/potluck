@@ -71,6 +71,7 @@ export const expenses = {
   deletedBadge: 'Supprimée',
   restore: 'Restaurer',
   createdBy: 'Ajoutée par {name} {when}',
+  createdByYou: "Tu l'as ajoutée {when}",
   updatedBy: 'Modifiée par {name} {when}',
   search: 'Rechercher des dépenses',
   filterCategory: 'Filtrer par catégorie',
@@ -357,11 +358,46 @@ export const activity = {
   aPlan: 'une sortie',
   anExpense: 'une dépense',
   self: {
+    group: {
+      created: 'Tu as lancé {group}',
+      updated: 'Tu as modifié les réglages du groupe',
+    },
+    member: {
+      joined: 'Tu as rejoint le groupe',
+      left: 'Tu as quitté le groupe',
+      removed: 'Tu as retiré {name}',
+      role_changed: 'Tu as nommé {name} {role}',
+    },
+    expense: {
+      created: 'Tu as ajouté « {description} » ({amount})',
+      updated: 'Tu as modifié « {description} »',
+      deleted: 'Tu as supprimé « {description} »',
+      restored: 'Tu as restauré « {description} »',
+    },
+    settlement: {
+      created: 'Tu as payé {amount} à {name}',
+      deleted: 'Tu as supprimé un paiement à {name}',
+    },
     event: {
       created: 'Tu organises {event}',
+      scheduled: '{event} aura lieu le {date}',
+      cancelled: 'Tu as annulé {event}',
     },
     availability: {
       requested: 'Tu as demandé quand tout le monde est libre pour {event}',
+    },
+    comment: {
+      created: 'Tu as commenté {subject}',
+    },
+  },
+  toYou: {
+    member: {
+      removed: "{actor} t'a retiré du groupe",
+      role_changed: "{actor} t'a nommé {role}",
+    },
+    settlement: {
+      created: "{actor} t'a payé {amount}",
+      deleted: "{actor} a supprimé un paiement qui t'était destiné",
     },
   },
   group: {

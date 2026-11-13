@@ -15,6 +15,12 @@ export const notifications = {
   earlier: 'Earlier',
   new: 'New',
   types: {
+    account: {
+      mfaRemoved: {
+        title: 'Two-step sign in is off',
+        body: 'A recovery code was used to sign in. If that was not you, change your password now.',
+      },
+    },
     summary: {
       monthly: { title: 'Your month in Potluck', settled: 'All settled up. Nice work.' },
       owed: '{group}: you are owed {amount}',

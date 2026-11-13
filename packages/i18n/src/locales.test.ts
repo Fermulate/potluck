@@ -142,6 +142,40 @@ const translations: [string, Translation<Dictionary>][] = [
   ['pt', pt],
 ]
 
+/**
+ * Activity verbs, "kind.verb", read from English. The app picks `activity.self.<verb>` when the
+ * viewer did it and `activity.toYou.<verb>` when the viewer is the `{name}` acted on; without
+ * them other languages would conjugate "you" in the third person.
+ */
+const activityVerbs = Object.entries(en.activity).flatMap(([kind, value]) =>
+  typeof value === 'object' && kind !== 'self' && kind !== 'toYou'
+    ? Object.entries(value).map(([verb, text]) => [`${kind}.${verb}`, text as string] as const)
+    : [],
+)
+const namesSomeone = activityVerbs.filter(([, text]) => text.includes('{name}'))
+
+describe.each([['en', en as Translation<Dictionary>], ...translations])(
+  'the %s activity lines',
+  (_code, dictionary) => {
+    const strings = leaves(dictionary)
+
+    it('say "you" in the right person for every verb the viewer did', () => {
+      expect(activityVerbs.length).toBeGreaterThan(10)
+      const missing = activityVerbs
+        .map(([verb]) => `activity.self.${verb}`)
+        .filter((key) => !strings.has(key))
+      expect(missing).toEqual([])
+    })
+
+    it('have a line for every verb done to the viewer', () => {
+      const missing = namesSomeone
+        .map(([verb]) => `activity.toYou.${verb}`)
+        .filter((key) => !strings.has(key))
+      expect(missing).toEqual([])
+    })
+  },
+)
+
 describe.each(translations)('the %s dictionary', (_code, dictionary) => {
   const strings = leaves(dictionary)
 

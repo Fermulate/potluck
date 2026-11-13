@@ -207,6 +207,9 @@ export const errors = {
       'Jemand aus dieser Ausgabe ist nicht mehr in der Gruppe, deshalb bleiben Betrag, Zahler und Aufteilung, wie sie sind.',
     settlement_not_found: 'Diese Zahlung gibt es nicht mehr.',
     event_not_in_group: 'Dieser Plan gehört nicht zu dieser Gruppe.',
+    invalid_notification_category: 'Diese Benachrichtigungseinstellung gibt es nicht.',
+    invalid_unsubscribe_link:
+      'Dieser Abmeldelink funktioniert nicht. Ändere deine E-Mail-Einstellungen stattdessen auf der Ich-Seite.',
     mfa_required: 'Schließ zuerst die Anmeldung in zwei Schritten ab.',
   },
   auth: {
