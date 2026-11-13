@@ -24,9 +24,6 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
   | `recurrence/nextOccurrence` (biweekly too)     | `private.recurring_step` (used by the materialize job)            |
   | `recurrence/firstOccurrenceFrom`               | `private.recurring_next_from` (`make_expense_recurring`)          |
   | `roles/can()`                                  | role checks inside each RPC                                       |
-  | `roles` `placeholder.*`                        | `add_placeholder_member` and the other seat RPCs                  |
-  | `schemas/placeholderSchema`, `isPlainEmail`    | `private.placeholder_email`, `private.is_plain_email`             |
-  | `schemas/asciiLower`                           | `private.ascii_lower` (seat and friend link emails)               |
 
 - `payments/paymentAction` and `payableMethods` build pay links (PayPal.me, Venmo, ...) on the client
   only; Potluck never moves money ([ADR 15](../../docs/adr/0015-payment-links-and-cross-group-settle.md)).

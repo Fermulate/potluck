@@ -674,7 +674,7 @@ Codes:
 - Payments with a seat: the usual `private.check_payment` rule (a member records only payments they are part of; owners and admins any), so "Sam paid you" is recorded by you and the seat removed once settled. The balances tab offers "Record payment" on a seat's line to whoever it involves and to admins.
 - Daily limit: `private.require_invite_budget` counts seats with an email and accounts added by email (`member.added` activity with `data.by_email`), 20 a day (`too_many_invites`).
 - A seat's invite and reminder are dropped (the reminder still counts as sent) when its email belongs to an account with a block, either way, with whoever sent them (`private.seat_email_blocked`).
-- Blocks mute ([ADR 19](adr/0019-placeholder-members-and-claiming.md)): the before insert trigger on `notifications` drops any row whose `actor_id` the recipient has blocked, so nothing the blocked person does reaches the blocker, in shared groups too. Shared groups keep working: their expenses and payments still count. The blocked person cannot join the blocker's groups, take a seat there, open a 1:1 tab, accept a friend link or add them back, and is told only what a dead link or a stranger gets. In a 1:1 tab that already exists, `private.freeze_blocked_direct_money` (before triggers on `expenses`, `settlements`, `recurring_expenses`) refuses the blocked person's money writes with `not_a_friend`; the blocker's still work, and turning a repeating expense off always does.
+- Blocks mute ([ADR 19](adr/0019-placeholder-members-and-claiming.md)): the before insert trigger on `notifications` drops any row whose `actor_id` the recipient has blocked, so nothing the blocked person does reaches the blocker, in shared groups too. Shared groups keep working: their expenses and payments still count. The blocked person cannot join the blocker's groups, take a seat there, open a 1:1 tab, accept a friend link or add them back, and is told only what a dead link or a stranger gets. In a 1:1 tab that already exists, `private.freeze_blocked_direct_money` (before triggers on `expenses`, `settlements`, `recurring_expenses`) refuses the blocked person's money writes, and comments there, with `not_a_friend`; the blocker's still work, and turning a repeating expense off always does.
 - `set_member_role`: admins may change roles of plain members only (including promoting to admin); nobody can grant `owner` here.
 - Lock order (deadlock-free only if every function follows it):
   - `remove_member` / `leave_group` lock the group row before reading balances.
@@ -739,6 +739,20 @@ Codes:
   - Closed accounts then get `account_deleted` from every RPC.
   - Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused.
   - The edge function also removes the avatar files under `<uid>/` in the `avatars` bucket, and a trigger on `profiles.deleted_at` drops the `calendar_feed_tokens` row so old feed URLs stop working.
+
+### Seats
+
+People not on Potluck yet. Notes for changing anything that touches seats, claims or blocks ([ADR 19](adr/0019-placeholder-members-and-claiming.md)).
+
+- A placeholder (seat) is a `profiles` row with `is_placeholder` and no auth user; `profiles` has no foreign key to `auth.users` (`profiles_need_account` and `on_auth_user_deleted` keep that rule for real people).
+- `private.claim_placeholder` rewrites every foreign key to `profiles(id)` it finds in the catalog, private tables included. A new column that holds a person: make it a foreign key to `profiles`, or add it (jsonb, arrays) to `claim_placeholder`.
+- Triggers on tables with user ids return early when `private.claiming()` if they log, notify, bump `updated_at`, guard archived groups or freeze a 1:1 tab.
+- `notifications_skip_placeholders` lets a seat get only `member.added`, never across a block with the sender (held back on the seat as `held_by`, sent once when that block is lifted, `private.release_held_invites`), and drops any row whose `data.actor_id` the recipient blocked: put `actor_id` in new notification data.
+- Leave seats out of anything that asks someone to act (availability, RSVPs, `best_slots` missing lists, heirs). Repeating expenses treat a seat like any member: one that names it keeps running after a claim, and removing a seat pauses them like anyone leaving.
+- Seat emails are looked up through `private.account_emails` (every account email, lower cased A to Z, indexed, kept by a trigger on `auth.users`), never by lower casing `auth.users` row by row.
+- Core mirrors: roles `placeholder.add`, `placeholder.edit`, `placeholder.remove`; `placeholderSchema` and `isPlainEmail` (`private.placeholder_email`, `private.is_plain_email`); `asciiLower` (`private.ascii_lower`).
+- Web: a member or person with `is_placeholder` is a saved seat (dashed row, "Not on Potluck yet" badge), split with like anyone, never offered roles, friendship, blocking or a 1:1 tab (`features/groups/placeholders.tsx`, rules in `placeholder-helpers.ts`). The friend page reads the same `friend_balances` as the Friends list. API: `packages/api/src/people.ts`.
+- Tests: `27_placeholder_members`, e2e `people.spec.ts`.
 
 ### Schema additions
 

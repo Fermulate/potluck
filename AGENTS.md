@@ -72,7 +72,7 @@ passes; if a journey changed, its e2e spec passes. Report the commands you ran a
 - New public function: `security definer`, `set search_path = ''`, schema-qualify every name, then
   `revoke execute on function public.f(...) from public, anon;` and
   `grant execute on function public.f(...) to authenticated, service_role;`. Supabase's default
-  privileges grant execute on every new public function to `anon`, so without this anon can call it. Only the invite previews, `email_unsubscribe` and the guest link RPCs are anon-callable; adding one
+  privileges grant execute on every new public function to `anon`, so without this anon can call it. Only invite previews, `email_unsubscribe` and guest link RPCs are anon-callable; adding one
   means updating `01_schema.test.sql`, ADR 4 and `docs/security.md`.
 - Every new table in `public`: RLS on, policies with `(select auth.uid())` and
   `group_id = any (array(select private.my_group_ids()))`, revoke-all then column grants, an index per

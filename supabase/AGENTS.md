@@ -62,20 +62,7 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   warning on them is expected.
 - After the migration: `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then update `01_schema.test.sql`
   and `docs/architecture.md`.
-
-## People not on Potluck yet (placeholders)
-
-- A placeholder is a `profiles` row with `is_placeholder` and no auth user
-  ([ADR 19](../docs/adr/0019-placeholder-members-and-claiming.md)); `profiles` has no foreign key to
-  `auth.users`.
-- `private.claim_placeholder` rewrites every foreign key to `profiles(id)`. A new column holding a
-  person: make it one, or add it (jsonb, arrays) to `claim_placeholder`.
-- Triggers on tables with user ids return early when `private.claiming()` if they log, notify, bump
-  `updated_at` or guard archived groups.
-- `notifications_skip_placeholders` lets placeholders get only `member.added` (not across a block
-  with the sender) and drops rows whose `data.actor_id` the recipient blocked: put `actor_id` in new
-  notification data. Leave placeholders out of anything asking someone to act (availability,
-  RSVPs, heirs).
+- Seats: [notes](../docs/architecture.md#seats).
 
 ## Notifications
 
