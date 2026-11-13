@@ -37,3 +37,14 @@ test('other types keep their copy and links', () => {
   assert.equal(message(row('settlement.created', { group_id: 'g1' })).url, '/groups/g1/balances')
   assert.equal(message(row('something.new', {})).url, '/notifications')
 })
+
+test('deleted and restored expenses, being added to a group and the monthly summary', () => {
+  assert.deepEqual(message(row('expense.deleted', { expense_id: 'x1', description: 'Gas' })), {
+    title: 'Expense deleted',
+    body: 'Gas',
+    url: '/expenses/x1',
+  })
+  assert.equal(message(row('expense.restored', { expense_id: 'x1' })).body, 'An expense is back')
+  assert.equal(message(row('member.added', { group_id: 'g1' })).url, '/groups/g1')
+  assert.equal(message(row('summary.monthly', {})).url, '/home')
+})

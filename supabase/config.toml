@@ -435,6 +435,10 @@ verify_jwt = false
 [functions.delete-account]
 verify_jwt = true
 
+# Mail clients POST here with only the signed token in the query string (RFC 8058).
+[functions.unsubscribe]
+verify_jwt = false
+
 # Hosted project overrides, applied with `supabase config push`.
 [remotes.production]
 project_id = "mzotlkpghnrwbezcazld"
