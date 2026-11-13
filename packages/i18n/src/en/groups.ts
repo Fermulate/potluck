@@ -269,7 +269,7 @@ export const friends = {
     partDone_one: '{count} payment recorded.',
     partDone_other: '{count} payments recorded.',
     include: 'Include {group}',
-    amountFor: 'Amount for {group}',
+    amountFor: 'Amount for {group}, in {currency}',
     upTo: 'Enter an amount up to {amount}.',
     pickHint: 'Untick a group to leave it, or lower an amount to pay part of it.',
     nothing: 'Nothing to settle with {name}. Go treat yourselves.',

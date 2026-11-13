@@ -24,6 +24,23 @@ interface Pick {
   text: string
 }
 
+/** "$", "€", or the code when a currency has no short symbol ("CHF"). */
+function currencySymbol(currency: string): string {
+  try {
+    return (
+      new Intl.NumberFormat('en', {
+        style: 'currency',
+        currency,
+        currencyDisplay: 'narrowSymbol',
+      })
+        .formatToParts(0)
+        .find((p) => p.type === 'currency')?.value ?? currency
+    )
+  } catch {
+    return currency
+  }
+}
+
 /** Minor units typed for a group, or null when it is not a usable amount for that debt. */
 function pickedCents(row: FriendBalanceRow, pick: Pick): number | null {
   const cents = parseAmount(pick.text, row.currency)
@@ -157,9 +174,21 @@ export function SettleFriendSheet({
                       onChange={(e) => update(row.groupId, { text: e.target.value })}
                       disabled={!pick.on}
                       inputMode="decimal"
-                      aria-label={t('friends.settle.amountFor', { group: label })}
+                      aria-label={t('friends.settle.amountFor', {
+                        group: label,
+                        currency: row.currency,
+                      })}
                       aria-invalid={bad || undefined}
-                      className="h-10 w-24 text-right tabular"
+                      // Groups in different currencies sit side by side: say which one this is.
+                      leading={
+                        <span aria-hidden className="text-sm font-semibold">
+                          {currencySymbol(row.currency)}
+                        </span>
+                      }
+                      className="h-10 w-28 text-right tabular"
+                      style={{
+                        paddingLeft: `${1.4 + currencySymbol(row.currency).length * 0.55}rem`,
+                      }}
                     />
                   </div>
                   {bad && (

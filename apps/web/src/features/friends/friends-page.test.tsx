@@ -252,8 +252,10 @@ describe('FriendsPage', () => {
       }),
     )
     const amount = within(sheet).getByRole('textbox', {
-      name: t('friends.settle.amountFor', { group: 'Hike crew' }),
+      name: t('friends.settle.amountFor', { group: 'Hike crew', currency: 'USD' }),
     })
+    // The box says which currency it is in.
+    expect(amount.parentElement).toHaveTextContent('$')
     fireEvent.change(amount, { target: { value: '9' } })
     expect(within(sheet).getByRole('alert')).toHaveTextContent(
       t('friends.settle.upTo', { amount: '$5.00' }),
