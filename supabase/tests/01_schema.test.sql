@@ -20,7 +20,8 @@ select tables_are('public', array[
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
-  'calendar_feed_tokens', 'notification_prefs'
+  'calendar_feed_tokens', 'notification_prefs',
+  'event_guest_links', 'event_guests', 'event_guest_availability'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances'], 'public has the balances view');
@@ -98,6 +99,11 @@ select has_function('public', 'forget_mfa_recovery_codes', array['uuid'], 'forge
 select has_function('public', 'record_mfa_recover_attempt', array['uuid'], 'record_mfa_recover_attempt');
 select has_function('public', 'clear_mfa_recovery_codes', array[]::text[], 'clear_mfa_recovery_codes');
 select has_function('public', 'notify_mfa_recovered', array['uuid'], 'notify_mfa_recovered');
+select has_function('public', 'create_guest_link', array['uuid', 'text', 'integer'], 'create_guest_link(event_id, ttl, max_guests)');
+select has_function('public', 'revoke_guest_link', array['uuid'], 'revoke_guest_link(link_id)');
+select has_function('public', 'remove_guest_answer', array['uuid'], 'remove_guest_answer(guest_id)');
+select has_function('public', 'guest_link_preview', array['text', 'text'], 'guest_link_preview(code, token)');
+select has_function('public', 'set_guest_availability', array['text', 'text', 'text', 'jsonb'], 'set_guest_availability(code, name, token, slots)');
 
 select is(
   (select count(*)::int from pg_proc p
@@ -111,8 +117,8 @@ select is(
   (select array_agg(p.proname::text order by p.proname) from pg_proc p
    where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
      and has_function_privilege('anon', p.oid, 'execute')),
-  array['email_unsubscribe', 'invite_preview'],
-  'anon can only execute invite_preview and email_unsubscribe'
+  array['email_unsubscribe', 'guest_link_preview', 'invite_preview', 'set_guest_availability'],
+  'anon can only execute invite_preview, email_unsubscribe and the guest link RPCs'
 );
 
 -- Not found is PT404 (HTTP 404). P0002 reaches clients as HTTP 500; old migration files still
@@ -188,7 +194,7 @@ select results_eq(
 select set_eq(
   $$ select tablename::text from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' $$,
   array['availability', 'expenses', 'expense_splits', 'settlements', 'activity',
-        'notifications', 'event_rsvps', 'events', 'group_members'],
+        'notifications', 'event_rsvps', 'events', 'group_members', 'event_guest_availability'],
   'realtime publication covers the live tables'
 );
 
