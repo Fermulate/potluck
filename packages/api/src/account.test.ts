@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   accountKeys,
+  cancelEmailChange,
+  clearRecoveryCodes,
   createRecoveryCodes,
   fetchRecoveryCodesLeft,
   recoverWithCode,
@@ -9,6 +11,32 @@ import {
 import { fakeSupabase } from './testing/fake-supabase'
 
 const boom = { message: 'mfa_required', code: '42501' }
+
+describe('cancelEmailChange and clearRecoveryCodes', () => {
+  it('posts to cancel-email-change and passes its code on', async () => {
+    const fake = fakeSupabase()
+    await cancelEmailChange(fake.client)
+    expect(fake.calls).toEqual([
+      { kind: 'functions', name: 'cancel-email-change', args: [{ method: 'POST', body: {} }] },
+    ])
+    const refused = fakeSupabase().respond('functions:cancel-email-change', {
+      error: { message: 'non-2xx', context: { json: async () => ({ error: 'no_email_change' }) } },
+    })
+    await expect(cancelEmailChange(refused.client)).rejects.toThrow('no_email_change')
+  })
+
+  it('clears codes and reports how many went', async () => {
+    const fake = fakeSupabase().respond(
+      'rpc:clear_mfa_recovery_codes',
+      { data: 10 },
+      { data: null },
+      { error: boom },
+    )
+    expect(await clearRecoveryCodes(fake.client)).toBe(10)
+    expect(await clearRecoveryCodes(fake.client)).toBe(0)
+    await expect(clearRecoveryCodes(fake.client)).rejects.toBe(boom)
+  })
+})
 
 describe('recovery codes', () => {
   it('creates codes and counts what is left', async () => {

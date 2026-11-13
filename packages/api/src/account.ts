@@ -40,18 +40,35 @@ class CodedError extends Error {}
  * the session afterwards: the new token no longer needs a second step.
  */
 export async function recoverWithCode(client: PotluckClient, code: string): Promise<void> {
-  const { error } = await client.functions.invoke('mfa-recover', {
-    method: 'POST',
-    body: { code },
-  })
+  await invokeWithCodes(client, 'mfa-recover', { code })
+}
+
+/**
+ * Calls off an email change still waiting for its links (`cancel-email-change`). Refresh the
+ * session afterwards to drop the pending address from it.
+ */
+export async function cancelEmailChange(client: PotluckClient): Promise<void> {
+  await invokeWithCodes(client, 'cancel-email-change', {})
+}
+
+/** Drops the recovery codes once two-step sign in is off. Returns how many went. */
+export async function clearRecoveryCodes(client: PotluckClient): Promise<number> {
+  const { data, error } = await client.rpc('clear_mfa_recovery_codes')
+  if (error) throw error
+  return data ?? 0
+}
+
+/** POSTs to an edge function; a non 2xx answer with `{ error: code }` throws that code. */
+async function invokeWithCodes(client: PotluckClient, name: string, body: object): Promise<void> {
+  const { error } = await client.functions.invoke(name, { method: 'POST', body })
   if (!error) return
   // A non 2xx answer carries the fetch response; its JSON body names the problem.
   const response = (error as { context?: { json?: unknown } }).context
   if (typeof response?.json === 'function') {
-    const body = (await Promise.resolve()
+    const answer = (await Promise.resolve()
       .then(() => (response.json as () => Promise<unknown>)())
       .catch(() => null)) as { error?: unknown } | null
-    if (typeof body?.error === 'string') throw new CodedError(body.error)
+    if (typeof answer?.error === 'string') throw new CodedError(answer.error)
   }
   throw error
 }
