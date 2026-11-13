@@ -1153,7 +1153,7 @@ $$;
 revoke execute on function private.placeholder_name(text) from public, anon, authenticated;
 revoke execute on function private.placeholder_email(text) from public, anon, authenticated;
 
--- Who may add, edit or remind placeholders in a group: the same people who may invite.
+-- Who may add or rename placeholders in a group: the same people who may invite.
 create or replace function private.require_can_add_people(gid uuid)
 returns public.group_role
 language plpgsql

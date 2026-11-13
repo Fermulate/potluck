@@ -559,8 +559,10 @@ erDiagram
 | Remove members, change roles                        | yes   | admins can manage members only | no                                             |
 | Edit group settings                                 | yes   | yes                            | no                                             |
 | Delete group, transfer ownership                    | yes   | no                             | no                                             |
-| Add someone not on Potluck yet, remind them         | yes   | yes                            | if `members_can_invite`                        |
-| Rename them, change their email                     | yes   | yes                            | if `members_can_invite`, or whoever added them |
+| Add someone not on Potluck yet                      | yes   | yes                            | if `members_can_invite`                        |
+| Remind them (once)                                  | yes   | yes                            | yes                                            |
+| Rename them                                         | yes   | yes                            | if `members_can_invite`, or whoever added them |
+| Change their email                                  | yes   | yes                            | whoever added them                             |
 | Remove them (balance zero)                          | yes   | yes                            | whoever added them                             |
 
 A placeholder is always a plain member and can never be made admin or owner (`placeholder_member`). A member cannot leave or be removed while their `net_cents` in that group is non-zero. "Own" expenses are the ones you created or paid (any part of). Any member may save the group's default split.
