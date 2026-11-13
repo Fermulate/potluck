@@ -6,6 +6,8 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -101,6 +103,21 @@ export function SheetContent({
   const reduced = usePrefersReducedMotion()
   const dragControls = useDragControls()
   const asSheet = variant === 'sheet' || (variant === 'auto' && !isDesktop)
+  // Where focus was when it opened. A controlled sheet has no Radix trigger to go back to, so
+  // closing (Escape, the scrim, the close button) would drop focus on the body; send it back here.
+  const returnTo = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (!open) return
+    const active = document.activeElement
+    returnTo.current = active instanceof HTMLElement && active !== document.body ? active : null
+  }, [open])
+  const onCloseAutoFocus = (event: Event) => {
+    const target = returnTo.current
+    if (target?.isConnected) {
+      event.preventDefault()
+      target.focus()
+    }
+  }
 
   const startDrag = (event: ReactPointerEvent) => {
     if (asSheet && !reduced) dragControls.start(event)
@@ -155,6 +172,7 @@ export function SheetContent({
             <DialogPrimitive.Content
               asChild
               forceMount
+              onCloseAutoFocus={onCloseAutoFocus}
               // Opt out of Radix's missing-description warning when there is none.
               {...(description ? {} : { 'aria-describedby': undefined })}
             >

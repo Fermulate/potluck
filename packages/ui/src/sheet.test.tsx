@@ -79,6 +79,31 @@ describe('Sheet', () => {
     await userEvent.keyboard('{Escape}')
     expect(screen.getByText('closed')).toBeInTheDocument()
   })
+
+  it('returns focus to whatever opened a controlled sheet, after Escape', async () => {
+    function Controlled() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Paid by
+          </button>
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetContent title="Who paid?" closeLabel="Close">
+              <button type="button">Ben</button>
+            </SheetContent>
+          </Sheet>
+        </>
+      )
+    }
+    render(<Controlled />)
+    const opener = screen.getByRole('button', { name: 'Paid by' })
+    await userEvent.click(opener)
+    await screen.findByRole('dialog', { name: 'Who paid?' })
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(opener).toHaveFocus()
+  })
 })
 
 describe('SheetContent', () => {
