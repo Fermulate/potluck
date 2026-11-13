@@ -103,7 +103,7 @@ export function NotificationsPage() {
       (rows ?? [])
         .flatMap((r) => {
           const d = r.data as Record<string, unknown> | null
-          return [d?.actor_id, d?.from_user, d?.to_user]
+          return [d?.actor_id, d?.from_user, d?.to_user, d?.user_id]
         })
         .filter((id): id is string => typeof id === 'string'),
     [rows],

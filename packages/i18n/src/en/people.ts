@@ -40,6 +40,7 @@ export const people = {
     remove: 'Remove {name}',
     removeConfirm: '{name} has not joined yet. Remove them from {group}?',
     removed: '{name} was removed.',
+    leaveSeatsOwe: 'Someone here still has an open balance. Settle up with them first.',
     leaveOnlySeats: 'Nobody else here has an account yet, so leaving closes the group.',
     leaveOnlySeatsConfirm:
       'Nobody else in {group} has an account yet. Leaving closes the group for good.',
@@ -49,6 +50,7 @@ export const people = {
     hint: 'Add them by name now. You can invite them later.',
     add: 'Add',
     remove: 'remove',
+    notAdded: 'The group is ready, but {names} could not be added. Add them from Members.',
   },
   claim: {
     title: 'A seat is saved for you',

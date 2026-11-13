@@ -3475,28 +3475,6 @@ $$;
 ALTER FUNCTION "private"."require_group_open"("gid" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "private"."require_invite_budget"("uid" "uuid") RETURNS "void"
-    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
-    SET "search_path" TO ''
-    AS $$
-begin
-  if (
-    select count(*) from public.placeholders x
-    where x.created_by = uid and x.invited_at > now() - interval '1 day'
-  ) + (
-    select count(*) from public.activity a
-    where a.actor_id = uid and a.verb = 'member.added'
-      and a.data ->> 'by_email' = 'true' and a.created_at > now() - interval '1 day'
-  ) >= 20 then
-    raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
-  end if;
-end;
-$$;
-
-
-ALTER FUNCTION "private"."require_invite_budget"("uid" "uuid") OWNER TO "postgres";
-
-
 CREATE OR REPLACE FUNCTION "private"."require_member"("gid" "uuid") RETURNS "public"."group_role"
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -4641,6 +4619,26 @@ $$;
 ALTER FUNCTION "private"."skip_placeholder_notification"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."spend_invite_budget"("uid" "uuid", "kind" "text", "gid" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended('invite_sends:' || uid::text, 0));
+  if (
+    select count(*) from private.invite_sends s
+    where s.sender = uid and s.sent_at > now() - interval '1 day'
+  ) >= 20 then
+    raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
+  end if;
+  insert into private.invite_sends (sender, kind, group_id) values (uid, kind, gid);
+end;
+$$;
+
+
+ALTER FUNCTION "private"."spend_invite_budget"("uid" "uuid", "kind" "text", "gid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."sync_account_email"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4970,8 +4968,6 @@ begin
     if exists (select 1 from public.placeholders x where x.group_id = gid and x.email = clean_email) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
-    perform private.require_invite_budget(uid);
-
     -- Already on Potluck (confirmed address, open account): add the account itself, as
     -- Splitwise does. They hear about it (member.added) and show under their own name. A block
     -- between them and the group falls through to a seat, so nobody learns of it here.
@@ -4984,7 +4980,11 @@ begin
       and u.deleted_at is null
     order by u.created_at
     limit 1;
-    if existing is not null and not private.blocked_in_group(gid, existing) then
+    if existing is not null and private.blocked_in_group(gid, existing) then
+      existing := null;
+    end if;
+    perform private.spend_invite_budget(uid, case when existing is null then 'seat' else 'account' end, gid);
+    if existing is not null then
       perform set_config('potluck.adding_member', existing::text, true);
       insert into public.group_members (group_id, user_id, role) values (gid, existing, 'member');
       perform set_config('potluck.adding_member', '', true);
@@ -6981,6 +6981,7 @@ begin
     raise exception using message = 'placeholder_already_reminded', detail = 'A reminder was already sent', errcode = '23514';
   end if;
 
+  perform private.spend_invite_budget(uid, 'reminder', ph.group_id);
   update public.placeholders x set reminded_at = now() where x.profile_id = ph.profile_id;
 
   -- Across a block the reminder is spent like any other, and nothing is sent: the notifications
@@ -8484,7 +8485,7 @@ $$;
 ALTER FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text" DEFAULT NULL::"text", "email" "text" DEFAULT NULL::"text") RETURNS "void"
+CREATE OR REPLACE FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text" DEFAULT NULL::"text", "email" "text" DEFAULT NULL::"text") RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
@@ -8515,11 +8516,11 @@ begin
   end if;
 
   if update_placeholder.email is null then
-    return;
+    return false;
   end if;
   new_email := private.placeholder_email(update_placeholder.email);
   if new_email is not distinct from ph.email then
-    return;
+    return false;
   end if;
   -- Where an invite goes is up to whoever added the seat, or an admin.
   if ph.created_by is distinct from uid and not private.is_group_admin(ph.group_id) then
@@ -8533,10 +8534,17 @@ begin
     ) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
+    if exists (
+      select 1 from public.group_members m
+      join auth.users u on u.id = m.user_id
+      where m.group_id = ph.group_id and private.ascii_lower(u.email) = new_email
+    ) then
+      raise exception using message = 'already_member', detail = 'Someone with that email is already in this group', errcode = '23514';
+    end if;
     if ph.invites_sent >= 3 then
       raise exception using message = 'too_many_invites', detail = 'This invite has been sent enough times', errcode = '23514';
     end if;
-    perform private.require_invite_budget(uid);
+    perform private.spend_invite_budget(uid, 'seat_email', ph.group_id);
   end if;
 
   update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
@@ -8572,6 +8580,7 @@ begin
       uid
     );
   end if;
+  return new_email is not null;
 end;
 $$;
 
@@ -8984,6 +8993,30 @@ CREATE TABLE IF NOT EXISTS "private"."former_members" (
 
 
 ALTER TABLE "private"."former_members" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."invite_sends" (
+    "id" bigint NOT NULL,
+    "sender" "uuid" NOT NULL,
+    "sent_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "kind" "text" NOT NULL,
+    "group_id" "uuid",
+    CONSTRAINT "invite_sends_kind_check" CHECK (("kind" = ANY (ARRAY['seat'::"text", 'seat_email'::"text", 'account'::"text", 'reminder'::"text"])))
+);
+
+
+ALTER TABLE "private"."invite_sends" OWNER TO "postgres";
+
+
+ALTER TABLE "private"."invite_sends" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "private"."invite_sends_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
 
 
 CREATE TABLE IF NOT EXISTS "private"."mfa_recover_attempts" (
@@ -9715,6 +9748,11 @@ ALTER TABLE ONLY "private"."former_members"
 
 
 
+ALTER TABLE ONLY "private"."invite_sends"
+    ADD CONSTRAINT "invite_sends_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "private"."mfa_recovery_codes"
     ADD CONSTRAINT "mfa_recovery_codes_pkey" PRIMARY KEY ("user_id", "code_hash");
 
@@ -9967,6 +10005,10 @@ CREATE INDEX "email_outbox_user_id_idx" ON "private"."email_outbox" USING "btree
 
 
 CREATE INDEX "former_members_user_id_idx" ON "private"."former_members" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "invite_sends_sender_idx" ON "private"."invite_sends" USING "btree" ("sender", "sent_at");
 
 
 
@@ -10907,6 +10949,9 @@ ALTER TABLE "private"."email_unsubscribe_undo" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "private"."former_members" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "private"."invite_sends" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "private"."notification_categories" ENABLE ROW LEVEL SECURITY;
 
 
@@ -11791,10 +11836,6 @@ REVOKE ALL ON FUNCTION "private"."require_group_open"("gid" "uuid") FROM PUBLIC;
 
 
 
-REVOKE ALL ON FUNCTION "private"."require_invite_budget"("uid" "uuid") FROM PUBLIC;
-
-
-
 REVOKE ALL ON FUNCTION "private"."require_member"("gid" "uuid") FROM PUBLIC;
 
 
@@ -11847,6 +11888,10 @@ GRANT ALL ON FUNCTION "private"."shares_group_with"("other" "uuid") TO "service_
 
 
 REVOKE ALL ON FUNCTION "private"."skip_placeholder_notification"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."spend_invite_budget"("uid" "uuid", "kind" "text", "gid" "uuid") FROM PUBLIC;
 
 
 
@@ -12456,6 +12501,10 @@ GRANT ALL ON TABLE "private"."former_members" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "private"."invite_sends" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "private"."notification_categories" TO "service_role";
 
 
@@ -12799,4 +12848,5 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- cron fx-sync '30 16 * * *': select private.invoke_edge_function('fx-sync')
 -- cron materialize-recurring-expenses '10 0 * * *': select private.materialize_recurring_expenses()
 -- cron monthly-summary '0 15 1 * *': select private.send_monthly_summaries()
+-- cron purge-invite-sends '20 3 * * *': delete from private.invite_sends where sent_at < now() - interval '7 days'
 -- cron recurring-heads-up '5,35 * * * *': select private.send_recurring_heads_ups()

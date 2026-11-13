@@ -257,6 +257,7 @@ export async function fetchGroupInvites(client: PotluckClient, groupId: string) 
     .select('*')
     .eq('group_id', groupId)
     .is('revoked_at', null)
+    .is('placeholder_id', null)
     .order('created_at', { ascending: false })
   if (error) throw error
   const now = Date.now()

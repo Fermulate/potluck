@@ -31,7 +31,10 @@ export interface ActionContext {
   'member.changeRole': { targetRole: GroupRole; newRole: GroupRole }
   /** Adding someone not on Potluck yet (`add_placeholder_member`): whoever may invite. */
   'placeholder.add': { membersCanInvite: boolean }
-  /** Renaming, changing the email of, or reminding a placeholder. `isCreator`: the viewer added them. */
+  /**
+   * Renaming a placeholder (`update_placeholder` without an email). `isCreator`: the viewer added
+   * them. Its email is narrower (whoever added them or an admin); any member may remind.
+   */
   'placeholder.edit': { membersCanInvite: boolean; isCreator: boolean }
   /** `remove_placeholder`: admins or whoever added them, once settled. */
   'placeholder.remove': { netCents: number; isCreator: boolean }

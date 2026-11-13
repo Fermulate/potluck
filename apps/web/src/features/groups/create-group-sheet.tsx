@@ -1,5 +1,5 @@
 import { addPlaceholderMember, createGroup, groupKeys } from '@potluck/api'
-import { t } from '@potluck/i18n'
+import { intlLocale, t } from '@potluck/i18n'
 import { Button, Chip, Field, Input, Sheet, SheetContent, toast } from '@potluck/ui'
 import { Plus, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -47,7 +47,7 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
   function addSeat() {
     const name = seat.trim()
     if (!name) return
-    setSeats((list) => (list.includes(name) ? list : [...list, name.slice(0, 80)]))
+    setSeats((list) => (list.includes(name) ? list : [...list, [...name].slice(0, 80).join('')]))
     setSeat('')
   }
 
@@ -55,27 +55,38 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
     event.preventDefault()
     if (!name.trim()) return
     setBusy(true)
+    let group: Awaited<ReturnType<typeof createGroup>>
     try {
-      const group = await createGroup(supabase, {
+      group = await createGroup(supabase, {
         name,
         emoji,
         color,
         currency: chosenCurrency,
       })
-      const typed = seat.trim()
-      for (const name of typed && !seats.includes(typed) ? [...seats, typed] : seats) {
-        await addPlaceholderMember(supabase, { groupId: group.id, displayName: name })
-      }
-      await queryClient.invalidateQueries({ queryKey: groupKeys.all })
-      toast.success(t('groups.create.created', { group: group.name }))
-      onOpenChange(false)
-      reset()
-      await navigate({ to: '/groups/$groupId/members', params: { groupId: group.id } })
     } catch (error) {
       toast.error(errorMessage(error))
-    } finally {
       setBusy(false)
+      return
     }
+    const typed = seat.trim()
+    const notAdded: string[] = []
+    for (const name of typed && !seats.includes(typed) ? [...seats, typed] : seats) {
+      try {
+        await addPlaceholderMember(supabase, { groupId: group.id, displayName: name })
+      } catch {
+        notAdded.push(name)
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: groupKeys.all })
+    toast.success(t('groups.create.created', { group: group.name }))
+    if (notAdded.length > 0) {
+      const names = new Intl.ListFormat(intlLocale(), { type: 'conjunction' }).format(notAdded)
+      toast.error(t('people.createGroup.notAdded', { names }))
+    }
+    onOpenChange(false)
+    reset()
+    setBusy(false)
+    await navigate({ to: '/groups/$groupId/members', params: { groupId: group.id } })
   }
 
   return (

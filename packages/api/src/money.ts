@@ -93,6 +93,7 @@ export interface MoneyGroup {
   simplify_debts: boolean
   is_direct: boolean
   archived_at: string | null
+  members_can_invite: boolean
   default_split: DefaultSplit | null
   members: MoneyMember[]
 }
@@ -279,7 +280,7 @@ type GroupSelectRow = Omit<MoneyGroup, 'members'> & {
 }
 
 const GROUP_SELECT = `id, name, emoji, color, currency, simplify_debts, is_direct, archived_at,
-  default_split, group_members (role, profiles (${PERSON}))`
+  members_can_invite, default_split, group_members (role, profiles (${PERSON}))`
 
 function toGroup(row: GroupSelectRow): MoneyGroup {
   const { group_members, ...group } = row

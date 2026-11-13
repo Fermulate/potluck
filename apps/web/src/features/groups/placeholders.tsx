@@ -232,7 +232,7 @@ export function EditPlaceholderSheet({
     const newEmail = canChangeEmail ? (parsed.data.email ?? undefined) : undefined
     setBusy(true)
     try {
-      await updatePlaceholder(supabase, member.id, {
+      const invited = await updatePlaceholder(supabase, member.id, {
         ...(newName ? { displayName: parsed.data.display_name } : {}),
         ...(newEmail ? { email: newEmail } : {}),
       })
@@ -241,7 +241,7 @@ export function EditPlaceholderSheet({
         queryClient.invalidateQueries({ queryKey: ['potluck', 'people'] }),
         queryClient.invalidateQueries({ queryKey: ['potluck', 'money'] }),
       ])
-      toast.success(newEmail ? t('people.placeholder.savedInvited') : t('people.placeholder.saved'))
+      toast.success(invited ? t('people.placeholder.savedInvited') : t('people.placeholder.saved'))
       onOpenChange(false)
     } catch (error) {
       toast.error(errorMessage(error))

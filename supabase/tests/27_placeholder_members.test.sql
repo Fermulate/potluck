@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(162);
+select plan(169);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -722,7 +722,16 @@ reset role;
 update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('ben');
 select tests.login('ben');
 select lives_ok(format($$ select public.update_placeholder(%L, null, 'lu2@test.local') $$, tests.id('lu')), 'an admin changes it');
+select throws_ok(
+  format($$ select public.update_placeholder(%L, null, 'DAN@test.local') $$, tests.id('lu')),
+  '23514', 'already_member', 'a seat''s email cannot move to someone already in the group'
+);
 reset role;
+select is(
+  (select count(*)::int from private.invite_sends s where s.sender = tests.uid('ben') and s.kind = 'seat_email'),
+  1,
+  'the new invite counts toward Ben''s daily limit, not the adder''s'
+);
 select is(
   (select a.actor_id from public.activity a where a.verb = 'member.invite_changed' and a.subject_id = tests.id('lu')),
   tests.uid('ben'),
@@ -902,14 +911,35 @@ select is(
 
 -- Every add by email counts toward the daily limit -------------------------------------------------
 
+select is(
+  (select count(*)::int from private.invite_sends s where s.sender = tests.uid('ava') and s.kind = 'account'),
+  1,
+  'an account added by email counts toward the daily limit'
+);
+
 select tests.remember('mlim', tests.group_with('mallory', '{}', '{}', 'Limits', 'USD'));
-insert into public.activity (group_id, actor_id, verb, subject_id, data)
-select tests.id('mlim'), tests.uid('mallory'), 'member.added', tests.uid('nora'), '{"by_email": true}'::jsonb
-from generate_series(1, 20);
+delete from private.invite_sends where sender = tests.uid('mallory');
+insert into private.invite_sends (sender, kind) select tests.uid('mallory'), 'seat' from generate_series(1, 18);
 select tests.login('mallory');
+select tests.remember('zed1', public.add_placeholder_member(tests.id('mlim'), 'Zed', 'zed@test.local'));
+select lives_ok(format($$ select public.remove_placeholder(%L) $$, tests.id('zed1')), 'the 19th invite''s seat is removed');
+select tests.remember('zed2', public.add_placeholder_member(tests.id('mlim'), 'Zed', 'zed@test.local'));
+select lives_ok(format($$ select public.remove_placeholder(%L) $$, tests.id('zed2')), 'and the 20th''s');
 select throws_ok(
   format($$ select public.add_placeholder_member(%L, 'Zed', 'zed@test.local') $$, tests.id('mlim')),
-  '23514', 'too_many_invites', 'accounts added by email count toward the daily limit'
+  '23514', 'too_many_invites', 'removing seats does not give their invites back'
+);
+reset role;
+
+delete from private.invite_sends where sender = tests.uid('mallory');
+insert into private.invite_sends (sender, kind) select tests.uid('mallory'), 'seat' from generate_series(1, 19);
+select tests.remember('mlim2', tests.group_with('mallory', '{}', '{}', 'Throwaway', 'USD'));
+select tests.login('mallory');
+select public.add_placeholder_member(tests.id('mlim2'), 'Yan', 'yan@test.local');
+select lives_ok(format($$ select public.delete_group(%L) $$, tests.id('mlim2')), 'Mallory deletes the group');
+select throws_ok(
+  format($$ select public.add_placeholder_member(%L, 'Yan', 'yan@test.local') $$, tests.id('mlim')),
+  '23514', 'too_many_invites', 'deleting the group does not give its invites back'
 );
 reset role;
 

@@ -2615,7 +2615,7 @@ export type Database = {
       }
       update_placeholder: {
         Args: { display_name?: string; email?: string; user_id: string }
-        Returns: undefined
+        Returns: boolean
       }
       update_recurring_expense: {
         Args: { id: string; payload: Json }

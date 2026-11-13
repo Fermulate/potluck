@@ -1,7 +1,7 @@
 import type * as AuthModule from '@/lib/auth'
 import { moneyKeys, plansKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { Toaster } from '@potluck/ui'
+import { Toaster, toast } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
@@ -121,5 +121,28 @@ describe('CreateGroupSheet', () => {
         { group_id: 'g-taco', display_name: 'Jo' },
       ]),
     )
+  })
+
+  it('opens the new group once and names who could not be added', async () => {
+    db()
+      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:add_placeholder_member', { error: { message: 'too_many_invites' } })
+    const failed = vi.spyOn(toast, 'error')
+    const { router, onOpenChange } = renderSheet()
+    const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
+      target: { value: 'Taco Tuesdays' },
+    })
+    const seat = within(dialog).getByRole('textbox', { name: t('people.createGroup.label') })
+    fireEvent.change(seat, { target: { value: 'Pat' } })
+    fireEvent.keyDown(seat, { key: 'Enter' })
+    fireEvent.change(seat, { target: { value: 'Jo' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: t('groups.create.submit') }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-taco/members'))
+    expect(failed).toHaveBeenCalledWith(t('people.createGroup.notAdded', { names: 'Pat and Jo' }))
+    failed.mockRestore()
+    expect(db().rpcArgs('create_group')).toHaveLength(1)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

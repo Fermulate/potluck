@@ -32,7 +32,13 @@ const optionalEmail = z
  * `private.placeholder_email`.
  */
 export const placeholderSchema = z.object({
-  display_name: z.string().trim().min(1).max(80),
+  display_name: z
+    .string()
+    .trim()
+    .refine((name) => {
+      const length = [...name].length
+      return length >= 1 && length <= 80
+    }),
   email: optionalEmail,
 })
 

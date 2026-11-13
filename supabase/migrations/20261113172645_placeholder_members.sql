@@ -1179,30 +1179,45 @@ $$;
 
 revoke execute on function private.require_can_add_people(uuid) from public, anon, authenticated;
 
--- At most 20 adds by email per person per day, seats and existing accounts alike: each one
--- sends an email.
-create or replace function private.require_invite_budget(uid uuid)
+-- Every invite email someone sets off: a seat added with an email, a seat's new address, an
+-- account added by its email, a reminder. Kept apart from seats and groups so that removing
+-- either does not give the day's invites back; a job drops rows after a week.
+create table private.invite_sends (
+  id bigint generated always as identity primary key,
+  sender uuid not null,
+  sent_at timestamptz not null default now(),
+  kind text not null check (kind in ('seat', 'seat_email', 'account', 'reminder')),
+  group_id uuid
+);
+create index invite_sends_sender_idx on private.invite_sends (sender, sent_at);
+alter table private.invite_sends enable row level security;
+revoke all on table private.invite_sends from public, anon, authenticated;
+grant all on table private.invite_sends to service_role;
+
+-- At most 20 invite emails per person per day, seats and existing accounts alike. Counts this
+-- one or refuses it.
+create or replace function private.spend_invite_budget(uid uuid, kind text, gid uuid)
 returns void
 language plpgsql
-stable
 security definer
 set search_path = ''
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtextextended('invite_sends:' || uid::text, 0));
   if (
-    select count(*) from public.placeholders x
-    where x.created_by = uid and x.invited_at > now() - interval '1 day'
-  ) + (
-    select count(*) from public.activity a
-    where a.actor_id = uid and a.verb = 'member.added'
-      and a.data ->> 'by_email' = 'true' and a.created_at > now() - interval '1 day'
+    select count(*) from private.invite_sends s
+    where s.sender = uid and s.sent_at > now() - interval '1 day'
   ) >= 20 then
     raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
   end if;
+  insert into private.invite_sends (sender, kind, group_id) values (uid, kind, gid);
 end;
 $$;
 
-revoke execute on function private.require_invite_budget(uuid) from public, anon, authenticated;
+revoke execute on function private.spend_invite_budget(uuid, text, uuid) from public, anon, authenticated;
+
+select cron.schedule('purge-invite-sends', '20 3 * * *',
+  $$delete from private.invite_sends where sent_at < now() - interval '7 days'$$);
 
 create or replace function public.add_placeholder_member(group_id uuid, display_name text, email text default null)
 returns uuid
@@ -1233,8 +1248,6 @@ begin
     if exists (select 1 from public.placeholders x where x.group_id = gid and x.email = clean_email) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
-    perform private.require_invite_budget(uid);
-
     -- Already on Potluck (confirmed address, open account): add the account itself, as
     -- Splitwise does. They hear about it (member.added) and show under their own name. A block
     -- between them and the group falls through to a seat, so nobody learns of it here.
@@ -1247,7 +1260,11 @@ begin
       and u.deleted_at is null
     order by u.created_at
     limit 1;
-    if existing is not null and not private.blocked_in_group(gid, existing) then
+    if existing is not null and private.blocked_in_group(gid, existing) then
+      existing := null;
+    end if;
+    perform private.spend_invite_budget(uid, case when existing is null then 'seat' else 'account' end, gid);
+    if existing is not null then
       perform set_config('potluck.adding_member', existing::text, true);
       insert into public.group_members (group_id, user_id, role) values (gid, existing, 'member');
       perform set_config('potluck.adding_member', '', true);
@@ -1284,11 +1301,12 @@ grant execute on function public.add_placeholder_member(uuid, text, text) to aut
 -- Renames a placeholder or changes where its invite goes. Null leaves a field as it is;
 -- an empty email removes the address. A new address gets a fresh claim link and invite; only
 -- whoever added the seat or an admin may change it, and the change is logged and told to them.
+-- Returns whether a fresh invite went out (an unchanged address sends nothing).
 insert into private.notification_types (type, category) values ('member.invite_changed', 'groups')
 on conflict (type) do nothing;
 
 create or replace function public.update_placeholder(user_id uuid, display_name text default null, email text default null)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = ''
@@ -1320,11 +1338,11 @@ begin
   end if;
 
   if update_placeholder.email is null then
-    return;
+    return false;
   end if;
   new_email := private.placeholder_email(update_placeholder.email);
   if new_email is not distinct from ph.email then
-    return;
+    return false;
   end if;
   -- Where an invite goes is up to whoever added the seat, or an admin.
   if ph.created_by is distinct from uid and not private.is_group_admin(ph.group_id) then
@@ -1338,10 +1356,17 @@ begin
     ) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
+    if exists (
+      select 1 from public.group_members m
+      join auth.users u on u.id = m.user_id
+      where m.group_id = ph.group_id and private.ascii_lower(u.email) = new_email
+    ) then
+      raise exception using message = 'already_member', detail = 'Someone with that email is already in this group', errcode = '23514';
+    end if;
     if ph.invites_sent >= 3 then
       raise exception using message = 'too_many_invites', detail = 'This invite has been sent enough times', errcode = '23514';
     end if;
-    perform private.require_invite_budget(uid);
+    perform private.spend_invite_budget(uid, 'seat_email', ph.group_id);
   end if;
 
   update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
@@ -1377,6 +1402,7 @@ begin
       uid
     );
   end if;
+  return new_email is not null;
 end;
 $$;
 
@@ -1411,6 +1437,7 @@ begin
     raise exception using message = 'placeholder_already_reminded', detail = 'A reminder was already sent', errcode = '23514';
   end if;
 
+  perform private.spend_invite_budget(uid, 'reminder', ph.group_id);
   update public.placeholders x set reminded_at = now() where x.profile_id = ph.profile_id;
 
   -- Across a block the reminder is spent like any other, and nothing is sent: the notifications

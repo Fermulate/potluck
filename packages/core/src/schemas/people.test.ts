@@ -15,6 +15,12 @@ describe('placeholderSchema', () => {
     expect(placeholderSchema.parse({ display_name: 'Sam', email: null }).email).toBeNull()
   })
 
+  it('counts a name in characters, as Postgres char_length does', () => {
+    const taco = '\u{1F32E}'
+    expect(placeholderSchema.safeParse({ display_name: taco.repeat(80) }).success).toBe(true)
+    expect(placeholderSchema.safeParse({ display_name: taco.repeat(81) }).success).toBe(false)
+  })
+
   it.each([
     ['a blank name', { display_name: '   ' }],
     ['a long name', { display_name: 'x'.repeat(81) }],

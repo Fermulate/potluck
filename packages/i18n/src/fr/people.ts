@@ -39,6 +39,7 @@ export const people = {
     remove: 'Retirer {name}',
     removeConfirm: "{name} n'est pas encore arrivé. Le retirer de {group} ?",
     removed: '{name} a été retiré.',
+    leaveSeatsOwe: "Quelqu'un ici a encore un solde ouvert. Réglez d'abord vos comptes.",
     leaveOnlySeats: "Personne d'autre ici n'a encore de compte, donc partir ferme le groupe.",
     leaveOnlySeatsConfirm:
       "Personne d'autre dans {group} n'a encore de compte. Partir ferme le groupe pour de bon.",
@@ -48,6 +49,7 @@ export const people = {
     hint: 'Ajoute-les par leur nom maintenant. Tu pourras les inviter plus tard.',
     add: 'Ajouter',
     remove: 'retirer',
+    notAdded: "Le groupe est prêt, mais {names} n'a pas pu être ajouté. Ajoute-les depuis Membres.",
   },
   claim: {
     title: "Une place t'attend",

@@ -15,7 +15,14 @@ import {
   type RecurringExpense,
   type RecurringUpdate,
 } from '@potluck/api'
-import { CATEGORIES, RECURRENCES, firstName, nextOccurrence, type CategoryId } from '@potluck/core'
+import {
+  CATEGORIES,
+  RECURRENCES,
+  can,
+  firstName,
+  nextOccurrence,
+  type CategoryId,
+} from '@potluck/core'
 import { formatDate, formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Avatar,
@@ -182,6 +189,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const queryClient = useQueryClient()
   const formId = useId()
   const memberIds = group.members.map((m) => m.id)
+  const myRole = group.members.find((m) => m.id === me)?.role
+  const canAddPerson =
+    !group.is_direct &&
+    !!myRole &&
+    can(myRole, 'placeholder.add', { membersCanInvite: group.members_can_invite })
   const people = usePeople()
   // Someone who has left the group can still be in an older expense, as payer or in the split.
   const formerMember = (id: string): MoneyMember => {
@@ -708,9 +720,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 amountCents={total}
                 currency={currency}
                 locale={intlLocale()}
-                onAddPerson={group.is_direct ? undefined : () => setAddingPerson(true)}
+                onAddPerson={canAddPerson ? () => setAddingPerson(true) : undefined}
               />
-              {!group.is_direct && (
+              {canAddPerson && (
                 <AddPlaceholderSheet
                   group={group}
                   open={addingPerson}

@@ -90,14 +90,14 @@ export async function addPlaceholderMember(
 
 /**
  * Renames a placeholder or changes where its invite goes. Leave a field out to keep it; an
- * empty email removes the address.
+ * empty email removes the address. Resolves to whether a fresh invite went out.
  */
 export async function updatePlaceholder(
   client: PotluckClient,
   userId: string,
   patch: { displayName?: string; email?: string },
-) {
-  unwrap(
+): Promise<boolean> {
+  return unwrap(
     await client.rpc('update_placeholder', {
       user_id: userId,
       ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),

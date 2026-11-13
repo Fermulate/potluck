@@ -270,7 +270,8 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const onlyClosedLeft =
     !lastMember &&
     group.members.every((m) => m.id === viewerId || Boolean(m.deleted_at) || m.is_placeholder)
-  const ownerClosesGroup = me?.role === 'owner' && onlyClosedLeft
+  const seatsSettled = group.members.every((m) => !m.is_placeholder || m.net_cents === 0)
+  const ownerClosesGroup = me?.role === 'owner' && onlyClosedLeft && seatsSettled
   // Who is left decides the wording: saved seats are not closed accounts.
   const seatsLeft = group.members.some((m) => m.is_placeholder)
   const canLeave = me
@@ -284,11 +285,13 @@ export function MembersPage({ groupId }: { groupId: string }) {
       ? seatsLeft
         ? t('people.placeholder.leaveOnlySeats')
         : t('groups.settings.leaveLastActive')
-      : me.net_cents !== 0
-        ? t('groups.settings.leaveBlocked')
-        : me.role === 'owner' && !lastMember
-          ? t('groups.settings.ownerCannotLeave')
-          : undefined
+      : me.role === 'owner' && onlyClosedLeft
+        ? t('people.placeholder.leaveSeatsOwe')
+        : me.net_cents !== 0
+          ? t('groups.settings.leaveBlocked')
+          : me.role === 'owner' && !lastMember
+            ? t('groups.settings.ownerCannotLeave')
+            : undefined
 
   const refresh = () =>
     Promise.all([

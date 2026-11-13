@@ -40,6 +40,7 @@ export const people = {
     remove: '{name} entfernen',
     removeConfirm: '{name} ist noch nicht dabei. Aus {group} entfernen?',
     removed: '{name} wurde entfernt.',
+    leaveSeatsOwe: 'Hier hat noch jemand einen offenen Saldo. Rechnet zuerst ab.',
     leaveOnlySeats:
       'Sonst hat hier noch niemand ein Konto, also schließt dein Austritt die Gruppe.',
     leaveOnlySeatsConfirm:
@@ -50,6 +51,8 @@ export const people = {
     hint: 'Füge sie jetzt per Name hinzu. Einladen kannst du sie später.',
     add: 'Hinzufügen',
     remove: 'entfernen',
+    notAdded:
+      'Die Gruppe steht, aber {names} konnte nicht hinzugefügt werden. Füge sie unter Mitglieder hinzu.',
   },
   claim: {
     title: 'Ein Platz ist für dich frei',

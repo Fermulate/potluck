@@ -232,7 +232,10 @@ describe('invites', () => {
     expect(invites.map((i) => i.id)).toEqual(['open', 'future'])
     const [query] = fake.queries('group_invites')
     expect(argsOf(query!, 'eq')).toEqual([['group_id', 'g1']])
-    expect(argsOf(query!, 'is')).toEqual([['revoked_at', null]])
+    expect(argsOf(query!, 'is')).toEqual([
+      ['revoked_at', null],
+      ['placeholder_id', null],
+    ])
   })
 
   it('handles an empty or failed invite read', async () => {

@@ -162,6 +162,27 @@ describe('MembersPage with people not on Potluck yet', () => {
     ])
   })
 
+  it.each([
+    [true, 'people.placeholder.savedInvited'],
+    [false, 'people.placeholder.saved'],
+  ] as const)('says an invite went only when the server sent one (%s)', async (sent, toastKey) => {
+    renderMembers()
+    db().respond('rpc:update_placeholder', { data: sent })
+    const menu = await openMenu('Sam Lee')
+    fireEvent.click(within(menu).getByRole('button', { name: t('people.placeholder.edit') }))
+    const sheet = await screen.findByRole('dialog', {
+      name: t('people.placeholder.editTitle', { name: 'Sam Lee' }),
+    })
+    fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.emailLabel')), {
+      target: { value: 'sam@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.save') }))
+    expect(await screen.findByText(t(toastKey))).toBeInTheDocument()
+    expect(db().rpcArgs('update_placeholder')).toEqual([
+      { user_id: 'p-sam', email: 'sam@example.com' },
+    ])
+  })
+
   it('removes a settled one, and not one with a balance', async () => {
     renderMembers()
     let menu = await openMenu('Sam Lee')
@@ -276,6 +297,15 @@ describe('MembersPage with people not on Potluck yet', () => {
   it('says leaving closes the group when only seats are left', async () => {
     renderMembers(group({ members: [member(VIEWER, 'Ava Chen', 'owner'), pat] }))
     expect(await screen.findByText(t('people.placeholder.leaveOnlySeats'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('members.leave') })).toBeEnabled()
+  })
+
+  it('keeps Leave off while a seat still owes or is owed', async () => {
+    const owingPat = { ...member('p-pat', 'Pat Kim', 'member', -1000), is_placeholder: true }
+    renderMembers(group({ members: [member(VIEWER, 'Ava Chen', 'owner', 1000), owingPat] }))
+    expect(await screen.findByText(t('people.placeholder.leaveSeatsOwe'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('members.leave') })).toBeDisabled()
+    expect(screen.queryByText(t('people.placeholder.leaveOnlySeats'))).toBeNull()
   })
 })
 
