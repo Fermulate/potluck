@@ -1,5 +1,11 @@
 import type * as Api from '@potluck/api'
-import type { PlanAvailabilityRow, PlanEventWithGroup, PlanMember } from '@potluck/api'
+import type {
+  EventGuest,
+  GuestSlotRow,
+  PlanAvailabilityRow,
+  PlanEventWithGroup,
+  PlanMember,
+} from '@potluck/api'
 import { setAvailability } from '@potluck/api'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -52,6 +58,8 @@ const people: PlanMember[] = [
 const loadEvent = vi.fn<() => Promise<PlanEventWithGroup>>()
 const loadMembers = vi.fn<() => Promise<PlanMember[]>>()
 const loadAvailability = vi.fn<() => Promise<PlanAvailabilityRow[]>>()
+const loadGuests = vi.fn<() => Promise<EventGuest[]>>(async () => [])
+const loadGuestSlots = vi.fn<() => Promise<GuestSlotRow[]>>(async () => [])
 vi.mock('@potluck/api', async (importOriginal) => {
   const actual = await importOriginal<typeof Api>()
   const fixed = (key: readonly unknown[], data: unknown) => ({
@@ -61,6 +69,18 @@ vi.mock('@potluck/api', async (importOriginal) => {
   return {
     ...actual,
     setAvailability: vi.fn(async () => {}),
+    guestQueries: {
+      ...actual.guestQueries,
+      links: (_client: unknown, id: string) => fixed(actual.guestKeys.links(id), []),
+      guests: (_client: unknown, id: string) => ({
+        queryKey: actual.guestKeys.guests(id),
+        queryFn: loadGuests,
+      }),
+      slots: (_client: unknown, id: string) => ({
+        queryKey: actual.guestKeys.slots(id),
+        queryFn: loadGuestSlots,
+      }),
+    },
     planQueries: {
       ...actual.planQueries,
       event: (_client: unknown, id: string) => ({ queryKey: ['event', id], queryFn: loadEvent }),
@@ -152,6 +172,36 @@ describe('EventPage', () => {
     await waitFor(() => expect(setAvailability).toHaveBeenCalled())
     expect(screen.getByRole('heading', { name: 'When are you free?' })).toBe(painter)
     expect(painterFirst()).toBe(true)
+  })
+
+  it('counts guests in the heatmap, tagged, and lists them on the plan', async () => {
+    loadEvent.mockResolvedValue(poll)
+    loadMembers.mockResolvedValue(people)
+    const at = '2026-06-12T18:00:00+00:00'
+    loadAvailability.mockResolvedValue([
+      { event_id: 'e1', user_id: 'me', slot_start: at, level: 'yes' },
+      { event_id: 'e1', user_id: 'ben', slot_start: at, level: 'yes' },
+    ])
+    loadGuests.mockResolvedValue([
+      { id: 'g-ana', link_id: 'l1', display_name: 'Ana', created_at: '2026-06-01T00:00:00Z' },
+    ])
+    loadGuestSlots.mockResolvedValue([
+      { guest_id: 'g-ana', event_id: 'e1', slot_start: at, level: 'maybe' },
+    ])
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <EventPage eventId="e1" />
+      </QueryClientProvider>,
+    )
+
+    const grid = await screen.findByRole('grid', { name: "Everyone's availability for Taco night" })
+    const cell = grid.querySelector<HTMLElement>('[data-slot="2026-06-12T18:00:00.000Z"]')!
+    await waitFor(() => expect(cell).toHaveAccessibleName(/2 free, 1 maybe/))
+    fireEvent.focus(cell)
+    expect(screen.getByText(/Maybe: Ana \(guest\)/)).toBeInTheDocument()
+    expect(screen.getByText('3 of 3 free')).toBeInTheDocument()
+    expect(screen.getAllByText('1 guest answered').length).toBeGreaterThan(0)
   })
 
   it('says where a scheduled plan is once', async () => {

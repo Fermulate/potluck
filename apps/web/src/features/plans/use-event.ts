@@ -1,4 +1,4 @@
-import { plansKeys, setAvailability, type PlanAvailabilityRow } from '@potluck/api'
+import { guestKeys, plansKeys, setAvailability, type PlanAvailabilityRow } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { toast } from '@potluck/ui'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -10,7 +10,7 @@ import { slotKey, type PaintLevel } from '@/features/availability/grid'
 import { planErrorCode, planErrorMessage } from './format'
 
 /**
- * Live updates for one event: availability (the heatmap), the event row (locked, cancelled),
+ * Live updates for one event: availability and guest answers (the heatmap), the event row (locked, cancelled),
  * RSVPs, and new comments (via the group's activity feed, since comments are not published
  * themselves). Invalidations are batched so a burst of rows refetches once.
  */
@@ -20,6 +20,7 @@ export function useEventRealtime(eventId: string, groupId: string | undefined) {
     groupId ? `plan:${eventId}` : null,
     [
       { table: 'availability', filter: `event_id=eq.${eventId}` },
+      { table: 'event_guest_availability', filter: `event_id=eq.${eventId}` },
       { table: 'events', filter: `id=eq.${eventId}` },
       { table: 'event_rsvps', filter: `event_id=eq.${eventId}` },
       { table: 'activity', event: 'INSERT', filter: `group_id=eq.${groupId}` },
@@ -31,6 +32,15 @@ export function useEventRealtime(eventId: string, groupId: string | undefined) {
             plansKeys.availability(eventId),
             plansKeys.bestSlots(eventId),
             plansKeys.requests(eventId),
+          )
+          break
+        case 'event_guest_availability':
+          // A guest answered, edited or was removed: their name, slots and link usage.
+          bump(
+            guestKeys.slots(eventId),
+            guestKeys.guests(eventId),
+            guestKeys.links(eventId),
+            plansKeys.bestSlots(eventId),
           )
           break
         case 'events':
