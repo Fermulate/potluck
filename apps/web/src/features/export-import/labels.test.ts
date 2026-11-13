@@ -1,5 +1,5 @@
 import { ledgerCsv, readImportFile } from '@potluck/core'
-import { setLocale } from '@potluck/i18n'
+import { LOCALE_CODES, setLocale } from '@potluck/i18n'
 import { afterEach, describe, expect, it } from 'vitest'
 import { categoryLabel } from '@/features/expenses/format'
 import { importLabelSets, ledgerLabels } from './labels'
@@ -66,5 +66,17 @@ describe('CSV category labels', () => {
       'public_transit',
       'transport',
     ])
+  })
+
+  it.each(LOCALE_CODES)('names every category and subcategory differently in %s', async (code) => {
+    await setLocale(code)
+    const names = Object.values(ledgerLabels().categories)
+    const repeated = names.filter((name, i) => names.indexOf(name) !== i)
+    expect(repeated).toEqual([])
+  })
+
+  it('reads a Spanish utilities expense back as utilities, not home services', async () => {
+    await setLocale('es')
+    expect(imported(exported(['utilities', 'services']))).toEqual(['utilities', 'services'])
   })
 })

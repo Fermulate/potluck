@@ -453,7 +453,7 @@ export const categories = {
     maintenance: 'Reparaciones',
     electronics: 'Electrónica',
     pets: 'Mascotas',
-    services: 'Servicios',
+    services: 'Servicios del hogar',
     clothing: 'Ropa',
     medical: 'Médico',
     pharmacy: 'Farmacia',
