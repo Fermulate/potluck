@@ -218,7 +218,7 @@ export const guests = {
   page: {
     invitedBy: '{name} wants to know when you are free',
     invited: 'You are invited to say when you are free',
-    closes: 'Link open until {date}',
+    closes: 'Link open until {date}.',
     nameLabel: 'Your name',
     nameHint: 'So the group knows who is free. Nothing else is asked.',
     paintTitle: 'When are you free?',

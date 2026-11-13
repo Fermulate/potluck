@@ -10,11 +10,12 @@ import {
   Skeleton,
   Stamp,
   StampAnimation,
+  usePrefersReducedMotion,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CalendarDays, Clock } from 'lucide-react'
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
 import { buildGridModel, slotKey, type PaintLevel } from '@/features/availability/grid'
 import { Help } from '@/features/help/help'
@@ -201,6 +202,14 @@ function GuestPoll({
   const [nameError, setNameError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [justSent, setJustSent] = useState(false)
+  const sectionRef = useRef<HTMLElement>(null)
+  const reduced = usePrefersReducedMotion()
+
+  // On a phone the button sits below the grid; bring the confirmation (and its stamp) into view.
+  useEffect(() => {
+    if (!justSent) return
+    sectionRef.current?.scrollIntoView?.({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
+  }, [justSent, reduced])
 
   const save = useMutation({
     mutationFn: () =>
@@ -311,12 +320,15 @@ function GuestPoll({
           <Pitch className="hidden lg:flex" />
         </header>
 
-        <section className="flex min-w-0 flex-col gap-5" aria-labelledby="guest-poll-title">
+        <section
+          ref={sectionRef}
+          className="flex min-w-0 scroll-mt-4 flex-col gap-5"
+          aria-labelledby="guest-poll-title"
+        >
           {!editing ? (
             <Sent
               name={name.trim()}
               stamp={justSent}
-              respondents={respondents}
               onEdit={() => {
                 setEditing(true)
                 setView('mine')
@@ -419,17 +431,7 @@ function GuestPoll({
   )
 }
 
-function Sent({
-  name,
-  stamp,
-  respondents,
-  onEdit,
-}: {
-  name: string
-  stamp: boolean
-  respondents: number
-  onEdit: () => void
-}) {
+function Sent({ name, stamp, onEdit }: { name: string; stamp: boolean; onEdit: () => void }) {
   return (
     <Card tone="sunken" padding="roomy" className="flex flex-col gap-4 sm:flex-row sm:items-center">
       <div className="shrink-0 self-start sm:self-center">
@@ -448,7 +450,6 @@ function Sent({
           {t('guests.page.sentTitle', { name })}
         </p>
         <p className="text-sm text-mute">{t('guests.page.sentBody')}</p>
-        <p className="text-sm text-mute">{t('guests.page.respondents', { count: respondents })}</p>
       </div>
       <Button variant="secondary" className="self-start sm:self-center" onClick={onEdit}>
         {t('guests.page.edit')}
