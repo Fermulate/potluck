@@ -96,6 +96,8 @@ export function message(
         // Someone not on Potluck yet gets the claim link for their saved seat.
         url: d.claim_code ? `/join/${encodeURIComponent(String(d.claim_code))}` : group,
       }
+    case 'member.invite_changed':
+      return { title: c.inviteChanged, body: c.inviteChangedBody, url: `${group}/members` }
     case 'friend.added':
       return {
         title: c.friendAdded,

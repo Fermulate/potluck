@@ -66,6 +66,13 @@ export const notifications = {
     member: {
       joined: { title: 'Cara nueva en {group}', body: '{actor} acaba de unirse. Dile hola.' },
       added: { title: 'Bienvenido a {group}', body: '{actor} te añadió. Toma asiento.' },
+      invite_changed: {
+        title: 'Cambió una invitación en {group}',
+        body: '{actor} mandó la invitación de {name} a otra dirección',
+      },
+    },
+    friend: {
+      added: { title: 'Nuevo amigo', body: '{actor} aceptó tu enlace de amistad.' },
     },
     event: {
       created: { title: 'Algo se está cocinando', body: '{actor} está planeando {event}' },

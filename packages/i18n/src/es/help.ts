@@ -44,6 +44,8 @@ export const help = {
     search: 'Qué revisa la búsqueda',
     totals: 'Cómo se cuentan los totales',
     restore: 'Sobre restaurar',
+    placeholders: 'Sobre quien aún no está en Potluck',
+    friends: 'Cómo funcionan los amigos',
   },
   tips: {
     simplifiedDebts:

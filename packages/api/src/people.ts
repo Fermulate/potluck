@@ -135,10 +135,14 @@ export async function createFriendInvite(client: PotluckClient, email: string): 
   return unwrap(await client.rpc('create_friend_invite', { email })).code
 }
 
+/**
+ * Who a friend link is from. A link that does not work names nobody (`name` null), and a block
+ * between the two reads as `revoked`.
+ */
 export interface FriendInvitePreview {
-  name: string
+  name: string | null
   avatar_path: string | null
-  status: 'valid' | 'expired' | 'revoked' | 'used_up' | 'blocked'
+  status: 'valid' | 'expired' | 'revoked' | 'used_up'
   is_friend: boolean
   is_self: boolean
 }

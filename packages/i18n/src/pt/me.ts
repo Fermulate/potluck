@@ -69,6 +69,13 @@ export const notifications = {
     member: {
       joined: { title: 'Rosto novo em {group}', body: '{actor} acabou de entrar. Diga oi.' },
       added: { title: 'Boas-vindas a {group}', body: '{actor} adicionou você. Puxe uma cadeira.' },
+      invite_changed: {
+        title: 'Um convite mudou em {group}',
+        body: '{actor} mandou o convite de {name} para outro endereço',
+      },
+    },
+    friend: {
+      added: { title: 'Novo amigo', body: '{actor} aceitou seu link de amizade.' },
     },
     event: {
       created: { title: 'Tem algo no forno', body: '{actor} está planejando {event}' },

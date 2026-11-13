@@ -1,17 +1,6 @@
-import type { people as en } from '../en/people'
+import type { Translation } from '../locales'
+import type * as en from '../en/people'
 
-/** Same nesting as English, every string optional (as `Translation` in the languages setup). */
-type Translation<T> = {
-  readonly [K in keyof T]?: T[K] extends string ? string : Translation<T[K]>
-}
-
-/**
- * Spanish for people not on Potluck yet, friend links, the friend page, blocking and reporting.
- * Joins `es.ts` (one import and one entry, like the other feature files) where the language
- * switcher lives. The lines this feature adds to other namespaces are below, for
- * `es/shell.ts` (`errors.codes`), `es/money.ts` (`activity.member`), `es/me.ts`
- * (`notifications.types.friend`) and `es/help.ts` (`help.topics`).
- */
 export const people = {
   placeholder: {
     badge: 'Aún no está en Potluck',
@@ -25,11 +14,13 @@ export const people = {
     emailPlaceholder: 'sam@ejemplo.com',
     emailHint: 'Enviamos una invitación, y un recordatorio si lo pides. Nada más.',
     submit: 'Añadir a {group}',
+    addAnother: 'Añadir otra',
+    addToSplit: 'Alguien nuevo',
     added: '{name} ya está. A dividir.',
     addedInvited: '{name} ya está. Su invitación va en camino.',
+    addedExisting: '{name} ya está en Potluck, así que ya forma parte.',
     waitingFor: 'La invitación va a {email}',
-    noEmail: 'Aún sin correo. Comparte su enlace.',
-    invitedOn: 'Invitación enviada el {date}',
+    noEmail: 'Aún sin correo, así que comparte su enlace',
     remindedOn: 'Recordatorio enviado el {date}',
     menuHint: 'Lugar guardado. Lo ocupa cuando se una.',
     remind: 'Enviar un recordatorio',
@@ -48,11 +39,23 @@ export const people = {
     remove: 'Quitar a {name}',
     removeConfirm: '{name} aún no se ha unido. ¿Quitarle de {group}?',
     removed: '{name} ya no está en el grupo.',
+    leaveOnlySeats: 'Nadie más aquí tiene cuenta todavía, así que salir cierra el grupo.',
+    leaveOnlySeatsConfirm:
+      'Nadie más en {group} tiene cuenta todavía. Salir cierra el grupo para siempre.',
+  },
+  createGroup: {
+    label: '¿Alguien que aún no está en Potluck?',
+    hint: 'Añádelos por su nombre ahora. Puedes invitarlos después.',
+    add: 'Añadir',
+    remove: 'quitar',
   },
   claim: {
     title: 'Tienes un lugar guardado',
     seatFor: '{host} guardó un lugar para {name}.',
     emailNote: 'Usa {email} para ocuparlo.',
+    wrongEmail:
+      'Este lugar está guardado para {email}. Inicia sesión con ese correo para ocuparlo.',
+    switchAccount: 'Usar otra cuenta',
     accept: 'Ocupar mi lugar',
     signUp: 'Crea una cuenta para ocuparlo',
     signIn: 'Inicia sesión para ocuparlo',
@@ -111,17 +114,15 @@ export const people = {
     historyEmpty: 'Aún no compartís nada. Añade un gasto para empezar.',
     addExpense: 'Añadir gasto',
     settleUp: 'Saldar',
-    payment: '{from} le pagó {amount} a {to}',
-    you: 'Tú',
     menu: 'Más opciones para {name}',
     remove: 'Quitar de amigos',
     removeHint: 'Los grupos compartidos siguen igual.',
     removeConfirm: '¿Quitar a {name} de tus amigos? Los grupos compartidos siguen igual.',
     removed: '{name} ya no está en tu lista de amigos.',
     block: 'Bloquear a {name}',
-    blockHint: 'No se le avisa.',
+    blockHint: 'No se le avisa, y dejas de saber de esa persona.',
     blockConfirm:
-      'A {name} no se le avisa. Dejáis de ser amigos y no podrá unirse a tus grupos. Los grupos que ya compartís siguen igual.',
+      'A {name} no se le avisa. Dejáis de ser amigos, no recibes avisos de lo que haga y no podrá unirse a tus grupos ni abrir una cuenta contigo. Los grupos que ya compartís siguen funcionando.',
     blocked: '{name} está bloqueado.',
     report: 'Denunciar a {name}',
     reportHint: 'Cuéntanos si algo va mal.',
@@ -135,42 +136,8 @@ export const people = {
     sent: 'Gracias. Lo revisaremos.',
   },
   blocked: {
-    hint: 'No se les avisa cuando bloqueas o desbloqueas.',
+    hint: 'No se les avisa cuando bloqueas o desbloqueas. Mientras estén bloqueados, nada de lo que hagan te llega.',
     unblockName: 'Desbloquear a {name}',
     unblocked: '{name} ya no está bloqueado.',
   },
-} as const satisfies Translation<typeof en>
-
-/** For `es/shell.ts`, `errors.codes`. */
-export const errorCodes = {
-  profile_without_account: 'Ese perfil necesita una cuenta.',
-  placeholder_member: 'Quien aún no está en Potluck solo puede ser miembro normal de su grupo.',
-  placeholder_not_found: 'Este lugar ya no está guardado. Pide una invitación nueva.',
-  placeholder_claim_conflict: 'Ya estás en este grupo con tu propio nombre.',
-  placeholder_exists: 'Alguien con ese correo ya está esperando para unirse.',
-  placeholder_no_email: 'Primero añade su correo.',
-  placeholder_already_reminded: 'Ya recibió su recordatorio.',
-  invalid_name: 'Ponle un nombre.',
-  invalid_email: 'Ese correo no parece correcto.',
-  too_many_invites: 'Son muchas invitaciones para un día. Inténtalo mañana.',
-  email_not_verified: 'Primero confirma tu correo. Revisa tu bandeja de entrada.',
-  friend_has_balance: 'Primero salda vuestro saldo entre los dos.',
-  person_not_found: 'No encontramos a esa persona.',
-} as const
-
-/** For `es/money.ts`, `activity.member`. */
-export const activityMember = {
-  added: '{actor} añadió a {name}',
-  claimed: '{actor} se unió y ocupó su lugar guardado',
-} as const
-
-/** For `es/me.ts`, `notifications.types.friend`. */
-export const friendNotification = {
-  added: { title: 'Nuevo amigo', body: '{actor} aceptó tu enlace de amistad.' },
-} as const
-
-/** For `es/help.ts`, `help.topics`. */
-export const helpTopics = {
-  placeholders: 'Sobre quien aún no está en Potluck',
-  friends: 'Cómo funcionan los amigos',
-} as const
+} as const satisfies Translation<typeof en.people>

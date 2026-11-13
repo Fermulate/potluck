@@ -213,6 +213,7 @@ export const errors = {
     invalid_unsubscribe_link:
       'This unsubscribe link does not work. Change email settings on the Me page instead.',
     mfa_required: 'Finish two-step sign in first.',
+    already_member: 'Someone with that email is already in this group.',
     // People not on Potluck yet, friends and blocks (ADR 19).
     profile_without_account: 'That profile needs an account.',
     placeholder_member: 'Someone not on Potluck yet can only be a regular member of their group.',

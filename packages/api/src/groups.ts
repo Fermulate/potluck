@@ -52,6 +52,8 @@ export interface InvitePreview {
   placeholder_name?: string | null
   /** The email a claim link is bound to, masked (`s***@example.com`). */
   email_hint?: string | null
+  /** Signed in on a claim link bound to an email: whether it is this account's. */
+  email_matches?: boolean | null
 }
 
 export interface Friend extends PersonSummary {

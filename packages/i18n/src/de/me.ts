@@ -81,6 +81,16 @@ export const notifications = {
         title: 'Willkommen in {group}',
         body: '{actor} hat dich hinzugefügt. Setz dich zu uns.',
       },
+      invite_changed: {
+        title: 'Eine Einladung in {group} wurde geändert',
+        body: '{actor} hat die Einladung von {name} an eine neue Adresse geschickt',
+      },
+    },
+    friend: {
+      added: {
+        title: 'Neue Freundschaft',
+        body: '{actor} hat deinen Freundschaftslink angenommen.',
+      },
     },
     event: {
       created: { title: 'Da braut sich was zusammen', body: '{actor} plant {event}' },
