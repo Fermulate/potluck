@@ -127,14 +127,48 @@ $$;
 ALTER FUNCTION "private"."add_pair_debt"("owed" "jsonb", "debtor" "uuid", "creditor" "uuid", "cents" numeric) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."ascii_lower"("value" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select translate(value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+$$;
+
+
+ALTER FUNCTION "private"."ascii_lower"("value" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."befriend"("a" "uuid", "b" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if private.has_block(a, b) then
+    raise exception using message = 'blocked', detail = 'You cannot add this person', errcode = '42501';
+  end if;
+  insert into public.friendships (user_id, friend_id)
+  values (a, b), (b, a)
+  on conflict do nothing;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."befriend"("a" "uuid", "b" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."befriend_group_members"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
 begin
+  if exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
+    return null;
+  end if;
+
   insert into public.friendships (user_id, friend_id)
   select pair.a, pair.b
   from public.group_members m
+  join public.profiles mp on mp.id = m.user_id and not mp.is_placeholder
   cross join lateral (
     values (new.user_id, m.user_id), (m.user_id, new.user_id)
   ) as pair (a, b)
@@ -372,6 +406,199 @@ $$;
 
 
 ALTER FUNCTION "private"."check_request"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."claim_placeholder"("ph" "uuid", "acct" "uuid", "announce" boolean DEFAULT false) RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+declare
+  gid uuid;
+  added_by uuid;
+  ph_name text;
+  needle text := ph::text;
+  fk record;
+begin
+  select x.group_id, x.created_by into gid, added_by
+  from public.placeholders x where x.profile_id = ph;
+
+  if gid is null then
+    raise exception using message = 'placeholder_not_found', detail = 'This seat is no longer saved', errcode = 'PT404';
+  end if;
+
+  -- Money writes share-lock the group row: none runs while ids are rewritten.
+  perform 1 from public.groups g where g.id = gid for no key update;
+
+  if not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = ph) then
+    raise exception using message = 'placeholder_not_found', detail = 'This seat is no longer saved', errcode = 'PT404';
+  end if;
+  if not exists (
+    select 1 from public.profiles p
+    where p.id = acct and not p.is_placeholder and p.deleted_at is null
+  ) then
+    raise exception using message = 'not_authenticated', detail = 'You need to be signed in', errcode = '42501';
+  end if;
+  if exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = acct)
+     or exists (select 1 from private.former_members f where f.group_id = gid and f.user_id = acct)
+     or private.referenced_in_group(gid, acct) then
+    raise exception using
+      message = 'placeholder_claim_conflict',
+      detail = 'You are already in this group under your own name',
+      errcode = '23514';
+  end if;
+  if private.blocked_in_group(gid, acct) then
+    raise exception using message = 'blocked', detail = 'You cannot join this group', errcode = '42501';
+  end if;
+
+  select p.display_name into ph_name from public.profiles p where p.id = ph;
+
+  perform set_config('potluck.claiming', 'on', true);
+
+  -- Rows that belong to the placeholder alone, not to its history.
+  delete from public.notifications n where n.user_id = ph;
+  delete from public.notification_prefs p where p.user_id = ph;
+  delete from private.email_unsubscribe_undo u where u.user_id = ph;
+  delete from public.friendships f where f.user_id = ph or f.friend_id = ph;
+  -- A seat cannot be reminded (it gets no notifications); the once-a-day key is per person.
+  delete from public.debt_reminders r where r.from_user = ph or r.to_user = ph;
+  update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
+  where i.placeholder_id = ph;
+
+  -- Every column with a foreign key to profiles, found in the catalog so tables added
+  -- later follow too.
+  for fk in
+    select c.conrelid::regclass as tbl, a.attname as col
+    from pg_catalog.pg_constraint c
+    join pg_catalog.pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.contype = 'f'
+      and c.confrelid = 'public.profiles'::regclass
+      and cardinality(c.conkey) = 1
+      and not (c.conrelid = 'public.placeholders'::regclass and a.attname = 'profile_id')
+      and not (c.conrelid = 'public.group_invites'::regclass and a.attname = 'placeholder_id')
+    order by c.conrelid::regclass::text, a.attname
+  loop
+    execute format('update %s set %I = $1 where %I = $2', fk.tbl, fk.col, fk.col) using acct, ph;
+  end loop;
+
+  -- Ids kept inside jsonb or arrays.
+  -- Old entries keep reading as they did ("Ava added Sam", "Ava paid Sam"): each one remembers
+  -- the seat's name for the account that took it.
+  update public.activity a
+  set subject_id = case when a.subject_id = ph then acct else a.subject_id end,
+      data = replace(a.data::text, needle, acct::text)::jsonb
+        || jsonb_build_object('seat', jsonb_build_object('user_id', acct, 'name', ph_name))
+  where a.group_id = gid and (a.subject_id = ph or strpos(a.data::text, needle) > 0);
+
+  update public.notifications n
+  set data = replace(n.data::text, needle, acct::text)::jsonb
+  where n.data ->> 'group_id' = gid::text and strpos(n.data::text, needle) > 0;
+
+  update public.groups g
+  set default_split = replace(g.default_split::text, needle, acct::text)::jsonb
+  where g.id = gid and strpos(coalesce(g.default_split::text, ''), needle) > 0;
+
+  update public.recurring_expenses r
+  set splits = replace(r.splits::text, needle, acct::text)::jsonb,
+      payers = replace(r.payers::text, needle, acct::text)::jsonb
+  where r.group_id = gid
+    and (strpos(r.splits::text, needle) > 0 or strpos(coalesce(r.payers::text, ''), needle) > 0);
+
+  update public.expense_items i
+  set user_ids = array_replace(i.user_ids, ph, acct)
+  where ph = any (i.user_ids);
+
+  -- What joining would have done.
+  insert into public.friendships (user_id, friend_id)
+  select pair.a, pair.b
+  from public.group_members m
+  join public.profiles mp on mp.id = m.user_id and not mp.is_placeholder and mp.deleted_at is null
+  cross join lateral (values (acct, m.user_id), (m.user_id, acct)) as pair (a, b)
+  where m.group_id = gid
+    and m.user_id <> acct
+    and not private.has_block(acct, m.user_id)
+  on conflict do nothing;
+
+  delete from public.profiles p where p.id = ph and p.is_placeholder;
+
+  perform set_config('potluck.claiming', '', true);
+
+  perform private.log_activity(gid, acct, 'member.claimed', acct,
+    jsonb_build_object('user_id', acct, 'name', ph_name));
+
+  perform private.notify(
+    array(
+      select m.user_id from public.group_members m
+      where m.group_id = gid and (m.role in ('owner', 'admin') or m.user_id = added_by)
+    ),
+    'member.joined',
+    jsonb_build_object('group_id', gid, 'user_id', acct),
+    acct
+  );
+
+  if announce then
+    perform private.notify(
+      array[acct],
+      'member.added',
+      jsonb_build_object('group_id', gid, 'role', 'member'),
+      added_by
+    );
+  end if;
+
+  return gid;
+end;
+$_$;
+
+
+ALTER FUNCTION "private"."claim_placeholder"("ph" "uuid", "acct" "uuid", "announce" boolean) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."claim_placeholders_for_email"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  r record;
+begin
+  if new.email is null or new.email_confirmed_at is null then
+    return null;
+  end if;
+  if tg_op = 'UPDATE'
+     and old.email_confirmed_at is not null
+     and old.email is not distinct from new.email then
+    return null;
+  end if;
+
+  for r in
+    select x.profile_id
+    from public.placeholders x
+    join public.group_members m on m.user_id = x.profile_id and m.group_id = x.group_id
+    where x.email = private.ascii_lower(new.email)
+    order by x.created_at, x.profile_id
+  loop
+    -- Signing up must never fail because of a seat; it stays claimable by link.
+    begin
+      perform private.claim_placeholder(r.profile_id, new.id, true);
+    exception when others then
+      raise warning 'placeholder % not claimed: %', r.profile_id, sqlerrm;
+    end;
+  end loop;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."claim_placeholders_for_email"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."claiming"() RETURNS boolean
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(current_setting('potluck.claiming', true), '') = 'on';
+$$;
+
+
+ALTER FUNCTION "private"."claiming"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."clean_guest_name"("name" "text") RETURNS "text"
@@ -1083,6 +1310,9 @@ declare
   verb text;
   changes jsonb;
 begin
+  if private.claiming() then
+    return null;
+  end if;
   if tg_op = 'UPDATE' and current_setting('potluck.expense_logged', true) = new.id::text
      and (old.deleted_at is null) = (new.deleted_at is null) then
     return null;
@@ -1222,12 +1452,24 @@ CREATE OR REPLACE FUNCTION "private"."expenses_notify_update"() RETURNS "trigger
 declare
   recipients uuid[];
 begin
+  if private.claiming() then
+    return null;
+  end if;
   if new.deleted_at is not null or old.deleted_at is not null
      or (new.description, new.amount_cents, new.currency, new.fx_rate, new.paid_by, new.split_type,
          new.spent_at, new.is_refund)
         is not distinct from
         (old.description, old.amount_cents, old.currency, old.fx_rate, old.paid_by, old.split_type,
          old.spent_at, old.is_refund) then
+    return null;
+  end if;
+  -- Only the payer changed, from a placeholder to the account that claimed it.
+  if (new.description, new.amount_cents, new.currency, new.fx_rate, new.split_type,
+      new.spent_at, new.is_refund)
+     is not distinct from
+     (old.description, old.amount_cents, old.currency, old.fx_rate, old.split_type,
+      old.spent_at, old.is_refund)
+     and not exists (select 1 from public.profiles p where p.id = old.paid_by) then
     return null;
   end if;
 
@@ -1295,6 +1537,20 @@ $$;
 ALTER FUNCTION "private"."forget_closed_account"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."forget_deleted_auth_user"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  delete from public.profiles p where p.id = old.id and not p.is_placeholder;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."forget_deleted_auth_user"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."forget_notification_prefs"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1308,6 +1564,91 @@ $$;
 
 
 ALTER FUNCTION "private"."forget_notification_prefs"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."forget_orphan_placeholder"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  delete from public.profiles p
+  where p.id = old.profile_id
+    and p.is_placeholder
+    and not exists (select 1 from public.placeholders x where x.profile_id = p.id);
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."forget_orphan_placeholder"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."forget_removed_placeholder"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if not exists (select 1 from public.profiles p where p.id = old.user_id and p.is_placeholder)
+     or not exists (select 1 from public.groups g where g.id = old.group_id) then
+    return null;
+  end if;
+
+  update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
+  where i.placeholder_id = old.user_id;
+  -- The seat stays only for the history that names it: nothing is sent to that address again.
+  update public.placeholders x set email = null where x.profile_id = old.user_id;
+
+  if not private.referenced_in_group(old.group_id, old.user_id) then
+    delete from public.profiles p where p.id = old.user_id and p.is_placeholder;
+  end if;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."forget_removed_placeholder"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."freeze_blocked_direct_money"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := auth.uid();
+  row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
+  gid uuid;
+begin
+  if uid is null or private.claiming() then
+    return coalesce(new, old);
+  end if;
+  if tg_table_name = 'comments' then
+    gid := coalesce(
+      (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
+      (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (select s.group_id from public.settlements s where s.id = (row ->> 'settlement_id')::uuid),
+      (row ->> 'group_id')::uuid
+    );
+  else
+    gid := (row ->> 'group_id')::uuid;
+  end if;
+  if tg_table_name = 'recurring_expenses' and tg_op = 'UPDATE'
+     and (to_jsonb(old) ->> 'active')::boolean and not (to_jsonb(new) ->> 'active')::boolean then
+    return new;
+  end if;
+  if exists (select 1 from public.groups g where g.id = gid and g.is_direct)
+     and exists (
+       select 1 from public.blocks b
+       join public.group_members m on m.group_id = gid and m.user_id = b.blocker_id
+       where b.blocked_id = uid
+     ) then
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+
+ALTER FUNCTION "private"."freeze_blocked_direct_money"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."fx_rate"("from_currency" character, "to_currency" character, "on_day" "date" DEFAULT CURRENT_DATE) RETURNS numeric
@@ -1376,9 +1717,21 @@ CREATE OR REPLACE FUNCTION "private"."group_members_activity"() RETURNS "trigger
     SET "search_path" TO ''
     AS $$
 begin
+  if private.claiming() then
+    return null;
+  end if;
   if tg_op = 'INSERT' then
-    perform private.log_activity(new.group_id, new.user_id, 'member.joined', new.user_id,
-      jsonb_build_object('user_id', new.user_id, 'role', new.role));
+    if exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
+      perform private.log_activity(new.group_id, auth.uid(), 'member.added', new.user_id,
+        jsonb_build_object('user_id', new.user_id, 'role', new.role, 'placeholder', true));
+    elsif current_setting('potluck.adding_member', true) = new.user_id::text then
+      -- Someone added an account by its email (add_placeholder_member).
+      perform private.log_activity(new.group_id, auth.uid(), 'member.added', new.user_id,
+        jsonb_build_object('user_id', new.user_id, 'role', new.role, 'by_email', true));
+    else
+      perform private.log_activity(new.group_id, new.user_id, 'member.joined', new.user_id,
+        jsonb_build_object('user_id', new.user_id, 'role', new.role));
+    end if;
   elsif tg_op = 'UPDATE' then
     if new.role is distinct from old.role then
       perform private.log_activity(new.group_id, auth.uid(), 'member.role_changed', new.user_id,
@@ -1408,7 +1761,8 @@ CREATE OR REPLACE FUNCTION "private"."group_members_notify"() RETURNS "trigger"
 declare
   recipients uuid[];
 begin
-  if exists (select 1 from public.groups g where g.id = new.group_id and g.is_direct) then
+  if exists (select 1 from public.groups g where g.id = new.group_id and g.is_direct)
+     or exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
     return null;
   end if;
 
@@ -1560,7 +1914,7 @@ declare
   gid uuid;
   deadline timestamptz;
 begin
-  if auth.uid() is null then
+  if auth.uid() is null or private.claiming() then
     return coalesce(new, old);
   end if;
 
@@ -1589,6 +1943,33 @@ $$;
 
 
 ALTER FUNCTION "private"."guard_open_group_write"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."guard_placeholder_member"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder)
+     and not private.claiming()
+     and (
+       new.role <> 'member'
+       or not exists (
+         select 1 from public.placeholders x
+         where x.profile_id = new.user_id and x.group_id = new.group_id
+       )
+     ) then
+    raise exception using
+      message = 'placeholder_member',
+      detail = 'Someone who is not on Potluck yet can only be a member of the group they were added to',
+      errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."guard_placeholder_member"() OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."event_guests" (
@@ -1766,6 +2147,17 @@ $$;
 
 
 ALTER FUNCTION "private"."is_group_member"("gid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."is_plain_email"("value" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $_$
+  select value ~ '^[!-~]+$' and value ~ '^[^@]+@[^@]+\.[^@]+$' and char_length(value) <= 254;
+$_$;
+
+
+ALTER FUNCTION "private"."is_plain_email"("value" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."itemized_splits"("items" "jsonb", "tax" bigint, "tip" bigint, "discount" bigint) RETURNS TABLE("user_id" "uuid", "share_cents" bigint)
@@ -2252,22 +2644,31 @@ CREATE OR REPLACE FUNCTION "private"."notification_channels"("uid" "uuid", "kind
     AS $$
   select array_remove(array[
     case
-      when c.category is null
-        or (c.push_allowed and coalesce(case when c.required then null else p.push end, c.push_default))
+      when not coalesce(me.is_placeholder, false)
+        and (
+          c.category is null
+          or (c.push_allowed and coalesce(case when c.required then null else p.push end, c.push_default))
+        )
       then 'push'
     end,
     case
       when c.email_allowed
         and coalesce(case when c.required then null else p.email end, c.email_default)
         and private.email_enabled()
-        and exists (
-          select 1 from auth.users u
-          where u.id = uid and u.email is not null and u.email_confirmed_at is not null
+        and (
+          exists (
+            select 1 from auth.users u
+            where u.id = uid and u.email is not null and u.email_confirmed_at is not null
+          )
+          or exists (
+            select 1 from public.placeholders x where x.profile_id = uid and x.email is not null
+          )
         )
       then 'email'
     end
   ], null)
   from (select 1) as one
+  left join public.profiles me on me.id = uid
   left join private.notification_types t on t.type = kind
   left join private.notification_categories c on c.category = t.category
   left join public.notification_prefs p on p.user_id = uid and p.category = c.category;
@@ -2675,6 +3076,61 @@ $$;
 ALTER FUNCTION "private"."payment_time"("paid_on" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."placeholder_email"("raw" "text") RETURNS "text"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  clean text := nullif(private.ascii_lower(btrim(coalesce(raw, ''))), '');
+begin
+  if clean is not null and not private.is_plain_email(clean) then
+    raise exception using message = 'invalid_email', detail = 'That email address does not look right', errcode = '22023';
+  end if;
+  return clean;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."placeholder_email"("raw" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."placeholder_name"("raw" "text") RETURNS "text"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  clean text := btrim(coalesce(raw, ''));
+begin
+  if char_length(clean) not between 1 and 80 then
+    raise exception using message = 'invalid_name', detail = 'A name needs 1 to 80 characters', errcode = '22023';
+  end if;
+  return clean;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."placeholder_name"("raw" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."profile_needs_account"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if not new.is_placeholder and not exists (select 1 from auth.users u where u.id = new.id) then
+    raise exception using
+      message = 'profile_without_account',
+      detail = 'A profile needs an account unless it is a placeholder',
+      errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."profile_needs_account"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."push_notification"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -2938,6 +3394,72 @@ $$;
 ALTER FUNCTION "private"."referenced_in_group"("gid" "uuid", "uid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."release_held_invites"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  x public.placeholders;
+begin
+  if current_setting('potluck.closing_account', true) = 'on' then
+    return null;
+  end if;
+  for x in
+    select p.* from public.placeholders p
+    join public.group_members m on m.group_id = p.group_id and m.user_id = p.profile_id
+    where p.held_by in (old.blocker_id, old.blocked_id)
+      and p.email is not null
+    order by p.profile_id
+  loop
+    continue when private.seat_email_blocked(x.profile_id, x.held_by)
+      or not private.group_is_open(x.group_id)
+      or not exists (
+        select 1 from public.group_members s
+        join public.profiles sp on sp.id = s.user_id and sp.deleted_at is null
+        where s.group_id = x.group_id and s.user_id = x.held_by
+      );
+    update public.placeholders p set held_by = null, held_reminder = false
+    where p.profile_id = x.profile_id;
+    perform private.notify(
+      array[x.profile_id],
+      'member.added',
+      jsonb_build_object('group_id', x.group_id, 'role', 'member')
+        || case when x.held_reminder then jsonb_build_object('reminder', true) else '{}'::jsonb end,
+      x.held_by
+    );
+  end loop;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."release_held_invites"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."require_can_add_people"("gid" "uuid") RETURNS "public"."group_role"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  my_role public.group_role := private.require_member(gid);
+  g public.groups;
+begin
+  select * into g from public.groups x where x.id = gid;
+  if g.is_direct then
+    raise exception using message = 'direct_group', detail = 'Direct groups cannot have invites', errcode = '23514';
+  end if;
+  perform private.require_group_open(gid);
+  if my_role = 'member' and not g.members_can_invite then
+    raise exception using message = 'not_allowed', detail = 'Only admins can add people to this group', errcode = '42501';
+  end if;
+  return my_role;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."require_can_add_people"("gid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."require_group_open"("gid" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -2951,6 +3473,28 @@ $$;
 
 
 ALTER FUNCTION "private"."require_group_open"("gid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."require_invite_budget"("uid" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if (
+    select count(*) from public.placeholders x
+    where x.created_by = uid and x.invited_at > now() - interval '1 day'
+  ) + (
+    select count(*) from public.activity a
+    where a.actor_id = uid and a.verb = 'member.added'
+      and a.data ->> 'by_email' = 'true' and a.created_at > now() - interval '1 day'
+  ) >= 20 then
+    raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."require_invite_budget"("uid" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."require_member"("gid" "uuid") RETURNS "public"."group_role"
@@ -3548,6 +4092,25 @@ $_$;
 ALTER FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."seat_email_blocked"("seat" "uuid", "person" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select person is not null and exists (
+    select 1
+    from public.placeholders x
+    join private.account_emails e on e.email = x.email
+    join public.blocks b
+      on (b.blocker_id = e.user_id and b.blocked_id = person)
+      or (b.blocked_id = e.user_id and b.blocker_id = person)
+    where x.profile_id = seat and x.email is not null
+  );
+$$;
+
+
+ALTER FUNCTION "private"."seat_email_blocked"("seat" "uuid", "person" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."send_email_notifications"("hold" interval DEFAULT '00:01:00'::interval, "batch_size" integer DEFAULT 50) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3625,7 +4188,7 @@ begin
       'id', n.id,
       'type', n.type,
       'category', t.category,
-      'to', u.email,
+      'to', coalesce(u.email, ph.email),
       'name', p.display_name,
       'timezone', p.timezone,
       'unsubscribe', private.unsubscribe_token(n.user_id, t.category),
@@ -3636,6 +4199,15 @@ begin
           'group_emoji', g.emoji,
           'actor_name', a.display_name
         ))
+        || case when ph.profile_id is not null then jsonb_strip_nulls(jsonb_build_object(
+          'placeholder', true,
+          'claim_code', (
+            select i.code from public.group_invites i
+            where i.placeholder_id = ph.profile_id and i.revoked_at is null
+            order by i.created_at desc
+            limit 1
+          )
+        )) else '{}'::jsonb end
         || case when ex.id is not null and ex.deleted_at is null then jsonb_strip_nulls(jsonb_build_object(
           'description', ex.description,
           'amount_cents', ex.amount_cents,
@@ -3649,10 +4221,12 @@ begin
     from public.notifications n
     join private.notification_types t on t.type = n.type
     join public.profiles p on p.id = n.user_id and p.deleted_at is null
-    join auth.users u on u.id = n.user_id and u.email is not null and u.email_confirmed_at is not null
+    left join auth.users u on u.id = n.user_id and u.email is not null and u.email_confirmed_at is not null
+    left join public.placeholders ph on ph.profile_id = n.user_id and ph.email is not null and p.is_placeholder
     left join public.groups g on g.id = private.try_uuid(n.data ->> 'group_id')
     left join public.profiles a on a.id = private.try_uuid(n.data ->> 'actor_id')
     where n.id = chosen
+      and (u.id is not null or ph.profile_id is not null)
       and 'email' = any (private.notification_channels(n.user_id, n.type));
 
     if item is null then
@@ -3893,6 +4467,9 @@ CREATE OR REPLACE FUNCTION "private"."set_updated_at"() RETURNS "trigger"
     SET "search_path" TO ''
     AS $$
 begin
+  if coalesce(current_setting('potluck.claiming', true), '') = 'on' then
+    return new;
+  end if;
   new.updated_at := now();
   return new;
 end;
@@ -3909,6 +4486,9 @@ CREATE OR REPLACE FUNCTION "private"."settlements_activity"() RETURNS "trigger"
 declare
   verb text;
 begin
+  if private.claiming() then
+    return null;
+  end if;
   if tg_op = 'INSERT' then
     verb := 'settlement.created';
   elsif old.deleted_at is null and new.deleted_at is not null then
@@ -3972,6 +4552,9 @@ CREATE OR REPLACE FUNCTION "private"."settlements_notify_change"() RETURNS "trig
 declare
   kind text;
 begin
+  if private.claiming() then
+    return null;
+  end if;
   if old.deleted_at is null and new.deleted_at is not null then
     kind := 'settlement.deleted';
   elsif old.deleted_at is not null and new.deleted_at is null then
@@ -4020,6 +4603,62 @@ $$;
 
 
 ALTER FUNCTION "private"."shares_group_with"("other" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."skip_placeholder_notification"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  -- A placeholder only ever gets its invite.
+  if new.type <> 'member.added'
+     and exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
+    return null;
+  end if;
+  -- Its invite never goes to an address whose account has a block with whoever sent it. The
+  -- seat remembers, so one goes out if that block is lifted.
+  if new.type = 'member.added'
+     and private.seat_email_blocked(new.user_id, private.try_uuid(new.data ->> 'actor_id')) then
+    update public.placeholders x
+    set held_by = private.try_uuid(new.data ->> 'actor_id'),
+        held_reminder = coalesce((new.data ->> 'reminder')::boolean, false)
+    where x.profile_id = new.user_id;
+    return null;
+  end if;
+  -- Blocking mutes: nothing someone did reaches a person who blocked them.
+  if exists (
+    select 1 from public.blocks b
+    where b.blocker_id = new.user_id
+      and b.blocked_id = private.try_uuid(new.data ->> 'actor_id')
+  ) then
+    return null;
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."skip_placeholder_notification"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."sync_account_email"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if new.email is null then
+    delete from private.account_emails e where e.user_id = new.id;
+  else
+    insert into private.account_emails (user_id, email)
+    values (new.id, private.ascii_lower(new.email))
+    on conflict (user_id) do update set email = excluded.email;
+  end if;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."sync_account_email"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."sync_single_payer"() RETURNS "trigger"
@@ -4152,6 +4791,61 @@ $_$;
 ALTER FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."accept_friend_invite"("code" "text") RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  inv public.friend_invites;
+  my_email text;
+  verified boolean;
+begin
+  select * into inv from public.friend_invites i where i.code = accept_friend_invite.code for update;
+  if inv.id is null then
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'PT404';
+  end if;
+  if inv.created_by = uid then
+    raise exception using message = 'invalid_friend', detail = 'You cannot add yourself', errcode = '22023';
+  end if;
+  if exists (select 1 from public.friendships f where f.user_id = uid and f.friend_id = inv.created_by) then
+    return inv.created_by;
+  end if;
+  if inv.revoked_at is not null
+     or exists (select 1 from public.profiles p where p.id = inv.created_by and p.deleted_at is not null)
+     or private.has_block(uid, inv.created_by) then
+    raise exception using message = 'invite_revoked', detail = 'This invite has been revoked', errcode = '23514';
+  end if;
+  if inv.expires_at is not null and inv.expires_at <= now() then
+    raise exception using message = 'invite_expired', detail = 'This invite has expired', errcode = '23514';
+  end if;
+  if inv.max_uses is not null and inv.uses >= inv.max_uses then
+    raise exception using message = 'invite_used_up', detail = 'This invite has been used up', errcode = '23514';
+  end if;
+  if inv.email is not null then
+    select private.ascii_lower(u.email), u.email_confirmed_at is not null into my_email, verified
+    from auth.users u where u.id = uid;
+    if my_email is distinct from inv.email then
+      raise exception using message = 'invite_wrong_email', detail = 'This invite was sent to a different email address', errcode = '42501';
+    end if;
+    if not coalesce(verified, false) then
+      raise exception using message = 'email_not_verified', detail = 'Confirm your email address first', errcode = '42501';
+    end if;
+  end if;
+
+  perform private.befriend(uid, inv.created_by);
+  update public.friend_invites i set uses = i.uses + 1 where i.id = inv.id;
+
+  perform private.notify(array[inv.created_by], 'friend.added', jsonb_build_object('user_id', uid), uid);
+  return inv.created_by;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."accept_friend_invite"("code" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."accept_invite"("code" "text") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4161,6 +4855,7 @@ declare
   uid uuid := private.require_user();
   inv public.group_invites;
   my_email text;
+  verified boolean;
 begin
   select * into inv
   from public.group_invites i
@@ -4175,7 +4870,9 @@ begin
     return inv.group_id;
   end if;
 
-  if inv.revoked_at is not null then
+  -- A block between the joiner and anyone in the group reads exactly like a revoked link, so
+  -- nobody learns they were blocked.
+  if inv.revoked_at is not null or private.blocked_in_group(inv.group_id, uid) then
     raise exception using message = 'invite_revoked', detail = 'This invite has been revoked', errcode = '23514';
   end if;
   if inv.expires_at is not null and inv.expires_at <= now() then
@@ -4184,17 +4881,26 @@ begin
   if inv.max_uses is not null and inv.uses >= inv.max_uses then
     raise exception using message = 'invite_used_up', detail = 'This invite has been used up', errcode = '23514';
   end if;
-  if inv.email is not null then
-    select lower(u.email) into my_email from auth.users u where u.id = uid;
-    if my_email is distinct from inv.email then
-      raise exception using message = 'invite_wrong_email', detail = 'This invite was sent to a different email address', errcode = '42501';
-    end if;
+
+  select case when inv.placeholder_id is null then lower(u.email) else private.ascii_lower(u.email) end,
+         u.email_confirmed_at is not null
+  into my_email, verified
+  from auth.users u where u.id = uid;
+
+  if inv.email is not null and my_email is distinct from inv.email then
+    raise exception using message = 'invite_wrong_email', detail = 'This invite was sent to a different email address', errcode = '42501';
   end if;
+
+  if inv.placeholder_id is not null then
+    if not coalesce(verified, false) then
+      raise exception using message = 'email_not_verified', detail = 'Confirm your email address first', errcode = '42501';
+    end if;
+    update public.group_invites i set uses = i.uses + 1 where i.id = inv.id;
+    return private.claim_placeholder(inv.placeholder_id, uid, false);
+  end if;
+
   if exists (select 1 from public.groups g where g.id = inv.group_id and g.archived_at is not null) then
     raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
-  end if;
-  if private.blocked_in_group(inv.group_id, uid) then
-    raise exception using message = 'blocked', detail = 'You cannot join this group', errcode = '42501';
   end if;
 
   insert into public.group_members (group_id, user_id, role)
@@ -4210,6 +4916,109 @@ $$;
 ALTER FUNCTION "public"."accept_invite"("code" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."add_friend"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  if add_friend.user_id = uid then
+    raise exception using message = 'invalid_friend', detail = 'You cannot add yourself', errcode = '22023';
+  end if;
+  if not private.shares_group_with(add_friend.user_id)
+     or private.has_block(uid, add_friend.user_id)
+     or not exists (
+       select 1 from public.profiles p
+       where p.id = add_friend.user_id and p.deleted_at is null and not p.is_placeholder
+     ) then
+    raise exception using message = 'not_a_friend', detail = 'You can only add people you share a group with', errcode = '42501';
+  end if;
+  perform private.befriend(uid, add_friend.user_id);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."add_friend"("user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."add_placeholder_member"("group_id" "uuid", "display_name" "text", "email" "text" DEFAULT NULL::"text") RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  gid uuid := add_placeholder_member.group_id;
+  clean_name text := private.placeholder_name(add_placeholder_member.display_name);
+  clean_email text := private.placeholder_email(add_placeholder_member.email);
+  ph uuid := gen_random_uuid();
+  group_currency char(3);
+  existing uuid;
+begin
+  perform private.require_can_add_people(gid);
+
+  if clean_email is not null then
+    if exists (
+      select 1 from public.group_members m
+      join auth.users u on u.id = m.user_id
+      where m.group_id = gid and private.ascii_lower(u.email) = clean_email
+    ) then
+      raise exception using message = 'already_member', detail = 'Someone with that email is already in this group', errcode = '23514';
+    end if;
+    if exists (select 1 from public.placeholders x where x.group_id = gid and x.email = clean_email) then
+      raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
+    end if;
+    perform private.require_invite_budget(uid);
+
+    -- Already on Potluck (confirmed address, open account): add the account itself, as
+    -- Splitwise does. They hear about it (member.added) and show under their own name. A block
+    -- between them and the group falls through to a seat, so nobody learns of it here.
+    select u.id into existing
+    from private.account_emails e
+    join auth.users u on u.id = e.user_id
+    join public.profiles p on p.id = u.id and p.deleted_at is null and not p.is_placeholder
+    where e.email = clean_email
+      and u.email_confirmed_at is not null
+      and u.deleted_at is null
+    order by u.created_at
+    limit 1;
+    if existing is not null and not private.blocked_in_group(gid, existing) then
+      perform set_config('potluck.adding_member', existing::text, true);
+      insert into public.group_members (group_id, user_id, role) values (gid, existing, 'member');
+      perform set_config('potluck.adding_member', '', true);
+      return existing;
+    end if;
+  end if;
+
+  select g.currency into group_currency from public.groups g where g.id = gid;
+
+  insert into public.profiles (id, display_name, is_placeholder, default_currency)
+  values (ph, clean_name, true, group_currency);
+
+  insert into public.placeholders (profile_id, group_id, email, created_by, invited_at, invites_sent)
+  values (
+    ph, gid, clean_email, uid,
+    case when clean_email is not null then now() end,
+    case when clean_email is not null then 1 else 0 end
+  );
+
+  insert into public.group_invites (group_id, role, max_uses, email, created_by, placeholder_id)
+  values (gid, 'member', 1, clean_email, uid, ph);
+
+  -- Logs member.added and sends the invite email (group_members_notify_added).
+  insert into public.group_members (group_id, user_id, role)
+  values (gid, ph, 'member');
+
+  return ph;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."add_placeholder_member"("group_id" "uuid", "display_name" "text", "email" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."best_slots"("event_id" "uuid", "limit" integer DEFAULT 5) RETURNS TABLE("starts_at" timestamp with time zone, "ends_at" timestamp with time zone, "yes_count" integer, "maybe_count" integer, "score" numeric, "missing" "uuid"[])
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -4222,7 +5031,9 @@ declare
 begin
   return query
   with members as (
-    select m.user_id from public.group_members m where m.group_id = ev.group_id
+    select m.user_id from public.group_members m
+    join public.profiles p on p.id = m.user_id
+    where m.group_id = ev.group_id and not p.is_placeholder
     union all
     select g.id from public.event_guests g where g.event_id = ev.id and g.removed_at is null
   ),
@@ -4275,6 +5086,43 @@ $_$;
 
 
 ALTER FUNCTION "public"."best_slots"("event_id" "uuid", "limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."block_user"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  if block_user.user_id = uid then
+    raise exception using message = 'invalid_friend', detail = 'You cannot block yourself', errcode = '22023';
+  end if;
+  if not exists (
+    select 1 from public.profiles p
+    where p.id = block_user.user_id
+      and not p.is_placeholder
+      and (
+        p.id in (select private.my_contact_ids())
+        or p.id in (select private.my_former_contact_ids())
+      )
+  ) then
+    raise exception using message = 'person_not_found', detail = 'You can only block people you know here', errcode = 'PT404';
+  end if;
+
+  insert into public.blocks (blocker_id, blocked_id)
+  values (uid, block_user.user_id)
+  on conflict do nothing;
+
+  delete from public.friendships f
+  where (f.user_id = uid and f.friend_id = block_user.user_id)
+     or (f.user_id = block_user.user_id and f.friend_id = uid);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."block_user"("user_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."calendar_feed_token"("rotate" boolean DEFAULT false) RETURNS "text"
@@ -4379,6 +5227,64 @@ $$;
 
 
 ALTER FUNCTION "public"."create_expense_v2"("payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."friend_invites" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "code" "text" DEFAULT "private"."random_code"(9) NOT NULL,
+    "created_by" "uuid" DEFAULT "auth"."uid"() NOT NULL,
+    "email" "text",
+    "max_uses" integer,
+    "uses" integer DEFAULT 0 NOT NULL,
+    "expires_at" timestamp with time zone,
+    "revoked_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "friend_invites_code_check" CHECK (("code" ~ '^[A-Za-z0-9_-]{10,64}$'::"text")),
+    CONSTRAINT "friend_invites_email_check" CHECK ((("email" IS NULL) OR ("private"."is_plain_email"("email") AND ("email" = "private"."ascii_lower"("email"))))),
+    CONSTRAINT "friend_invites_max_uses_check" CHECK ((("max_uses" IS NULL) OR ("max_uses" > 0))),
+    CONSTRAINT "friend_invites_uses_check" CHECK (("uses" >= 0))
+);
+
+
+ALTER TABLE "public"."friend_invites" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."friend_invites" IS 'Friend links. email null and max_uses null is the personal link; the others are single use and bound to an email.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."create_friend_invite"("email" "text") RETURNS "public"."friend_invites"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  clean text := private.placeholder_email(create_friend_invite.email);
+  inv public.friend_invites;
+begin
+  if clean is null then
+    raise exception using message = 'invalid_email', detail = 'That email address does not look right', errcode = '22023';
+  end if;
+  if exists (select 1 from auth.users u where u.id = uid and private.ascii_lower(u.email) = clean) then
+    raise exception using message = 'invalid_friend', detail = 'You cannot add yourself', errcode = '22023';
+  end if;
+  if (
+    select count(*) from public.friend_invites i
+    where i.created_by = uid and i.email is not null and i.created_at > now() - interval '1 day'
+  ) >= 20 then
+    raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
+  end if;
+
+  insert into public.friend_invites (created_by, email, max_uses, expires_at)
+  values (uid, clean, 1, now() + interval '30 days')
+  returning * into inv;
+  return inv;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_friend_invite"("email" "text") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."groups" (
@@ -4533,6 +5439,7 @@ CREATE TABLE IF NOT EXISTS "public"."group_invites" (
     "created_by" "uuid" DEFAULT "auth"."uid"(),
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "revoked_at" timestamp with time zone,
+    "placeholder_id" "uuid",
     CONSTRAINT "group_invites_code_check" CHECK (("code" ~ '^[A-Za-z0-9_-]{10,64}$'::"text")),
     CONSTRAINT "group_invites_email_check" CHECK ((("email" IS NULL) OR ("email" ~ '^[^@\s]+@[^@\s]+$'::"text"))),
     CONSTRAINT "group_invites_max_uses_check" CHECK ((("max_uses" IS NULL) OR ("max_uses" > 0))),
@@ -4542,6 +5449,10 @@ CREATE TABLE IF NOT EXISTS "public"."group_invites" (
 
 
 ALTER TABLE "public"."group_invites" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."group_invites"."placeholder_id" IS 'Claim link: accepting it hands this placeholder (and its history) to the account (ADR 19).';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."create_invite"("group_id" "uuid", "role" "public"."group_role" DEFAULT 'member'::"public"."group_role", "max_uses" integer DEFAULT NULL::integer, "expires_at" timestamp with time zone DEFAULT NULL::timestamp with time zone, "email" "text" DEFAULT NULL::"text") RETURNS "public"."group_invites"
@@ -4731,6 +5642,7 @@ begin
     from public.group_members m
     join public.profiles p on p.id = m.user_id
     where m.group_id = owned.group_id and m.user_id <> uid and p.deleted_at is null
+      and not p.is_placeholder
     order by (m.role = 'admin') desc, m.joined_at, m.user_id
     limit 1;
 
@@ -4758,7 +5670,9 @@ begin
   delete from public.availability_requests r where r.user_id = uid;
   delete from public.event_rsvps r where r.user_id = uid;
   delete from public.friendships f where f.user_id = uid or f.friend_id = uid;
+  perform set_config('potluck.closing_account', 'on', true);
   delete from public.blocks b where b.blocker_id = uid or b.blocked_id = uid;
+  perform set_config('potluck.closing_account', '', true);
 
   update public.group_invites i set revoked_at = now()
   where i.created_by = uid and i.revoked_at is null;
@@ -5217,6 +6131,55 @@ $$;
 ALTER FUNCTION "public"."friend_balances"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."friend_invite_preview"("code" "text") RETURNS TABLE("name" "text", "avatar_path" "text", "status" "text", "is_friend" boolean, "is_self" boolean)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  inv public.friend_invites;
+  uid uuid := auth.uid();
+begin
+  select * into inv from public.friend_invites i where i.code = friend_invite_preview.code;
+  if inv.id is null then
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'PT404';
+  end if;
+
+  return query
+  with preview as (
+    select
+      p.id,
+      p.display_name,
+      p.avatar_path,
+      exists (select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id) as friends,
+      case
+        when p.deleted_at is not null or inv.revoked_at is not null then 'revoked'
+        when uid is not null and private.has_block(uid, p.id) then 'revoked'
+        when uid is not null and (uid = p.id or exists (
+          select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id
+        )) then 'valid'
+        when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
+        when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
+        else 'valid'
+      end as status
+    from public.profiles p
+    where p.id = inv.created_by
+  )
+  -- Only a live link says who it is from.
+  select
+    case when pv.status = 'valid' then split_part(pv.display_name, ' ', 1) end,
+    case when pv.status = 'valid' then pv.avatar_path end,
+    pv.status,
+    uid is not null and pv.status = 'valid' and pv.friends,
+    uid is not null and pv.status = 'valid' and uid = pv.id
+  from preview pv;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."friend_invite_preview"("code" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5234,13 +6197,10 @@ begin
     select 1 from public.profiles p
     where p.id = get_or_create_direct_group.friend_id
       and p.deleted_at is null
+      and not p.is_placeholder
       and p.id in (select private.my_contact_ids())
-  ) then
+  ) or private.has_block(uid, get_or_create_direct_group.friend_id) then
     raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
-  end if;
-
-  if private.has_block(uid, get_or_create_direct_group.friend_id) then
-    raise exception using message = 'blocked', detail = 'You cannot split with this person', errcode = '42501';
   end if;
 
   -- Serialize creation per pair so two taps do not create two groups.
@@ -5413,21 +6373,25 @@ begin
     g.emoji,
     g.color,
     g.cover_path,
-    (select count(*)::int from public.group_members m where m.group_id = g.id),
+    (
+      select count(*)::int from public.group_members m
+      join public.profiles p on p.id = m.user_id
+      where m.group_id = g.id and not p.is_placeholder
+    ),
     array(
       select split_part(p.display_name, ' ', 1)
       from public.group_members m
       join public.profiles p on p.id = m.user_id
-      where m.group_id = g.id and p.deleted_at is null
+      where m.group_id = g.id and p.deleted_at is null and not p.is_placeholder
       order by (m.role = 'owner') desc, m.joined_at, p.id
       limit 5
     ),
     case
       when inv.revoked_at is not null then 'revoked'
+      when uid is not null and not x.is_member and private.blocked_in_group(g.id, uid) then 'revoked'
       when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
       when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
       when g.archived_at is not null then 'archived'
-      when uid is not null and not x.is_member and private.blocked_in_group(g.id, uid) then 'blocked'
       else 'valid'
     end,
     x.is_member
@@ -5446,6 +6410,98 @@ $$;
 ALTER FUNCTION "public"."invite_preview"("code" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."invite_preview_v2"("code" "text") RETURNS TABLE("group_id" "uuid", "name" "text", "emoji" "text", "color" "text", "cover_path" "text", "member_count" integer, "first_names" "text"[], "status" "text", "is_member" boolean, "placeholder_name" "text", "email_hint" "text", "email_matches" boolean)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  inv public.group_invites;
+  uid uuid := auth.uid();
+  my_email text;
+begin
+  select * into inv from public.group_invites i where i.code = invite_preview_v2.code;
+
+  if inv.id is null then
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'PT404';
+  end if;
+
+  if uid is not null then
+    select private.ascii_lower(u.email) into my_email from auth.users u where u.id = uid;
+  end if;
+
+  return query
+  with preview as (
+    select
+      g.id,
+      g.name,
+      g.emoji,
+      g.color,
+      g.cover_path,
+      (
+        select count(*)::int from public.group_members m
+        join public.profiles p on p.id = m.user_id
+        where m.group_id = g.id and not p.is_placeholder
+      ) as member_count,
+      array(
+        select split_part(p.display_name, ' ', 1)
+        from public.group_members m
+        join public.profiles p on p.id = m.user_id
+        where m.group_id = g.id and p.deleted_at is null and not p.is_placeholder
+        order by (m.role = 'owner') desc, m.joined_at, p.id
+        limit 5
+      ) as first_names,
+      case
+        when x.is_member then 'valid'
+        -- A block reads like a revoked link: nobody learns they were blocked.
+        when inv.revoked_at is not null
+          or (uid is not null and private.blocked_in_group(g.id, uid)) then 'revoked'
+        when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
+        when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
+        when inv.placeholder_id is not null and not exists (
+          select 1 from public.group_members m where m.group_id = g.id and m.user_id = inv.placeholder_id
+        ) then 'revoked'
+        when g.archived_at is not null and inv.placeholder_id is null then 'archived'
+        else 'valid'
+      end as status,
+      x.is_member
+    from public.groups g
+    cross join lateral (
+      select exists (
+        select 1 from public.group_members m
+        where m.group_id = g.id and m.user_id = uid
+      ) as is_member
+    ) x
+    where g.id = inv.group_id
+  )
+  select
+    pv.id,
+    pv.name,
+    pv.emoji,
+    pv.color,
+    pv.cover_path,
+    pv.member_count,
+    pv.first_names,
+    pv.status,
+    pv.is_member,
+    -- Only a live claim link says whose seat it is.
+    case when pv.status = 'valid' and not pv.is_member then
+      (select split_part(p.display_name, ' ', 1) from public.profiles p where p.id = inv.placeholder_id)
+    end,
+    case when pv.status = 'valid' and not pv.is_member then
+      (select ph.email_hint from public.placeholders ph where ph.profile_id = inv.placeholder_id)
+    end,
+    case when pv.status = 'valid' and not pv.is_member and inv.email is not null and my_email is not null
+      then my_email = inv.email
+    end
+  from preview pv;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."invite_preview_v2"("code" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."leave_group"("group_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5462,7 +6518,8 @@ begin
   select count(*) into others_active
   from public.group_members m
   join public.profiles p on p.id = m.user_id
-  where m.group_id = leave_group.group_id and m.user_id <> uid and p.deleted_at is null;
+  where m.group_id = leave_group.group_id and m.user_id <> uid and p.deleted_at is null
+    and not p.is_placeholder;
 
   if my_role = 'owner' and others_active = 0 then
     if exists (
@@ -5640,6 +6697,60 @@ $$;
 
 
 ALTER FUNCTION "public"."mfa_recovery_codes_left"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."my_blocks"() RETURNS TABLE("user_id" "uuid", "display_name" "text", "avatar_path" "text", "blocked_at" timestamp with time zone)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  return query
+  select b.blocked_id, p.display_name, p.avatar_path, b.created_at
+  from public.blocks b
+  join public.profiles p on p.id = b.blocked_id
+  where b.blocker_id = uid
+  order by b.created_at desc, b.blocked_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."my_blocks"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."my_friend_link"("rotate" boolean DEFAULT false) RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := private.require_user();
+  found text;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('friend-link:' || uid::text, 0));
+
+  if rotate then
+    update public.friend_invites i set revoked_at = now()
+    where i.created_by = uid and i.email is null and i.max_uses is null and i.revoked_at is null;
+  else
+    select i.code into found
+    from public.friend_invites i
+    where i.created_by = uid and i.email is null and i.max_uses is null and i.revoked_at is null
+    order by i.created_at desc
+    limit 1;
+    if found is not null then
+      return found;
+    end if;
+  end if;
+
+  insert into public.friend_invites (created_by) values (uid) returning code into found;
+  return found;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."my_friend_link"("rotate" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."my_notification_prefs"() RETURNS TABLE("category" "text", "push" boolean, "email" boolean, "push_allowed" boolean, "email_allowed" boolean)
@@ -5845,6 +6956,75 @@ $$;
 ALTER FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."remind_placeholder"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ph public.placeholders;
+begin
+  select * into ph from public.placeholders x where x.profile_id = remind_placeholder.user_id;
+  if ph.profile_id is null then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+  perform private.require_member(ph.group_id);
+  perform private.require_group_open(ph.group_id);
+  if not exists (select 1 from public.group_members m where m.group_id = ph.group_id and m.user_id = ph.profile_id) then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+  if ph.email is null then
+    raise exception using message = 'placeholder_no_email', detail = 'Add an email address to send an invite', errcode = '23514';
+  end if;
+  if ph.reminded_at is not null then
+    raise exception using message = 'placeholder_already_reminded', detail = 'A reminder was already sent', errcode = '23514';
+  end if;
+
+  update public.placeholders x set reminded_at = now() where x.profile_id = ph.profile_id;
+
+  -- Across a block the reminder is spent like any other, and nothing is sent: the notifications
+  -- trigger holds it back until the block goes.
+  perform private.notify(
+    array[ph.profile_id],
+    'member.added',
+    jsonb_build_object('group_id', ph.group_id, 'role', 'member', 'reminder', true),
+    uid
+  );
+end;
+$$;
+
+
+ALTER FUNCTION "public"."remind_placeholder"("user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."remove_friend"("friend_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  if exists (
+    select 1 from public.groups g
+    join public.group_members a on a.group_id = g.id and a.user_id = uid
+    join public.group_members b on b.group_id = g.id and b.user_id = remove_friend.friend_id
+    where g.is_direct and private.member_balance(g.id, uid) <> 0
+  ) then
+    raise exception using message = 'friend_has_balance', detail = 'Settle up before removing this friend', errcode = '23514';
+  end if;
+
+  delete from public.friendships f
+  where (f.user_id = uid and f.friend_id = remove_friend.friend_id)
+     or (f.user_id = remove_friend.friend_id and f.friend_id = uid);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."remove_friend"("friend_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5924,6 +7104,44 @@ $$;
 ALTER FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."remove_placeholder"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ph public.placeholders;
+  my_role public.group_role;
+begin
+  select * into ph from public.placeholders x where x.profile_id = remove_placeholder.user_id;
+  if ph.profile_id is null then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+
+  perform 1 from public.groups g where g.id = ph.group_id for no key update;
+  my_role := private.require_member(ph.group_id);
+  perform private.require_group_open(ph.group_id);
+
+  if not exists (select 1 from public.group_members m where m.group_id = ph.group_id and m.user_id = ph.profile_id) then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and ph.created_by is distinct from uid then
+    raise exception using message = 'not_allowed', detail = 'Only admins or whoever added them can remove them', errcode = '42501';
+  end if;
+  if private.member_balance(ph.group_id, ph.profile_id) <> 0 then
+    raise exception using message = 'member_has_balance', detail = 'This member still has an unsettled balance', errcode = '23514';
+  end if;
+
+  delete from public.group_members m
+  where m.group_id = ph.group_id and m.user_id = ph.profile_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."remove_placeholder"("user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."request_availability"("event_id" "uuid", "user_ids" "uuid"[] DEFAULT NULL::"uuid"[]) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5946,6 +7164,7 @@ begin
     where m.group_id = ev.group_id
       and m.user_id <> uid
       and p.deleted_at is null
+      and not p.is_placeholder
       and not exists (select 1 from public.availability a where a.event_id = ev.id and a.user_id = m.user_id);
   else
     if exists (
@@ -5958,7 +7177,8 @@ begin
     from unnest(user_ids) as t (id)
     join public.profiles p on p.id = t.id
     where t.id <> uid
-      and p.deleted_at is null;
+      and p.deleted_at is null
+      and not p.is_placeholder;
   end if;
 
   insert into public.availability_requests (event_id, user_id, requested_by, requested_at, responded_at)
@@ -7264,6 +8484,101 @@ $$;
 ALTER FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text" DEFAULT NULL::"text", "email" "text" DEFAULT NULL::"text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ph public.placeholders;
+  new_email text;
+begin
+  select * into ph from public.placeholders x where x.profile_id = update_placeholder.user_id;
+  if ph.profile_id is null then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+  if ph.created_by is distinct from uid then
+    perform private.require_can_add_people(ph.group_id);
+  else
+    perform private.require_member(ph.group_id);
+    perform private.require_group_open(ph.group_id);
+  end if;
+  if not exists (select 1 from public.group_members m where m.group_id = ph.group_id and m.user_id = ph.profile_id) then
+    raise exception using message = 'member_not_found', detail = 'That person is not in this group', errcode = 'PT404';
+  end if;
+
+  if update_placeholder.display_name is not null then
+    update public.profiles p
+    set display_name = private.placeholder_name(update_placeholder.display_name)
+    where p.id = ph.profile_id;
+  end if;
+
+  if update_placeholder.email is null then
+    return;
+  end if;
+  new_email := private.placeholder_email(update_placeholder.email);
+  if new_email is not distinct from ph.email then
+    return;
+  end if;
+  -- Where an invite goes is up to whoever added the seat, or an admin.
+  if ph.created_by is distinct from uid and not private.is_group_admin(ph.group_id) then
+    raise exception using message = 'not_allowed', detail = 'Only whoever added them or an admin can change their email', errcode = '42501';
+  end if;
+
+  if new_email is not null then
+    if exists (
+      select 1 from public.placeholders x
+      where x.group_id = ph.group_id and x.email = new_email and x.profile_id <> ph.profile_id
+    ) then
+      raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
+    end if;
+    if ph.invites_sent >= 3 then
+      raise exception using message = 'too_many_invites', detail = 'This invite has been sent enough times', errcode = '23514';
+    end if;
+    perform private.require_invite_budget(uid);
+  end if;
+
+  update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
+  where i.placeholder_id = ph.profile_id;
+  insert into public.group_invites (group_id, role, max_uses, email, created_by, placeholder_id)
+  values (ph.group_id, 'member', 1, new_email, uid, ph.profile_id);
+
+  update public.placeholders x
+  set email = new_email,
+      invited_at = case when new_email is not null then now() end,
+      invites_sent = x.invites_sent + case when new_email is not null then 1 else 0 end,
+      reminded_at = null,
+      held_by = null,
+      held_reminder = false
+  where x.profile_id = ph.profile_id;
+
+  if new_email is not null then
+    perform private.notify(
+      array[ph.profile_id],
+      'member.added',
+      jsonb_build_object('group_id', ph.group_id, 'role', 'member'),
+      uid
+    );
+  end if;
+
+  perform private.log_activity(ph.group_id, uid, 'member.invite_changed', ph.profile_id,
+    jsonb_build_object('user_id', ph.profile_id));
+  if ph.created_by is distinct from uid then
+    perform private.notify(
+      array[ph.created_by],
+      'member.invite_changed',
+      jsonb_build_object('group_id', ph.group_id, 'user_id', ph.profile_id),
+      uid
+    );
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text", "email" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") RETURNS "public"."recurring_expenses"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -7620,6 +8935,15 @@ $$;
 
 
 ALTER FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."account_emails" (
+    "user_id" "uuid" NOT NULL,
+    "email" "text" NOT NULL
+);
+
+
+ALTER TABLE "private"."account_emails" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."email_outbox" (
@@ -8291,6 +9615,30 @@ COMMENT ON TABLE "public"."payment_methods" IS 'Where a person can be paid. Read
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."placeholders" (
+    "profile_id" "uuid" NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "email" "text",
+    "email_hint" "text" GENERATED ALWAYS AS ("private"."mask_email"("email")) STORED,
+    "created_by" "uuid" DEFAULT "auth"."uid"(),
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "invited_at" timestamp with time zone,
+    "invites_sent" smallint DEFAULT 0 NOT NULL,
+    "reminded_at" timestamp with time zone,
+    "held_by" "uuid",
+    "held_reminder" boolean DEFAULT false NOT NULL,
+    CONSTRAINT "placeholders_email_check" CHECK ((("email" IS NULL) OR ("private"."is_plain_email"("email") AND ("email" = "private"."ascii_lower"("email"))))),
+    CONSTRAINT "placeholders_invites_sent_check" CHECK (("invites_sent" >= 0))
+);
+
+
+ALTER TABLE "public"."placeholders" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."placeholders" IS 'One row per placeholder profile: its group, the email its invite goes to (members see only email_hint), invite and reminder times.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "id" "uuid" NOT NULL,
     "display_name" "text" NOT NULL,
@@ -8301,6 +9649,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "deleted_at" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "is_placeholder" boolean DEFAULT false NOT NULL,
     CONSTRAINT "profiles_default_currency_check" CHECK (("default_currency" ~ '^[A-Z]{3}$'::"text")),
     CONSTRAINT "profiles_display_name_check" CHECK ((("char_length"("btrim"("display_name")) >= 1) AND ("char_length"("btrim"("display_name")) <= 80)))
 );
@@ -8309,7 +9658,11 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
 ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 
-COMMENT ON TABLE "public"."profiles" IS 'One row per auth user. Tombstoned (not deleted) when an account is closed.';
+COMMENT ON TABLE "public"."profiles" IS 'One row per auth user, plus placeholders (is_placeholder, no auth user). Tombstoned (not deleted) when an account is closed.';
+
+
+
+COMMENT ON COLUMN "public"."profiles"."is_placeholder" IS 'Someone added to a group by name who has no account yet (ADR 19). Never signs in, never gets push.';
 
 
 
@@ -8340,6 +9693,11 @@ CREATE TABLE IF NOT EXISTS "public"."reports" (
 
 
 ALTER TABLE "public"."reports" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "private"."account_emails"
+    ADD CONSTRAINT "account_emails_pkey" PRIMARY KEY ("user_id");
+
 
 
 ALTER TABLE ONLY "private"."email_outbox"
@@ -8507,6 +9865,16 @@ ALTER TABLE ONLY "public"."expenses"
 
 
 
+ALTER TABLE ONLY "public"."friend_invites"
+    ADD CONSTRAINT "friend_invites_code_key" UNIQUE ("code");
+
+
+
+ALTER TABLE ONLY "public"."friend_invites"
+    ADD CONSTRAINT "friend_invites_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."friendships"
     ADD CONSTRAINT "friendships_pkey" PRIMARY KEY ("user_id", "friend_id");
 
@@ -8552,6 +9920,11 @@ ALTER TABLE ONLY "public"."payment_methods"
 
 
 
+ALTER TABLE ONLY "public"."placeholders"
+    ADD CONSTRAINT "placeholders_pkey" PRIMARY KEY ("profile_id");
+
+
+
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
 
@@ -8574,6 +9947,10 @@ ALTER TABLE ONLY "public"."reports"
 
 ALTER TABLE ONLY "public"."settlements"
     ADD CONSTRAINT "settlements_pkey" PRIMARY KEY ("id");
+
+
+
+CREATE INDEX "account_emails_email_idx" ON "private"."account_emails" USING "btree" ("email");
 
 
 
@@ -8753,6 +10130,10 @@ CREATE INDEX "expenses_recurring_id_idx" ON "public"."expenses" USING "btree" ("
 
 
 
+CREATE INDEX "friend_invites_created_by_idx" ON "public"."friend_invites" USING "btree" ("created_by", "created_at" DESC);
+
+
+
 CREATE INDEX "friendships_friend_id_idx" ON "public"."friendships" USING "btree" ("friend_id");
 
 
@@ -8766,6 +10147,10 @@ CREATE INDEX "group_invites_created_by_idx" ON "public"."group_invites" USING "b
 
 
 CREATE INDEX "group_invites_group_id_idx" ON "public"."group_invites" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "group_invites_placeholder_idx" ON "public"."group_invites" USING "btree" ("placeholder_id");
 
 
 
@@ -8790,6 +10175,30 @@ CREATE INDEX "notifications_unread_idx" ON "public"."notifications" USING "btree
 
 
 CREATE INDEX "notifications_user_id_created_at_idx" ON "public"."notifications" USING "btree" ("user_id", "created_at" DESC);
+
+
+
+CREATE INDEX "placeholders_created_by_idx" ON "public"."placeholders" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "placeholders_email_idx" ON "public"."placeholders" USING "btree" ("email") WHERE ("email" IS NOT NULL);
+
+
+
+CREATE UNIQUE INDEX "placeholders_group_email_key" ON "public"."placeholders" USING "btree" ("group_id", "email") WHERE ("email" IS NOT NULL);
+
+
+
+CREATE INDEX "placeholders_group_idx" ON "public"."placeholders" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "placeholders_held_by_idx" ON "public"."placeholders" USING "btree" ("held_by") WHERE ("held_by" IS NOT NULL);
+
+
+
+CREATE INDEX "profiles_placeholder_idx" ON "public"."profiles" USING "btree" ("id") WHERE "is_placeholder";
 
 
 
@@ -8845,7 +10254,15 @@ CREATE OR REPLACE TRIGGER "app_config_set_updated_at" BEFORE UPDATE ON "public".
 
 
 
+CREATE OR REPLACE TRIGGER "blocks_release_held_invites" AFTER DELETE ON "public"."blocks" FOR EACH ROW EXECUTE FUNCTION "private"."release_held_invites"();
+
+
+
 CREATE OR REPLACE TRIGGER "comments_activity" AFTER INSERT ON "public"."comments" FOR EACH ROW EXECUTE FUNCTION "private"."comments_activity"();
+
+
+
+CREATE OR REPLACE TRIGGER "comments_freeze_blocked_direct" BEFORE INSERT OR DELETE OR UPDATE ON "public"."comments" FOR EACH ROW EXECUTE FUNCTION "private"."freeze_blocked_direct_money"();
 
 
 
@@ -8905,6 +10322,10 @@ CREATE OR REPLACE TRIGGER "expenses_activity" AFTER INSERT OR UPDATE ON "public"
 
 
 
+CREATE OR REPLACE TRIGGER "expenses_freeze_blocked_direct" BEFORE INSERT OR DELETE OR UPDATE ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."freeze_blocked_direct_money"();
+
+
+
 CREATE CONSTRAINT TRIGGER "expenses_notify" AFTER INSERT ON "public"."expenses" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."expenses_notify"();
 
 
@@ -8941,6 +10362,10 @@ CREATE OR REPLACE TRIGGER "group_members_befriend" AFTER INSERT ON "public"."gro
 
 
 
+CREATE OR REPLACE TRIGGER "group_members_forget_placeholder" AFTER DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."forget_removed_placeholder"();
+
+
+
 CREATE OR REPLACE TRIGGER "group_members_notify" AFTER INSERT ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_notify"();
 
 
@@ -8954,6 +10379,10 @@ CREATE CONSTRAINT TRIGGER "group_members_owner_check" AFTER INSERT OR DELETE OR 
 
 
 CREATE OR REPLACE TRIGGER "group_members_pause_recurring" AFTER DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_pause_recurring"();
+
+
+
+CREATE OR REPLACE TRIGGER "group_members_placeholder_guard" BEFORE INSERT OR UPDATE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."guard_placeholder_member"();
 
 
 
@@ -8997,7 +10426,15 @@ CREATE OR REPLACE TRIGGER "notifications_route" BEFORE INSERT ON "public"."notif
 
 
 
+CREATE OR REPLACE TRIGGER "notifications_skip_placeholders" BEFORE INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "private"."skip_placeholder_notification"();
+
+
+
 CREATE OR REPLACE TRIGGER "payment_methods_check" BEFORE INSERT OR UPDATE ON "public"."payment_methods" FOR EACH ROW EXECUTE FUNCTION "private"."payment_methods_check"();
+
+
+
+CREATE CONSTRAINT TRIGGER "placeholders_forget_profile" AFTER DELETE ON "public"."placeholders" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."forget_orphan_placeholder"();
 
 
 
@@ -9009,7 +10446,15 @@ CREATE OR REPLACE TRIGGER "profiles_forget_notification_prefs" AFTER UPDATE OF "
 
 
 
+CREATE OR REPLACE TRIGGER "profiles_need_account" BEFORE INSERT OR UPDATE OF "id", "is_placeholder" ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "private"."profile_needs_account"();
+
+
+
 CREATE OR REPLACE TRIGGER "profiles_set_updated_at" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "recurring_expenses_freeze_blocked_direct" BEFORE INSERT OR DELETE OR UPDATE ON "public"."recurring_expenses" FOR EACH ROW EXECUTE FUNCTION "private"."freeze_blocked_direct_money"();
 
 
 
@@ -9033,11 +10478,20 @@ CREATE OR REPLACE TRIGGER "settlements_activity" AFTER INSERT OR UPDATE ON "publ
 
 
 
+CREATE OR REPLACE TRIGGER "settlements_freeze_blocked_direct" BEFORE INSERT OR DELETE OR UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."freeze_blocked_direct_money"();
+
+
+
 CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify"();
 
 
 
 CREATE OR REPLACE TRIGGER "settlements_notify_change" AFTER UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify_change"();
+
+
+
+ALTER TABLE ONLY "private"."account_emails"
+    ADD CONSTRAINT "account_emails_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
 
 
@@ -9301,6 +10755,11 @@ ALTER TABLE ONLY "public"."expenses"
 
 
 
+ALTER TABLE ONLY "public"."friend_invites"
+    ADD CONSTRAINT "friend_invites_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."friendships"
     ADD CONSTRAINT "friendships_friend_id_fkey" FOREIGN KEY ("friend_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
@@ -9318,6 +10777,11 @@ ALTER TABLE ONLY "public"."group_invites"
 
 ALTER TABLE ONLY "public"."group_invites"
     ADD CONSTRAINT "group_invites_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."group_invites"
+    ADD CONSTRAINT "group_invites_placeholder_id_fkey" FOREIGN KEY ("placeholder_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
 
 
@@ -9356,8 +10820,23 @@ ALTER TABLE ONLY "public"."payment_methods"
 
 
 
-ALTER TABLE ONLY "public"."profiles"
-    ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."placeholders"
+    ADD CONSTRAINT "placeholders_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."placeholders"
+    ADD CONSTRAINT "placeholders_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."placeholders"
+    ADD CONSTRAINT "placeholders_held_by_fkey" FOREIGN KEY ("held_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."placeholders"
+    ADD CONSTRAINT "placeholders_profile_id_fkey" FOREIGN KEY ("profile_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
 
 
@@ -9414,6 +10893,9 @@ ALTER TABLE ONLY "public"."settlements"
 ALTER TABLE ONLY "public"."settlements"
     ADD CONSTRAINT "settlements_to_user_fkey" FOREIGN KEY ("to_user") REFERENCES "public"."profiles"("id") ON DELETE RESTRICT;
 
+
+
+ALTER TABLE "private"."account_emails" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."email_outbox" ENABLE ROW LEVEL SECURITY;
@@ -9660,6 +11142,17 @@ CREATE POLICY "expenses: two-step sign in done" ON "public"."expenses" AS RESTRI
 
 
 
+ALTER TABLE "public"."friend_invites" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "friend_invites: read own" ON "public"."friend_invites" FOR SELECT TO "authenticated" USING (("created_by" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
+CREATE POLICY "friend_invites: revoke own" ON "public"."friend_invites" FOR UPDATE TO "authenticated" USING (("created_by" = ( SELECT "auth"."uid"() AS "uid"))) WITH CHECK (("created_by" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
 ALTER TABLE "public"."friendships" ENABLE ROW LEVEL SECURITY;
 
 
@@ -9764,6 +11257,13 @@ CREATE POLICY "payment_methods: remove own" ON "public"."payment_methods" FOR DE
 
 
 
+ALTER TABLE "public"."placeholders" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "placeholders: members read" ON "public"."placeholders" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
@@ -9844,6 +11344,14 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."ascii_lower"("value" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."befriend"("a" "uuid", "b" "uuid") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."blocked_in_group"("gid" "uuid", "uid" "uuid") FROM PUBLIC;
 
 
@@ -9867,6 +11375,18 @@ REVOKE ALL ON FUNCTION "private"."check_request"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."check_request"() TO "anon";
 GRANT ALL ON FUNCTION "private"."check_request"() TO "authenticated";
 GRANT ALL ON FUNCTION "private"."check_request"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."claim_placeholder"("ph" "uuid", "acct" "uuid", "announce" boolean) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."claim_placeholders_for_email"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."claiming"() FROM PUBLIC;
 
 
 
@@ -9988,7 +11508,23 @@ REVOKE ALL ON FUNCTION "private"."forget_closed_account"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."forget_deleted_auth_user"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."forget_notification_prefs"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."forget_orphan_placeholder"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."forget_removed_placeholder"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."freeze_blocked_direct_money"() FROM PUBLIC;
 
 
 
@@ -10020,6 +11556,10 @@ REVOKE ALL ON FUNCTION "private"."guard_group_delete"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."guard_open_group_write"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."guard_placeholder_member"() FROM PUBLIC;
 
 
 
@@ -10078,6 +11618,10 @@ GRANT ALL ON FUNCTION "private"."is_group_admin"("gid" "uuid") TO "service_role"
 
 GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."is_plain_email"("value" "text") FROM PUBLIC;
 
 
 
@@ -10169,6 +11713,18 @@ REVOKE ALL ON FUNCTION "private"."payment_fx"("cur" "text", "group_currency" "te
 
 
 
+REVOKE ALL ON FUNCTION "private"."placeholder_email"("raw" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."placeholder_name"("raw" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."profile_needs_account"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."push_notification"() FROM PUBLIC;
 
 
@@ -10223,7 +11779,19 @@ REVOKE ALL ON FUNCTION "private"."referenced_in_group"("gid" "uuid", "uid" "uuid
 
 
 
+REVOKE ALL ON FUNCTION "private"."release_held_invites"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."require_can_add_people"("gid" "uuid") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."require_group_open"("gid" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."require_invite_budget"("uid" "uuid") FROM PUBLIC;
 
 
 
@@ -10253,6 +11821,10 @@ REVOKE ALL ON FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb")
 
 
 
+REVOKE ALL ON FUNCTION "private"."seat_email_blocked"("seat" "uuid", "person" "uuid") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."send_email_notifications"("hold" interval, "batch_size" integer) FROM PUBLIC;
 
 
@@ -10271,6 +11843,14 @@ REVOKE ALL ON FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp w
 
 GRANT ALL ON FUNCTION "private"."shares_group_with"("other" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."shares_group_with"("other" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."skip_placeholder_notification"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."sync_account_email"() FROM PUBLIC;
 
 
 
@@ -10297,15 +11877,39 @@ GRANT ALL ON FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "
 
 
 
+REVOKE ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."accept_invite"("code" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."accept_invite"("code" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."accept_invite"("code" "text") TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."add_friend"("user_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."add_friend"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."add_friend"("user_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."add_placeholder_member"("group_id" "uuid", "display_name" "text", "email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."add_placeholder_member"("group_id" "uuid", "display_name" "text", "email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."add_placeholder_member"("group_id" "uuid", "display_name" "text", "email" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."best_slots"("event_id" "uuid", "limit" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."best_slots"("event_id" "uuid", "limit" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."best_slots"("event_id" "uuid", "limit" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."block_user"("user_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."block_user"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."block_user"("user_id" "uuid") TO "service_role";
 
 
 
@@ -10336,6 +11940,52 @@ GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "service_r
 REVOKE ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."friend_invites" TO "service_role";
+
+
+
+GRANT SELECT("id") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("code") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("created_by") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("email") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("max_uses") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("uses") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("expires_at") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("revoked_at"),UPDATE("revoked_at") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."friend_invites" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."create_friend_invite"("email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_friend_invite"("email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_friend_invite"("email" "text") TO "service_role";
 
 
 
@@ -10478,6 +12128,13 @@ GRANT ALL ON FUNCTION "public"."friend_balances"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."friend_invite_preview"("code" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."friend_invite_preview"("code" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."friend_invite_preview"("code" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."friend_invite_preview"("code" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "service_role";
@@ -10495,6 +12152,13 @@ REVOKE ALL ON FUNCTION "public"."invite_preview"("code" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."invite_preview"("code" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."invite_preview"("code" "text") TO "service_role";
 GRANT ALL ON FUNCTION "public"."invite_preview"("code" "text") TO "anon";
+
+
+
+REVOKE ALL ON FUNCTION "public"."invite_preview_v2"("code" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."invite_preview_v2"("code" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."invite_preview_v2"("code" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."invite_preview_v2"("code" "text") TO "service_role";
 
 
 
@@ -10518,6 +12182,18 @@ GRANT ALL ON FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "cod
 REVOKE ALL ON FUNCTION "public"."mfa_recovery_codes_left"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."mfa_recovery_codes_left"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."mfa_recovery_codes_left"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."my_blocks"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_blocks"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_blocks"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_friend_link"("rotate" boolean) TO "service_role";
 
 
 
@@ -10589,6 +12265,18 @@ GRANT ALL ON FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid"
 
 
 
+REVOKE ALL ON FUNCTION "public"."remind_placeholder"("user_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."remind_placeholder"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."remind_placeholder"("user_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."remove_friend"("friend_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."remove_friend"("friend_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."remove_friend"("friend_id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") TO "service_role";
@@ -10598,6 +12286,12 @@ GRANT ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") TO "serv
 REVOKE ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."remove_placeholder"("user_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."remove_placeholder"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."remove_placeholder"("user_id" "uuid") TO "service_role";
 
 
 
@@ -10728,6 +12422,12 @@ GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb
 
 
 
+REVOKE ALL ON FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text", "email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text", "email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_placeholder"("user_id" "uuid", "display_name" "text", "email" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") TO "service_role";
@@ -10737,6 +12437,10 @@ GRANT ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload"
 REVOKE ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."account_emails" TO "service_role";
 
 
 
@@ -10976,6 +12680,38 @@ GRANT SELECT("handle"),INSERT("handle"),UPDATE("handle") ON TABLE "public"."paym
 
 
 GRANT SELECT("updated_at") ON TABLE "public"."payment_methods" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."placeholders" TO "service_role";
+
+
+
+GRANT SELECT("profile_id") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("group_id") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("email_hint") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("created_by") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("invited_at") ON TABLE "public"."placeholders" TO "authenticated";
+
+
+
+GRANT SELECT("reminded_at") ON TABLE "public"."placeholders" TO "authenticated";
 
 
 

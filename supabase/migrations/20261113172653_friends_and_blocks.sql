@@ -361,7 +361,7 @@ revoke execute on function public.my_blocks() from public, anon;
 grant execute on function public.my_blocks() to authenticated, service_role;
 
 -- A 1:1 tab across a block: the blocked person can no longer change its money (expenses,
--- payments, repeating expenses), and is told what a stranger is told. The person who blocked
+-- payments, repeating expenses) or comment there, and is told what a stranger is told. The person who blocked
 -- them still can, so nothing they need to see happens behind the mute (ADR 19). Turning a
 -- repeating expense off is always allowed, and the nightly run of one (no signed in user) is
 -- not a change by anyone.
@@ -373,10 +373,21 @@ set search_path = ''
 as $$
 declare
   uid uuid := auth.uid();
-  gid uuid := (coalesce(to_jsonb(new), to_jsonb(old)) ->> 'group_id')::uuid;
+  row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
+  gid uuid;
 begin
   if uid is null or private.claiming() then
     return coalesce(new, old);
+  end if;
+  if tg_table_name = 'comments' then
+    gid := coalesce(
+      (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
+      (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (select s.group_id from public.settlements s where s.id = (row ->> 'settlement_id')::uuid),
+      (row ->> 'group_id')::uuid
+    );
+  else
+    gid := (row ->> 'group_id')::uuid;
   end if;
   if tg_table_name = 'recurring_expenses' and tg_op = 'UPDATE'
      and (to_jsonb(old) ->> 'active')::boolean and not (to_jsonb(new) ->> 'active')::boolean then
@@ -407,3 +418,56 @@ for each row execute function private.freeze_blocked_direct_money();
 create trigger recurring_expenses_freeze_blocked_direct
 before insert or update or delete on public.recurring_expenses
 for each row execute function private.freeze_blocked_direct_money();
+
+create trigger comments_freeze_blocked_direct
+before insert or update or delete on public.comments
+for each row execute function private.freeze_blocked_direct_money();
+
+-- Lifting a block sends what it held back: a seat whose invite or reminder was dropped because
+-- of it gets that one now, from the same person, unless another block still stands in the way.
+-- Closing an account lifts its blocks without sending anything.
+create or replace function private.release_held_invites()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  x public.placeholders;
+begin
+  if current_setting('potluck.closing_account', true) = 'on' then
+    return null;
+  end if;
+  for x in
+    select p.* from public.placeholders p
+    join public.group_members m on m.group_id = p.group_id and m.user_id = p.profile_id
+    where p.held_by in (old.blocker_id, old.blocked_id)
+      and p.email is not null
+    order by p.profile_id
+  loop
+    continue when private.seat_email_blocked(x.profile_id, x.held_by)
+      or not private.group_is_open(x.group_id)
+      or not exists (
+        select 1 from public.group_members s
+        join public.profiles sp on sp.id = s.user_id and sp.deleted_at is null
+        where s.group_id = x.group_id and s.user_id = x.held_by
+      );
+    update public.placeholders p set held_by = null, held_reminder = false
+    where p.profile_id = x.profile_id;
+    perform private.notify(
+      array[x.profile_id],
+      'member.added',
+      jsonb_build_object('group_id', x.group_id, 'role', 'member')
+        || case when x.held_reminder then jsonb_build_object('reminder', true) else '{}'::jsonb end,
+      x.held_by
+    );
+  end loop;
+  return null;
+end;
+$$;
+
+revoke execute on function private.release_held_invites() from public, anon, authenticated;
+
+create trigger blocks_release_held_invites
+after delete on public.blocks
+for each row execute function private.release_held_invites();

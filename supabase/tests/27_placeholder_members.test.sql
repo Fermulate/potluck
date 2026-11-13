@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(149);
+select plan(162);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -841,6 +841,18 @@ select lives_ok(
   'the person who blocked them still can'
 );
 reset role;
+select tests.remember('dm_lunch', (select e.id from public.expenses e where e.group_id = tests.id('dm') order by e.created_at desc limit 1));
+select tests.login('ben');
+select lives_ok(
+  format($$ insert into public.comments (expense_id, body) values (%L, 'Lunch on me') $$, tests.id('dm_lunch')),
+  'the blocker can still comment in the 1:1 tab'
+);
+select tests.login('dan');
+select throws_ok(
+  format($$ insert into public.comments (expense_id, body) values (%L, 'Hey') $$, tests.id('dm_lunch')),
+  '42501', 'not_a_friend', 'the blocked person cannot comment there'
+);
+reset role;
 
 -- A seat's invite never crosses a block ---------------------------------------------------------
 
@@ -928,6 +940,90 @@ reset role;
 select is(pg_temp.bal('pay', tests.id('quinn')), 0::bigint, 'the seat is settled');
 select tests.login('ava');
 select lives_ok(format($$ select public.remove_placeholder(%L) $$, tests.id('quinn')), 'and can be removed once settled');
+
+-- A lifted block sends what it held back -------------------------------------------------------
+
+reset role;
+select is(
+  (select x.held_by from public.placeholders x where x.profile_id = tests.id('avie')),
+  tests.uid('eve'),
+  'the seat remembers whose invite was held back'
+);
+select tests.login('ava');
+delete from public.blocks where blocker_id = tests.uid('ava') and blocked_id = tests.uid('eve');
+reset role;
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('avie') and n.type = 'member.added'),
+  1,
+  'once the block is lifted, one invite goes out'
+);
+select is(
+  (select (n.data ->> 'actor_id')::uuid from public.notifications n where n.user_id = tests.id('avie')),
+  tests.uid('eve'),
+  'from the person it was held back from'
+);
+select is(
+  (select x.held_by from public.placeholders x where x.profile_id = tests.id('avie')),
+  null,
+  'and nothing is held any more'
+);
+
+-- Account emails for seat checks are kept normalized and indexed
+
+select is(
+  (select e.email from private.account_emails e where e.user_id = tests.uid('ava')),
+  'ava@test.local',
+  'every account email is kept for seat lookups'
+);
+select tests.remember('mal', tests.uid('mallory'));
+update auth.users set email = 'Mallory.New@Test.Local' where id = tests.id('mal');
+select is(
+  (select e.email from private.account_emails e where e.user_id = tests.id('mal')),
+  'mallory.new@test.local',
+  'and follows an email change, lower cased'
+);
+select ok(
+  exists (
+    select 1 from pg_indexes
+    where schemaname = 'private' and tablename = 'account_emails' and indexdef like '%(email)%'
+  ),
+  'looked up through an index'
+);
+
+-- Repeating expenses with a seat ------------------------------------------------------------------
+
+select tests.create_user('rex');
+select tests.remember('rg', tests.group_with('cleo', '{}', '{}', 'Flat', 'USD'));
+select tests.login('cleo');
+select tests.remember('rx', public.add_placeholder_member(tests.id('rg'), 'Rex'));
+select tests.remember('ry', public.add_placeholder_member(tests.id('rg'), 'Ray'));
+reset role;
+insert into public.recurring_expenses (group_id, description, amount_cents, currency, paid_by, splits, recurrence, next_run_on, created_by)
+values
+  (tests.id('rg'), 'Rent', 1000, 'USD', tests.uid('cleo'),
+   jsonb_build_array(jsonb_build_object('user_id', tests.uid('cleo')), jsonb_build_object('user_id', tests.id('rx'))),
+   'monthly', current_date + 10, tests.uid('cleo')),
+  (tests.id('rg'), 'Wifi', 1000, 'USD', tests.uid('cleo'),
+   jsonb_build_array(jsonb_build_object('user_id', tests.uid('cleo')), jsonb_build_object('user_id', tests.id('ry'))),
+   'monthly', current_date + 10, tests.uid('cleo'));
+select private.claim_placeholder(tests.id('rx'), tests.uid('rex'));
+select ok(
+  (select r.active and not private.recurring_blocked(r) from public.recurring_expenses r where r.description = 'Rent' and r.group_id = tests.id('rg')),
+  'a repeating expense naming a seat keeps running after the seat is claimed'
+);
+select ok(
+  (select r.splits @> jsonb_build_array(jsonb_build_object('user_id', tests.uid('rex'))) from public.recurring_expenses r
+   where r.description = 'Rent' and r.group_id = tests.id('rg')),
+  'and now names the account'
+);
+select tests.login('cleo');
+select lives_ok(format($$ select public.remove_placeholder(%L) $$, tests.id('ry')), 'a settled seat is removed');
+reset role;
+select is(
+  (select r.active from public.recurring_expenses r where r.description = 'Wifi' and r.group_id = tests.id('rg')),
+  false,
+  'and the repeating expenses naming it pause, as for anyone who leaves'
+);
 
 select * from finish();
 rollback;

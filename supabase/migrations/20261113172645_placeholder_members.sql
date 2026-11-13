@@ -8,8 +8,9 @@
 -- private.set_updated_at, private.notification_channels, private.send_email_notifications,
 -- private.settlements_activity, private.settlements_notify_change,
 -- public.accept_invite, public.leave_group, public.delete_my_account,
--- public.request_availability, public.best_slots, public.invite_preview,
--- public.get_or_create_direct_group.
+-- public.request_availability, public.best_slots (body as in 20261113170311_guest_links.sql),
+-- public.invite_preview, public.get_or_create_direct_group, public.delete_my_account (body as in
+-- 20261113153242_recurring_editing.sql).
 
 -- Profiles without an auth user -------------------------------------------------
 
@@ -116,7 +117,11 @@ create table public.placeholders (
   created_at timestamptz not null default now(),
   invited_at timestamptz,
   invites_sent smallint not null default 0 check (invites_sent >= 0),
-  reminded_at timestamptz
+  reminded_at timestamptz,
+  -- An invite or reminder dropped because of a block with whoever sent it (ADR 19); one is
+  -- sent again when that block goes.
+  held_by uuid references public.profiles (id) on delete set null,
+  held_reminder boolean not null default false
 );
 
 comment on table public.placeholders is
@@ -124,6 +129,7 @@ comment on table public.placeholders is
 
 create index placeholders_group_idx on public.placeholders (group_id);
 create index placeholders_created_by_idx on public.placeholders (created_by);
+create index placeholders_held_by_idx on public.placeholders (held_by) where held_by is not null;
 create index placeholders_email_idx on public.placeholders (email) where email is not null;
 create unique index placeholders_group_email_key on public.placeholders (group_id, email)
   where email is not null;
@@ -235,6 +241,45 @@ after delete on public.placeholders
 deferrable initially deferred
 for each row execute function private.forget_orphan_placeholder();
 
+-- Account emails, normalized (ascii_lower) and indexed: auth.users cannot take an index of
+-- ours, so a trigger keeps this copy. Seat checks look accounts up here.
+create table private.account_emails (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  email text not null
+);
+create index account_emails_email_idx on private.account_emails (email);
+alter table private.account_emails enable row level security;
+revoke all on table private.account_emails from public, anon, authenticated;
+grant all on table private.account_emails to service_role;
+
+create or replace function private.sync_account_email()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.email is null then
+    delete from private.account_emails e where e.user_id = new.id;
+  else
+    insert into private.account_emails (user_id, email)
+    values (new.id, private.ascii_lower(new.email))
+    on conflict (user_id) do update set email = excluded.email;
+  end if;
+  return null;
+end;
+$$;
+
+revoke execute on function private.sync_account_email() from public, anon, authenticated;
+
+create trigger on_auth_user_email
+after insert or update of email on auth.users
+for each row execute function private.sync_account_email();
+
+insert into private.account_emails (user_id, email)
+select u.id, private.ascii_lower(u.email) from auth.users u where u.email is not null
+on conflict (user_id) do nothing;
+
 -- Notifications: placeholders only ever get their invite ---------------------------
 
 -- Whether a seat's email belongs to an account with a block, either way, with this person.
@@ -249,10 +294,10 @@ as $$
   select person is not null and exists (
     select 1
     from public.placeholders x
-    join auth.users u on private.ascii_lower(u.email) = x.email
+    join private.account_emails e on e.email = x.email
     join public.blocks b
-      on (b.blocker_id = u.id and b.blocked_id = person)
-      or (b.blocked_id = u.id and b.blocker_id = person)
+      on (b.blocker_id = e.user_id and b.blocked_id = person)
+      or (b.blocked_id = e.user_id and b.blocker_id = person)
     where x.profile_id = seat and x.email is not null
   );
 $$;
@@ -271,9 +316,14 @@ begin
      and exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
     return null;
   end if;
-  -- Its invite never goes to an address whose account has a block with whoever sent it.
+  -- Its invite never goes to an address whose account has a block with whoever sent it. The
+  -- seat remembers, so one goes out if that block is lifted.
   if new.type = 'member.added'
      and private.seat_email_blocked(new.user_id, private.try_uuid(new.data ->> 'actor_id')) then
+    update public.placeholders x
+    set held_by = private.try_uuid(new.data ->> 'actor_id'),
+        held_reminder = coalesce((new.data ->> 'reminder')::boolean, false)
+    where x.profile_id = new.user_id;
     return null;
   end if;
   -- Blocking mutes: nothing someone did reaches a person who blocked them.
@@ -1189,9 +1239,10 @@ begin
     -- Splitwise does. They hear about it (member.added) and show under their own name. A block
     -- between them and the group falls through to a seat, so nobody learns of it here.
     select u.id into existing
-    from auth.users u
+    from private.account_emails e
+    join auth.users u on u.id = e.user_id
     join public.profiles p on p.id = u.id and p.deleted_at is null and not p.is_placeholder
-    where private.ascii_lower(u.email) = clean_email
+    where e.email = clean_email
       and u.email_confirmed_at is not null
       and u.deleted_at is null
     order by u.created_at
@@ -1302,7 +1353,9 @@ begin
   set email = new_email,
       invited_at = case when new_email is not null then now() end,
       invites_sent = x.invites_sent + case when new_email is not null then 1 else 0 end,
-      reminded_at = null
+      reminded_at = null,
+      held_by = null,
+      held_reminder = false
   where x.profile_id = ph.profile_id;
 
   if new_email is not null then
@@ -1360,11 +1413,8 @@ begin
 
   update public.placeholders x set reminded_at = now() where x.profile_id = ph.profile_id;
 
-  -- Across a block the reminder is spent like any other, and nothing is sent.
-  if private.seat_email_blocked(ph.profile_id, uid) then
-    return;
-  end if;
-
+  -- Across a block the reminder is spent like any other, and nothing is sent: the notifications
+  -- trigger holds it back until the block goes.
   perform private.notify(
     array[ph.profile_id],
     'member.added',
@@ -1772,7 +1822,8 @@ begin
 end;
 $$;
 
--- Body as in schema/current.sql plus: a placeholder never inherits a group.
+-- Body as in 20261113153242_recurring_editing.sql plus: a placeholder never inherits a group,
+-- and the blocks a closing account leaves behind release no held seat invites.
 create or replace function public.delete_my_account()
 returns void
 language plpgsql
@@ -1820,11 +1871,6 @@ begin
     end if;
   end loop;
 
-  update public.recurring_expenses r set active = false
-  where r.active
-    and private.group_is_open(r.group_id)
-    and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
-
   delete from public.group_members m
   where m.user_id = uid
     and private.member_balance(m.group_id, uid) = 0;
@@ -1837,7 +1883,9 @@ begin
   delete from public.availability_requests r where r.user_id = uid;
   delete from public.event_rsvps r where r.user_id = uid;
   delete from public.friendships f where f.user_id = uid or f.friend_id = uid;
+  perform set_config('potluck.closing_account', 'on', true);
   delete from public.blocks b where b.blocker_id = uid or b.blocked_id = uid;
+  perform set_config('potluck.closing_account', '', true);
 
   update public.group_invites i set revoked_at = now()
   where i.created_by = uid and i.revoked_at is null;
@@ -1849,6 +1897,8 @@ begin
     locale = 'en',
     deleted_at = now()
   where p.id = uid;
+
+  perform private.pause_recurring_naming(uid);
 end;
 $$;
 
@@ -1920,15 +1970,22 @@ begin
 end;
 $$;
 
--- Body as in schema/current.sql plus: placeholders never paint times, so they are not
--- counted as missing.
-create or replace function public.best_slots(event_id uuid, "limit" integer default 5)
-returns table (starts_at timestamptz, ends_at timestamptz, yes_count integer, maybe_count integer, score numeric, missing uuid[])
+-- Body as in 20261113170311_guest_links.sql plus: placeholders never paint times, so they are
+-- not counted as missing.
+create or replace function public.best_slots(event_id uuid, "limit" int default 5)
+returns table (
+  starts_at timestamptz,
+  ends_at timestamptz,
+  yes_count int,
+  maybe_count int,
+  score numeric,
+  missing uuid[]
+)
 language plpgsql
 stable
 security definer
 set search_path = ''
-as $_$
+as $$
 #variable_conflict use_column
 declare
   ev public.events := private.member_event($1);
@@ -1940,12 +1997,18 @@ begin
     select m.user_id from public.group_members m
     join public.profiles p on p.id = m.user_id
     where m.group_id = ev.group_id and not p.is_placeholder
+    union all
+    select g.id from public.event_guests g where g.event_id = ev.id and g.removed_at is null
+  ),
+  answers as (
+    select a.user_id, a.slot_start, a.level from public.availability a where a.event_id = ev.id
+    union all
+    select ga.guest_id, ga.slot_start, ga.level from public.event_guest_availability ga where ga.event_id = ev.id
   ),
   candidates as (
     select distinct a.slot_start as slot
-    from public.availability a
+    from answers a
     join members mb on mb.user_id = a.user_id
-    where a.event_id = ev.id
   ),
   per_person as (
     select
@@ -1956,9 +2019,8 @@ begin
     from candidates c
     cross join members mb
     cross join generate_series(0, cells - 1) as k (i)
-    left join public.availability a
-      on a.event_id = ev.id
-     and a.user_id = mb.user_id
+    left join answers a
+      on a.user_id = mb.user_id
      and a.slot_start = c.slot + make_interval(mins => k.i * ev.slot_minutes)
     group by c.slot, mb.user_id
   ),
@@ -1983,4 +2045,4 @@ begin
   order by (s.yes_n + 0.5 * s.maybe_n) desc, s.slot asc
   limit max_rows;
 end;
-$_$;
+$$;
