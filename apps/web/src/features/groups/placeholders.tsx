@@ -142,7 +142,9 @@ export function AddPlaceholderSheet({
               loading={busy === 'add'}
               disabled={!name.trim() || !!busy}
             >
-              {t('people.placeholder.submit', { group: group.name })}
+              <span className="min-w-0 truncate">
+                {t('people.placeholder.submit', { group: group.name })}
+              </span>
             </Button>
           </div>
         }
