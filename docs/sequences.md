@@ -16,6 +16,8 @@ Participants used throughout:
 - [Join through an invite link](#join-through-an-invite-link)
 - [Add someone who is not on Potluck yet, and their claim](#add-someone-who-is-not-on-potluck-yet-and-their-claim)
 - [Friend links, removing and blocking](#friend-links-removing-and-blocking)
+- [Delete and restore a group](#delete-and-restore-a-group)
+- [Group notes](#group-notes)
 - [Add an expense](#add-an-expense)
 - [Settle up](#settle-up)
 - [Settle with a friend across groups](#settle-with-a-friend-across-groups)
@@ -68,7 +70,7 @@ sequenceDiagram
 
 ## Create a group and invite people
 
-`create_group` and `create_invite` are security definer RPCs because groups have no insert policy. The deferred `group_members_owner_check` trigger checks at commit that the new group has exactly one owner.
+`create_group_v2` (type and trip dates; `create_group` for older clients) and `create_invite` are security definer RPCs because groups have no insert policy. The deferred `group_members_owner_check` trigger checks at commit that the new group has exactly one owner.
 
 ```mermaid
 sequenceDiagram
@@ -77,8 +79,8 @@ sequenceDiagram
   participant W as Web
   participant DB as DB
 
-  O->>W: name, emoji, color, currency
-  W->>DB: rpc create_group(name, emoji, color, currency)
+  O->>W: name, type (and trip dates), emoji, color, currency
+  W->>DB: rpc create_group_v2(name, emoji, color, currency, type, starts_on, ends_on)
   DB->>DB: require_user()
   DB->>DB: insert groups, insert group_members (role owner)
   DB->>DB: activity group.created
@@ -193,6 +195,81 @@ sequenceDiagram
   A->>W: friend page, Remove friend or Block
   W->>DB: rpc remove_friend(id) (refused with an open 1:1 balance)<br/>or rpc block_user(id) (friendship gone both ways)
   Note over DB: a block is never announced (refusals read like a dead link or a stranger)<br/>and mutes: no notification whose actor Ava blocked reaches her
+```
+
+## Delete and restore a group
+
+Deleting stamps the group instead of removing it ([ADR 20](adr/0020-group-types-restorable-deletes-and-shared-notes.md)). The policy helpers leave a stamped group out, so it vanishes from every screen at once; any member can bring it back for 30 days, then the nightly job removes it for good.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor O as Owner
+  actor M as Member
+  participant W as Web
+  participant DB as DB
+  participant C as pg_cron
+
+  O->>W: Settings, Delete group, confirm
+  W->>DB: rpc delete_group(group_id)
+  DB->>DB: require_member (owner), lock group row
+  Note over DB: group_has_balances unless every balance is zero
+  DB->>DB: groups.deleted_at = now(), deleted_by
+  DB->>DB: open group_invites revoked_at = same now()
+  DB->>DB: activity group.deleted
+  DB->>DB: notify other members group.deleted (deleted_group_id, group_name)
+  DB-->>W: ok
+  W-->>O: toast with Undo, back to Groups
+  Note over DB: my_group_ids, is_group_member, is_group_admin,<br/>group_role, require_member skip deleted groups.<br/>Expense and member inserts raise group_deleted,<br/>notifications about it are dropped
+
+  M->>W: Groups, Recently deleted
+  W->>DB: rpc my_deleted_groups()
+  DB-->>W: rows with deleted_at, deleted_by, purge_after
+  M->>W: Restore
+  W->>DB: rpc restore_group(group_id)
+  DB->>DB: caller is in group_members, lock group row
+  DB->>DB: reopen invites revoked at deleted_at
+  DB->>DB: deleted_at = null, activity group.restored, notify group.restored
+  DB-->>W: groups row
+  W-->>M: opens the group
+
+  C->>DB: 03:20 UTC private.purge_deleted_groups()
+  DB->>DB: delete groups deleted more than 30 days ago (cascade)
+```
+
+## Group notes
+
+The notes are one row per group in `group_whiteboards`, published to realtime. Saves carry the version the editor started from, so two people typing at once never overwrite each other silently.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor A as Ava
+  actor B as Ben
+  participant WA as Web (Ava)
+  participant WB as Web (Ben)
+  participant DB as DB
+  participant RT as Realtime
+
+  WA->>DB: select group_whiteboards (body, version 3)
+  WB->>DB: select group_whiteboards (body, version 3)
+  A->>WA: types, pauses
+  WA->>DB: rpc save_group_whiteboard(group_id, body, base_version 3)
+  DB->>DB: require_member, require_group_open, lock row
+  DB->>DB: version 3 matches: body, version 4, updated_by
+  DB->>DB: activity group.notes_updated (one line per sitting)
+  DB-->>WA: row, version 4
+  DB-->>RT: group_whiteboards UPDATE
+  RT-->>WB: change (RLS: members, two-step done)
+  WB->>DB: refetch
+  alt Ben has not typed
+    WB-->>B: shows Ava's text
+  else Ben was typing
+    WB-->>B: Ava saved a newer version: use theirs or keep mine
+    B->>WB: keep mine
+    WB->>DB: rpc save_group_whiteboard(..., base_version 4)
+  end
+  Note over DB: a stale base_version raises whiteboard_conflict
 ```
 
 ## Add an expense
