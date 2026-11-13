@@ -29,7 +29,7 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   #variable_conflict use_column
   declare uid uuid := private.require_user();
   begin
-    perform 1 from public.groups g where g.id = gid for share;
+    perform 1 from public.groups g where g.id = gid for share;  -- bulk settles: for no key update
     perform private.require_member(gid);
     perform private.require_group_open(gid);  -- money RPCs: private.require_unarchived(gid)
     -- role checks, then:
