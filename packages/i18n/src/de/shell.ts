@@ -233,6 +233,15 @@ export const errors = {
     email_not_verified: 'Bestätige zuerst deine E-Mail. Schau in dein Postfach.',
     friend_has_balance: 'Begleicht zuerst euren Stand zu zweit.',
     person_not_found: 'Diese Person finden wir nicht.',
+    group_deleted:
+      'Diese Gruppe wurde gelöscht. Alle darin können sie 30 Tage lang unter Gruppen wiederherstellen.',
+    group_not_found: 'Diese Gruppe ist endgültig weg.',
+    trip_dates_invalid: 'Eine Reise kann nicht enden, bevor sie beginnt.',
+    whiteboard_conflict:
+      'Jemand hat die Notizen zuerst gespeichert. Diese Fassung ist jetzt geladen.',
+    whiteboard_too_long: 'Die Notizen sind voll. Bleib unter 10.000 Zeichen.',
+    direct_group_not_deletable:
+      'Eine Rechnung zu zweit lässt sich nicht löschen. Gleicht ab, dann bleibt sie einfach ruhig.',
   },
   auth: {
     invalidCredentials: 'E-Mail und Passwort passen nicht zusammen.',

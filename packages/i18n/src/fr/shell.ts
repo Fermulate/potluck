@@ -232,6 +232,14 @@ export const errors = {
     email_not_verified: "Confirme d'abord ton e-mail. Regarde ta boîte de réception.",
     friend_has_balance: "Réglez d'abord votre compte à deux.",
     person_not_found: 'On ne trouve pas cette personne.',
+    group_deleted:
+      'Ce groupe a été supprimé. Chacun peut le restaurer depuis Groupes pendant 30 jours.',
+    group_not_found: 'Ce groupe a disparu pour de bon.',
+    trip_dates_invalid: 'Un voyage ne peut pas finir avant de commencer.',
+    whiteboard_conflict: "Quelqu'un a enregistré les notes avant toi. Sa version est chargée.",
+    whiteboard_too_long: 'Les notes sont pleines. Reste sous 10 000 caractères.',
+    direct_group_not_deletable:
+      'Une note à deux ne peut pas être supprimée. Réglez vos comptes et elle restera calme.',
   },
   auth: {
     invalidCredentials: 'Cet e-mail et ce mot de passe ne correspondent pas.',

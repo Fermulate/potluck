@@ -72,6 +72,13 @@ export const notifications = {
         body: '{actor} a restauré un paiement de {amount} dans {group}',
       },
     },
+    group: {
+      deleted: {
+        title: '{group} a été supprimé',
+        body: "{actor} l'a supprimé. Chacun peut le restaurer pendant 30 jours.",
+      },
+      restored: { title: '{group} est de retour', body: "{actor} l'a restauré." },
+    },
     member: {
       joined: {
         title: 'Nouvelle tête dans {group}',

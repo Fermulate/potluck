@@ -229,6 +229,14 @@ export const errors = {
     email_not_verified: 'Primero confirma tu correo. Revisa tu bandeja de entrada.',
     friend_has_balance: 'Primero salda vuestra cuenta entre los dos.',
     person_not_found: 'No encontramos a esa persona.',
+    group_deleted:
+      'Este grupo se eliminó. Cualquiera del grupo puede recuperarlo desde Grupos durante 30 días.',
+    group_not_found: 'Ese grupo ya no existe.',
+    trip_dates_invalid: 'Un viaje no puede terminar antes de empezar.',
+    whiteboard_conflict: 'Otra persona guardó las notas antes. Ya tienes su versión.',
+    whiteboard_too_long: 'Las notas están llenas. Mantenlas por debajo de 10.000 caracteres.',
+    direct_group_not_deletable:
+      'Una cuenta entre dos no se puede eliminar. Salda las cuentas y se queda tranquila.',
   },
   auth: {
     invalidCredentials: 'Ese correo y esa contraseña no coinciden.',
