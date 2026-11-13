@@ -29,7 +29,7 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
   only; Potluck never moves money ([ADR 15](../../docs/adr/0015-payment-links-and-cross-group-settle.md)).
 - `portability/`: CSV read and write, Potluck's spreadsheet export (`ledgerCsv`) and its reader, the
   Splitwise reader, `planImport` (file rows to `import_expenses` rows) and the backup schema. Formats:
-  [docs/backup-format.md](../../docs/backup-format.md), [ADR 13](../../docs/adr/0013-export-backup-and-import.md).
+  [docs/backup-format.md](../../docs/backup-format.md), [ADR 18](../../docs/adr/0018-export-backup-and-import.md).
   The export's balance columns come from `expenseEffect`; keep the round trip tests passing.
 - Money: integer minor units; intermediate products in `BigInt`; round half away from zero; largest
   remainder with ties to the smaller user id compared as code points. FX rates are decimal text with 12

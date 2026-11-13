@@ -1,5 +1,8 @@
+import { expenseEffect } from '../balances'
+import { convert, invertRate } from '../currency'
 import { allocate, compareIds, type Shares } from '../money/allocate'
-import { MAX_IMPORT_ROWS, type SourceEntry, type SourceFile, type SourceIssue } from './source'
+import { trimRate } from './decimal'
+import { MAX_FILE_ROWS, type SourceEntry, type SourceFile, type SourceIssue } from './source'
 
 /** An expense as `import_expenses` takes it: an exact split with every payer. */
 export interface ImportExpenseRow {
@@ -13,6 +16,8 @@ export interface ImportExpenseRow {
   is_refund: boolean
   payers: { user_id: string; paid_cents: number }[]
   splits: { user_id: string; share_cents: number }[]
+  /** Rate into the group currency (decimal text); only for rows in another currency. */
+  fx_rate?: string
 }
 
 /** A payment as `import_expenses` takes it. */
@@ -24,32 +29,76 @@ export interface ImportPaymentRow {
   currency: string
   paid_on: string
   note: string | null
+  fx_rate?: string
 }
 
 export type ImportRow = ImportExpenseRow | ImportPaymentRow
 
+/** A mapping value: leave out every row this person has money in. */
+export const SKIP_PERSON = '__skip__'
+
+/** Why a row of the file is left out. */
+export type SkipReason = 'no_effect' | 'person' | 'rate' | 'duplicate'
+
+/** The stored rate for a day: decimal text, null when Potluck has none, undefined while loading. */
+export type RateLookup = (currency: string, day: string) => string | null | undefined
+
 export interface ImportOptions {
-  /** Member id for each person in `SourceFile.people` (same order); null when not picked. */
+  /** For each person in `SourceFile.people`: a member id, null (not picked yet) or `SKIP_PERSON`. */
   mapping: readonly (string | null)[]
   /** A several-group Potluck file: only this group's rows. */
   group?: string | null
   /** Description for a row that has none. */
   untitled: string
+  /** The group the rows go into. */
+  groupCurrency: string
+  /** Rates Potluck has stored, the same lookup the server makes. */
+  rateOn?: RateLookup
+  /** Rates typed in for currencies Potluck has no rate for on some days. */
+  typedRates?: Readonly<Record<string, string>>
+  /** Currencies whose rows without any rate are left out. */
+  skipCurrencies?: ReadonlySet<string>
+  /** File lines to leave out (rows already in the group). */
+  skipLines?: ReadonlySet<number>
+}
+
+/** A currency with rows on days Potluck has no rate for. */
+export interface MissingRate {
+  currency: string
+  /** First and last such day. */
+  from: string
+  to: string
+  rows: number
 }
 
 export interface ImportPlan {
   rows: ImportRow[]
   /** The file row each of `rows` came from (for errors the server names by row). */
   lines: number[]
-  /** Rows that move no money once people are matched (everyone square, or paying themselves). */
-  skipped: number[]
+  /** Rows left out, and why. */
+  skipped: { line: number; reason: SkipReason }[]
   /** Problems that stop the import: the file's own, and people left unmatched. */
   issues: SourceIssue[]
-  /** What the import does to each member's balance, per currency, before any conversion. */
-  effects: Record<string, Shares>
+  /** What the import does to each member's balance in the group currency, converted exactly as
+   * the server will (every row carries its rate). */
+  balances: Shares
+  /** Stored rates still loading: the balances are not final yet. */
+  ratesPending: boolean
+  /** Currencies with rows that have no rate yet (neither stored, typed nor skipped). */
+  missingRates: MissingRate[]
+  /** Rows that keep the rate their Potluck file was written with, and how many of those differ
+   * from the rate Potluck has stored for that day. */
+  fileRates: { rows: number; differ: number }
   /** Whether the rows add up to the totals the file carries ('none' if it has none). */
   totals: 'match' | 'mismatch' | 'none'
   counts: { expenses: number; refunds: number; payments: number }
+}
+
+const RATE = /^\d{1,12}(\.\d{1,12})?$/
+
+/** A rate someone typed or a file carries: positive decimal text that fits numeric(24,12). */
+export function isRate(text: string | null | undefined): text is string {
+  return !!text && RATE.test(text.trim()) && Number(text) > 0
 }
 
 /**
@@ -91,7 +140,7 @@ function merge(
   const out = new Map<string, number>()
   values.forEach((cents, i) => {
     const id = mapping[i]
-    if (!id || cents === 0) return
+    if (!id || id === SKIP_PERSON || cents === 0) return
     out.set(id, (out.get(id) ?? 0) + cents)
   })
   for (const [id, cents] of out) if (cents === 0) out.delete(id)
@@ -119,7 +168,13 @@ function entryRow(entry: SourceEntry, options: ImportOptions): ImportRow | null 
         }
       }
     }
-    const shape = fromNets(entry.amountCents, nets)
+    // A refund flips both signs, so it is rebuilt from the flipped nets: whoever came out behind
+    // got the money back.
+    const refund = entry.kind === 'refund'
+    const shape = fromNets(
+      entry.amountCents,
+      refund ? new Map([...nets].map(([id, c]) => [id, -c])) : nets,
+    )
     if (!shape) return null
     return {
       kind: 'expense',
@@ -128,7 +183,7 @@ function entryRow(entry: SourceEntry, options: ImportOptions): ImportRow | null 
       spent_at: entry.date,
       category: entry.category,
       notes: entry.notes,
-      is_refund: false,
+      is_refund: refund,
       ...shape,
     }
   }
@@ -186,54 +241,134 @@ export function rowEffect(row: ImportRow): Shares {
 }
 
 /**
+ * What a row does to each member in the group currency, converted at `rate` the way the server
+ * does (core `expenseEffect` for expenses, `convert` for payments), so the preview and the
+ * balances after the import agree to the cent.
+ */
+export function rowEffectIn(row: ImportRow, groupCurrency: string, rate: string): Shares {
+  if (row.kind === 'payment') {
+    const cents = convert(row.amount_cents, rate, { from: row.currency, to: groupCurrency })
+    return { [row.from_user]: cents, [row.to_user]: -cents }
+  }
+  return (
+    expenseEffect(
+      {
+        paidBy: row.payers[0]?.user_id ?? '',
+        payers: row.payers.map((p) => ({ userId: p.user_id, paidCents: p.paid_cents })),
+        isRefund: row.is_refund,
+        amountCents: row.amount_cents,
+        currency: row.currency,
+        fxRate: rate,
+        splits: row.splits.map((s) => ({ userId: s.user_id, shareCents: s.share_cents })),
+      },
+      { groupCurrency },
+    ) ?? {}
+  )
+}
+
+/** The values a person has in a row (any of nets, paid, shares). */
+function touches(entry: SourceEntry, person: number): boolean {
+  return [entry.nets, entry.paid, entry.shares].some((v) => (v?.[person] ?? 0) !== 0)
+}
+
+/** Everyone with money in the rows of the file being imported (by index into `people`). */
+export function peopleInScope(file: SourceFile, group?: string | null): number[] {
+  const entries = file.entries.filter(
+    (e) => !group || file.format !== 'potluck' || e.group === group,
+  )
+  return file.people.map((_, i) => i).filter((i) => entries.some((e) => touches(e, i)))
+}
+
+/**
  * Everything the import will write, worked out from the file and who each person is: the rows
- * for `import_expenses`, what they do to each balance (for the preview), and whatever stops the
- * import. Nothing here talks to the server.
+ * for `import_expenses` (each with the rate it is converted at), what they do to each balance in
+ * the group currency (for the preview), and whatever stops the import. Nothing here talks to the
+ * server.
  */
 export function planImport(file: SourceFile, options: ImportOptions): ImportPlan {
   const issues: SourceIssue[] = [...file.issues]
+  const gc = options.groupCurrency
   const inScope = (e: { group: string | null }) =>
     !options.group || file.format !== 'potluck' || e.group === options.group
   const entries = file.entries.filter(inScope)
 
-  // Everyone with money in the rows being imported has to be someone in the group.
-  const used = new Set<number>()
-  for (const e of entries) {
-    for (const values of [e.nets, e.paid, e.shares]) {
-      values?.forEach((cents, i) => {
-        if (cents !== 0) used.add(i)
-      })
-    }
-  }
-  for (const i of [...used].sort((a, b) => a - b)) {
+  // Everyone with money in the rows being imported has to be someone in the group, or skipped.
+  for (const i of peopleInScope(file, options.group)) {
     if (!options.mapping[i]) issues.push({ line: 0, code: 'unmapped', detail: file.people[i] })
   }
 
   const rows: ImportRow[] = []
   const lines: number[] = []
-  const skipped: number[] = []
-  const effects: Record<string, Shares> = {}
+  const skipped: ImportPlan['skipped'] = []
+  const balances: Shares = {}
+  const missing = new Map<string, MissingRate>()
+  const fileRates = { rows: 0, differ: 0 }
+  let ratesPending = false
   const counts = { expenses: 0, refunds: 0, payments: 0 }
+
   if (!issues.some((i) => i.code === 'unmapped')) {
     for (const entry of entries) {
-      const row = entryRow(entry, options)
-      if (!row) {
-        skipped.push(entry.line)
+      if (options.skipLines?.has(entry.line)) {
+        skipped.push({ line: entry.line, reason: 'duplicate' })
         continue
       }
+      if (options.mapping.some((id, i) => id === SKIP_PERSON && touches(entry, i))) {
+        skipped.push({ line: entry.line, reason: 'person' })
+        continue
+      }
+      const row = entryRow(entry, options)
+      if (!row) {
+        skipped.push({ line: entry.line, reason: 'no_effect' })
+        continue
+      }
+
+      let rate: string | null | undefined = '1'
+      if (row.currency !== gc) {
+        const day = row.kind === 'payment' ? row.paid_on : row.spent_at
+        const stored = options.rateOn?.(row.currency, day)
+        const fromFile = entry.groupCurrency === gc && isRate(entry.rate) ? entry.rate : null
+        const typed = options.typedRates?.[row.currency]
+        if (fromFile) {
+          rate = fromFile
+          fileRates.rows++
+          if (stored && trimRate(stored) !== trimRate(fromFile)) fileRates.differ++
+        } else if (stored === undefined) {
+          rate = undefined
+          ratesPending = true
+        } else if (stored !== null) {
+          rate = stored
+        } else if (isRate(typed)) {
+          rate = typed.trim()
+        } else if (options.skipCurrencies?.has(row.currency)) {
+          skipped.push({ line: entry.line, reason: 'rate' })
+          continue
+        } else {
+          rate = null
+          const seen = missing.get(row.currency)
+          missing.set(row.currency, {
+            currency: row.currency,
+            from: !seen || day < seen.from ? day : seen.from,
+            to: !seen || day > seen.to ? day : seen.to,
+            rows: (seen?.rows ?? 0) + 1,
+          })
+        }
+        if (rate) row.fx_rate = rate
+      }
+
       rows.push(row)
       lines.push(entry.line)
       if (row.kind === 'payment') counts.payments++
       else if (row.is_refund) counts.refunds++
       else counts.expenses++
-      const bucket = (effects[row.currency] ??= {})
-      for (const [id, cents] of Object.entries(rowEffect(row))) {
-        bucket[id] = (bucket[id] ?? 0) + cents
+      if (rate) {
+        for (const [id, cents] of Object.entries(rowEffectIn(row, gc, rate))) {
+          balances[id] = (balances[id] ?? 0) + cents
+        }
       }
     }
   }
-  if (rows.length > MAX_IMPORT_ROWS) {
-    issues.push({ line: 0, code: 'too_many_rows', detail: String(MAX_IMPORT_ROWS) })
+  if (rows.length > MAX_FILE_ROWS) {
+    issues.push({ line: 0, code: 'too_many_rows', detail: String(MAX_FILE_ROWS) })
   }
 
   // The file's own totals against its rows, person by person.
@@ -250,7 +385,74 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
     if (expected.some((cents, i) => cents !== actual[i])) totals = 'mismatch'
   }
 
-  return { rows, lines, skipped, issues, effects, totals, counts }
+  return {
+    rows,
+    lines,
+    skipped,
+    issues,
+    balances,
+    ratesPending,
+    missingRates: [...missing.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
+    fileRates,
+    totals,
+    counts,
+  }
+}
+
+/** An expense or payment already in the group, to spot rows imported before. */
+export interface ExistingRow {
+  kind: 'expense' | 'payment'
+  day: string
+  amountCents: number
+  currency: string
+  description?: string
+  fromUser?: string
+  toUser?: string
+}
+
+/**
+ * File lines whose row looks like one already in the group: same day, amount and currency, and
+ * the same description (expenses) or the same two people (payments). Each existing row matches
+ * one file row at most, so a file with the same coffee twice only flags it twice if the group
+ * has it twice.
+ */
+export function alreadyThere(
+  plan: Pick<ImportPlan, 'rows' | 'lines'>,
+  existing: readonly ExistingRow[],
+): number[] {
+  const key = (r: ExistingRow) =>
+    r.kind === 'expense'
+      ? `e|${r.day}|${r.amountCents}|${r.currency}|${(r.description ?? '').trim().toLowerCase()}`
+      : `p|${r.day}|${r.amountCents}|${r.currency}|${r.fromUser}|${r.toUser}`
+  const left = new Map<string, number>()
+  for (const r of existing) left.set(key(r), (left.get(key(r)) ?? 0) + 1)
+  const out: number[] = []
+  plan.rows.forEach((row, i) => {
+    const k = key(
+      row.kind === 'expense'
+        ? {
+            kind: 'expense',
+            day: row.spent_at,
+            amountCents: row.amount_cents,
+            currency: row.currency,
+            description: row.description,
+          }
+        : {
+            kind: 'payment',
+            day: row.paid_on,
+            amountCents: row.amount_cents,
+            currency: row.currency,
+            fromUser: row.from_user,
+            toUser: row.to_user,
+          },
+    )
+    const n = left.get(k) ?? 0
+    if (n > 0) {
+      left.set(k, n - 1)
+      out.push(plan.lines[i]!)
+    }
+  })
+  return out
 }
 
 /** The file row a server error points at (`import_row:<n>` in its hint), if any. */
@@ -299,4 +501,26 @@ export function guessMapping(
     })
   }
   return result
+}
+
+/**
+ * The rate the server takes for a day (`private.fx_rate`): the latest `from` to `to` rate on or
+ * before it, else the latest inverse rate turned round (`invertRate`). Null when there is none.
+ */
+export function rateOnDay(
+  history: {
+    direct: readonly { day: string; rate: string }[]
+    inverse: readonly { day: string; rate: string }[]
+  },
+  day: string,
+): string | null {
+  const latest = (rows: readonly { day: string; rate: string }[]) => {
+    let best: { day: string; rate: string } | null = null
+    for (const r of rows) if (r.day <= day && (!best || r.day > best.day)) best = r
+    return best
+  }
+  const direct = latest(history.direct)
+  if (direct) return direct.rate
+  const inverse = latest(history.inverse)
+  return inverse ? invertRate(inverse.rate) : null
 }

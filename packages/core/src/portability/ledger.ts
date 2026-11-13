@@ -5,7 +5,9 @@ import { isBlankRow, toCsv, unguardCell, type CsvValue } from './csv'
 import { formatMinor, parseMinor, trimRate } from './decimal'
 import {
   CURRENCY_CODE,
+  detectDateFormat,
   isoDay,
+  type ReadOptions,
   type EntryKind,
   type SourceEntry,
   type SourceFile,
@@ -103,6 +105,10 @@ export interface LedgerOptions {
   paymentText: (fromUser: string, toUser: string) => string
   /** Only what is shared between `me` and `friend`, with a between-you column. */
   friend?: { me: string; friend: string }
+  /** A name for anyone without a column (a friend export's third parties, people who left). */
+  nameOf?: (id: string) => string
+  /** A category's label; defaults to `labels.categories`, then the stored value. */
+  categoryLabel?: (category: string) => string
 }
 
 const fill = (template: string, name: string) => template.replaceAll('{name}', name)
@@ -154,7 +160,13 @@ export function ledgerCsv(groups: readonly LedgerGroup[], options: LedgerOptions
     ? options.people.filter((p) => p.id === friend.me || p.id === friend.friend)
     : options.people
   const names = uniqueNames(people.map((p) => p.name))
-  const nameOf = (id: string) => names[people.findIndex((p) => p.id === id)] ?? id
+  const nameOf = (id: string) => {
+    const i = people.findIndex((p) => p.id === id)
+    if (i !== -1) return names[i]!
+    return options.nameOf?.(id) ?? options.people.find((p) => p.id === id)?.name ?? id
+  }
+  const categoryOf = (category: string) =>
+    options.categoryLabel?.(category) ?? labels.categories[category] ?? category
   const friendName = friend ? nameOf(friend.friend) : ''
 
   const header: string[] = [
@@ -219,7 +231,7 @@ export function ledgerCsv(groups: readonly LedgerGroup[], options: LedgerOptions
           group.name,
           labels.kinds[e.isRefund ? 'refund' : 'expense'],
           e.description,
-          e.category ? (labels.categories[e.category] ?? e.category) : '',
+          e.category ? categoryOf(e.category) : '',
           formatMinor(sign * e.amountCents, e.currency),
           e.currency,
           trimRate(e.fxRate),
@@ -385,6 +397,7 @@ export function looksLikeLedger(
 export function parseLedger(
   rows: readonly string[][],
   labelSets: readonly LedgerLabels[],
+  options: ReadOptions = {},
 ): SourceFile {
   const layout = layoutOf(rows[0] ?? [], labelSets)
   const issues: SourceIssue[] = []
@@ -401,6 +414,8 @@ export function parseLedger(
       checks,
       groups,
       issues: [{ line: 0, code: 'unknown_format' }],
+      dateFormat: 'iso',
+      dateAmbiguous: false,
     }
   }
   const { labels, people, friend } = layout
@@ -413,8 +428,18 @@ export function parseLedger(
       checks,
       groups,
       issues: [{ line: 0, code: 'friend_export' }],
+      dateFormat: 'iso',
+      dateAmbiguous: false,
     }
   }
+  // A file opened and saved again in a spreadsheet may come back with its dates rewritten.
+  const detected = detectDateFormat(
+    rows
+      .slice(1)
+      .filter((row) => !isBlankRow(row) && (row[0] ?? '').trim() !== '')
+      .map((row) => row[0] ?? ''),
+  )
+  const dateFormat = options.dateFormat ?? detected.format
   const kinds = new Map<string, EntryKind | 'balance'>(
     Object.entries(labels.kinds).map(([kind, label]) => [label, kind as EntryKind | 'balance']),
   )
@@ -463,7 +488,7 @@ export function parseLedger(
       return
     }
 
-    const date = isoDay(cell(0))
+    const date = isoDay(cell(0), dateFormat)
     if (!date) {
       issues.push({ line, code: 'bad_date', detail: cell(0) })
       return
@@ -496,19 +521,32 @@ export function parseLedger(
       kind,
       date,
       description: cell(3),
-      category: kind === 'payment' ? null : (categoryIds.get(cell(4)) ?? null),
+      category:
+        kind === 'payment' ? null : (categoryIds.get(cell(4)) ?? (cell(4).toLowerCase() || null)),
       notes: cell(FIXED + people.length * 3) || null,
       amountCents: total,
       currency,
       group,
       paid: paidOut,
       shares: shareOut,
+      rate: /^\d{1,12}(\.\d{1,12})?$/.test(cell(7)) && Number(cell(7)) > 0 ? cell(7) : null,
+      groupCurrency,
     })
     checks.push({ key: group, nets })
   })
 
   if (entries.length === 0 && issues.length === 0) issues.push({ line: 0, code: 'no_rows' })
-  return { format: 'potluck', people, entries, totals, checks, groups, issues }
+  return {
+    format: 'potluck',
+    people,
+    entries,
+    totals,
+    checks,
+    groups,
+    issues,
+    dateFormat,
+    dateAmbiguous: !options.dateFormat && detected.ambiguous,
+  }
 }
 
 /** People ordered for columns: as given, then anyone else in `ids` (sorted, so files are stable). */

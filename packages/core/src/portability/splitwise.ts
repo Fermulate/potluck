@@ -3,7 +3,9 @@ import { isBlankRow } from './csv'
 import { parseMinor } from './decimal'
 import {
   CURRENCY_CODE,
+  detectDateFormat,
   isoDay,
+  type ReadOptions,
   type SourceEntry,
   type SourceFile,
   type SourceIssue,
@@ -102,12 +104,26 @@ export function looksLikeSplitwise(rows: readonly string[][]): boolean {
   const [header, ...data] = rows
   if (!header || header.length < 6) return false
   const first = data.find((row) => !isBlankRow(row))
-  return !!first && isoDay(first[0] ?? '') !== null && CURRENCY_CODE.test((first[4] ?? '').trim())
+  return (
+    !!first &&
+    (isoDay(first[0] ?? '', 'mdy') !== null || isoDay(first[0] ?? '', 'dmy') !== null) &&
+    CURRENCY_CODE.test((first[4] ?? '').trim())
+  )
 }
 
-/** Read a Splitwise export. Rows that cannot be read are listed in `issues`, not dropped. */
-export function parseSplitwise(rows: readonly string[][]): SourceFile {
+/**
+ * Read a Splitwise export. Rows that cannot be read are listed in `issues`, not dropped. Dates
+ * saved by a spreadsheet (3/1/26) are read month first or day first, whichever fits every row.
+ * A negative cost is money that came back: the row becomes a refund.
+ */
+export function parseSplitwise(rows: readonly string[][], options: ReadOptions = {}): SourceFile {
   const [header = [], ...data] = rows
+  const detected = detectDateFormat(
+    data
+      .filter((row) => !isBlankRow(row) && (row[3] ?? '').trim() !== '')
+      .map((row) => row[0] ?? ''),
+  )
+  const dateFormat = options.dateFormat ?? detected.format
   const people = header.slice(5).map((name) => name.trim())
   const entries: SourceEntry[] = []
   const totals: SourceTotal[] = []
@@ -140,7 +156,7 @@ export function parseSplitwise(rows: readonly string[][]): SourceFile {
       return
     }
 
-    const date = isoDay(cell(0))
+    const date = isoDay(cell(0), dateFormat)
     if (!date) {
       issues.push({ line, code: 'bad_date', detail: cell(0) })
       return
@@ -157,7 +173,7 @@ export function parseSplitwise(rows: readonly string[][]): SourceFile {
     const payment = isPaymentCategory(cell(2))
     entries.push({
       line,
-      kind: payment ? 'payment' : 'expense',
+      kind: payment ? 'payment' : cost < 0 ? 'refund' : 'expense',
       date,
       description: cell(1),
       category: payment ? null : splitwiseCategory(cell(2)),
@@ -171,5 +187,15 @@ export function parseSplitwise(rows: readonly string[][]): SourceFile {
   })
 
   if (entries.length === 0 && issues.length === 0) issues.push({ line: 0, code: 'no_rows' })
-  return { format: 'splitwise', people, entries, totals, checks, groups: [], issues }
+  return {
+    format: 'splitwise',
+    people,
+    entries,
+    totals,
+    checks,
+    groups: [],
+    issues,
+    dateFormat,
+    dateAmbiguous: !options.dateFormat && detected.ambiguous,
+  }
 }

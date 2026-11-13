@@ -161,7 +161,11 @@ export type BackupExpense = BackupGroup['expenses'][number]
 export type BackupPayment = BackupGroup['payments'][number]
 
 /** The live expenses and payments of a backup, ready for `ledgerCsv`, and a name for everyone. */
-export function backupLedger(backup: Backup): {
+export function backupLedger(
+  backup: Backup,
+  /** Name for an id the backup does not know (never expected; the export lists everyone). */
+  unknown?: string,
+): {
   groups: LedgerGroup[]
   nameOf: (id: string) => string
 } {
@@ -205,7 +209,7 @@ export function backupLedger(backup: Backup): {
         settledAt: p.settled_at,
       })),
   }))
-  return { groups, nameOf: (id) => names.get(id) ?? id }
+  return { groups, nameOf: (id) => names.get(id) ?? unknown ?? id }
 }
 
 /** YYYY-MM-DD in UTC for a timestamp: the day a payment's rate was taken. */

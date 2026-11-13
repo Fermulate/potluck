@@ -108,10 +108,14 @@ describe('fromNets', () => {
 
 describe('planImport from Splitwise', () => {
   it('turns every row into an expense or payment', () => {
-    const plan = planImport(splitwise(), { mapping: all, untitled: 'Imported' })
+    const plan = planImport(splitwise(), {
+      mapping: all,
+      untitled: 'Imported',
+      groupCurrency: 'USD',
+    })
     expect(plan.issues).toEqual([])
     expect(plan.counts).toEqual({ expenses: 3, refunds: 0, payments: 1 })
-    expect(plan.skipped).toEqual([6])
+    expect(plan.skipped).toEqual([{ line: 6, reason: 'no_effect' }])
     expect(plan.lines).toEqual([2, 3, 4, 5])
     expect(plan.rows[0]).toEqual({
       kind: 'expense',
@@ -141,14 +145,20 @@ describe('planImport from Splitwise', () => {
   })
 
   it('ends at the balances Splitwise shows, and checks its total line', () => {
-    const plan = planImport(splitwise(), { mapping: all, untitled: 'Imported' })
-    expect(plan.effects).toEqual({
-      USD: { [people.ava]: -500, [people.ben]: 4000, [people.cleo]: -3500 },
+    const plan = planImport(splitwise(), {
+      mapping: all,
+      untitled: 'Imported',
+      groupCurrency: 'USD',
     })
+    expect(plan.balances).toEqual({ [people.ava]: -500, [people.ben]: 4000, [people.cleo]: -3500 })
     expect(plan.totals).toBe('match')
     const edited = SPLITWISE_EXPORT.replace('USD,-5.00,40.00', 'USD,-6.00,41.00')
     expect(
-      planImport(readImportFile(edited, [TEST_LABELS]), { mapping: all, untitled: 'x' }).totals,
+      planImport(readImportFile(edited, [TEST_LABELS]), {
+        mapping: all,
+        untitled: 'x',
+        groupCurrency: 'USD',
+      }).totals,
     ).toBe('mismatch')
   })
 
@@ -156,6 +166,7 @@ describe('planImport from Splitwise', () => {
     const plan = planImport(splitwise(), {
       mapping: [people.ava, null, people.cleo],
       untitled: 'x',
+      groupCurrency: 'USD',
     })
     expect(plan.issues).toEqual([{ line: 0, code: 'unmapped', detail: 'Ben Jones' }])
     expect(plan.rows).toEqual([])
@@ -165,10 +176,11 @@ describe('planImport from Splitwise', () => {
     const plan = planImport(splitwise(), {
       mapping: [people.ava, people.ava, people.cleo],
       untitled: 'x',
+      groupCurrency: 'USD',
     })
-    expect(plan.effects.USD).toEqual({ [people.ava]: 3500, [people.cleo]: -3500 })
+    expect(plan.balances).toEqual({ [people.ava]: 3500, [people.cleo]: -3500 })
     expect(plan.counts.payments).toBe(0)
-    expect(plan.skipped).toContain(4)
+    expect(plan.skipped).toContainEqual({ line: 4, reason: 'no_effect' })
   })
 
   it('gives a nameless row a description and keeps descriptions short', () => {
@@ -176,7 +188,11 @@ describe('planImport from Splitwise', () => {
       `Date,Description,Category,Cost,Currency,Ava,Ben\n2026-03-01,,General,10.00,USD,5.00,-5.00\n2026-03-01,${'x'.repeat(200)},General,10.00,USD,5.00,-5.00`,
       [TEST_LABELS],
     )
-    const plan = planImport(file, { mapping: ['a', 'b'], untitled: 'Imported expense' })
+    const plan = planImport(file, {
+      mapping: ['a', 'b'],
+      untitled: 'Imported expense',
+      groupCurrency: 'USD',
+    })
     expect(plan.rows.map((r) => (r.kind === 'expense' ? r.description.length : 0))).toEqual([
       'Imported expense'.length,
       120,
@@ -186,11 +202,11 @@ describe('planImport from Splitwise', () => {
   it('refuses more rows than one import takes', () => {
     const row = '2026-03-01,Lunch,General,10.00,USD,5.00,-5.00\n'
     const file = readImportFile(
-      `Date,Description,Category,Cost,Currency,Ava,Ben\n${row.repeat(5001)}`,
+      `Date,Description,Category,Cost,Currency,Ava,Ben\n${row.repeat(50001)}`,
       [TEST_LABELS],
     )
-    const plan = planImport(file, { mapping: ['a', 'b'], untitled: 'x' })
-    expect(plan.issues).toEqual([{ line: 0, code: 'too_many_rows', detail: '5000' }])
+    const plan = planImport(file, { mapping: ['a', 'b'], untitled: 'x', groupCurrency: 'USD' })
+    expect(plan.issues).toEqual([{ line: 0, code: 'too_many_rows', detail: '50000' }])
   })
 
   it('a payment row that is not one person paying another is an expense', () => {
@@ -213,7 +229,7 @@ describe('planImport from Splitwise', () => {
       totals: [],
       checks: [],
     }
-    const plan = planImport(file, { mapping: all, untitled: 'x' })
+    const plan = planImport(file, { mapping: all, untitled: 'x', groupCurrency: 'USD' })
     expect(plan.rows[0]!.kind).toBe('expense')
     expect(plan.totals).toBe('none')
   })

@@ -310,7 +310,7 @@ describe('ledgerCsv', () => {
     expect(file.format).toBe('potluck')
     expect(file.issues).toEqual([])
     expect(file.people).toEqual(['Ava', 'Ben', 'Cleo'])
-    const plan = planImport(file, { mapping: ['a', 'b', 'c'], untitled: 'x' })
+    const plan = planImport(file, { mapping: ['a', 'b', 'c'], untitled: 'x', groupCurrency: 'USD' })
     expect(plan.issues).toEqual([])
     expect(plan.totals).toBe('match')
     expect(plan.counts).toEqual({ expenses: 3, refunds: 1, payments: 2 })
@@ -340,7 +340,7 @@ describe('ledgerCsv', () => {
     const spanish = ledgerCsv([trip], { ...options, labels: TEST_LABELS_ES })
     const file = readImportFile(spanish, [TEST_LABELS, TEST_LABELS_ES])
     expect(file.format).toBe('potluck')
-    const plan = planImport(file, { mapping: ['a', 'b', 'c'], untitled: 'x' })
+    const plan = planImport(file, { mapping: ['a', 'b', 'c'], untitled: 'x', groupCurrency: 'USD' })
     expect(balancesAfterImport(plan.rows, trip)).toEqual(balancesOf(trip))
   })
 })
@@ -371,7 +371,12 @@ describe('several groups', () => {
       TEST_LABELS,
     ])
     expect(file.groups).toEqual(['Trip', 'Flat'])
-    const plan = planImport(file, { mapping: ['a', 'b', 'c', 'd'], group: 'Flat', untitled: 'x' })
+    const plan = planImport(file, {
+      mapping: ['a', 'b', 'c', 'd'],
+      group: 'Flat',
+      untitled: 'x',
+      groupCurrency: 'EUR',
+    })
     expect(plan.rows).toHaveLength(1)
     expect(plan.totals).toBe('match')
     expect(balancesAfterImport(plan.rows, flat)).toEqual(balancesOf(flat))
@@ -382,6 +387,37 @@ describe('a friend export', () => {
   const friend = { me: 'a', friend: 'c' }
   const csv = ledgerCsv([trip], { ...options, friend })
   const rows = parseCsv(csv)
+
+  it('names everyone else by name, and labels any category', () => {
+    const named = parseCsv(
+      ledgerCsv(
+        [
+          {
+            ...trip,
+            expenses: [{ ...trip.expenses[0]!, category: 'dining' }, ...trip.expenses.slice(1)],
+          },
+        ],
+        {
+          ...options,
+          friend,
+          nameOf: (id) => names[id] ?? 'Someone who left',
+          categoryLabel: (c) => (c === 'dining' ? 'Dining' : c),
+        },
+      ),
+    )
+    expect(named[1]!.slice(3, 11)).toEqual([
+      'Dinner',
+      'Dining',
+      '90.00',
+      'USD',
+      '1',
+      'USD',
+      '90.00',
+      'Ava 60.00; Ben 30.00',
+    ])
+    // Without a lookup, people without a column still get the name they were given.
+    expect(rows[1]![10]).toBe('Ava 60.00; Ben 30.00')
+  })
 
   it('has the two of you and what each row does between you', () => {
     expect(rows[0]!.slice(11)).toEqual([
