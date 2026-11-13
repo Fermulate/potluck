@@ -402,7 +402,7 @@ sequenceDiagram
   G->>WG: opens /a/code, signed out
   WG->>WG: read token for this code from localStorage (maybe none)
   WG->>DB: rpc guest_link_preview(code, token) as anon
-  DB->>DB: status: revoked, expired, archived,<br/>closed (not polling), full, or open
+  DB->>DB: status: revoked, removed, expired, archived,<br/>scheduled (only to a guest who answered),<br/>closed (not polling), full, or open
   DB-->>WG: title, emojis, host first name, grid,<br/>heat counts per slot (no names), own answer if the token matches
   G->>WG: types a name, paints yes or maybe
   WG->>DB: rpc set_guest_availability(code, name, token, slots) as anon
