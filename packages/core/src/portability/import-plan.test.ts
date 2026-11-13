@@ -199,12 +199,15 @@ describe('planImport from Splitwise', () => {
     ])
   })
 
-  it('refuses more rows than one import takes', () => {
-    const row = '2026-03-01,Lunch,General,10.00,USD,5.00,-5.00\n'
-    const file = readImportFile(
-      `Date,Description,Category,Cost,Currency,Ava,Ben\n${row.repeat(50001)}`,
+  it('refuses a file longer than it can split into imports', () => {
+    const one = readImportFile(
+      'Date,Description,Category,Cost,Currency,Ava,Ben\n2026-03-01,Lunch,General,10.00,USD,5.00,-5.00',
       [TEST_LABELS],
     )
+    const file: SourceFile = {
+      ...one,
+      entries: Array.from({ length: 50001 }, (_, i) => ({ ...one.entries[0]!, line: i + 2 })),
+    }
     const plan = planImport(file, { mapping: ['a', 'b'], untitled: 'x', groupCurrency: 'USD' })
     expect(plan.issues).toEqual([{ line: 0, code: 'too_many_rows', detail: '50000' }])
   })

@@ -182,8 +182,7 @@ export function groupCsv(
   settlements: readonly Settlement[],
   people: ReadonlyMap<string, Pick<MoneyPerson, 'display_name'>>,
 ): string {
-  const fullName = (id: string) =>
-    people.get(id)?.display_name ?? t('transfer.csv.someoneWhoLeft')
+  const fullName = (id: string) => people.get(id)?.display_name ?? t('transfer.csv.someoneWhoLeft')
   const involved = [
     ...expenses.flatMap((e) => [
       ...payersOf(e).map((p) => p.user_id),

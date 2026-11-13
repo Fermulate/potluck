@@ -151,6 +151,58 @@ create table private.import_rows (
 
 revoke all on private.import_batches, private.import_rows from public, anon, authenticated;
 
+-- Working tables for one import_expenses call, keyed by a random run id and emptied before it
+-- returns (a failed call rolls its rows back). Unlogged: nothing here outlives the transaction.
+create unlogged table private.import_input (
+  run uuid not null,
+  ord integer not null,
+  kind text,
+  day date,
+  description text,
+  amount bigint,
+  currency text,
+  category text,
+  notes text,
+  note text,
+  is_refund boolean,
+  rate_given boolean,
+  rate numeric,
+  from_user uuid,
+  to_user uuid,
+  payers jsonb,
+  splits jsonb,
+  eid uuid not null,
+  primary key (run, ord)
+);
+
+create unlogged table private.import_people (
+  run uuid not null,
+  ord integer not null,
+  role text not null,
+  pos integer not null,
+  user_id uuid,
+  cents bigint,
+  primary key (run, ord, role, pos)
+);
+
+create unlogged table private.import_payer (
+  run uuid not null,
+  ord integer not null,
+  user_id uuid not null,
+  primary key (run, ord)
+);
+
+create unlogged table private.import_rates (
+  run uuid not null,
+  currency text not null,
+  day date not null,
+  rate numeric,
+  primary key (run, currency, day)
+);
+
+revoke all on private.import_input, private.import_people, private.import_payer, private.import_rates
+  from public, anon, authenticated;
+
 -- Adds up to 2,000 rows to a batch the caller started in this group. Nothing is written to the
 -- group until import_expenses names the batch. Batches older than a day are dropped.
 create or replace function public.import_stage(batch_id uuid, group_id uuid, rows jsonb)
@@ -214,7 +266,12 @@ create or replace function public.import_expenses(
   fingerprint text default null
 )
 returns jsonb
-language plpgsql security definer set search_path = '' as $$
+language plpgsql security definer
+set search_path = ''
+-- The working tables have no statistics (they are empty between calls), so the planner would
+-- join their thousands of rows one by one. Hash joins keep a full file to a second or two.
+set enable_nestloop = off
+as $$
 #variable_conflict use_column
 declare
   uid uuid := private.require_user();
@@ -226,6 +283,7 @@ declare
   bad record;
   n_expenses integer;
   n_payments integer;
+  v_run uuid := gen_random_uuid();
 begin
   if v_source not in ('splitwise', 'potluck', 'csv') then
     raise exception using message = 'invalid_import', detail = 'Unknown import source', errcode = '22023';
@@ -261,9 +319,12 @@ begin
   select * into g from public.groups x where x.id = gid;
 
   -- Every row read once.
-  drop table if exists pg_temp.import_input;
-  create temp table import_input on commit drop as
+  insert into private.import_input (
+    run, ord, kind, day, description, amount, currency, category, notes, note, is_refund,
+    rate_given, rate, from_user, to_user, payers, splits, eid
+  )
   select
+    v_run,
     e.ord::integer as ord,
     e.kind,
     private.import_day(case e.kind when 'payment' then e.elem ->> 'paid_on' else e.elem ->> 'spent_at' end) as day,
@@ -287,43 +348,37 @@ begin
     from jsonb_array_elements(all_rows) with ordinality as x (elem, ord)
   ) e;
 
-  drop table if exists pg_temp.import_people;
-  create temp table import_people on commit drop as
-  select i.ord, 'payer'::text as role, p.pos,
+  insert into private.import_people (run, ord, role, pos, user_id, cents)
+  select v_run, i.ord, 'payer', p.pos,
          case when jsonb_typeof(p.elem) = 'object' then private.import_uuid(p.elem ->> 'user_id') end as user_id,
          case when jsonb_typeof(p.elem) = 'object' then private.import_cents(p.elem -> 'paid_cents', 0) end as cents
-  from pg_temp.import_input i,
+  from private.import_input i,
        jsonb_array_elements(case when jsonb_typeof(i.payers) = 'array' then i.payers else '[]'::jsonb end)
          with ordinality as p (elem, pos)
-  where i.kind = 'expense'
+  where i.run = v_run and i.kind = 'expense'
   union all
-  select i.ord, 'share', s.pos,
+  select v_run, i.ord, 'share', s.pos,
          case when jsonb_typeof(s.elem) = 'object' then private.import_uuid(s.elem ->> 'user_id') end,
          case when jsonb_typeof(s.elem) = 'object' then private.import_cents(s.elem -> 'share_cents', 0) end
-  from pg_temp.import_input i,
+  from private.import_input i,
        jsonb_array_elements(case when jsonb_typeof(i.splits) = 'array' then i.splits else '[]'::jsonb end)
          with ordinality as s (elem, pos)
-  where i.kind = 'expense';
+  where i.run = v_run and i.kind = 'expense';
 
   -- Whoever paid the most is paid_by (ties: the smaller id), as save_expense sets it.
-  drop table if exists pg_temp.import_payer;
-  create temp table import_payer on commit drop as
-  select distinct on (p.ord) p.ord, p.user_id
-  from pg_temp.import_people p
-  where p.role = 'payer' and p.cents > 0
+  insert into private.import_payer (run, ord, user_id)
+  select distinct on (p.ord) v_run, p.ord, p.user_id
+  from private.import_people p
+  where p.run = v_run and p.role = 'payer' and p.cents > 0
   order by p.ord, p.cents desc, p.user_id;
-  analyze pg_temp.import_input;
-  analyze pg_temp.import_people;
-  analyze pg_temp.import_payer;
 
   -- The rate each row is converted at: 1 in the group currency, else the one the row carries,
   -- else the stored rate for its day (one lookup per currency and day).
-  drop table if exists pg_temp.import_rates;
-  create temp table import_rates on commit drop as
-  select d.currency, d.day, private.fx_rate(d.currency::char(3), g.currency, d.day) as rate
+  insert into private.import_rates (run, currency, day, rate)
+  select v_run, d.currency, d.day, private.fx_rate(d.currency::char(3), g.currency, d.day)
   from (
-    select distinct i.currency, i.day from pg_temp.import_input i
-    where i.currency ~ '^[A-Z]{3}$' and i.currency <> g.currency and i.day is not null and not i.rate_given
+    select distinct i.currency, i.day from private.import_input i
+    where i.run = v_run and i.currency ~ '^[A-Z]{3}$' and i.currency <> g.currency and i.day is not null and not i.rate_given
   ) d;
 
   -- The first row that fails, checked in the order save_expense and settle_up check.
@@ -338,7 +393,8 @@ begin
            count(*) filter (where x.cents > 0 and not exists (
              select 1 from public.group_members m where m.group_id = gid and m.user_id = x.user_id
            )) as outsiders
-    from pg_temp.import_people x
+    from private.import_people x
+    where x.run = v_run
     group by x.ord, x.role
   ),
   checked as (
@@ -347,10 +403,11 @@ begin
            s.n as share_n, s.invalid as share_invalid, s.distinct_users as share_distinct,
            s.total as share_total, s.outsiders as share_outsiders,
            r.rate as stored_rate
-    from pg_temp.import_input i
+    from private.import_input i
     left join people p on p.ord = i.ord and p.role = 'payer'
     left join people s on s.ord = i.ord and s.role = 'share'
-    left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
+    left join private.import_rates r on r.run = v_run and r.currency = i.currency and r.day = i.day
+    where i.run = v_run
   ),
   failures as (
     select ord, 1 as step, 'invalid_import' as code, 'Each row is an expense or a payment' as detail, '22023' as state
@@ -433,35 +490,35 @@ begin
     case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end,
     pp.user_id,
     'exact', i.category, i.notes, i.day, uid, i.is_refund
-  from pg_temp.import_input i
-  join pg_temp.import_payer pp on pp.ord = i.ord
-  left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
-  where i.kind = 'expense'
+  from private.import_input i
+  join private.import_payer pp on pp.run = v_run and pp.ord = i.ord
+  left join private.import_rates r on r.run = v_run and r.currency = i.currency and r.day = i.day
+  where i.run = v_run and i.kind = 'expense'
   order by i.ord;
   get diagnostics n_expenses = row_count;
 
   -- The insert wrote paid_by as the only payer (expenses_sync_single_payer); write them all.
   delete from public.expense_payers x
-  using pg_temp.import_input i
-  where i.kind = 'expense' and x.expense_id = i.eid;
+  using private.import_input i
+  where i.run = v_run and i.kind = 'expense' and x.expense_id = i.eid;
   insert into public.expense_payers (expense_id, user_id, paid_cents)
   select i.eid, p.user_id, p.cents
-  from pg_temp.import_input i
-  join pg_temp.import_people p on p.ord = i.ord and p.role = 'payer'
-  where i.kind = 'expense' and p.cents > 0;
+  from private.import_input i
+  join private.import_people p on p.run = v_run and p.ord = i.ord and p.role = 'payer'
+  where i.run = v_run and i.kind = 'expense' and p.cents > 0;
   insert into public.expense_splits (expense_id, user_id, share_cents)
   select i.eid, s.user_id, s.cents
-  from pg_temp.import_input i
-  join pg_temp.import_people s on s.ord = i.ord and s.role = 'share'
-  where i.kind = 'expense' and s.cents > 0;
+  from private.import_input i
+  join private.import_people s on s.run = v_run and s.ord = i.ord and s.role = 'share'
+  where i.run = v_run and i.kind = 'expense' and s.cents > 0;
 
   insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
   select gid, i.from_user, i.to_user, i.amount, i.currency,
          case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end,
          i.note, (i.day + time '12:00') at time zone 'UTC', uid
-  from pg_temp.import_input i
-  left join pg_temp.import_rates r on r.currency = i.currency and r.day = i.day
-  where i.kind = 'payment'
+  from private.import_input i
+  left join private.import_rates r on r.run = v_run and r.currency = i.currency and r.day = i.day
+  where i.run = v_run and i.kind = 'payment'
   order by i.ord;
   get diagnostics n_payments = row_count;
 
@@ -475,6 +532,10 @@ begin
   if import_expenses.batch_id is not null then
     delete from private.import_batches b where b.id = import_expenses.batch_id;
   end if;
+  delete from private.import_input x where x.run = v_run;
+  delete from private.import_people x where x.run = v_run;
+  delete from private.import_payer x where x.run = v_run;
+  delete from private.import_rates x where x.run = v_run;
 
   return jsonb_build_object('expenses', n_expenses, 'payments', n_payments);
 end;
