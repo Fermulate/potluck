@@ -437,21 +437,29 @@ sequenceDiagram
   opt email in channels (app_config.email_notifications on, setting on)
     DB->>DB: notifications_queue_email: private.email_outbox<br/>(subject = expense id for expense types)
     CR->>DB: every minute: send_email_notifications()
-    DB->>DB: subjects quiet for 60 s; fold per expense<br/>(added and deleted inside the hold: nothing),<br/>re-check settings, mark handled
-    DB->>E: POST notify { emails: [...] } (names, current amounts,<br/>signed unsubscribe tokens)
-    E->>R: one email each, List-Unsubscribe and<br/>List-Unsubscribe-Post headers, Idempotency-Key
+    DB->>DB: subjects quiet for 60 s; fold per expense<br/>(added and deleted inside the hold: nothing),<br/>re-check settings, mark sending in batches of 50
+    DB->>E: POST notify { batch, emails } per batch (names,<br/>current amounts, signed unsubscribe tokens)
+    E-->>DB: 202 at once, keeps sending in the background
+    E->>R: POST /emails/batch, Idempotency-Key = batch id,<br/>List-Unsubscribe and List-Unsubscribe-Post headers
+    alt 429 or 5xx
+      E->>R: retry with backoff (Retry-After), up to 4 tries
+    end
+    E->>DB: rpc email_outbox_report(batch, delivered)<br/>sent, or pending again with backoff (failed after 5)
+    Note over DB: no report in 10 minutes: the next run sends<br/>the same batch id again, the provider drops a copy
   end
   alt mail client one-click
     R-->>UF: POST /functions/v1/unsubscribe?token=...
-    UF->>DB: rpc email_unsubscribe(token) as anon
+    UF->>DB: rpc email_unsubscribe(token, 'unsubscribe') as anon
   else footer link
     U->>W: /unsubscribe?token=...
-    W->>DB: rpc email_unsubscribe(token), "Keep sending them" undoes it
+    W->>DB: rpc email_unsubscribe(token, 'preview'): category, masked email
+    U->>W: tap Unsubscribe
+    W->>DB: rpc email_unsubscribe(token, 'unsubscribe')<br/>("Keep sending them" calls 'undo')
   end
-  DB->>DB: check HMAC, set notification_prefs.email = false
+  DB->>DB: check HMAC, snapshot the settings it changes,<br/>set notification_prefs.email = false
 ```
 
-On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
+On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in, who has not turned the summary off, gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
 
 ## Delete an account
 

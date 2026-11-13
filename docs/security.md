@@ -24,7 +24,8 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 | Someone holding a calendar feed URL     | read the owner's scheduled events                           | 32-character random token, rotatable with `calendar_feed_token(true)`                                                                                 |
 | A client with a tampered bundle         | send any payload to any RPC                                 | the server derives splits, FX rates, payer of a settlement and `created_by` itself                                                                    |
 | Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                                                               |
-| Someone guessing unsubscribe links      | turn off another person's emails                            | each link carries an HMAC of user id and category; the key stays in `private.signing_keys`                                                            |
+| Someone guessing unsubscribe links      | turn off another person's emails                            | each link carries an HMAC of user id and category; the key stays in `private.signing_keys`. A preview shows the address masked                        |
+| Someone calling `email_outbox_report`   | mark emails sent or failed                                  | executable by the service role only                                                                                                                   |
 
 Out of scope: a compromised Supabase or Cloudflare account, a malicious maintainer, and a stolen unlocked phone with an active session.
 

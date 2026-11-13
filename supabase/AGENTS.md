@@ -63,6 +63,9 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   `private.notify` or not) gets its `channels`; push and the email outbox follow from them. Email only
   flows while `app_config.email_notifications` is true. Tests: `17_notification_prefs`,
   `18_monthly_summary`.
+- Email delivery is a state machine on `private.email_outbox` (`pending`, `sending`, `sent`, ...):
+  `private.send_email_notifications` hands batches to `notify`, which must always answer with
+  `public.email_outbox_report` (service role only). Never mark a row sent anywhere else.
 
 ## pgTAP
 
