@@ -228,7 +228,7 @@ function Viewer({
           alt={t('expenses.attachments.alt', { number: index + 1, description })}
           onSwipe={count > 1 ? onMove : undefined}
           className="h-[calc(100dvh-11rem)] min-h-[50dvh] w-full"
-          frameClassName="rounded-card bg-sunken"
+          frameClassName="min-h-0 flex-1 rounded-card bg-sunken"
         />
       ) : (
         <Skeleton className="h-[60dvh] w-full" />

@@ -33,7 +33,7 @@ export function ZoomableImage({
         tabIndex={0}
         aria-describedby={hint}
         className={cn(
-          'relative grid min-h-0 flex-1 cursor-zoom-in place-items-center overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
+          'relative grid cursor-zoom-in place-items-center overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink',
           zoom.view.scale > 1 && 'cursor-grab',
           frameClassName,
         )}
