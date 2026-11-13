@@ -112,6 +112,59 @@ describe('expenseCreateSchema', () => {
   })
 })
 
+describe('expenseCreateSchema, payers and items', () => {
+  it('accepts several payers that add up to the amount, and a refund', () => {
+    const parsed = expenseCreateSchema.parse({
+      ...valid,
+      is_refund: true,
+      payers: [
+        { user_id: ALICE, paid_cents: 2000 },
+        { user_id: BOB, paid_cents: 1000 },
+      ],
+    })
+    expect(parsed.is_refund).toBe(true)
+    expect(expenseCreateSchema.parse(valid).is_refund).toBe(false)
+  })
+
+  it('refuses payers that do not add up, or the same payer twice', () => {
+    expect(
+      messages(
+        expenseCreateSchema.safeParse({
+          ...valid,
+          payers: [
+            { user_id: ALICE, paid_cents: 1500 },
+            { user_id: ALICE, paid_cents: 1000 },
+          ],
+        }),
+      ),
+    ).toEqual(['duplicate_payer', 'payers_sum_mismatch'])
+  })
+
+  it('takes stored items only on a by-item expense', () => {
+    const items = [{ description: 'Tacos', amount_cents: 3000, user_ids: [ALICE, BOB] }]
+    expect(
+      expenseCreateSchema.safeParse({ ...valid, split_type: 'itemized', items, tax_cents: 0 })
+        .success,
+    ).toBe(true)
+    expect(messages(expenseCreateSchema.safeParse({ ...valid, items }))).toEqual([
+      'items_need_itemized',
+    ])
+  })
+
+  it('knows the adjustment split', () => {
+    expect(
+      expenseCreateSchema.safeParse({
+        ...valid,
+        split_type: 'adjustment',
+        splits: [
+          { user_id: ALICE, share_cents: 2000, adjustment_cents: 500 },
+          { user_id: BOB, share_cents: 1000, adjustment_cents: -500 },
+        ],
+      }).success,
+    ).toBe(true)
+  })
+})
+
 describe('expenseUpdateSchema', () => {
   it('takes the same payload without the group id', () => {
     const { group_id: _group, ...update } = valid
