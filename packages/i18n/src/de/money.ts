@@ -58,6 +58,7 @@ export const expenses = {
   recurrence: {
     none: 'Wiederholt sich nicht',
     weekly: 'Jede Woche',
+    biweekly: 'Alle 2 Wochen',
     monthly: 'Jeden Monat',
     yearly: 'Jedes Jahr',
     nextOn: 'Nächstes Mal am {date}',
@@ -183,8 +184,47 @@ export const expenses = {
     removedToast: '"{description}" wiederholt sich nicht mehr.',
     every: {
       weekly: 'Wöchentlich',
+      biweekly: 'Alle 2 Wochen',
       monthly: 'Monatlich',
       yearly: 'Jährlich',
+    },
+    firstOn: 'Die nächste kommt am {date}.',
+    actions: 'Aktionen für die wiederkehrende Ausgabe',
+    editTitle: 'Wiederkehrende Ausgabe bearbeiten',
+    futureOnly:
+      'Änderungen gelten ab der nächsten. Bereits eingetragene Ausgaben bleiben, wie sie sind.',
+    nextLabel: 'Die nächste',
+    savedToast: 'Gespeichert. Die nächste „{description}“ nimmt die neuen Beträge.',
+    pausedNote: 'Pausiert. Es kommt nichts dazu, bis du sie fortsetzt.',
+    formerNote:
+      '{names} hat die Gruppe verlassen. Nimm sie aus der Aufteilung und setze dann fort.',
+    resumeBlocked: 'Nimm {names} zuerst aus der Aufteilung und setze dann fort.',
+    blockedActive:
+      '{names} hat die Gruppe verlassen. Es kommt nichts dazu, bis sie aus der Aufteilung ist.',
+    pausedLeft: 'Pausiert: {names} ist gegangen',
+    left: '{names} ist gegangen',
+    readOnly: 'Nur die Beteiligten oder ein Admin können sie ändern.',
+    yourShare: 'Dein Anteil jedes Mal: {amount}',
+    skipLabel: 'Die nächste „{description}“ überspringen',
+    notFound: 'Diese wiederkehrende Ausgabe wurde beendet.',
+    skip: 'Nächste überspringen',
+    skipTitle: 'Die nächste überspringen?',
+    skipConfirm: 'Am {date} kommt nichts für „{description}“ dazu. Die danach kommt am {next}.',
+    skippedToast: 'Übersprungen. Die nächste „{description}“ ist am {date}.',
+    card: {
+      title: 'Wiederholt sich',
+      next: '{every}. Nächste am {date}.',
+      paused: '{every}. Gerade pausiert.',
+      edit: 'Wiederholung bearbeiten',
+      view: 'Details',
+    },
+    make: {
+      action: 'Wiederholen lassen',
+      title: 'Diese Ausgabe wiederholen',
+      hint: 'An jedem Termin kommt eine Kopie mit gleichem Betrag, gleichen Zahlenden und gleicher Aufteilung dazu. Jederzeit änderbar oder beendbar.',
+      first: 'Erste Kopie am {date}.',
+      confirm: 'Wiederholen',
+      doneToast: '„{description}“ wiederholt sich jetzt. Nächste am {date}.',
     },
   },
   detail: {
@@ -252,6 +292,9 @@ export const expenses = {
     negative_share: 'Ein Abzug bringt jemanden unter null.',
     items_required: 'Füge mindestens einen Posten hinzu.',
     invalid_items: 'Ein Posten stimmt nicht. Prüf die Preise und wer was hatte.',
+    recurring_not_found: 'Diese wiederkehrende Ausgabe wurde beendet.',
+    already_recurring: 'Diese Ausgabe wiederholt sich schon.',
+    invalid_next_run: 'Wähle heute oder ein späteres Datum für die nächste.',
     invalid_parties: 'Wähl zwei verschiedene Personen.',
     not_a_party: 'Nur Eigentümer und Admins können eine Zahlung zwischen zwei anderen erfassen.',
     note_too_long: 'Halte die Notiz unter 500 Zeichen.',
@@ -588,6 +631,12 @@ export const activity = {
     comment: {
       created: 'Du hast {subject} kommentiert',
     },
+    recurring: {
+      created: 'Du lässt „{description}“ wiederholen',
+      updated: 'Du hast die wiederkehrende „{description}“ geändert',
+      skipped: 'Du hast die nächste „{description}“ übersprungen',
+      paused: '„{description}“ ist pausiert: {name} hat die Gruppe verlassen',
+    },
   },
   toYou: {
     member: {
@@ -599,6 +648,9 @@ export const activity = {
       deleted: '{actor} hat eine Zahlung an dich gelöscht',
       updated: '{actor} hat eine Zahlung an dich geändert',
       restored: '{actor} hat eine Zahlung an dich wiederhergestellt',
+    },
+    recurring: {
+      paused: '„{description}“ ist pausiert: du hast die Gruppe verlassen',
     },
   },
   group: {
@@ -636,4 +688,10 @@ export const activity = {
     created: '{actor} hat {subject} kommentiert',
   },
   aPayment: 'eine Zahlung',
+  recurring: {
+    created: '{actor} lässt „{description}“ wiederholen',
+    updated: '{actor} hat die wiederkehrende „{description}“ geändert',
+    skipped: '{actor} hat die nächste „{description}“ übersprungen',
+    paused: '„{description}“ ist pausiert: {name} hat die Gruppe verlassen',
+  },
 } satisfies Translation<typeof en.activity>

@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(87);
+select plan(92);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -43,7 +43,7 @@ select enum_has_labels('public', 'event_status', array['polling', 'scheduled', '
 select enum_has_labels('public', 'availability_level', array['yes', 'maybe'], 'availability_level labels');
 select enum_has_labels('public', 'rsvp_status', array['going', 'maybe', 'declined'], 'rsvp_status labels');
 select enum_has_labels('public', 'push_platform', array['web', 'ios', 'android'], 'push_platform labels');
-select enum_has_labels('public', 'recurrence', array['weekly', 'monthly', 'yearly'], 'recurrence labels');
+select enum_has_labels('public', 'recurrence', array['weekly', 'biweekly', 'monthly', 'yearly'], 'recurrence labels');
 
 -- RPC signatures
 select has_function('public', 'create_group', array['text', 'text', 'text', 'text'], 'create_group(name, emoji, color, currency)');
@@ -62,6 +62,9 @@ select has_function('public', 'restore_expense', array['uuid'], 'restore_expense
 select has_function('public', 'create_expense_v2', array['jsonb'], 'create_expense_v2');
 select has_function('public', 'update_expense_v2', array['uuid', 'jsonb'], 'update_expense_v2');
 select has_function('public', 'set_default_split', array['uuid', 'jsonb'], 'set_default_split');
+select has_function('public', 'update_recurring_expense', array['uuid', 'jsonb'], 'update_recurring_expense(id, payload)');
+select has_function('public', 'skip_recurring_expense', array['uuid'], 'skip_recurring_expense(id)');
+select has_function('public', 'make_expense_recurring', array['uuid', 'recurrence'], 'make_expense_recurring(expense_id, recurrence)');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
@@ -207,6 +210,10 @@ select ok(
   exists (select 1 from cron.job where jobname = 'monthly-summary' and schedule = '0 15 1 * *'),
   'monthly summary runs on the first of the month'
 );
+select ok(
+  exists (select 1 from cron.job where jobname = 'recurring-heads-up' and schedule = '5,35 * * * *'),
+  'heads-ups for repeating expenses run at :05 and :35'
+);
 
 -- Grants: clients never write money tables directly.
 select ok(not has_table_privilege('authenticated', 'public.expenses', 'insert'), 'no direct expense inserts');
@@ -228,6 +235,7 @@ select has_trigger('auth', 'users', 'on_auth_user_created', 'profile trigger on 
 -- Money guards
 select has_trigger('public', 'groups', 'groups_guard_delete', 'groups with open balances cannot be deleted');
 select has_trigger('public', 'recurring_expenses', 'recurring_expenses_skip_paused', 'resuming a template skips paused periods');
+select has_trigger('public', 'recurring_expenses', 'recurring_expenses_require_members', 'a template naming someone who left cannot resume');
 
 select * from finish();
 rollback;

@@ -72,6 +72,7 @@ ALTER TYPE "public"."push_platform" OWNER TO "postgres";
 
 CREATE TYPE "public"."recurrence" AS ENUM (
     'weekly',
+    'biweekly',
     'monthly',
     'yearly'
 );
@@ -1301,6 +1302,20 @@ $$;
 ALTER FUNCTION "private"."group_members_notify_added"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."group_members_pause_recurring"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform private.pause_recurring_naming(old.user_id, old.group_id);
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."group_members_pause_recurring"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."group_role"("gid" "uuid") RETURNS "public"."group_role"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -1638,6 +1653,17 @@ $$;
 ALTER FUNCTION "private"."itemized_splits"("items" "jsonb", "tax" bigint, "tip" bigint, "discount" bigint) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."local_today"("uid" "uuid") RETURNS "date"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select (now() at time zone private.user_time_zone(uid))::date;
+$$;
+
+
+ALTER FUNCTION "private"."local_today"("uid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."log_activity"("gid" "uuid", "actor" "uuid", "verb" "text", "subject" "uuid", "data" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1784,22 +1810,14 @@ begin
       end if;
       select * into g from public.groups x where x.id = r.group_id;
 
-      if g.archived_at is not null
-         or exists (
-           select 1 from (
-             select r.paid_by as u
-             union
-             select (e ->> 'user_id')::uuid from jsonb_array_elements(coalesce(r.payers, '[]'::jsonb)) e
-             union
-             select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e
-           ) people
-           where not exists (
-             select 1 from public.group_members m
-             where m.group_id = r.group_id and m.user_id = people.u
-           )
-           or exists (select 1 from public.profiles p where p.id = people.u and p.deleted_at is not null)
-         ) then
+      if g.archived_at is not null then
         update public.recurring_expenses x set active = false where x.id = r.id;
+        continue;
+      end if;
+
+      -- Someone in it left and it was not paused then (a backstop): pause it now.
+      if private.recurring_blocked(r) then
+        perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
         continue;
       end if;
 
@@ -1812,12 +1830,24 @@ begin
 
         insert into public.expenses (
           group_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
-          category, spent_at, recurring_id, created_by
+          category, spent_at, recurring_id, created_by, tax_cents, tip_cents, discount_cents, notes
         ) values (
           r.group_id, r.description, r.amount_cents, r.currency, fx, r.paid_by, r.split_type,
-          r.category, due, r.id, r.created_by
+          r.category, due, r.id, r.created_by,
+          case when r.items is not null then r.tax_cents end,
+          case when r.items is not null then r.tip_cents end,
+          case when r.items is not null then r.discount_cents end,
+          r.notes
         )
         returning id into new_id;
+
+        if r.items is not null then
+          insert into public.expense_items (expense_id, position, description, amount_cents, user_ids)
+          select new_id, (e.ord - 1)::smallint, coalesce(e.elem ->> 'description', ''),
+                 (e.elem ->> 'amount_cents')::bigint,
+                 array(select x::uuid from jsonb_array_elements_text(e.elem -> 'user_ids') x)
+          from jsonb_array_elements(r.items) with ordinality as e (elem, ord);
+        end if;
 
         if r.payers is not null then
           delete from public.expense_payers x where x.expense_id = new_id;
@@ -2036,6 +2066,23 @@ $$;
 ALTER FUNCTION "private"."my_time_zone"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."normalized_items"("items" "jsonb") RETURNS "jsonb"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select jsonb_agg(jsonb_build_object(
+    'description', btrim(coalesce(e.elem ->> 'description', '')),
+    'amount_cents', (e.elem ->> 'amount_cents')::bigint,
+    'user_ids', to_jsonb(array(
+      select distinct x::uuid from jsonb_array_elements_text(e.elem -> 'user_ids') x order by 1))
+  ) order by e.ord)
+  from jsonb_array_elements(items) with ordinality as e (elem, ord);
+$$;
+
+
+ALTER FUNCTION "private"."normalized_items"("items" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") RETURNS "text"[]
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -2239,6 +2286,130 @@ $$;
 ALTER FUNCTION "private"."pairwise_debts"("gid" "uuid") OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "description" "text" NOT NULL,
+    "amount_cents" bigint NOT NULL,
+    "currency" character(3) NOT NULL,
+    "paid_by" "uuid" NOT NULL,
+    "split_type" "public"."split_type" DEFAULT 'equal'::"public"."split_type" NOT NULL,
+    "category" "text",
+    "splits" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
+    "recurrence" "public"."recurrence" NOT NULL,
+    "next_run_on" "date" NOT NULL,
+    "active" boolean DEFAULT true NOT NULL,
+    "created_by" "uuid" DEFAULT "auth"."uid"(),
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "payers" "jsonb",
+    "items" "jsonb",
+    "tax_cents" bigint,
+    "tip_cents" bigint,
+    "discount_cents" bigint,
+    "anchor_day" smallint,
+    "notes" "text",
+    CONSTRAINT "recurring_expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_anchor_day_check" CHECK ((("anchor_day" >= 1) AND ("anchor_day" <= 31))),
+    CONSTRAINT "recurring_expenses_category_check" CHECK (("char_length"("category") <= 40)),
+    CONSTRAINT "recurring_expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
+    CONSTRAINT "recurring_expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
+    CONSTRAINT "recurring_expenses_discount_cents_check" CHECK ((("discount_cents" >= 0) AND ("discount_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_items_check" CHECK ((("items" IS NULL) OR (("jsonb_typeof"("items") = 'array'::"text") AND (("jsonb_array_length"("items") >= 1) AND ("jsonb_array_length"("items") <= 200))))),
+    CONSTRAINT "recurring_expenses_notes_check" CHECK (("char_length"("notes") <= 2000)),
+    CONSTRAINT "recurring_expenses_payers_check" CHECK ((("payers" IS NULL) OR ("jsonb_typeof"("payers") = 'array'::"text"))),
+    CONSTRAINT "recurring_expenses_splits_check" CHECK (("jsonb_typeof"("splits") = 'array'::"text")),
+    CONSTRAINT "recurring_expenses_tax_cents_check" CHECK ((("tax_cents" >= 0) AND ("tax_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "recurring_expenses_tip_cents_check" CHECK ((("tip_cents" >= 0) AND ("tip_cents" <= '100000000000'::bigint)))
+);
+
+
+ALTER TABLE "public"."recurring_expenses" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."splits" IS 'Array of {user_id, share_cents?, weight?} in the create_expense payload format.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."payers" IS 'Several payers as [{user_id, paid_cents}]; null means paid_by paid it all.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."items" IS 'A by-item bill as entered: [{description, amount_cents, user_ids}], or null. splits then holds the shares worked out from it.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."anchor_day" IS 'Day of the month monthly and yearly templates repeat on (short months clamp to their last day). Kept when only the interval changes. Null: the day of the first posted expense.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."notes" IS 'Copied to every posted expense.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  update public.recurring_expenses x set active = false where x.id = r.id;
+  perform private.log_activity(r.group_id, null, 'recurring.paused', r.id, jsonb_build_object(
+    'description', r.description,
+    'reason', 'member_left',
+    'user_ids', to_jsonb(gone)
+  ));
+  perform private.notify(
+    array(
+      select m.user_id from public.group_members m
+      join public.profiles p on p.id = m.user_id and p.deleted_at is null
+      where m.group_id = r.group_id
+        and (m.user_id = r.created_by
+             or (m.role in ('owner', 'admin')
+                 and not exists (
+                   select 1 from public.group_members c
+                   join public.profiles cp on cp.id = c.user_id and cp.deleted_at is null
+                   where c.group_id = r.group_id and c.user_id = r.created_by)))
+    ),
+    'recurring.paused',
+    jsonb_build_object(
+      'recurring_id', r.id,
+      'group_id', r.group_id,
+      'description', r.description,
+      'user_ids', to_jsonb(gone)
+    )
+  );
+end;
+$$;
+
+
+ALTER FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid" DEFAULT NULL::"uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  r public.recurring_expenses;
+begin
+  for r in
+    select x.* from public.recurring_expenses x
+    join public.groups g on g.id = x.group_id and g.archived_at is null
+    where x.active
+      and (gid is null or x.group_id = gid)
+      and exists (select 1 from private.recurring_people(x) as people (u) where people.u = uid)
+    order by x.group_id, x.id
+    for update of x
+  loop
+    perform private.pause_recurring_for_departed(r, private.recurring_departed(r));
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."payment_currency"("requested" "text", "group_currency" "text") RETURNS "text"
     LANGUAGE "plpgsql" IMMUTABLE
     SET "search_path" TO ''
@@ -2409,54 +2580,116 @@ $$;
 ALTER FUNCTION "private"."recovery_code_hash"("code" "text") OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "group_id" "uuid" NOT NULL,
-    "description" "text" NOT NULL,
-    "amount_cents" bigint NOT NULL,
-    "currency" character(3) NOT NULL,
-    "paid_by" "uuid" NOT NULL,
-    "split_type" "public"."split_type" DEFAULT 'equal'::"public"."split_type" NOT NULL,
-    "category" "text",
-    "splits" "jsonb" DEFAULT '[]'::"jsonb" NOT NULL,
-    "recurrence" "public"."recurrence" NOT NULL,
-    "next_run_on" "date" NOT NULL,
-    "active" boolean DEFAULT true NOT NULL,
-    "created_by" "uuid" DEFAULT "auth"."uid"(),
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "payers" "jsonb",
-    CONSTRAINT "recurring_expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
-    CONSTRAINT "recurring_expenses_category_check" CHECK (("char_length"("category") <= 40)),
-    CONSTRAINT "recurring_expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
-    CONSTRAINT "recurring_expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
-    CONSTRAINT "recurring_expenses_payers_check" CHECK ((("payers" IS NULL) OR ("jsonb_typeof"("payers") = 'array'::"text"))),
-    CONSTRAINT "recurring_expenses_splits_check" CHECK (("jsonb_typeof"("splits") = 'array'::"text"))
-);
-
-
-ALTER TABLE "public"."recurring_expenses" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."splits" IS 'Array of {user_id, share_cents?, weight?} in the create_expense payload format.';
-
-
-
-COMMENT ON COLUMN "public"."recurring_expenses"."payers" IS 'Several payers as [{user_id, paid_cents}]; null means paid_by paid it all.';
-
-
-
 CREATE OR REPLACE FUNCTION "private"."recurring_anchor_day"("r" "public"."recurring_expenses") RETURNS integer
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-  select extract(day from coalesce(
+  select coalesce(r.anchor_day, extract(day from coalesce(
     (select min(e.spent_at) from public.expenses e where e.recurring_id = r.id),
-    r.next_run_on))::int;
+    r.next_run_on))::int);
 $$;
 
 
 ALTER FUNCTION "private"."recurring_anchor_day"("r" "public"."recurring_expenses") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_blocked"("r" "public"."recurring_expenses") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select cardinality(private.recurring_departed(r)) > 0
+    or exists (select 1 from private.recurring_people(r) as people (u) where people.u is null);
+$$;
+
+
+ALTER FUNCTION "private"."recurring_blocked"("r" "public"."recurring_expenses") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_departed"("r" "public"."recurring_expenses") RETURNS "uuid"[]
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(array_agg(people.u order by people.u), '{}')
+  from private.recurring_people(r) as people (u)
+  where people.u is not null
+    and (not exists (select 1 from public.group_members m where m.group_id = r.group_id and m.user_id = people.u)
+         or exists (select 1 from public.profiles p where p.id = people.u and p.deleted_at is not null));
+$$;
+
+
+ALTER FUNCTION "private"."recurring_departed"("r" "public"."recurring_expenses") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select uid is not null and (
+    uid = created_by
+    or uid = paid_by
+    or coalesce(payers, '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('user_id', uid))
+    or coalesce(splits, '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('user_id', uid))
+  );
+$$;
+
+
+ALTER FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_next_from"("start" "date", "kind" "public"."recurrence", "anchor" integer, "not_before" "date") RETURNS "date"
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  d date := private.recurring_step(start, kind, anchor);
+begin
+  if kind in ('weekly', 'biweekly') and d < not_before then
+    return d + (case kind when 'weekly' then 7 else 14 end)
+      * ceil((not_before - d) / (case kind when 'weekly' then 7.0 else 14.0 end))::int;
+  end if;
+  while d < not_before loop
+    d := private.recurring_step(d, kind, anchor);
+  end loop;
+  return d;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."recurring_next_from"("start" "date", "kind" "public"."recurrence", "anchor" integer, "not_before" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_people"("r" "public"."recurring_expenses") RETURNS SETOF "uuid"
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select r.paid_by
+  union
+  select private.try_uuid(e ->> 'user_id') from jsonb_array_elements(coalesce(r.payers, '[]'::jsonb)) e
+  union
+  select private.try_uuid(e ->> 'user_id') from jsonb_array_elements(r.splits) e;
+$$;
+
+
+ALTER FUNCTION "private"."recurring_people"("r" "public"."recurring_expenses") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."recurring_require_members"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if private.recurring_blocked(new) then
+    raise exception using
+      message = 'split_member_not_in_group',
+      detail = 'Someone in this repeating expense has left the group; take them out first',
+      errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."recurring_require_members"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."recurring_skip_paused"() RETURNS "trigger"
@@ -2464,13 +2697,15 @@ CREATE OR REPLACE FUNCTION "private"."recurring_skip_paused"() RETURNS "trigger"
     SET "search_path" TO ''
     AS $$
 declare
+  step int;
   anchor int;
 begin
   if new.next_run_on >= current_date then
     return new;
   end if;
-  if new.recurrence = 'weekly' then
-    new.next_run_on := new.next_run_on + 7 * ceil((current_date - new.next_run_on) / 7.0)::int;
+  if new.recurrence in ('weekly', 'biweekly') then
+    step := case new.recurrence when 'weekly' then 7 else 14 end;
+    new.next_run_on := new.next_run_on + step * ceil((current_date - new.next_run_on) / step::numeric)::int;
     return new;
   end if;
   anchor := private.recurring_anchor_day(new);
@@ -2491,6 +2726,7 @@ CREATE OR REPLACE FUNCTION "private"."recurring_step"("due" "date", "kind" "publ
     AS $$
   select case
     when kind = 'weekly' then due + 7
+    when kind = 'biweekly' then due + 14
     else (
       select least(s.start + (anchor_day - 1), (s.start + interval '1 month')::date - 1)
       from (
@@ -2617,7 +2853,10 @@ CREATE OR REPLACE FUNCTION "private"."route_notification"() RETURNS "trigger"
     SET "search_path" TO ''
     AS $$
 begin
-  new.channels := private.notification_channels(new.user_id, new.type);
+  new.channels := case
+    when new.data ->> 'quiet' = 'true' then '{}'::text[]
+    else private.notification_channels(new.user_id, new.type)
+  end;
   return new;
 end;
 $$;
@@ -2967,7 +3206,8 @@ begin
     if v_recurrence is not null then
       insert into public.recurring_expenses (
         group_id, description, amount_cents, currency, paid_by, payers, split_type, category,
-        splits, recurrence, next_run_on, created_by
+        splits, items, tax_cents, tip_cents, discount_cents, recurrence, next_run_on, anchor_day,
+        notes, created_by
       ) values (
         gid, v_description, v_amount, v_currency, v_paid_by,
         case when (select count(*) from jsonb_object_keys(new_payers)) > 1 then
@@ -2979,11 +3219,14 @@ begin
           (select jsonb_agg(jsonb_build_object('user_id', x ->> 'user_id', 'share_cents', (x ->> 'share_cents')::bigint))
            from jsonb_array_elements(computed) x)
         else split_input end,
+        case when write_items then private.normalized_items(p -> 'items') end,
+        case when write_items then v_tax end,
+        case when write_items then v_tip end,
+        case when write_items then v_discount end,
         v_recurrence,
-        (v_spent_at + case v_recurrence
-          when 'weekly' then interval '1 week'
-          when 'monthly' then interval '1 month'
-          else interval '1 year' end)::date,
+        private.recurring_step(v_spent_at, v_recurrence, extract(day from v_spent_at)::int),
+        extract(day from v_spent_at)::int,
+        nullif(p ->> 'notes', ''),
         uid
       )
       returning id into recurring;
@@ -3401,6 +3644,87 @@ $$;
 ALTER FUNCTION "private"."send_monthly_summaries"("month" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp with time zone DEFAULT "now"()) RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  r public.recurring_expenses;
+  person record;
+  sent int := 0;
+  today date := (run_at at time zone 'UTC')::date;
+  deadline timestamptz;
+begin
+  for r in
+    select x.* from public.recurring_expenses x
+    join public.groups g on g.id = x.group_id
+    where x.active
+      -- UTC+14 is 38 hours ahead of the post at the earliest; nothing earlier can be due.
+      and x.next_run_on between today and today + 2
+      and g.archived_at is null
+    order by x.next_run_on, x.id
+    for update of x skip locked
+  loop
+    begin
+      deadline := (r.next_run_on::timestamp + interval '10 minutes') at time zone 'UTC';
+      if run_at >= deadline or private.recurring_blocked(r) then
+        continue;
+      end if;
+      for person in
+        with shares as (
+          select c.user_id, c.share_cents
+          from private.compute_split_rows(r.amount_cents, r.split_type, r.splits) c
+        ),
+        paid as (
+          select private.try_uuid(e ->> 'user_id') as user_id, (e ->> 'paid_cents')::bigint as paid_cents
+          from jsonb_array_elements(coalesce(r.payers,
+            jsonb_build_array(jsonb_build_object('user_id', r.paid_by, 'paid_cents', r.amount_cents)))) e
+        )
+        select u.user_id, coalesce(s.share_cents, 0) as share_cents, coalesce(pd.paid_cents, 0) as paid_cents, z.tz
+        from (select x.user_id from shares x where x.share_cents > 0 union select y.user_id from paid y) u
+        join public.profiles p on p.id = u.user_id and p.deleted_at is null
+        cross join lateral (select private.user_time_zone(u.user_id) as tz) z
+        left join shares s on s.user_id = u.user_id
+        left join paid pd on pd.user_id = u.user_id
+        where ((r.next_run_on - 1)::timestamp + interval '9 hours') at time zone z.tz <= run_at
+          and not exists (
+            select 1 from private.recurring_heads_ups h
+            where h.recurring_id = r.id and h.posts_on = r.next_run_on and h.user_id = u.user_id
+          )
+      loop
+        perform private.notify(array[person.user_id], 'recurring.upcoming', jsonb_build_object(
+          'recurring_id', r.id,
+          'group_id', r.group_id,
+          'description', r.description,
+          'amount_cents', r.amount_cents,
+          'currency', r.currency,
+          'posts_on', r.next_run_on,
+          'deadline', deadline,
+          'timezone', person.tz,
+          'recurrence', r.recurrence,
+          'share_cents', person.share_cents,
+          'paid_cents', person.paid_cents,
+          -- Late and at night where they are: let them sleep.
+          'quiet', (run_at at time zone person.tz)::time not between '07:00' and '21:59:59.999999'
+        ));
+        insert into private.recurring_heads_ups (recurring_id, posts_on, user_id)
+        values (r.id, r.next_run_on, person.user_id)
+        on conflict do nothing;
+        sent := sent + 1;
+      end loop;
+    exception
+      when others then
+        raise warning 'recurring heads-up % skipped: %', r.id, sqlerrm;
+    end;
+  end loop;
+  return sent;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp with time zone) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."set_updated_at"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO ''
@@ -3615,6 +3939,19 @@ $$;
 
 
 ALTER FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."user_time_zone"("uid" "uuid") RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(
+    (select p.timezone from public.profiles p where p.id = uid and private.is_time_zone(p.timezone)),
+    'UTC');
+$$;
+
+
+ALTER FUNCTION "private"."user_time_zone"("uid" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."utc_today"() RETURNS "date"
@@ -4173,11 +4510,6 @@ begin
     end if;
   end loop;
 
-  update public.recurring_expenses r set active = false
-  where r.active
-    and private.group_is_open(r.group_id)
-    and (r.paid_by = uid or r.splits @> jsonb_build_array(jsonb_build_object('user_id', uid)));
-
   delete from public.group_members m
   where m.user_id = uid
     and private.member_balance(m.group_id, uid) = 0;
@@ -4202,6 +4534,8 @@ begin
     locale = 'en',
     deleted_at = now()
   where p.id = uid;
+
+  perform private.pause_recurring_naming(uid);
 end;
 $$;
 
@@ -4622,6 +4956,123 @@ $$;
 
 
 ALTER FUNCTION "public"."leave_group"("group_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."make_expense_recurring"("expense_id" "uuid", "recurrence" "public"."recurrence") RETURNS "public"."recurring_expenses"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  eid uuid := make_expense_recurring.expense_id;
+  kind public.recurrence := make_expense_recurring.recurrence;
+  my_role public.group_role;
+  gid uuid;
+  e public.expenses;
+  v_splits jsonb;
+  v_items jsonb;
+  v_payers jsonb;
+  result public.recurring_expenses;
+begin
+  if kind is null then
+    raise exception using message = 'invalid_payload', detail = 'Pick how often it repeats', errcode = '22023';
+  end if;
+  select x.group_id into gid from public.expenses x where x.id = eid;
+  if gid is null then
+    raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups x where x.id = gid for share;
+  my_role := private.require_member(gid);
+  perform private.require_unarchived(gid);
+
+  select * into e from public.expenses x where x.id = eid for update;
+  if my_role = 'member' and uid is distinct from e.created_by and uid is distinct from e.paid_by
+     and not exists (select 1 from public.expense_payers x where x.expense_id = e.id and x.user_id = uid) then
+    raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
+  end if;
+  if e.deleted_at is not null then
+    raise exception using message = 'expense_deleted', detail = 'Restore this expense before editing it', errcode = '23514';
+  end if;
+  if e.recurring_id is not null then
+    raise exception using message = 'already_recurring', detail = 'This expense already repeats', errcode = '23514';
+  end if;
+  if e.is_refund then
+    raise exception using message = 'invalid_payload', detail = 'A refund cannot repeat', errcode = '22023';
+  end if;
+  if exists (
+    select 1 from (
+      select x.user_id from public.expense_payers x where x.expense_id = e.id
+      union
+      select x.user_id from public.expense_splits x where x.expense_id = e.id and x.share_cents > 0
+    ) people
+    where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = people.user_id)
+       or exists (select 1 from public.profiles p where p.id = people.user_id and p.deleted_at is not null)
+  ) then
+    raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
+  end if;
+
+  -- The split in the create_expense payload format, from the stored rows.
+  select jsonb_agg(case
+      when e.split_type = 'equal' then jsonb_build_object('user_id', s.user_id)
+      when e.split_type in ('percent', 'shares') then jsonb_build_object('user_id', s.user_id, 'weight', s.weight)
+      when e.split_type = 'adjustment' then
+        jsonb_build_object('user_id', s.user_id, 'adjustment_cents', coalesce(s.adjustment_cents, 0))
+      else jsonb_build_object('user_id', s.user_id, 'share_cents', s.share_cents)
+    end order by s.user_id)
+  into v_splits
+  from public.expense_splits s
+  where s.expense_id = e.id
+    and (e.split_type not in ('exact', 'itemized') or s.share_cents > 0);
+
+  if e.split_type = 'itemized' then
+    select jsonb_agg(jsonb_build_object('description', i.description, 'amount_cents', i.amount_cents,
+             'user_ids', to_jsonb(i.user_ids)) order by i.position)
+    into v_items
+    from public.expense_items i where i.expense_id = e.id;
+  end if;
+
+  select case when count(*) > 1 then
+      jsonb_agg(jsonb_build_object('user_id', x.user_id, 'paid_cents', x.paid_cents) order by x.user_id)
+    end
+  into v_payers
+  from public.expense_payers x where x.expense_id = e.id;
+
+  insert into public.recurring_expenses (
+    group_id, description, amount_cents, currency, paid_by, payers, split_type, category,
+    splits, items, tax_cents, tip_cents, discount_cents, recurrence, next_run_on, anchor_day,
+    notes, created_by
+  ) values (
+    gid, e.description, e.amount_cents, e.currency, e.paid_by, v_payers, e.split_type, e.category,
+    v_splits, v_items,
+    case when v_items is not null then e.tax_cents end,
+    case when v_items is not null then e.tip_cents end,
+    case when v_items is not null then e.discount_cents end,
+    kind,
+    -- Not before the caller's own today, the day the app previews.
+    private.recurring_next_from(e.spent_at, kind, extract(day from e.spent_at)::int, private.local_today(uid)),
+    extract(day from e.spent_at)::smallint,
+    e.notes,
+    uid
+  )
+  returning * into result;
+
+  update public.expenses x set recurring_id = result.id where x.id = e.id;
+
+  perform private.log_activity(gid, uid, 'recurring.created', result.id, jsonb_build_object(
+    'description', result.description,
+    'amount_cents', result.amount_cents,
+    'currency', result.currency,
+    'recurrence', result.recurrence,
+    'next_run_on', result.next_run_on,
+    'expense_id', e.id
+  ));
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."make_expense_recurring"("expense_id" "uuid", "recurrence" "public"."recurrence") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") RETURNS boolean
@@ -5587,6 +6038,55 @@ $$;
 ALTER FUNCTION "public"."simplified_debts"("group_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."skip_recurring_expense"("id" "uuid") RETURNS "public"."recurring_expenses"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  rid uuid := skip_recurring_expense.id;
+  my_role public.group_role;
+  gid uuid;
+  r public.recurring_expenses;
+  result public.recurring_expenses;
+begin
+  select x.group_id into gid from public.recurring_expenses x where x.id = rid;
+  if gid is null then
+    raise exception using message = 'recurring_not_found', detail = 'Repeating expense not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups x where x.id = gid for share;
+  my_role := private.require_member(gid);
+  perform private.require_unarchived(gid);
+
+  select * into r from public.recurring_expenses x where x.id = rid for update;
+  if r.id is null then
+    raise exception using message = 'recurring_not_found', detail = 'Repeating expense not found', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and not private.recurring_involves(r.created_by, r.paid_by, r.payers, r.splits, uid) then
+    raise exception using message = 'not_allowed', detail = 'Only the people in it or an admin can change it', errcode = '42501';
+  end if;
+
+  update public.recurring_expenses x
+  set next_run_on = private.recurring_step(r.next_run_on, r.recurrence, private.recurring_anchor_day(r))
+  where x.id = r.id
+  returning * into result;
+
+  perform private.log_activity(gid, uid, 'recurring.skipped', result.id, jsonb_build_object(
+    'description', result.description,
+    'amount_cents', result.amount_cents,
+    'currency', result.currency,
+    'skipped_on', r.next_run_on,
+    'next_run_on', result.next_run_on
+  ));
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."skip_recurring_expense"("id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5658,6 +6158,263 @@ $$;
 
 
 ALTER FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") RETURNS "public"."recurring_expenses"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  rid uuid := update_recurring_expense.id;
+  p jsonb := coalesce(payload, '{}'::jsonb);
+  my_role public.group_role;
+  gid uuid;
+  r public.recurring_expenses;
+  g public.groups;
+  v_description text;
+  v_amount bigint;
+  v_currency text;
+  v_paid_by uuid;
+  v_split_type public.split_type;
+  v_recurrence public.recurrence;
+  v_next date;
+  v_refund boolean;
+  v_category text;
+  v_notes text;
+  v_items jsonb;
+  v_tax bigint;
+  v_tip bigint;
+  v_discount bigint;
+  v_splits jsonb;
+  computed jsonb;
+  old_payers jsonb;
+  new_payers jsonb;
+  result public.recurring_expenses;
+begin
+  if jsonb_typeof(p) <> 'object' then
+    raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end if;
+
+  select x.group_id into gid from public.recurring_expenses x where x.id = rid;
+  if gid is null then
+    raise exception using message = 'recurring_not_found', detail = 'Repeating expense not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups x where x.id = gid for share;
+  my_role := private.require_member(gid);
+  perform private.require_unarchived(gid);
+
+  select * into r from public.recurring_expenses x where x.id = rid for update;
+  if r.id is null then
+    raise exception using message = 'recurring_not_found', detail = 'Repeating expense not found', errcode = 'PT404';
+  end if;
+  if my_role = 'member' and not private.recurring_involves(r.created_by, r.paid_by, r.payers, r.splits, uid) then
+    raise exception using message = 'not_allowed', detail = 'Only the people in it or an admin can change it', errcode = '42501';
+  end if;
+  select * into g from public.groups x where x.id = gid;
+
+  begin
+    v_paid_by := coalesce((p ->> 'paid_by')::uuid, r.paid_by);
+    v_split_type := coalesce((p ->> 'split_type')::public.split_type, r.split_type);
+    v_recurrence := coalesce((p ->> 'recurrence')::public.recurrence, r.recurrence);
+    v_next := coalesce((p ->> 'next_run_on')::date, r.next_run_on);
+    v_refund := coalesce((p ->> 'is_refund')::boolean, false);
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
+  end;
+  if v_refund then
+    raise exception using message = 'invalid_payload', detail = 'A refund cannot repeat', errcode = '22023';
+  end if;
+
+  v_description := btrim(coalesce(p ->> 'description', r.description));
+  if v_description = '' then
+    raise exception using message = 'description_required', detail = 'Add a description', errcode = '22023';
+  end if;
+  v_category := case when p ? 'category' then nullif(btrim(p ->> 'category'), '') else r.category end;
+  v_notes := case when p ? 'notes' then nullif(p ->> 'notes', '') else r.notes end;
+
+  if p ? 'amount_cents' then
+    if jsonb_typeof(p -> 'amount_cents') <> 'number'
+       or (p ->> 'amount_cents')::numeric <> trunc((p ->> 'amount_cents')::numeric)
+       or (p ->> 'amount_cents')::numeric <= 0
+       or (p ->> 'amount_cents')::numeric > 100000000000 then
+      raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+    end if;
+    v_amount := (p ->> 'amount_cents')::bigint;
+  else
+    v_amount := r.amount_cents;
+  end if;
+
+  v_currency := upper(coalesce(nullif(btrim(p ->> 'currency'), ''), r.currency));
+  if v_currency !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Unknown currency code', errcode = '22023';
+  end if;
+  if v_currency <> g.currency and v_currency <> r.currency
+     and private.fx_rate(v_currency::char(3), g.currency, current_date) is null then
+    raise exception using
+      message = 'fx_rate_unavailable',
+      detail = format('No exchange rate from %s to %s yet', v_currency, g.currency),
+      errcode = '23514';
+  end if;
+
+  -- Today is the caller's own day, the one the app shows them.
+  if v_next is distinct from r.next_run_on and v_next < private.local_today(uid) then
+    raise exception using message = 'invalid_next_run', detail = 'The next one can be today or later', errcode = '22023';
+  end if;
+
+  -- Who pays: the same rules as private.save_expense.
+  old_payers := coalesce(
+    (select jsonb_object_agg(e ->> 'user_id', (e ->> 'paid_cents')::bigint) from jsonb_array_elements(r.payers) e),
+    jsonb_build_object(r.paid_by, r.amount_cents));
+  if p ? 'payers' and jsonb_typeof(p -> 'payers') <> 'null' then
+    if jsonb_typeof(p -> 'payers') <> 'array'
+       or jsonb_array_length(p -> 'payers') > 100
+       or exists (
+         select 1 from jsonb_array_elements(p -> 'payers') e
+         where jsonb_typeof(e) <> 'object'
+            or private.try_uuid(e ->> 'user_id') is null
+            or jsonb_typeof(e -> 'paid_cents') is distinct from 'number'
+            or (e ->> 'paid_cents')::numeric <> trunc((e ->> 'paid_cents')::numeric)
+            or (e ->> 'paid_cents')::numeric < 0
+            or (e ->> 'paid_cents')::numeric > 100000000000
+       )
+       or (select count(distinct private.try_uuid(e ->> 'user_id')) from jsonb_array_elements(p -> 'payers') e)
+          <> jsonb_array_length(p -> 'payers') then
+      raise exception using message = 'invalid_payers', detail = 'Who paid is not valid', errcode = '22023';
+    end if;
+    select jsonb_object_agg(private.try_uuid(e ->> 'user_id'), (e ->> 'paid_cents')::bigint) into new_payers
+    from jsonb_array_elements(p -> 'payers') e
+    where (e ->> 'paid_cents')::bigint > 0;
+    if new_payers is null then
+      raise exception using message = 'invalid_payers', detail = 'Someone has to have paid', errcode = '22023';
+    end if;
+    if (select sum(j.value::bigint) from jsonb_each(new_payers) j) <> v_amount then
+      raise exception using
+        message = 'payers_sum_mismatch',
+        detail = format('Payers add up to %s but the expense is %s',
+          (select sum(j.value::bigint) from jsonb_each(new_payers) j), v_amount),
+        errcode = '22023';
+    end if;
+    select j.key::uuid into v_paid_by from jsonb_each(new_payers) j
+    order by j.value::bigint desc, j.key::uuid limit 1;
+  elsif p ? 'paid_by' or r.payers is null then
+    new_payers := jsonb_build_object(v_paid_by, v_amount);
+  else
+    if v_amount <> r.amount_cents then
+      raise exception using
+        message = 'payers_sum_mismatch',
+        detail = 'Several people pay this; say how much each pays of the new amount',
+        errcode = '22023';
+    end if;
+    new_payers := old_payers;
+  end if;
+
+  -- The split: items, a new split, or the stored one (rescaled to a new amount where it can be).
+  if p ? 'items' and jsonb_typeof(p -> 'items') <> 'null' then
+    if v_split_type <> 'itemized' then
+      raise exception using message = 'invalid_payload', detail = 'Items need a by-item split', errcode = '22023';
+    end if;
+    begin
+      v_tax := nullif((p ->> 'tax_cents')::bigint, 0);
+      v_tip := nullif((p ->> 'tip_cents')::bigint, 0);
+      v_discount := nullif((p ->> 'discount_cents')::bigint, 0);
+    exception
+      when invalid_text_representation or numeric_value_out_of_range then
+        raise exception using message = 'invalid_items', detail = 'Tax, tip and discount must be whole amounts', errcode = '22023';
+    end;
+    select jsonb_agg(jsonb_build_object('user_id', c.user_id, 'share_cents', c.share_cents) order by c.user_id)
+    into v_splits
+    from private.itemized_splits(p -> 'items', v_tax, v_tip, v_discount) c
+    where c.share_cents > 0;
+    if coalesce((select sum((x ->> 'share_cents')::bigint) from jsonb_array_elements(v_splits) x), 0) <> v_amount then
+      raise exception using message = 'splits_sum_mismatch', detail = 'The items do not add up to the expense', errcode = '22023';
+    end if;
+    v_items := private.normalized_items(p -> 'items');
+  elsif p ? 'splits' then
+    v_splits := p -> 'splits';
+  elsif v_split_type = r.split_type and r.items is not null then
+    v_splits := r.splits;
+    v_items := r.items;
+    v_tax := r.tax_cents;
+    v_tip := r.tip_cents;
+    v_discount := r.discount_cents;
+  else
+    v_splits := r.splits;
+  end if;
+
+  -- Validates the people and amounts (exact shares must add up to the new amount).
+  select jsonb_agg(to_jsonb(c)) into computed
+  from private.compute_split_rows(v_amount, v_split_type, v_splits) c;
+
+  -- Details of a template that names someone who left stay editable; its money does not, unless
+  -- the change takes them out.
+  if new_payers is distinct from old_payers or v_splits is distinct from r.splits
+     or v_amount <> r.amount_cents or v_currency <> r.currency or v_split_type <> r.split_type then
+    if exists (
+      select 1 from jsonb_object_keys(new_payers) as k
+      where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = k::uuid)
+         or exists (select 1 from public.profiles x where x.id = k::uuid and x.deleted_at is not null)
+    ) then
+      raise exception using message = 'payer_not_in_group', detail = 'The payer is not in this group', errcode = '23514';
+    end if;
+    if exists (
+      select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint)
+      where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
+         or exists (select 1 from public.profiles x where x.id = s.user_id and x.deleted_at is not null)
+    ) then
+      raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
+    end if;
+  end if;
+
+  update public.recurring_expenses x set
+    description = v_description,
+    amount_cents = v_amount,
+    currency = v_currency,
+    paid_by = v_paid_by,
+    payers = case when (select count(*) from jsonb_object_keys(new_payers)) > 1 then
+      (select jsonb_agg(jsonb_build_object('user_id', j.key, 'paid_cents', j.value::bigint) order by j.key)
+       from jsonb_each(new_payers) j)
+    end,
+    split_type = v_split_type,
+    category = v_category,
+    splits = v_splits,
+    items = v_items,
+    tax_cents = case when v_items is not null then v_tax end,
+    tip_cents = case when v_items is not null then v_tip end,
+    discount_cents = case when v_items is not null then v_discount end,
+    recurrence = v_recurrence,
+    next_run_on = v_next,
+    -- A date picked here becomes the day it repeats on. Changing only the interval keeps the
+    -- day a monthly or yearly series already had, so a 31st stays the 31st after a short month.
+    anchor_day = case
+      when v_next is distinct from r.next_run_on then extract(day from v_next)::smallint
+      when v_recurrence is distinct from r.recurrence and r.recurrence in ('weekly', 'biweekly')
+        then extract(day from v_next)::smallint
+      else private.recurring_anchor_day(r)::smallint
+    end,
+    notes = v_notes
+  where x.id = r.id
+  returning * into result;
+
+  if to_jsonb(result) - 'updated_at' <> to_jsonb(r) - 'updated_at' then
+    perform private.log_activity(gid, uid, 'recurring.updated', result.id, jsonb_build_object(
+      'description', result.description,
+      'amount_cents', result.amount_cents,
+      'currency', result.currency,
+      'recurrence', result.recurrence,
+      'next_run_on', result.next_run_on,
+      'from_amount_cents', r.amount_cents
+    ));
+  end if;
+
+  return result;
+end;
+$_$;
+
+
+ALTER FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_settlement"("id" "uuid", "payload" "jsonb") RETURNS "public"."settlements"
@@ -5862,6 +6619,17 @@ ALTER TABLE "private"."notification_types" OWNER TO "postgres";
 
 COMMENT ON TABLE "private"."notification_types" IS 'Which setting governs each notification type. Add one row per new type.';
 
+
+
+CREATE TABLE IF NOT EXISTS "private"."recurring_heads_ups" (
+    "recurring_id" "uuid" NOT NULL,
+    "posts_on" "date" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "sent_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."recurring_heads_ups" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."signing_keys" (
@@ -6371,6 +7139,11 @@ ALTER TABLE ONLY "private"."notification_types"
 
 
 
+ALTER TABLE ONLY "private"."recurring_heads_ups"
+    ADD CONSTRAINT "recurring_heads_ups_pkey" PRIMARY KEY ("recurring_id", "posts_on", "user_id");
+
+
+
 ALTER TABLE ONLY "private"."signing_keys"
     ADD CONSTRAINT "signing_keys_pkey" PRIMARY KEY ("name");
 
@@ -6567,6 +7340,10 @@ CREATE INDEX "mfa_recover_attempts_user_time_idx" ON "private"."mfa_recover_atte
 
 
 CREATE INDEX "notification_types_category_idx" ON "private"."notification_types" USING "btree" ("category");
+
+
+
+CREATE INDEX "recurring_heads_ups_user_id_idx" ON "private"."recurring_heads_ups" USING "btree" ("user_id");
 
 
 
@@ -6866,6 +7643,10 @@ CREATE CONSTRAINT TRIGGER "group_members_owner_check" AFTER INSERT OR DELETE OR 
 
 
 
+CREATE OR REPLACE TRIGGER "group_members_pause_recurring" AFTER DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_pause_recurring"();
+
+
+
 CREATE OR REPLACE TRIGGER "group_members_track_former" AFTER INSERT OR DELETE ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."track_former_members"();
 
 
@@ -6919,6 +7700,10 @@ CREATE OR REPLACE TRIGGER "profiles_forget_notification_prefs" AFTER UPDATE OF "
 
 
 CREATE OR REPLACE TRIGGER "profiles_set_updated_at" BEFORE UPDATE ON "public"."profiles" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "recurring_expenses_require_members" BEFORE UPDATE OF "active" ON "public"."recurring_expenses" FOR EACH ROW WHEN ((("old"."active" IS FALSE) AND ("new"."active" IS TRUE))) EXECUTE FUNCTION "private"."recurring_require_members"();
 
 
 
@@ -6983,6 +7768,16 @@ ALTER TABLE ONLY "private"."mfa_recovery_codes"
 
 ALTER TABLE ONLY "private"."notification_types"
     ADD CONSTRAINT "notification_types_category_fkey" FOREIGN KEY ("category") REFERENCES "private"."notification_categories"("category");
+
+
+
+ALTER TABLE ONLY "private"."recurring_heads_ups"
+    ADD CONSTRAINT "recurring_heads_ups_recurring_id_fkey" FOREIGN KEY ("recurring_id") REFERENCES "public"."recurring_expenses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."recurring_heads_ups"
+    ADD CONSTRAINT "recurring_heads_ups_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
 
 
@@ -7284,6 +8079,9 @@ ALTER TABLE "private"."notification_categories" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."notification_types" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."recurring_heads_ups" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."signing_keys" ENABLE ROW LEVEL SECURITY;
@@ -7616,11 +8414,11 @@ CREATE POLICY "push_tokens: update own" ON "public"."push_tokens" FOR UPDATE TO 
 ALTER TABLE "public"."recurring_expenses" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "recurring_expenses: creator or admin delete" ON "public"."recurring_expenses" FOR DELETE TO "authenticated" USING ((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("created_by" = ( SELECT "auth"."uid"() AS "uid")) AND ("group_id" IN ( SELECT "private"."my_group_ids"() AS "my_group_ids")))));
+CREATE POLICY "recurring_expenses: involved or admin delete" ON "public"."recurring_expenses" FOR DELETE TO "authenticated" USING ((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))) AND "private"."recurring_involves"("created_by", "paid_by", "payers", "splits", ( SELECT "auth"."uid"() AS "uid")))));
 
 
 
-CREATE POLICY "recurring_expenses: creator or admin edit" ON "public"."recurring_expenses" FOR UPDATE TO "authenticated" USING ((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("created_by" = ( SELECT "auth"."uid"() AS "uid")) AND ("group_id" IN ( SELECT "private"."my_group_ids"() AS "my_group_ids"))))) WITH CHECK (((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("created_by" = ( SELECT "auth"."uid"() AS "uid")) AND ("group_id" IN ( SELECT "private"."my_group_ids"() AS "my_group_ids")))) AND ( SELECT "private"."group_is_open"("recurring_expenses"."group_id") AS "group_is_open")));
+CREATE POLICY "recurring_expenses: involved or admin edit" ON "public"."recurring_expenses" FOR UPDATE TO "authenticated" USING ((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))) AND "private"."recurring_involves"("created_by", "paid_by", "payers", "splits", ( SELECT "auth"."uid"() AS "uid"))))) WITH CHECK (((( SELECT "private"."is_group_admin"("recurring_expenses"."group_id") AS "is_group_admin") OR (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))) AND "private"."recurring_involves"("created_by", "paid_by", "payers", "splits", ( SELECT "auth"."uid"() AS "uid")))) AND ( SELECT "private"."group_is_open"("recurring_expenses"."group_id") AS "group_is_open")));
 
 
 
@@ -7747,6 +8545,10 @@ REVOKE ALL ON FUNCTION "private"."group_members_notify_added"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."group_members_pause_recurring"() FROM PUBLIC;
+
+
+
 GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "service_role";
 
@@ -7780,6 +8582,10 @@ GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "service_role
 
 GRANT ALL ON FUNCTION "private"."is_time_zone"("tz" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."is_time_zone"("tz" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."local_today"("uid" "uuid") FROM PUBLIC;
 
 
 
@@ -7899,11 +8705,32 @@ GRANT ALL ON FUNCTION "private"."my_group_ids"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."normalized_items"("items" "jsonb") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") FROM PUBLIC;
 
 
 
 REVOKE ALL ON FUNCTION "private"."pairwise_debts"("gid" "uuid") FROM PUBLIC;
+
+
+
+GRANT ALL ON TABLE "public"."recurring_expenses" TO "service_role";
+GRANT SELECT,DELETE ON TABLE "public"."recurring_expenses" TO "authenticated";
+
+
+
+GRANT UPDATE("active") ON TABLE "public"."recurring_expenses" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."pause_recurring_for_departed"("r" "public"."recurring_expenses", "gone" "uuid"[]) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."pause_recurring_naming"("uid" "uuid", "gid" "uuid") FROM PUBLIC;
 
 
 
@@ -7923,28 +8750,33 @@ REVOKE ALL ON FUNCTION "private"."recovery_code_hash"("code" "text") FROM PUBLIC
 
 
 
-GRANT ALL ON TABLE "public"."recurring_expenses" TO "service_role";
-GRANT SELECT,DELETE ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("description") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("category") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("next_run_on") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
-GRANT UPDATE("active") ON TABLE "public"."recurring_expenses" TO "authenticated";
-
-
-
 REVOKE ALL ON FUNCTION "private"."recurring_anchor_day"("r" "public"."recurring_expenses") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_blocked"("r" "public"."recurring_expenses") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_departed"("r" "public"."recurring_expenses") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_next_from"("start" "date", "kind" "public"."recurrence", "anchor" integer, "not_before" "date") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_people"("r" "public"."recurring_expenses") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."recurring_require_members"() FROM PUBLIC;
 
 
 
@@ -8002,6 +8834,10 @@ REVOKE ALL ON FUNCTION "private"."send_monthly_summaries"("month" "date") FROM P
 
 
 
+REVOKE ALL ON FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp with time zone) FROM PUBLIC;
+
+
+
 GRANT ALL ON FUNCTION "private"."shares_group_with"("other" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."shares_group_with"("other" "uuid") TO "service_role";
 
@@ -8018,6 +8854,10 @@ GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "service_role";
 
 
 REVOKE ALL ON FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."user_time_zone"("uid" "uuid") FROM PUBLIC;
 
 
 
@@ -8203,6 +9043,12 @@ GRANT ALL ON FUNCTION "public"."leave_group"("group_id" "uuid") TO "service_role
 
 
 
+REVOKE ALL ON FUNCTION "public"."make_expense_recurring"("expense_id" "uuid", "recurrence" "public"."recurrence") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."make_expense_recurring"("expense_id" "uuid", "recurrence" "public"."recurrence") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."make_expense_recurring"("expense_id" "uuid", "recurrence" "public"."recurrence") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."mfa_recovery_code_matches"("target" "uuid", "code" "text") TO "service_role";
 
@@ -8366,6 +9212,12 @@ GRANT ALL ON FUNCTION "public"."simplified_debts"("group_id" "uuid") TO "service
 
 
 
+REVOKE ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id" "uuid") TO "service_role";
@@ -8381,6 +9233,12 @@ GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") 
 REVOKE ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_recurring_expense"("id" "uuid", "payload" "jsonb") TO "service_role";
 
 
 
@@ -8407,6 +9265,10 @@ GRANT ALL ON TABLE "private"."notification_categories" TO "service_role";
 
 
 GRANT ALL ON TABLE "private"."notification_types" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."recurring_heads_ups" TO "service_role";
 
 
 
@@ -8698,3 +9560,4 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- cron fx-sync '30 16 * * *': select private.invoke_edge_function('fx-sync')
 -- cron materialize-recurring-expenses '10 0 * * *': select private.materialize_recurring_expenses()
 -- cron monthly-summary '0 15 1 * *': select private.send_monthly_summaries()
+-- cron recurring-heads-up '5,35 * * * *': select private.send_recurring_heads_ups()

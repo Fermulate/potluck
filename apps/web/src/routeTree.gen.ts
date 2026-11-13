@@ -35,6 +35,7 @@ import { Route as AppNewSettleRouteImport } from './routes/_app/new/settle'
 import { Route as AppPaymentsPaymentIdRouteImport } from './routes/_app/payments/$paymentId'
 import { Route as AppPlansIndexRouteImport } from './routes/_app/plans/index'
 import { Route as AppPlansEventIdRouteImport } from './routes/_app/plans/$eventId'
+import { Route as AppRecurringRecurringIdRouteImport } from './routes/_app/recurring/$recurringId'
 import { Route as AppExpensesExpenseIdEditRouteImport } from './routes/_app/expenses/$expenseId_.edit'
 import { Route as AppGroupsGroupIdIndexRouteImport } from './routes/_app/groups/$groupId/index'
 import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/groups/$groupId/balances'
@@ -172,6 +173,11 @@ const AppPlansEventIdRoute = AppPlansEventIdRouteImport.update({
   path: '/plans/$eventId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRecurringRecurringIdRoute = AppRecurringRecurringIdRouteImport.update({
+  id: '/recurring/$recurringId',
+  path: '/recurring/$recurringId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppExpensesExpenseIdEditRoute =
   AppExpensesExpenseIdEditRouteImport.update({
     id: '/expenses/$expenseId_/edit',
@@ -234,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/new/settle': typeof AppNewSettleRoute
   '/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/plans/$eventId': typeof AppPlansEventIdRoute
+  '/recurring/$recurringId': typeof AppRecurringRecurringIdRoute
   '/friends/': typeof AppFriendsIndexRoute
   '/groups/': typeof AppGroupsIndexRoute
   '/me/': typeof AppMeIndexRoute
@@ -267,6 +274,7 @@ export interface FileRoutesByTo {
   '/new/settle': typeof AppNewSettleRoute
   '/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/plans/$eventId': typeof AppPlansEventIdRoute
+  '/recurring/$recurringId': typeof AppRecurringRecurringIdRoute
   '/friends': typeof AppFriendsIndexRoute
   '/groups': typeof AppGroupsIndexRoute
   '/me': typeof AppMeIndexRoute
@@ -303,6 +311,7 @@ export interface FileRoutesById {
   '/_app/new/settle': typeof AppNewSettleRoute
   '/_app/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/_app/plans/$eventId': typeof AppPlansEventIdRoute
+  '/_app/recurring/$recurringId': typeof AppRecurringRecurringIdRoute
   '/_app/friends/': typeof AppFriendsIndexRoute
   '/_app/groups/': typeof AppGroupsIndexRoute
   '/_app/me/': typeof AppMeIndexRoute
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/new/settle'
     | '/payments/$paymentId'
     | '/plans/$eventId'
+    | '/recurring/$recurringId'
     | '/friends/'
     | '/groups/'
     | '/me/'
@@ -372,6 +382,7 @@ export interface FileRouteTypes {
     | '/new/settle'
     | '/payments/$paymentId'
     | '/plans/$eventId'
+    | '/recurring/$recurringId'
     | '/friends'
     | '/groups'
     | '/me'
@@ -407,6 +418,7 @@ export interface FileRouteTypes {
     | '/_app/new/settle'
     | '/_app/payments/$paymentId'
     | '/_app/plans/$eventId'
+    | '/_app/recurring/$recurringId'
     | '/_app/friends/'
     | '/_app/groups/'
     | '/_app/me/'
@@ -619,6 +631,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPlansEventIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/recurring/$recurringId': {
+      id: '/_app/recurring/$recurringId'
+      path: '/recurring/$recurringId'
+      fullPath: '/recurring/$recurringId'
+      preLoaderRoute: typeof AppRecurringRecurringIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/expenses/$expenseId_/edit': {
       id: '/_app/expenses/$expenseId_/edit'
       path: '/expenses/$expenseId/edit'
@@ -701,6 +720,7 @@ interface AppRouteChildren {
   AppNewSettleRoute: typeof AppNewSettleRoute
   AppPaymentsPaymentIdRoute: typeof AppPaymentsPaymentIdRoute
   AppPlansEventIdRoute: typeof AppPlansEventIdRoute
+  AppRecurringRecurringIdRoute: typeof AppRecurringRecurringIdRoute
   AppFriendsIndexRoute: typeof AppFriendsIndexRoute
   AppGroupsIndexRoute: typeof AppGroupsIndexRoute
   AppMeIndexRoute: typeof AppMeIndexRoute
@@ -720,6 +740,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppNewSettleRoute: AppNewSettleRoute,
   AppPaymentsPaymentIdRoute: AppPaymentsPaymentIdRoute,
   AppPlansEventIdRoute: AppPlansEventIdRoute,
+  AppRecurringRecurringIdRoute: AppRecurringRecurringIdRoute,
   AppFriendsIndexRoute: AppFriendsIndexRoute,
   AppGroupsIndexRoute: AppGroupsIndexRoute,
   AppMeIndexRoute: AppMeIndexRoute,

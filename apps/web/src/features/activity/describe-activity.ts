@@ -118,6 +118,21 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
     case 'group':
       emoji = item.group?.emoji ?? '🍽️'
       break
+    case 'recurring': {
+      // A repeating expense was set up, changed or skipped: open the expense it started from,
+      // else the group, whose list holds the series.
+      emoji = item.verb === 'recurring.paused' ? '⏸️' : '🔁'
+      tone = 'saffron'
+      // Paused because someone left: name the first of them.
+      const gone = Array.isArray(d.user_ids) ? str(d.user_ids[0]) : undefined
+      if (gone) {
+        named = gone
+        params.name = ctx.nameOf(gone)
+      }
+      const expenseId = str(d.expense_id)
+      if (expenseId) link = { to: '/expenses/$expenseId', params: { expenseId } }
+      break
+    }
   }
 
   // Other languages conjugate for "you", so the viewer as subject or object gets its own line.

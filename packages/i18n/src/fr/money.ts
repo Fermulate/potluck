@@ -58,6 +58,7 @@ export const expenses = {
   recurrence: {
     none: 'Ne se répète pas',
     weekly: 'Chaque semaine',
+    biweekly: 'Toutes les 2 semaines',
     monthly: 'Chaque mois',
     yearly: 'Chaque année',
     nextOn: 'Prochaine le {date}',
@@ -182,8 +183,47 @@ export const expenses = {
     removedToast: '« {description} » ne se répétera plus.',
     every: {
       weekly: 'Hebdo',
+      biweekly: 'Toutes les 2 semaines',
       monthly: 'Mensuelle',
       yearly: 'Annuelle',
+    },
+    firstOn: 'La prochaine est ajoutée le {date}.',
+    actions: 'Actions de la dépense récurrente',
+    editTitle: 'Modifier la dépense récurrente',
+    futureOnly:
+      'Les changements commencent à la prochaine. Les dépenses déjà ajoutées restent telles quelles.',
+    nextLabel: 'La prochaine',
+    savedToast: 'Enregistré. La prochaine « {description} » prend les nouveaux montants.',
+    pausedNote: "En pause. Rien n'est ajouté tant que tu ne la relances pas.",
+    formerNote: '{names} a quitté le groupe. Retire cette personne du partage, puis relance.',
+    resumeBlocked: "Retire {names} du partage d'abord, puis relance.",
+    blockedActive:
+      "{names} a quitté le groupe. Rien n'est ajouté tant que cette personne reste dans le partage.",
+    pausedLeft: 'En pause : {names} est parti',
+    left: '{names} est parti',
+    readOnly: 'Seules les personnes concernées ou un admin peuvent la modifier.',
+    yourShare: 'Ta part à chaque fois : {amount}',
+    skipLabel: 'Sauter la prochaine « {description} »',
+    notFound: 'Cette dépense récurrente a été arrêtée.',
+    skip: 'Sauter la prochaine',
+    skipTitle: 'Sauter la prochaine ?',
+    skipConfirm:
+      "Rien n'est ajouté pour « {description} » le {date}. La suivante arrive le {next}.",
+    skippedToast: 'Sautée. La prochaine « {description} » est le {date}.',
+    card: {
+      title: 'Se répète',
+      next: '{every}. Prochaine le {date}.',
+      paused: "{every}. En pause pour l'instant.",
+      edit: 'Modifier la répétition',
+      view: 'Détails',
+    },
+    make: {
+      action: 'La faire répéter',
+      title: 'Répéter cette dépense',
+      hint: 'Une copie avec le même montant, les mêmes payeurs et le même partage est ajoutée à chaque date. Modifiable ou arrêtable à tout moment.',
+      first: 'Première copie le {date}.',
+      confirm: 'Répéter',
+      doneToast: '« {description} » se répète maintenant. Prochaine le {date}.',
     },
   },
   detail: {
@@ -251,6 +291,9 @@ export const expenses = {
     negative_share: "Un ajustement en moins fait passer quelqu'un sous zéro.",
     items_required: 'Ajoute au moins un article.',
     invalid_items: 'Un des articles cloche. Vérifie les prix et qui les a pris.',
+    recurring_not_found: 'Cette dépense récurrente a été arrêtée.',
+    already_recurring: 'Cette dépense se répète déjà.',
+    invalid_next_run: "Choisis aujourd'hui ou une date plus tard pour la prochaine.",
     invalid_parties: 'Choisis deux personnes différentes.',
     not_a_party:
       'Seuls les propriétaires et admins peuvent enregistrer un paiement entre deux autres personnes.',
@@ -592,6 +635,12 @@ export const activity = {
     comment: {
       created: 'Tu as commenté {subject}',
     },
+    recurring: {
+      created: 'Tu as fait répéter « {description} »',
+      updated: 'Tu as modifié la dépense récurrente « {description} »',
+      skipped: 'Tu as sauté la prochaine « {description} »',
+      paused: '« {description} » est en pause : {name} a quitté le groupe',
+    },
   },
   toYou: {
     member: {
@@ -603,6 +652,9 @@ export const activity = {
       deleted: "{actor} a supprimé un paiement qui t'était destiné",
       updated: "{actor} a modifié un paiement qu'il t'a fait",
       restored: "{actor} a restauré un paiement qu'il t'a fait",
+    },
+    recurring: {
+      paused: '« {description} » est en pause : tu as quitté le groupe',
     },
   },
   group: {
@@ -640,4 +692,10 @@ export const activity = {
     created: '{actor} a commenté {subject}',
   },
   aPayment: 'un paiement',
+  recurring: {
+    created: '{actor} a fait répéter « {description} »',
+    updated: '{actor} a modifié la dépense récurrente « {description} »',
+    skipped: '{actor} a sauté la prochaine « {description} »',
+    paused: '« {description} » est en pause : {name} a quitté le groupe',
+  },
 } satisfies Translation<typeof en.activity>

@@ -5,15 +5,18 @@ import {
   moneyQueries,
   setDefaultSplit,
   updateExpense,
+  updateRecurring,
   uploadReceipt,
   type ExpensePayload,
   type ExpenseWithSplits,
   type MoneyGroup,
   type MoneyMember,
   type RecurrenceValue,
+  type RecurringExpense,
+  type RecurringUpdate,
 } from '@potluck/api'
-import { CATEGORIES, firstName, type CategoryId } from '@potluck/core'
-import { intlLocale, formatMoney, t } from '@potluck/i18n'
+import { CATEGORIES, RECURRENCES, firstName, nextOccurrence, type CategoryId } from '@potluck/core'
+import { formatDate, formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Avatar,
   Button,
@@ -35,10 +38,11 @@ import { joinNames } from '@/features/plans/format'
 import { Money } from '../money'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { CalendarHeart } from 'lucide-react'
-import { useId, useState, type FormEvent } from 'react'
+import { CalendarHeart, Repeat } from 'lucide-react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
+import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
 import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
@@ -95,12 +99,33 @@ export type ExpenseFormProps =
       onDone: (expenseId: string) => void
       onClose: () => void
     }
+  | {
+      /** A repeating expense: changes apply to the expenses still to come. */
+      mode: 'recurring'
+      template: RecurringExpense
+      /** Skip, pause and stop, shown under the schedule. */
+      actions?: ReactNode
+      onDone: (recurringId: string) => void
+      onClose: () => void
+    }
+
+const formTitle = (mode: ExpenseFormProps['mode']) =>
+  mode === 'create'
+    ? t('expenses.form.newTitle')
+    : mode === 'edit'
+      ? t('expenses.form.editTitle')
+      : t('expenses.recurring.editTitle')
 
 export function ExpenseForm(props: ExpenseFormProps) {
-  const groupId = props.mode === 'create' ? props.groupId : props.expense.group_id
+  const groupId =
+    props.mode === 'create'
+      ? props.groupId
+      : props.mode === 'edit'
+        ? props.expense.group_id
+        : props.template.group_id
   const me = useUserId()
   const group = useMoneyGroup(groupId)
-  const title = props.mode === 'create' ? t('expenses.form.newTitle') : t('expenses.form.editTitle')
+  const title = formTitle(props.mode)
 
   if (group.data?.archived_at) {
     // Archived groups are read only: say so instead of a form the server would refuse.
@@ -146,7 +171,11 @@ type Recurrence = RecurrenceValue | 'none'
 
 function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const { group } = props
-  const editing = props.mode === 'edit' ? props.expense : null
+  const template = props.mode === 'recurring' ? props.template : null
+  // A repeating expense opens like an expense; only its schedule fields differ.
+  const [templateShape] = useState(() => (template ? templateAsExpense(template) : null))
+  const expense = props.mode === 'edit' ? props.expense : null
+  const editing = expense ?? templateShape
   const me = useUserId()
   const timeZone = useTimeZone()
   const queryClient = useQueryClient()
@@ -189,14 +218,25 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       ? payersFromExpense(editing)
       : { mode: 'single', paidBy: memberIds.includes(me) ? me : (memberIds[0] ?? me) },
   )
-  const [refund, setRefund] = useState(editing?.is_refund ?? false)
-  const [spentAt, setSpentAt] = useState(editing?.spent_at ?? todayIn(timeZone))
-  const [notes, setNotes] = useState(editing?.notes ?? '')
+  const [refund, setRefund] = useState(expense?.is_refund ?? false)
+  // For a repeating expense, the date is when the next one goes in.
+  const [spentAt, setSpentAt] = useState(
+    expense?.spent_at ?? template?.next_run_on ?? todayIn(timeZone),
+  )
+  // A skip (or anything else) can move the next date while the form is open. Follow it until
+  // the date is changed here, so other unsaved edits stay and saving never undoes the skip.
+  const [dateTouched, setDateTouched] = useState(false)
+  const [seenNext, setSeenNext] = useState(template?.next_run_on)
+  if (template && template.next_run_on !== seenNext) {
+    setSeenNext(template.next_run_on)
+    if (!dateTouched) setSpentAt(template.next_run_on)
+  }
+  const [notes, setNotes] = useState(expense?.notes ?? template?.notes ?? '')
   const [receipt, setReceipt] = useState<ReceiptValue>({
     file: null,
-    existingPath: editing?.receipt_path ?? null,
+    existingPath: expense?.receipt_path ?? null,
   })
-  const [recurrence, setRecurrence] = useState<Recurrence>('none')
+  const [recurrence, setRecurrence] = useState<Recurrence>(template?.recurrence ?? 'none')
   const [savedDraft] = useState<SplitDraft>(() =>
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
@@ -213,7 +253,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const amountError = submitted && total <= 0 ? t('expenses.form.amountRequired') : undefined
   // An unchanged split is not resent, so the stored shares (former members' too) stay as they are.
   const keepSplit = !!editing && total === editing.amount_cents && sameSplit(draft, savedDraft)
-  const formerInDraft = formerParticipants(draft, memberIds)
+  const formerInDraft = formerParticipants(
+    draft,
+    template ? openMemberIds(group.members) : memberIds,
+  )
   const formerNames = joinNames(
     formerInDraft.map((id) => firstName(formerMember(id).display_name)),
     3,
@@ -222,8 +265,14 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     !keepSplit && formerInDraft.length > 0
       ? t('expenses.form.formerInSplit', { names: formerNames })
       : null
-  // Someone who left still has money on this expense: only the details can change.
-  const locked = !!editing && departedMembers(editing, memberIds).length > 0
+  // Someone who left still has money on this expense: only the details can change. A repeating
+  // expense has not charged anyone yet, so it stays editable once they are taken out of it.
+  const locked = !!expense && departedMembers(expense, memberIds).length > 0
+  const today = todayIn(timeZone)
+  const nextError =
+    template && dateTouched && spentAt !== template.next_run_on && spentAt < today
+      ? t('expenses.errors.invalid_next_run')
+      : null
   const payersError = submitted && total > 0 && !locked ? payersErrorText(payersCheck) : null
   const splitError =
     submitted && total > 0 && !locked ? (splitErrorText(preview) ?? formerError) : null
@@ -239,7 +288,40 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const isDefault = matchesDefault(draft, group.default_split)
   const plainEqual = isEqualBetweenAll(draft, memberIds)
   const canSaveDefault =
-    !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
+    !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
+
+  const saveTemplate = useMutation({
+    mutationFn: async (current: RecurringExpense) => {
+      const payload: RecurringUpdate = {
+        description: description.trim(),
+        category,
+        amount_cents: total,
+        currency,
+        ...payersPayload(payers, total),
+        recurrence: recurrence === 'none' ? current.recurrence : recurrence,
+        // Only a date that was changed here, so a skip made meanwhile is not undone.
+        ...(dateTouched && spentAt !== current.next_run_on ? { next_run_on: spentAt } : {}),
+        notes: notes.trim() || null,
+      }
+      // An unchanged split is not resent, so the details stay editable while it names someone
+      // who left the group.
+      if (keepSplit) return updateRecurring(supabase, current.id, payload)
+      return updateRecurring(supabase, current.id, {
+        ...payload,
+        split_type: draft.mode,
+        splits: splitsPayload(draft, total),
+        ...(draft.mode === 'itemized' ? itemsPayload(draft) : {}),
+      })
+    },
+    onSuccess: (saved) => {
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.recurring(group.id) })
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.recurringOne(saved.id) })
+      void queryClient.invalidateQueries({ queryKey: moneyKeys.activity() })
+      toast.success(t('expenses.recurring.savedToast', { description: saved.description }))
+      props.onDone(saved.id)
+    },
+    onError: (error) => toast.error(moneyErrorMessage(error)),
+  })
 
   const save = useMutation({
     mutationFn: async () => {
@@ -268,8 +350,8 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         spent_at: spentAt,
         receipt_path: receiptPath,
       }
-      if (editing && locked) {
-        return updateExpense(supabase, editing.id, {
+      if (expense && locked) {
+        return updateExpense(supabase, expense.id, {
           description: payload.description,
           category: payload.category,
           notes: payload.notes,
@@ -277,10 +359,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           receipt_path: payload.receipt_path,
         })
       }
-      if (editing) {
-        if (!keepSplit) return updateExpense(supabase, editing.id, payload)
+      if (expense) {
+        if (!keepSplit) return updateExpense(supabase, expense.id, payload)
         const { splits: _splits, split_type: _type, ...details } = payload
-        return updateExpense(supabase, editing.id, details)
+        return updateExpense(supabase, expense.id, details)
       }
       return createExpense(supabase, {
         ...payload,
@@ -289,8 +371,8 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
       })
     },
-    onSuccess: async (expense) => {
-      invalidateMoney(queryClient, group.id, expense.id)
+    onSuccess: async (saved) => {
+      invalidateMoney(queryClient, group.id, saved.id)
       // Say what was added and what it means for you, not just that something happened.
       const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
       toast.success(
@@ -317,7 +399,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           toast.error(moneyErrorMessage(error))
         }
       }
-      props.onDone(expense.id)
+      props.onDone(saved.id)
     },
     onError: (error) => {
       toast.error(
@@ -356,12 +438,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     setSubmitted(true)
     if (!description.trim()) return
     if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
+    if (template) {
+      if (!nextError) saveTemplate.mutate(template)
+      return
+    }
     save.mutate()
   }
+  const saving = save.isPending || saveTemplate.isPending
 
   return (
     <MoneyPageShell
-      title={props.mode === 'create' ? t('expenses.form.newTitle') : t('expenses.form.editTitle')}
+      title={formTitle(props.mode)}
       onClose={props.onClose}
       width="lg"
       aside={
@@ -372,16 +459,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       }
       footer={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-          {submitted && (descriptionError || amountError || payersError || splitError) && (
-            <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
-              {descriptionError ?? amountError ?? payersError ?? splitError}
-            </p>
-          )}
+          {submitted &&
+            (descriptionError || amountError || payersError || splitError || nextError) && (
+              <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
+                {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
+              </p>
+            )}
           <Button
             type="submit"
             form={formId}
             size="lg"
-            loading={save.isPending}
+            loading={saving}
             className="w-full sm:w-auto"
           >
             {editing ? t('expenses.form.saveChanges') : t('expenses.form.save')}
@@ -446,8 +534,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 currency={currency}
                 groupCurrency={group.currency}
                 spentAt={spentAt}
-                savedRate={editing && editing.currency === currency ? editing.fx_rate : undefined}
+                savedRate={expense && expense.currency === currency ? expense.fx_rate : undefined}
               />
+            )}
+            {template && (
+              // Up top, where the amount is changed: what a change here does and does not touch.
+              <p className="flex max-w-sm items-start gap-2 text-sm text-plum-ink">
+                <Repeat aria-hidden className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
+                {t('expenses.recurring.futureOnly')}
+              </p>
             )}
           </div>
 
@@ -512,25 +607,35 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 disabled={locked}
               />
             </Field>
-            <Field label={t('expenses.fields.date')}>
+            <Field
+              label={template ? t('expenses.recurring.nextLabel') : t('expenses.fields.date')}
+              error={submitted && nextError ? nextError : undefined}
+            >
               <Input
                 type="date"
                 value={spentAt}
-                onChange={(e) => e.target.value && setSpentAt(e.target.value)}
+                min={template ? today : undefined}
+                onChange={(e) => {
+                  if (!e.target.value) return
+                  setDateTouched(true)
+                  setSpentAt(e.target.value)
+                }}
               />
             </Field>
           </div>
-          <div className="-mt-2 flex items-start justify-between gap-3">
-            <Switch
-              label={t('expenses.refund.label')}
-              description={refund ? t('expenses.refund.hint') : undefined}
-              checked={refund}
-              onCheckedChange={setRefund}
-              disabled={locked}
-              className="flex-1"
-            />
-            <Help topic="refunds" className="mt-0.5" />
-          </div>
+          {!template && (
+            <div className="-mt-2 flex items-start justify-between gap-3">
+              <Switch
+                label={t('expenses.refund.label')}
+                description={refund ? t('expenses.refund.hint') : undefined}
+                checked={refund}
+                onCheckedChange={setRefund}
+                disabled={locked}
+                className="flex-1"
+              />
+              <Help topic="refunds" className="mt-0.5" />
+            </div>
+          )}
           {/* On a phone the shortcuts sit right under "Paid by", above the fold; on a wide
               screen they join the split editor. */}
           {!locked && !wide && quickSplit}
@@ -582,7 +687,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             <>
               {formerInDraft.length > 0 && (
                 <p className="text-sm text-mute">
-                  {t('expenses.form.formerNote', { names: formerNames })}
+                  {template
+                    ? t('expenses.recurring.formerNote', { names: formerNames })
+                    : t('expenses.form.formerNote', { names: formerNames })}
                 </p>
               )}
               {wide && group.members.length === 2 && (
@@ -639,17 +746,42 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               rows={2}
             />
           </Field>
-          <ReceiptField value={receipt} onChange={setReceipt} />
+          {template ? (
+            <>
+              <Field label={t('expenses.fields.recurring')} aside={<Help topic="recurringEdit" />}>
+                <Select
+                  value={recurrence}
+                  onValueChange={(v) => setRecurrence(v as Recurrence)}
+                  options={RECURRENCES.map((r) => ({
+                    value: r,
+                    label: t(`expenses.recurrence.${r}`),
+                  }))}
+                />
+              </Field>
+              {props.mode === 'recurring' && props.actions}
+            </>
+          ) : (
+            <ReceiptField value={receipt} onChange={setReceipt} />
+          )}
           {!editing && !refund && (
             <Field
               label={t('expenses.fields.recurring')}
-              hint={recurrence !== 'none' ? t('expenses.recurring.hint') : undefined}
+              hint={
+                recurrence !== 'none'
+                  ? `${t('expenses.recurring.hint')} ${t('expenses.recurring.firstOn', {
+                      date: formatDate(nextOccurrence(spentAt, recurrence), {
+                        timeZone: 'UTC',
+                        style: 'weekday',
+                      }),
+                    })}`
+                  : undefined
+              }
               aside={<Help topic="recurring" />}
             >
               <Select
                 value={recurrence}
                 onValueChange={(v) => setRecurrence(v as Recurrence)}
-                options={(['none', 'weekly', 'monthly', 'yearly'] as const).map((r) => ({
+                options={(['none', ...RECURRENCES] as const).map((r) => ({
                   value: r,
                   label: t(`expenses.recurrence.${r}`),
                 }))}

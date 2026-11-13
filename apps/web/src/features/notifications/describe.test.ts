@@ -1,4 +1,5 @@
 import type { NotificationRow } from '@potluck/api'
+import { formatDate, formatTime } from '@potluck/i18n'
 import { describe, expect, it } from 'vitest'
 import { describeNotification } from './describe'
 
@@ -244,5 +245,67 @@ describe('deletions, being added, and the monthly summary', () => {
         ctx,
       ).body,
     ).toBe('Solo: you are owed $5.00')
+  })
+})
+
+describe('repeating expense notices', () => {
+  const upcoming = (data: Record<string, unknown>) =>
+    describeNotification(
+      row('recurring.upcoming', {
+        recurring_id: 'r-1',
+        group_id: 'g-1',
+        description: 'Rent',
+        amount_cents: 150000,
+        currency: 'USD',
+        posts_on: '2030-01-10',
+        deadline: '2030-01-10T00:10:00+00:00',
+        ...data,
+      }),
+      ctx,
+    )
+  // The deadline is 00:10 UTC on the posting date, which is the evening before in New York.
+  const deadline = `${formatDate('2030-01-10T00:10:00Z', { timeZone: 'America/New_York', style: 'weekday' })}, ${formatTime('2030-01-10T00:10:00Z', { timeZone: 'America/New_York' })}`
+
+  it('names the posting date, each person their share, and the deadline in their zone', () => {
+    const view = upcoming({ share_cents: 50000, paid_cents: 150000 })
+    expect(view.title).toBe(
+      `Rent goes in on ${formatDate('2030-01-10', { timeZone: 'UTC', style: 'weekday' })}`,
+    )
+    expect(view.body).toBe(
+      `Your share will be $500.00 of $1,500.00 in Hike crew. Skip or change it before ${deadline}.`,
+    )
+    expect(deadline).toMatch(/Jan 9/)
+    expect(view.kind).toBe('money')
+    expect(view.target).toEqual({ to: '/recurring/$recurringId', params: { recurringId: 'r-1' } })
+  })
+
+  it('tells a payer outside the split what they cover', () => {
+    expect(upcoming({ share_cents: 0, paid_cents: 150000 }).body).toBe(
+      `You cover the $1,500.00 in Hike crew. Skip or change it before ${deadline}.`,
+    )
+  })
+
+  it('falls back to the amount and the group when the details are missing', () => {
+    const view = upcoming({ recurring_id: undefined, deadline: undefined })
+    expect(view.body).toBe('$1,500.00 in Hike crew.')
+    expect(view.target).toEqual({ to: '/groups/$groupId', params: { groupId: 'g-1' } })
+  })
+
+  it('says a repeating expense paused because someone left, and who', () => {
+    const view = describeNotification(
+      row('recurring.paused', {
+        recurring_id: 'r-1',
+        group_id: 'g-1',
+        description: 'Internet',
+        user_ids: ['u-ben'],
+      }),
+      ctx,
+    )
+    expect(view.title).toBe('"Internet" is paused')
+    expect(view.body).toBe('Ben left Hike crew. Take them out of the split to start it again.')
+    expect(view.target).toEqual({ to: '/recurring/$recurringId', params: { recurringId: 'r-1' } })
+    expect(describeNotification(row('recurring.paused', { group_id: 'g-1' }), ctx).body).toBe(
+      'Someone left Hike crew. Take them out of the split to start it again.',
+    )
   })
 })

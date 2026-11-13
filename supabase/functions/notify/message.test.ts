@@ -1,7 +1,7 @@
 // Run with `pnpm test:functions` (Node's test runner; the module has no Deno imports).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { message } from './message.ts'
+import { localMoment, message, postingDay } from './message.ts'
 
 const row = (type: string, data: Record<string, string | null>) => ({
   id: 'n1',
@@ -95,4 +95,48 @@ test('a reminder opens settle up with the person owed picked, and shows their no
     'Alguém está esperando um pagamento seu.',
   )
   assert.equal(message(row('debt.reminder', { note: 'Rent is due' }), 'fr').body, 'Rent is due')
+})
+
+test("a repeating expense heads-up names the posting date and the deadline in the person's zone", () => {
+  const m = message(
+    row('recurring.upcoming', {
+      recurring_id: 'r1',
+      group_id: 'g1',
+      description: 'Rent',
+      posts_on: '2030-01-10',
+      deadline: '2030-01-10T00:10:00+00:00',
+      timezone: 'Etc/GMT+12',
+    }),
+  )
+  assert.equal(m.title, 'Rent goes in on Thu, Jan 10')
+  // 00:10 UTC is lunchtime the day before at UTC-12.
+  assert.equal(m.body, 'Skip or change it before Wed, Jan 9, 12:10 PM.')
+  assert.equal(m.url, '/recurring/r1')
+  const bare = message(row('recurring.upcoming', { group_id: 'g1' }))
+  assert.equal(bare.url, '/groups/g1')
+  assert.equal(bare.title, 'A repeating expense goes in soon')
+  assert.equal(bare.body, 'Skip or change it before it goes in.')
+  assert.equal(localMoment('2030-01-10T00:10:00Z', 'Not/AZone'), 'Thu, Jan 10, 12:10 AM')
+  assert.equal(postingDay('soon'), 'soon')
+})
+
+test('a repeating expense heads-up speaks the reader’s language', () => {
+  const m = message(
+    row('recurring.upcoming', {
+      recurring_id: 'r1',
+      description: 'Alquiler',
+      posts_on: '2030-01-10',
+      deadline: '2030-01-10T00:10:00+00:00',
+      timezone: 'Europe/Madrid',
+    }),
+    'es',
+  )
+  assert.match(m.title, /^Alquiler se añade el /)
+  assert.match(m.body, /^Sáltalo o cámbialo antes del /)
+})
+
+test('a repeating expense paused because someone left opens it', () => {
+  const m = message(row('recurring.paused', { recurring_id: 'r1', description: 'Internet' }))
+  assert.equal(m.title, '"Internet" is paused')
+  assert.equal(m.url, '/recurring/r1')
 })

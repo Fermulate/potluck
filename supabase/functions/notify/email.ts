@@ -1,7 +1,7 @@
 // Notification email copy and markup. No Deno APIs, so the tests run under Node too.
 // private.send_email_notifications builds each job: recipient, category, the
 // notification data enriched with names, current amounts and unsubscribe tokens.
-import { message } from './message.ts'
+import { message, postingDay } from './message.ts'
 
 type Data = Record<string, unknown>
 
@@ -289,6 +289,32 @@ function copyFor(job: EmailJob): Copy {
         heading: `Let ${group ?? 'the group'} know if you are coming to ${event}.`,
         lines: startsAt ? [`${formatWhen(startsAt, zone)}.`] : [],
         cta: 'Answer',
+      }
+    case 'recurring.upcoming': {
+      const postsOn = str(d.posts_on)
+      const deadline = str(d.deadline)
+      const when = postsOn ? `on ${postingDay(postsOn)}` : 'soon'
+      return {
+        subject: `"${description}" goes in ${when}${inGroup}`,
+        heading: `"${description}" goes in ${when}${inGroup}.`,
+        lines: [
+          amount ? `Total: ${amount}.` : '',
+          shareLine,
+          deadline
+            ? `Need to skip this one or change it? You can until ${formatWhen(deadline, zone)}.`
+            : 'Need to skip this one or change it? You can until it goes in.',
+        ].filter(Boolean),
+        cta: 'Review it',
+      }
+    }
+    case 'recurring.paused':
+      return {
+        subject: `"${description}" is paused${inGroup}`,
+        heading: `"${description}" stopped repeating for now${inGroup}.`,
+        lines: [
+          'Someone in it left the group, so nothing goes in until they are taken out of the split. Then resume it.',
+        ],
+        cta: 'Open it',
       }
     case 'summary.monthly': {
       const groups = Array.isArray(d.groups) ? (d.groups as SummaryGroup[]) : []

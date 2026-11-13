@@ -80,6 +80,21 @@ export const notifications = {
     comment: {
       created: { title: 'New comment', body: '{actor}: {preview}' },
     },
+    /** The heads-up the day before a repeating expense posts. */
+    recurring: {
+      upcoming: {
+        title: '{description} goes in on {date}',
+        share: 'Your share will be {share} of {amount} in {group}.',
+        payer: 'You cover the {amount} in {group}.',
+        plain: '{amount} in {group}.',
+        deadline: 'Skip or change it before {deadline}.',
+      },
+      /** The job paused one because someone in it left the group. */
+      paused: {
+        title: '"{description}" is paused',
+        body: '{name} left {group}. Take them out of the split to start it again.',
+      },
+    },
   },
 } as const
 

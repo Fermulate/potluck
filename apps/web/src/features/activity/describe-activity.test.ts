@@ -140,3 +140,48 @@ describe('describeActivity', () => {
     expect(describeActivity(item({ verb: 'mystery.happened' }), ctx).text).toBe('Ben made a change')
   })
 })
+
+describe('repeating expenses in the feed', () => {
+  it('says who set one up and links to the expense it started from', () => {
+    const view = describeActivity(
+      item({
+        verb: 'recurring.created',
+        subject_id: 'r1',
+        data: { description: 'Gym', expense_id: 'x7' },
+      }),
+      ctx,
+    )
+    expect(view.text).toBe('Ben set "Gym" to repeat')
+    expect(view.emoji).toBe('🔁')
+    expect(view.link).toEqual({ to: '/expenses/$expenseId', params: { expenseId: 'x7' } })
+  })
+
+  it('says who changed or skipped one and links to the group', () => {
+    const changed = describeActivity(
+      item({ verb: 'recurring.updated', subject_id: 'r1', data: { description: 'Rent' } }),
+      ctx,
+    )
+    expect(changed.text).toBe('Ben changed the repeating "Rent"')
+    expect(changed.link).toEqual({ to: '/groups/$groupId', params: { groupId: 'g1' } })
+    expect(
+      describeActivity(
+        item({ verb: 'recurring.skipped', subject_id: 'r1', data: { description: 'Rent' } }),
+        ctx,
+      ).text,
+    ).toBe('Ben skipped the next "Rent"')
+  })
+
+  it('says the job paused one because someone left, naming them', () => {
+    const view = describeActivity(
+      item({
+        verb: 'recurring.paused',
+        actor_id: null,
+        subject_id: 'r1',
+        data: { description: 'Internet', user_ids: ['cleo'] },
+      }),
+      ctx,
+    )
+    expect(view.text).toBe('"Internet" is paused: Cleo left the group')
+    expect(view.emoji).toBe('⏸️')
+  })
+})

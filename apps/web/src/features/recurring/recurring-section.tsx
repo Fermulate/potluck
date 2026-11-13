@@ -1,25 +1,23 @@
-import {
-  deleteRecurring,
-  moneyKeys,
-  moneyQueries,
-  setRecurringActive,
-  type RecurringExpense,
-} from '@potluck/api'
-import { can } from '@potluck/core'
+import { moneyQueries, type RecurringExpense } from '@potluck/api'
 import { formatDate, formatMoney, t } from '@potluck/i18n'
-import { Badge, Card, ConfirmDialog, IconButton, toast, cn } from '@potluck/ui'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Badge, Card, ConfirmDialog, IconButton, cn } from '@potluck/ui'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { ChevronDown, Pause, Play, Repeat, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { categoryEmoji } from '@/features/expenses/format'
 import { Help } from '@/features/help/help'
-import { moneyErrorMessage, useMoneyGroup, useNameOf } from '@/features/expenses/money-data'
+import { useMoneyGroup, useNameOf } from '@/features/expenses/money-data'
+import { joinNames } from '@/features/plans/format'
+import { SkipButton } from './template-actions'
+import { canManageTemplate, templateAsExpense, templateDeparted } from './template'
+import { useTemplateActions } from './use-template-actions'
 
 /**
- * Repeating expenses for a group, folded away under the search bar. The creator or an admin
- * can pause, resume, or stop each one.
+ * Repeating expenses for a group, folded away under the search bar. Each row opens the
+ * repeating expense; the creator or an admin can also pause, resume, or stop it from here.
  */
 export function RecurringSection({ groupId }: { groupId: string }) {
   const { data } = useQuery(moneyQueries.recurring(supabase, groupId))
@@ -80,82 +78,84 @@ export function RecurringSection({ groupId }: { groupId: string }) {
 function RecurringRow({ item, groupId }: { item: RecurringExpense; groupId: string }) {
   const me = useUserId()
   const nameOf = useNameOf()
-  const queryClient = useQueryClient()
   const group = useMoneyGroup(groupId)
   const [confirm, setConfirm] = useState(false)
   const role = group.data?.members.find((m) => m.id === me)?.role
-  const allowed =
-    !group.data?.archived_at && can(role, 'expense.edit', { isOwn: item.created_by === me })
-  const key = moneyKeys.recurring(groupId)
-
-  const toggle = useMutation({
-    mutationFn: (active: boolean) => setRecurringActive(supabase, item.id, active),
-    onMutate: async (active) => {
-      await queryClient.cancelQueries({ queryKey: key })
-      const previous = queryClient.getQueryData<RecurringExpense[]>(key)
-      queryClient.setQueryData<RecurringExpense[]>(key, (rows) =>
-        rows?.map((r) => (r.id === item.id ? { ...r, active } : r)),
+  const allowed = canManageTemplate(item, role, me, !!group.data?.archived_at)
+  // Someone it names left: it cannot post (and the job pauses it) until they are taken out.
+  const departed = group.data ? templateDeparted(item, group.data.members) : []
+  const departedNames = departed.length
+    ? joinNames(
+        departed.map((id) => nameOf(id)),
+        2,
       )
-      return { previous }
-    },
-    onError: (error, _active, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(key, ctx.previous)
-      toast.error(moneyErrorMessage(error))
-    },
-    onSuccess: (_data, active) => {
-      toast.success(
-        t(active ? 'expenses.recurring.resumedToast' : 'expenses.recurring.pausedToast', {
-          description: item.description,
-        }),
-      )
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
-  })
+    : undefined
+  const { toggle, remove } = useTemplateActions(item, departedNames)
 
-  const remove = async () => {
-    try {
-      await deleteRecurring(supabase, item.id)
-      toast.success(t('expenses.recurring.removedToast', { description: item.description }))
-    } catch (error) {
-      toast.error(moneyErrorMessage(error))
-    }
-    await queryClient.invalidateQueries({ queryKey: key })
-  }
-
+  const shape = templateAsExpense(item)
   const amount = formatMoney(item.amount_cents, item.currency)
+  const paid =
+    shape.expense_payers.length > 1
+      ? t('expenses.payers.paidMany', {
+          // The viewer first, so it reads "You and Ben".
+          names: joinNames(
+            [
+              ...shape.expense_payers.filter((p) => p.user_id === me),
+              ...shape.expense_payers.filter((p) => p.user_id !== me),
+            ].map((p) => nameOf(p.user_id)),
+            2,
+          ),
+          amount,
+        })
+      : item.paid_by === me
+        ? t('expenses.youPaid', { amount })
+        : t('expenses.paidSummary', { name: nameOf(item.paid_by), amount })
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      <span aria-hidden className="text-2xl leading-none">
-        {categoryEmoji(item.category)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className={cn('truncate font-semibold', !item.active && 'text-mute')}>
-          {item.description}
-        </p>
-        <p className="truncate text-sm text-mute">
-          {t(`expenses.recurring.every.${item.recurrence}`)},{' '}
-          {item.paid_by === me
-            ? t('expenses.youPaid', { amount })
-            : t('expenses.paidSummary', { name: nameOf(item.paid_by), amount })}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        {item.active ? (
-          <span className="tabular text-xs text-mute">
-            {t('expenses.recurring.nextOn', {
-              date: formatDate(item.next_run_on, { timeZone: 'UTC', style: 'dayMonth' }),
-            })}
-          </span>
-        ) : (
-          <Badge tone="neutral">{t('expenses.recurring.paused')}</Badge>
-        )}
-      </div>
+    <li className="flex items-center gap-1 pr-4 transition-colors hover:bg-sunken/60">
+      {/* The row opens the repeating expense: its editor, or a summary for everyone else. Its
+          name is what it shows, so a voice command can say what it reads. */}
+      <Link
+        to="/recurring/$recurringId"
+        params={{ recurringId: item.id }}
+        className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 outline-offset-[-2px]"
+      >
+        <span aria-hidden className="text-2xl leading-none">
+          {categoryEmoji(item.category)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className={cn('truncate font-semibold', !item.active && 'text-mute')}>
+            {item.description}
+          </p>
+          <p className="truncate text-sm text-mute">
+            {t(`expenses.recurring.every.${item.recurrence}`)}, {paid}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-mute">
+            {departedNames ? (
+              <Badge tone="saffron">
+                {item.active
+                  ? t('expenses.recurring.left', { names: departedNames })
+                  : t('expenses.recurring.pausedLeft', { names: departedNames })}
+              </Badge>
+            ) : item.active ? (
+              <span className="tabular">
+                {t('expenses.recurring.nextOn', {
+                  date: formatDate(item.next_run_on, { timeZone: 'UTC', style: 'dayMonth' }),
+                })}
+              </span>
+            ) : (
+              <Badge tone="neutral">{t('expenses.recurring.paused')}</Badge>
+            )}
+          </p>
+        </div>
+      </Link>
       {allowed && (
         <div className="-mr-2 flex shrink-0">
+          {item.active && !departedNames && <SkipButton template={item} variant="icon" />}
           <IconButton
             size="sm"
             label={item.active ? t('expenses.recurring.pause') : t('expenses.recurring.resume')}
             icon={item.active ? <Pause /> : <Play />}
+            disabled={!item.active && !!departedNames}
             onClick={() => toggle.mutate(!item.active)}
           />
           <IconButton
@@ -175,7 +175,7 @@ function RecurringRow({ item, groupId }: { item: RecurringExpense; groupId: stri
         cancelLabel={t('common.cancel')}
         closeLabel={t('common.close')}
         tone="danger"
-        onConfirm={remove}
+        onConfirm={() => remove.mutateAsync()}
       />
     </li>
   )

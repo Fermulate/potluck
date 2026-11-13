@@ -21,8 +21,10 @@ import {
   fetchMoneyGroups,
   fetchPeople,
   fetchReceiptUrl,
+  fetchRecurringExpense,
   fetchRecurringExpenses,
   fetchSimplifiedDebts,
+  makeExpenseRecurring,
   moneyErrorCode,
   moneyKeys,
   moneyQueries,
@@ -30,7 +32,9 @@ import {
   setRecurringActive,
   setDefaultSplit,
   settleUp,
+  skipRecurring,
   updateExpense,
+  updateRecurring,
   uploadReceipt,
   type ExpensePayload,
 } from './money'
@@ -630,6 +634,52 @@ describe('recurring expenses', () => {
     const fake = fakeSupabase().respond('from:recurring_expenses', { error: boom })
     await expect(setRecurringActive(fake.client, 'r1', true)).rejects.toBe(boom)
     await expect(deleteRecurring(fake.client, 'r1')).rejects.toBe(boom)
+  })
+
+  it('edits a template with the expense payload plus its schedule', async () => {
+    const fake = fakeSupabase().respond('rpc:update_recurring_expense', { data: { id: 'r1' } })
+    const payload = {
+      amount_cents: 160000,
+      payers: [{ user_id: 'u1', paid_cents: 160000 }],
+      split_type: 'equal' as const,
+      splits: [{ user_id: 'u1' }, { user_id: 'u2' }],
+      recurrence: 'biweekly' as const,
+      next_run_on: '2026-12-01',
+    }
+    expect(await updateRecurring(fake.client, 'r1', payload)).toEqual({ id: 'r1' })
+    expect(fake.rpcArgs('update_recurring_expense')).toEqual([{ id: 'r1', payload }])
+  })
+
+  it('skips the next one and makes an expense repeat', async () => {
+    const fake = fakeSupabase()
+      .respond('rpc:skip_recurring_expense', { data: { id: 'r1' } })
+      .respond('rpc:make_expense_recurring', { data: { id: 'r2' } })
+    expect(await skipRecurring(fake.client, 'r1')).toEqual({ id: 'r1' })
+    expect(await makeExpenseRecurring(fake.client, 'e1', 'monthly')).toEqual({ id: 'r2' })
+    expect(fake.rpcArgs('skip_recurring_expense')).toEqual([{ id: 'r1' }])
+    expect(fake.rpcArgs('make_expense_recurring')).toEqual([
+      { expense_id: 'e1', recurrence: 'monthly' },
+    ])
+  })
+
+  it('reads one template, or null once it is gone', async () => {
+    const fake = fakeSupabase().respond('from:recurring_expenses', { data: null })
+    expect(await fetchRecurringExpense(fake.client, 'r1')).toBeNull()
+    const [query] = fake.queries('recurring_expenses')
+    expect(argsOf(query!, 'eq')).toEqual([['id', 'r1']])
+    expect(moneyQueries.recurringOne(fake.client, 'r1').queryKey).toEqual(
+      moneyKeys.recurringOne('r1'),
+    )
+  })
+
+  it('throws RPC errors', async () => {
+    const fake = fakeSupabase()
+      .respond('rpc:update_recurring_expense', { error: boom })
+      .respond('rpc:skip_recurring_expense', { error: boom })
+      .respond('rpc:make_expense_recurring', { error: boom })
+    await expect(updateRecurring(fake.client, 'r1', {})).rejects.toBe(boom)
+    await expect(skipRecurring(fake.client, 'r1')).rejects.toBe(boom)
+    await expect(makeExpenseRecurring(fake.client, 'e1', 'weekly')).rejects.toBe(boom)
   })
 })
 

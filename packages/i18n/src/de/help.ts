@@ -59,7 +59,7 @@ export const help = {
     you: 'dich',
   },
   recurringEdit:
-    'Um Betrag oder Aufteilung zu ändern, stopp sie und füge sie mit den neuen Zahlen neu hinzu.',
+    'Tippe eine an, um Betrag, Aufteilung oder Rhythmus zu ändern. Bereits eingetragene Ausgaben bleiben, wie sie sind.',
   section: {
     title: 'Hilfe',
     intro: 'Die Anleitung geht jeden Bildschirm durch. Sie öffnet sich in einem neuen Tab.',

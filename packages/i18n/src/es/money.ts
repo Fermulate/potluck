@@ -58,6 +58,7 @@ export const expenses = {
   recurrence: {
     none: 'No se repite',
     weekly: 'Cada semana',
+    biweekly: 'Cada 2 semanas',
     monthly: 'Cada mes',
     yearly: 'Cada año',
     nextOn: 'Próximo: {date}',
@@ -181,8 +182,44 @@ export const expenses = {
     removedToast: '"{description}" ya no se repetirá.',
     every: {
       weekly: 'Semanal',
+      biweekly: 'Cada 2 semanas',
       monthly: 'Mensual',
       yearly: 'Anual',
+    },
+    firstOn: 'El próximo se añade el {date}.',
+    actions: 'Acciones del gasto recurrente',
+    editTitle: 'Editar gasto recurrente',
+    futureOnly: 'Los cambios empiezan con el próximo. Los gastos ya añadidos se quedan tal cual.',
+    nextLabel: 'El próximo',
+    savedToast: 'Guardado. El próximo "{description}" usa las cifras nuevas.',
+    pausedNote: 'En pausa. No se añade nada hasta que lo reanudes.',
+    formerNote: '{names} dejó el grupo. Quítalo del reparto y luego reanúdalo.',
+    resumeBlocked: 'Quita a {names} del reparto primero y luego reanúdalo.',
+    blockedActive: '{names} dejó el grupo. No se añade nada hasta que salga del reparto.',
+    pausedLeft: 'En pausa: {names} se fue',
+    left: '{names} se fue',
+    readOnly: 'Solo las personas que participan o un admin pueden cambiarlo.',
+    yourShare: 'Tu parte cada vez: {amount}',
+    skipLabel: 'Saltar el próximo "{description}"',
+    notFound: 'Ese gasto recurrente se detuvo.',
+    skip: 'Saltar el próximo',
+    skipTitle: '¿Saltar el próximo?',
+    skipConfirm: 'No se añade nada de "{description}" el {date}. El siguiente llega el {next}.',
+    skippedToast: 'Saltado. El próximo "{description}" es el {date}.',
+    card: {
+      title: 'Se repite',
+      next: '{every}. El próximo el {date}.',
+      paused: '{every}. En pausa por ahora.',
+      edit: 'Editar repetición',
+      view: 'Detalles',
+    },
+    make: {
+      action: 'Hacer que se repita',
+      title: 'Repetir este gasto',
+      hint: 'Se añade una copia con el mismo importe, pagadores y reparto en cada fecha. Cámbialo o detenlo cuando quieras.',
+      first: 'Primera copia el {date}.',
+      confirm: 'Repetirlo',
+      doneToast: '"{description}" ahora se repite. El próximo el {date}.',
     },
   },
   detail: {
@@ -248,6 +285,9 @@ export const expenses = {
     negative_share: 'Un ajuste negativo deja a alguien por debajo de cero.',
     items_required: 'Añade al menos un artículo.',
     invalid_items: 'Uno de los artículos no cuadra. Revisa los precios y quién los pidió.',
+    recurring_not_found: 'Ese gasto recurrente se detuvo.',
+    already_recurring: 'Este gasto ya se repite.',
+    invalid_next_run: 'Elige hoy o una fecha posterior para el próximo.',
     invalid_parties: 'Elige dos personas distintas.',
     not_a_party: 'Solo quien administra puede registrar un pago entre otras dos personas.',
     note_too_long: 'La nota debe tener menos de 500 caracteres.',
@@ -583,6 +623,12 @@ export const activity = {
     comment: {
       created: 'Comentaste en {subject}',
     },
+    recurring: {
+      created: 'Hiciste que "{description}" se repita',
+      updated: 'Cambiaste el gasto recurrente "{description}"',
+      skipped: 'Saltaste el próximo "{description}"',
+      paused: '"{description}" está en pausa: {name} dejó el grupo',
+    },
   },
   toYou: {
     member: {
@@ -594,6 +640,9 @@ export const activity = {
       deleted: '{actor} eliminó un pago que te hizo',
       updated: '{actor} cambió un pago que te hizo',
       restored: '{actor} restauró un pago que te hizo',
+    },
+    recurring: {
+      paused: '"{description}" está en pausa: dejaste el grupo',
     },
   },
   group: {
@@ -631,4 +680,10 @@ export const activity = {
     created: '{actor} comentó en {subject}',
   },
   aPayment: 'un pago',
+  recurring: {
+    created: '{actor} hizo que "{description}" se repita',
+    updated: '{actor} cambió el gasto recurrente "{description}"',
+    skipped: '{actor} saltó el próximo "{description}"',
+    paused: '"{description}" está en pausa: {name} dejó el grupo',
+  },
 } satisfies Translation<typeof en.activity>

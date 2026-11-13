@@ -145,7 +145,7 @@ select tests.remember('future', (select recurring_id from create_expense(jsonb_b
   'splits', tests.people('own', 'ann')))));
 update public.recurring_expenses set active = false
 where id in (tests.id('monthly'), tests.id('weekly'), tests.id('future'), tests.id('mid'));
-update public.recurring_expenses set description = 'Flat rent' where id = tests.id('monthly');
+select public.update_recurring_expense(tests.id('monthly'), '{"description": "Flat rent"}');
 select is(
   (select next_run_on from public.recurring_expenses where id = tests.id('monthly')),
   '2025-02-28'::date,

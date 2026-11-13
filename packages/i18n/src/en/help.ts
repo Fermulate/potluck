@@ -56,7 +56,8 @@ export const help = {
     each: '{amount} extra each for {names} so it adds up.',
     you: 'you',
   },
-  recurringEdit: 'To change the amount or split, stop it and add it again with the new numbers.',
+  recurringEdit:
+    'Tap one to change its amount, split or schedule. Expenses already added stay as they are.',
   section: {
     title: 'Help',
     intro: 'The guide walks through every screen. It opens in a new tab.',

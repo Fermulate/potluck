@@ -33,6 +33,8 @@ import {
 } from './money-data'
 import { departedMembers } from './expense-math'
 import { useDeleteExpense } from './use-delete-expense'
+import { RepeatCard } from '@/features/recurring/repeat-card'
+import { canManageTemplate, openMemberIds } from '@/features/recurring/template'
 
 export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const me = useUserId()
@@ -86,6 +88,10 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
         e,
         group.data.members.map((m) => m.id),
       ).length > 0
+    : false
+  // A repeating expense may not name a closed account either (make_expense_recurring).
+  const repeatBlocked = group.data
+    ? departedMembers(e, openMemberIds(group.data.members)).length > 0
     : false
   const groupCurrency = group.data?.currency ?? e.currency
   const foreign = e.currency !== groupCurrency
@@ -217,6 +223,14 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
             </div>
           </header>
 
+          {!deleted && group.data && (
+            <RepeatCard
+              expense={e}
+              timeZone={timeZone}
+              canManage={(template) => canManageTemplate(template, role, me, archived)}
+              canMakeRepeat={mayEdit && !e.is_refund && !repeatBlocked}
+            />
+          )}
           <SplitCard expense={e} me={me} people={people} nameOf={nameOf} />
           <ExpenseHistory expense={e} me={me} timeZone={timeZone} nameOf={nameOf} />
         </div>

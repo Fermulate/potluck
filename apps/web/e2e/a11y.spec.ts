@@ -82,6 +82,39 @@ test.describe('accessibility', () => {
     await audit(page, testInfo)
   })
 
+  test('repeating expense and its posted copy', async ({ newUser, openAs }, testInfo) => {
+    const { me, ben, group } = await setup(newUser)
+    const rent = await addEqualExpense(me, group, [me, ben], 150000, unique('Rent'), {
+      recurrence: 'biweekly',
+    })
+    const page = await openAs(me)
+    await page.goto(`/expenses/${rent.id}`)
+    await expect(
+      page.getByRole('region', { name: t('expenses.recurring.card.title') }),
+    ).toBeVisible()
+    await audit(page, testInfo)
+    await page.goto(`/recurring/${rent.recurring_id}`)
+    await expect(page.getByRole('textbox', { name: t('expenses.fields.amount') })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('repeating list and make it repeat', async ({ newUser, openAs }, testInfo) => {
+    const { me, ben, group } = await setup(newUser)
+    await addEqualExpense(me, group, [me, ben], 150000, unique('Rent'), { recurrence: 'monthly' })
+    const plain = await addEqualExpense(me, group, [me, ben], 6000, unique('Cleaner'))
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}`)
+    await page.getByRole('button', { name: new RegExp(t('expenses.recurring.title')) }).click()
+    await expect(page.getByRole('button', { name: t('expenses.recurring.pause') })).toBeVisible()
+    await audit(page, testInfo)
+    await page.goto(`/expenses/${plain.id}`)
+    await page.getByRole('button', { name: t('expenses.recurring.make.action') }).click()
+    await expect(
+      page.getByRole('radiogroup', { name: t('expenses.fields.recurring') }),
+    ).toBeVisible()
+    await audit(page, testInfo)
+  })
+
   test('balances', async ({ newUser, openAs }, testInfo) => {
     const { me, group } = await setup(newUser)
     const page = await openAs(me)

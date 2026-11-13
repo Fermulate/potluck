@@ -140,6 +140,25 @@ describe('RecurringSection', () => {
     expect(rowsOf('recurring_expenses').map((r) => r.id)).toEqual(['r-net'])
   })
 
+  it('marks one paused because someone left and keeps Resume off, as the editor does', async () => {
+    const gone = 'dddddddd-0000-4000-8000-000000000004'
+    renderSection([
+      recurring({ active: false, splits: [{ user_id: ME }, { user_id: gone }] }),
+      recurring({ id: 'r-net', description: 'Internet' }),
+    ])
+    const toggle = await screen.findByRole('button', { name: /Repeating/ })
+    fireEvent.click(toggle)
+    expect(
+      within(row('Rent')).getByText(t('expenses.recurring.pausedLeft', { names: 'Someone' })),
+    ).toBeInTheDocument()
+    expect(
+      within(row('Rent')).getByRole('button', { name: t('expenses.recurring.resume') }),
+    ).toBeDisabled()
+    expect(
+      within(row('Rent')).queryByRole('button', { name: /Skip the next/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('offers no pause or stop in an archived group', async () => {
     renderSection(rows, '2026-11-01T00:00:00Z')
     await expand()

@@ -14,6 +14,7 @@ export type NotificationTarget =
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
   | { to: '/groups/$groupId/members'; params: { groupId: string } }
   | { to: '/new/settle'; search: { groupId: string; to?: string }; params?: undefined }
+  | { to: '/recurring/$recurringId'; params: { recurringId: string } }
   | { to: '/notifications'; params?: undefined }
   | { to: '/home'; params?: undefined }
   | { to: '/me'; params?: undefined }
@@ -263,6 +264,56 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         kind: 'other',
         target: { to: '/me' },
       }
+    case 'recurring.upcoming': {
+      const recurringId = str(d.recurring_id)
+      const share = num(d.share_cents) ?? 0
+      const paid = num(d.paid_cents) ?? 0
+      const postsOn = str(d.posts_on)
+      // The posting date is a calendar date; the deadline (when it posts) is an instant, shown in
+      // the viewer's own zone.
+      const deadlineAt = str(d.deadline)
+      const line =
+        share > 0
+          ? t('notifications.types.recurring.upcoming.share', {
+              share: formatMoney(share, currency),
+              amount,
+              group,
+            })
+          : paid > 0
+            ? t('notifications.types.recurring.upcoming.payer', { amount, group })
+            : t('notifications.types.recurring.upcoming.plain', { amount, group })
+      const deadline = deadlineAt
+        ? t('notifications.types.recurring.upcoming.deadline', {
+            deadline: `${formatDate(deadlineAt, { timeZone: ctx.timeZone, style: 'weekday' })}, ${formatTime(deadlineAt, { timeZone: ctx.timeZone })}`,
+          })
+        : ''
+      return {
+        title: t('notifications.types.recurring.upcoming.title', {
+          description,
+          date: postsOn ? formatDate(postsOn, { timeZone: 'UTC', style: 'weekday' }) : '',
+        }),
+        body: deadline ? `${line} ${deadline}` : line,
+        kind: 'money',
+        target: recurringId
+          ? { to: '/recurring/$recurringId', params: { recurringId } }
+          : toGroup(),
+      }
+    }
+    case 'recurring.paused': {
+      const recurringId = str(d.recurring_id)
+      const gone = Array.isArray(d.user_ids) ? d.user_ids.map(str).filter(Boolean) : []
+      const name =
+        gone.map((id) => firstNameOf(ctx.people.get(id!))).find(Boolean) ??
+        t('notifications.someone')
+      return {
+        title: t('notifications.types.recurring.paused.title', { description }),
+        body: t('notifications.types.recurring.paused.body', { name, group }),
+        kind: 'money',
+        target: recurringId
+          ? { to: '/recurring/$recurringId', params: { recurringId } }
+          : toGroup(),
+      }
+    }
     case 'summary.monthly':
       return {
         title: t('notifications.types.summary.monthly.title'),

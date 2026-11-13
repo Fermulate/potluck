@@ -181,6 +181,34 @@ export interface ExpensePayload {
 /** `update_expense` takes only the keys that change; leaving out `splits` keeps the stored ones. */
 export type ExpenseUpdate = Partial<Omit<ExpensePayload, 'group_id' | 'recurrence'>>
 
+/**
+ * Payload for `update_recurring_expense(id, payload)`: the money and details of an expense (no
+ * date, receipt or refund) plus the schedule. Notes are copied to every posted expense. Missing keys keep the stored value. Only
+ * expenses still to come change.
+ */
+export type RecurringUpdate = Partial<
+  Pick<
+    ExpensePayload,
+    | 'description'
+    | 'amount_cents'
+    | 'currency'
+    | 'paid_by'
+    | 'payers'
+    | 'split_type'
+    | 'splits'
+    | 'items'
+    | 'tax_cents'
+    | 'tip_cents'
+    | 'discount_cents'
+    | 'category'
+    | 'notes'
+  >
+> & {
+  recurrence?: RecurrenceValue
+  /** The next date it posts, today or later. */
+  next_run_on?: string
+}
+
 export interface SettleUpInput {
   groupId: string
   toUser: string
@@ -204,6 +232,8 @@ export const moneyKeys = {
   balances: (groupId: string) => [...moneyKeys.group(groupId), 'balances'] as const,
   simplified: (groupId: string) => [...moneyKeys.group(groupId), 'simplified'] as const,
   recurring: (groupId: string) => [...moneyKeys.group(groupId), 'recurring'] as const,
+  /** One repeating expense, for its editor and the card on a posted copy. */
+  recurringOne: (id: string) => [...moneyKeys.all, 'recurring', id] as const,
   /** The currency the viewer last used in a group; refreshed with the group's money. */
   lastCurrency: (groupId: string, userId: string) =>
     [...moneyKeys.group(groupId), 'last-currency', userId] as const,
@@ -528,6 +558,14 @@ export async function fetchReceiptUrl(client: PotluckClient, path: string): Prom
   return data.signedUrl
 }
 
+/** One repeating expense, or null when it is gone (stopped) or not visible. */
+export async function fetchRecurringExpense(
+  client: PotluckClient,
+  id: string,
+): Promise<RecurringExpense | null> {
+  return unwrap(await client.from('recurring_expenses').select('*').eq('id', id).maybeSingle())
+}
+
 // Writes --------------------------------------------------------------------------------------
 
 export async function createExpense(
@@ -630,6 +668,31 @@ export async function deleteRecurring(client: PotluckClient, id: string) {
   unwrap(await client.from('recurring_expenses').delete().eq('id', id))
 }
 
+/** Change a repeating expense; expenses that already posted stay as they are. */
+export async function updateRecurring(
+  client: PotluckClient,
+  id: string,
+  payload: RecurringUpdate,
+): Promise<RecurringExpense> {
+  return unwrap(
+    await client.rpc('update_recurring_expense', { id, payload: payload as unknown as Json }),
+  )
+}
+
+/** Skip the next occurrence: nothing posts for it and the date moves one period on. */
+export async function skipRecurring(client: PotluckClient, id: string): Promise<RecurringExpense> {
+  return unwrap(await client.rpc('skip_recurring_expense', { id }))
+}
+
+/** Make an expense that already happened repeat from now on. */
+export async function makeExpenseRecurring(
+  client: PotluckClient,
+  expenseId: string,
+  recurrence: RecurrenceValue,
+): Promise<RecurringExpense> {
+  return unwrap(await client.rpc('make_expense_recurring', { expense_id: expenseId, recurrence }))
+}
+
 type UploadBody = Parameters<ReturnType<PotluckClient['storage']['from']>['upload']>[1]
 
 /**
@@ -684,6 +747,11 @@ export const moneyQueries = {
     queryOptions({
       queryKey: moneyKeys.recurring(groupId),
       queryFn: () => fetchRecurringExpenses(client, groupId),
+    }),
+  recurringOne: (client: PotluckClient, id: string) =>
+    queryOptions({
+      queryKey: moneyKeys.recurringOne(id),
+      queryFn: () => fetchRecurringExpense(client, id),
     }),
   expense: (client: PotluckClient, expenseId: string) =>
     queryOptions({
