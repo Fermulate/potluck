@@ -35,9 +35,23 @@ export function GuestHeatmap({
   label: string
 }) {
   const gridRef = useRef<HTMLDivElement>(null)
-  const [active, setActive] = useState<string | null>(null)
+  // Start the readout on the warmest cell (earliest on a tie), so a phone shows something useful
+  // before anyone taps; with no answers yet it starts empty.
+  const best = useMemo(() => {
+    let top: string | null = null
+    let score = 0
+    const bySlot = new Map(heat.map((h) => [slotKey(h.slot_start), h.yes + h.maybe * 0.5]))
+    for (const slot of model.slots) {
+      const s = bySlot.get(slot) ?? 0
+      if (s > score) [top, score] = [slot, s]
+    }
+    return top
+  }, [heat, model])
+  const [picked, setPicked] = useState<string | null>(null)
+  const active = picked ?? best
+  const setActive = setPicked
   const [focus, setFocus] = useState(() => {
-    const first = model.slots[0]
+    const first = (best ?? model.slots[0]) || undefined
     return (first && model.index.get(first)) || { row: 0, col: 0 }
   })
 
@@ -79,13 +93,15 @@ export function GuestHeatmap({
       >
         {active && shown ? (
           <>
-            <p className="min-w-0 flex-1 truncate text-sm font-bold">{cellName(model, active)}</p>
+            <p className="min-w-0 flex-1 text-sm font-bold text-pretty">
+              {cellName(model, active)}
+            </p>
             <span className="shrink-0 tabular text-sm font-extrabold">
               {t('guests.page.cellCount', { count: shown.yes + shown.maybe, total })}
             </span>
           </>
         ) : (
-          <p className="text-sm text-mute">{t('guests.page.privacy')}</p>
+          <p className="text-sm text-mute">{t('guests.page.tapHint')}</p>
         )}
       </div>
       <GridFrame
@@ -93,7 +109,7 @@ export function GuestHeatmap({
         model={model}
         label={label}
         onKeyDown={onKeyDown}
-        onPointerLeave={() => setActive(null)}
+
         renderCell={(slot, row, col) => {
           const cell = cells.get(slot)!
           return (

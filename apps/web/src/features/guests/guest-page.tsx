@@ -1,4 +1,5 @@
 import { guestKeys, guestQueries, setGuestAvailability, type GuestLinkPreview } from '@potluck/api'
+import { cleanGuestName } from '@potluck/core'
 import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
 import {
   Button,
@@ -26,6 +27,7 @@ import {
   planErrorMessage,
 } from '@/features/plans/format'
 import { Wordmark } from '@/features/shell/brand'
+import { useSession } from '@/lib/auth'
 import { isNotFoundError } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { supabase } from '@/lib/supabase'
@@ -33,15 +35,20 @@ import { GuestHeatmap } from './guest-heatmap'
 import { readGuestMemory, writeGuestMemory, type GuestMemory } from './guest-token'
 
 type OpenPreview = GuestLinkPreview & { plan: NonNullable<GuestLinkPreview['plan']> }
+type Scheduled = NonNullable<GuestLinkPreview['scheduled']>
 
-/** Codes that mean the link itself stopped taking answers: show the closed page, not a toast. */
+/** Codes that mean the link stopped taking this answer: show why, not just a toast. */
 const CLOSING_CODES = new Set([
   'guest_link_revoked',
   'guest_link_expired',
   'guest_link_not_found',
+  'guest_removed',
   'event_not_polling',
   'group_archived',
 ])
+
+/** The longest name the server keeps, counted in characters like Postgres does. */
+const MAX_NAME = 40
 
 function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
@@ -54,7 +61,7 @@ function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean
         id="main"
         className={
           wide
-            ? 'relative mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 pt-5 pb-10 sm:px-6 lg:px-8'
+            ? 'relative mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-5'
             : 'relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-5 pb-10'
         }
       >
@@ -71,8 +78,40 @@ function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean
   )
 }
 
-/** A dead end with a way out: the link closed, is unknown, or is full. */
-function DeadEnd({ emoji, title, body }: { emoji: string; title: string; body: string }) {
+/** Where someone with no account goes next: sign up, or a look at what Potluck is. */
+function NextSteps() {
+  const session = useSession()
+  if (session) {
+    return (
+      <Button asChild variant="secondary">
+        <Link to="/home">{t('guests.closed.home')}</Link>
+      </Button>
+    )
+  }
+  return (
+    <div className="flex w-full max-w-xs flex-col gap-2">
+      <Button asChild size="lg" block>
+        <Link to="/sign-up">{t('guests.closed.signUp')}</Link>
+      </Button>
+      <Button asChild variant="ghost" block>
+        <Link to="/">{t('guests.closed.action')}</Link>
+      </Button>
+    </div>
+  )
+}
+
+/** A dead end with a way out: the link closed, is unknown, is full, or the answer was removed. */
+function DeadEnd({
+  emoji,
+  title,
+  body,
+  unsaved,
+}: {
+  emoji: string
+  title: string
+  body: string
+  unsaved: boolean
+}) {
   return (
     <Frame>
       <div className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
@@ -80,10 +119,16 @@ function DeadEnd({ emoji, title, body }: { emoji: string; title: string; body: s
           {emoji}
         </span>
         <h1 className="flourish text-4xl leading-tight">{title}</h1>
+        {unsaved && (
+          <p
+            role="alert"
+            className="rounded-[0.875rem] bg-tomato-soft px-3.5 py-2.5 text-sm font-semibold text-tomato-ink"
+          >
+            {t('guests.closed.unsaved')}
+          </p>
+        )}
         <p className="max-w-xs text-pretty text-mute">{body}</p>
-        <Button asChild variant="secondary">
-          <Link to="/">{t('guests.closed.action')}</Link>
-        </Button>
+        <NextSteps />
       </div>
     </Frame>
   )
@@ -111,6 +156,8 @@ function closedBody(status: GuestLinkPreview['status'] | 'not_found'): string {
  */
 export function GuestPage({ code }: { code: string }) {
   const [memory, setMemory] = useState<GuestMemory | null>(() => readGuestMemory(code))
+  // Painted or typed but not saved: if the link closes meanwhile, the closed page says so.
+  const [unsaved, setUnsaved] = useState(false)
   // Saving hands back a token, which changes the query key; keep showing the plan meanwhile.
   const preview = useQuery({
     ...guestQueries.preview(supabase, code, memory?.token ?? null),
@@ -120,9 +167,9 @@ export function GuestPage({ code }: { code: string }) {
   if (preview.isPending) {
     return (
       <Frame wide>
-        <div aria-busy className="mt-10 flex flex-col gap-4">
-          <Skeleton className="size-16 rounded-[1.25rem]" />
-          <Skeleton shape="line" className="h-12 w-3/4 max-w-md" />
+        <div aria-busy className="mt-8 flex flex-col gap-4">
+          <Skeleton className="size-12 rounded-[1rem] lg:size-16" />
+          <Skeleton shape="line" className="h-10 w-3/4 max-w-md" />
           <Skeleton shape="line" className="w-1/2 max-w-xs" />
           <Skeleton className="mt-4 h-[26rem]" />
         </div>
@@ -148,28 +195,123 @@ export function GuestPage({ code }: { code: string }) {
   }
 
   const data = preview.data
-  if (!data || !data.plan || (data.status !== 'open' && data.status !== 'full')) {
+  if (data?.status === 'scheduled' && data.scheduled) {
+    return <ScheduledPlan plan={data.scheduled} unsaved={unsaved} />
+  }
+  if (data?.status === 'removed') {
     return (
       <DeadEnd
-        emoji="🔒"
-        title={t('guests.closed.title')}
-        body={closedBody(data?.status ?? 'not_found')}
+        emoji="🚪"
+        title={t('guests.closed.removedTitle')}
+        body={t('guests.closed.removed')}
+        unsaved={unsaved}
       />
     )
   }
-
-  if (data.status === 'full') {
+  if (data?.status === 'full' && data.plan) {
     const host = data.plan.hostName
     return (
       <DeadEnd
         emoji="🪑"
         title={t('guests.closed.fullTitle')}
         body={host ? t('guests.closed.full', { name: host }) : t('guests.closed.fullAnon')}
+        unsaved={unsaved}
+      />
+    )
+  }
+  if (!data || data.status !== 'open' || !data.plan) {
+    return (
+      <DeadEnd
+        emoji="🔒"
+        title={t('guests.closed.title')}
+        body={closedBody(data?.status ?? 'not_found')}
+        unsaved={unsaved}
       />
     )
   }
 
-  return <GuestPoll code={code} preview={data as OpenPreview} memory={memory} onSaved={setMemory} />
+  return (
+    <GuestPoll
+      code={code}
+      preview={data as OpenPreview}
+      memory={memory}
+      onSaved={(next) => {
+        setUnsaved(false)
+        setMemory(next)
+      }}
+      onDirty={() => setUnsaved(true)}
+    />
+  )
+}
+
+/** The plan has a time: say when, in the guest's own zone. */
+function ScheduledPlan({ plan, unsaved }: { plan: Scheduled; unsaved: boolean }) {
+  const timeZone = useMemo(() => detectTimezone(), [])
+  return (
+    <Frame>
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
+        <PlanTile emoji={plan.emoji} groupEmoji={plan.groupEmoji} />
+        <p className="flourish text-xl text-mute">
+          {plan.hostName
+            ? t('guests.scheduled.kicker', { name: plan.hostName })
+            : t('guests.scheduled.kickerAnon')}
+        </p>
+        <h1 className="font-display text-5xl leading-[0.95] text-balance">{plan.title}</h1>
+        <div className="flex flex-col gap-1">
+          <p className="text-2xl font-extrabold tracking-tight text-balance">
+            {formatDate(plan.startsAt, { timeZone, style: 'full' })}
+          </p>
+          <p className="tabular text-lg font-semibold">
+            {formatTime(plan.startsAt, { timeZone })} - {formatTime(plan.endsAt, { timeZone })}
+          </p>
+          <p className="text-sm text-mute">{t('guests.page.timezoneNote', { zone: timeZone })}</p>
+        </div>
+        {unsaved && (
+          <p
+            role="alert"
+            className="rounded-[0.875rem] bg-tomato-soft px-3.5 py-2.5 text-sm font-semibold text-tomato-ink"
+          >
+            {t('guests.closed.unsaved')}
+          </p>
+        )}
+        {plan.myName && (
+          <p className="max-w-xs text-pretty">
+            {t('guests.scheduled.thanks', { name: plan.myName })}
+          </p>
+        )}
+        <NextSteps />
+      </div>
+    </Frame>
+  )
+}
+
+function PlanTile({
+  emoji,
+  groupEmoji,
+  className,
+}: {
+  emoji: string | null
+  groupEmoji: string | null
+  className?: string
+}) {
+  return (
+    <div className={cn('relative size-14 shrink-0 lg:size-[4.5rem]', className)}>
+      <span
+        aria-hidden
+        className="grid size-full -rotate-3 place-items-center rounded-[1rem] border border-line bg-card text-[2rem] shadow-raised lg:rounded-[1.25rem] lg:text-[2.75rem]"
+      >
+        {emoji ?? '🗓️'}
+      </span>
+      {groupEmoji && (
+        <span
+          aria-hidden
+          className="absolute -right-2 -bottom-2 grid size-7 place-items-center rounded-full border-2 border-paper bg-saffron-soft text-sm lg:size-8 lg:text-base"
+        >
+          {groupEmoji}
+        </span>
+      )}
+    </div>
+  )
 }
 
 function GuestPoll({
@@ -177,11 +319,13 @@ function GuestPoll({
   preview,
   memory,
   onSaved,
+  onDirty,
 }: {
   code: string
   preview: OpenPreview
   memory: GuestMemory | null
   onSaved: (memory: GuestMemory) => void
+  onDirty: () => void
 }) {
   const queryClient = useQueryClient()
   const plan = preview.plan
@@ -203,7 +347,9 @@ function GuestPoll({
   const [formError, setFormError] = useState<string | null>(null)
   const [justSent, setJustSent] = useState(false)
   const sectionRef = useRef<HTMLElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
   const reduced = usePrefersReducedMotion()
+  const cleanName = cleanGuestName(name)
 
   // On a phone the button sits below the grid; bring the confirmation (and its stamp) into view.
   useEffect(() => {
@@ -215,13 +361,14 @@ function GuestPoll({
     mutationFn: () =>
       setGuestAvailability(supabase, {
         code,
-        name: name.trim(),
+        name: cleanName,
         token: memory?.token ?? null,
         slots: [...value].map(([slot_start, level]) => ({ slot_start, level })),
       }),
     onSuccess: (result) => {
-      const next = { token: result.token, name: name.trim() }
+      const next = { token: result.token, name: cleanName }
       writeGuestMemory(code, next)
+      setName(cleanName)
       setJustSent(true)
       setEditing(false)
       setView('everyone')
@@ -231,6 +378,8 @@ function GuestPoll({
     onError: (error) => {
       const reason = planErrorCode(error)
       if (reason && CLOSING_CODES.has(reason)) {
+        // The page turns into the closed state and says these times did not go in.
+        onDirty()
         void queryClient.invalidateQueries({ queryKey: guestKeys.preview(code) })
       }
       setFormError(planErrorMessage(error))
@@ -240,8 +389,14 @@ function GuestPoll({
   const submit = (e: FormEvent) => {
     e.preventDefault()
     setFormError(null)
-    if (!name.trim()) {
+    if (!cleanName) {
       setNameError(t('guests.page.needName'))
+      nameRef.current?.focus()
+      return
+    }
+    if ([...cleanName].length > MAX_NAME) {
+      setNameError(t('events.errors.invalid_guest_name'))
+      nameRef.current?.focus()
       return
     }
     if (!answered && value.size === 0) {
@@ -252,70 +407,56 @@ function GuestPoll({
   }
 
   const host = plan.hostName
-  const facts = (
-    <dl className="flex flex-col gap-2 text-[0.9375rem]">
-      <div className="flex items-start gap-2.5">
-        <dt className="sr-only">{t('events.when')}</dt>
-        <CalendarDays aria-hidden className="mt-0.5 size-[1.125rem] shrink-0 text-mute" />
-        <dd>
-          {t('events.windowRange', {
-            range: formatDateRange(plan.window_start, plan.window_end, { timeZone }),
-            from: formatTime(
-              minuteOfDayIn(plan.window_start, plan.day_start_minute, plan.timezone),
-              {
-                timeZone,
-              },
-            ),
-            to: formatTime(minuteOfDayIn(plan.window_start, plan.day_end_minute, plan.timezone), {
-              timeZone,
-            }),
-          })}
-        </dd>
-      </div>
-      <div className="flex items-start gap-2.5">
-        <dt className="sr-only">{t('events.create.durationLabel')}</dt>
-        <Clock aria-hidden className="mt-0.5 size-[1.125rem] shrink-0 text-mute" />
-        <dd>{t('events.durationShort', { duration: formatDuration(plan.duration_minutes) })}</dd>
-      </div>
-    </dl>
-  )
-
+  const closes = t('guests.page.closes', {
+    date: `${formatDate(plan.expiresAt, { timeZone, style: 'weekday' })}, ${formatTime(plan.expiresAt, { timeZone })}`,
+  })
+  const zoneNote = t('guests.page.timezoneNote', { zone: timeZone })
   const respondents = preview.respondents ?? 0
 
   return (
     <Frame wide>
-      <div className="mt-8 grid gap-8 lg:mt-12 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12">
-        <header className="flex flex-col gap-5 lg:sticky lg:top-8">
-          <div className="relative size-[4.5rem]">
-            <span
-              aria-hidden
-              className="grid size-full -rotate-3 place-items-center rounded-[1.25rem] border border-line bg-card text-[2.75rem] shadow-raised"
-            >
-              {plan.emoji ?? '🗓️'}
-            </span>
-            {plan.groupEmoji && (
-              <span
-                aria-hidden
-                className="absolute -right-2 -bottom-2 grid size-8 place-items-center rounded-full border-2 border-paper bg-saffron-soft text-base"
-              >
-                {plan.groupEmoji}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <p className="flourish text-xl leading-snug text-mute">
+      <div className="mt-5 grid gap-5 lg:mt-12 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12">
+        <header className="flex flex-col gap-3 lg:sticky lg:top-8 lg:gap-5">
+          <div className="flex items-center gap-4 lg:flex-col lg:items-start lg:gap-5">
+            <PlanTile emoji={plan.emoji} groupEmoji={plan.groupEmoji} />
+            <p className="flourish text-lg leading-snug text-mute lg:text-xl">
               {host ? t('guests.page.invitedBy', { name: host }) : t('guests.page.invited')}
             </p>
-            <h1 className="font-display text-[2.75rem] leading-[0.95] text-balance sm:text-6xl lg:text-[3.25rem]">
-              {plan.title}
-            </h1>
           </div>
-          {facts}
-          <p className="text-sm text-mute">
-            {t('guests.page.closes', {
-              date: `${formatDate(plan.expiresAt, { timeZone, style: 'weekday' })}, ${formatTime(plan.expiresAt, { timeZone })}`,
-            })}{' '}
-            {t('guests.page.timezoneNote', { zone: timeZone })}
+          <h1 className="font-display text-[2.25rem] leading-[0.95] text-balance sm:text-5xl lg:text-[3.25rem]">
+            {plan.title}
+          </h1>
+          <dl className="flex flex-col gap-1.5 text-sm lg:gap-2 lg:text-[0.9375rem]">
+            <div className="flex items-start gap-2.5">
+              <dt className="sr-only">{t('events.when')}</dt>
+              <CalendarDays
+                aria-hidden
+                className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]"
+              />
+              <dd>
+                {t('events.windowRange', {
+                  range: formatDateRange(plan.window_start, plan.window_end, { timeZone }),
+                  from: formatTime(
+                    minuteOfDayIn(plan.window_start, plan.day_start_minute, plan.timezone),
+                    { timeZone },
+                  ),
+                  to: formatTime(
+                    minuteOfDayIn(plan.window_start, plan.day_end_minute, plan.timezone),
+                    { timeZone },
+                  ),
+                })}
+              </dd>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <dt className="sr-only">{t('events.create.durationLabel')}</dt>
+              <Clock aria-hidden className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]" />
+              <dd>
+                {t('events.durationShort', { duration: formatDuration(plan.duration_minutes) })}
+              </dd>
+            </div>
+          </dl>
+          <p className="hidden text-sm text-mute lg:block">
+            {closes} {zoneNote}
           </p>
           <Pitch className="hidden lg:flex" />
         </header>
@@ -327,7 +468,7 @@ function GuestPoll({
         >
           {!editing ? (
             <Sent
-              name={name.trim()}
+              name={cleanName}
               stamp={justSent}
               onEdit={() => {
                 setEditing(true)
@@ -355,25 +496,6 @@ function GuestPoll({
                 />
               </div>
 
-              {view === 'mine' && editing && (
-                <Field
-                  label={t('guests.page.nameLabel')}
-                  hint={t('guests.page.nameHint')}
-                  error={nameError ?? undefined}
-                >
-                  <Input
-                    value={name}
-                    maxLength={40}
-                    autoComplete="given-name"
-                    enterKeyHint="done"
-                    onChange={(e) => {
-                      setName(e.target.value)
-                      setNameError(null)
-                    }}
-                  />
-                </Field>
-              )}
-
               {view === 'mine' ? (
                 <div
                   className={editing ? undefined : 'pointer-events-none opacity-60'}
@@ -385,6 +507,7 @@ function GuestPoll({
                     onChange={(next) => {
                       setValue(next)
                       setFormError(null)
+                      onDirty()
                     }}
                     label={t('guests.page.gridLabel', { event: plan.title })}
                   />
@@ -392,7 +515,8 @@ function GuestPoll({
               ) : (
                 <>
                   <p className="text-sm text-mute">
-                    {t('guests.page.respondents', { count: respondents })}
+                    {t('guests.page.respondents', { count: respondents })}{' '}
+                    {t('guests.page.privacy')}
                   </p>
                   <GuestHeatmap
                     model={model}
@@ -402,6 +526,27 @@ function GuestPoll({
                     label={t('guests.page.heatGridLabel', { event: plan.title })}
                   />
                 </>
+              )}
+
+              {view === 'mine' && editing && (
+                <Field
+                  label={t('guests.page.nameLabel')}
+                  hint={t('guests.page.nameHint')}
+                  error={nameError ?? undefined}
+                >
+                  <Input
+                    ref={nameRef}
+                    value={name}
+                    maxLength={MAX_NAME}
+                    autoComplete="given-name"
+                    enterKeyHint="done"
+                    onChange={(e) => {
+                      setName(e.target.value)
+                      setNameError(null)
+                      onDirty()
+                    }}
+                  />
+                </Field>
               )}
             </Card>
 
@@ -424,6 +569,9 @@ function GuestPoll({
             )}
           </form>
 
+          <p className="text-sm text-mute lg:hidden">
+            {closes} {zoneNote}
+          </p>
           <Pitch className="flex lg:hidden" />
         </section>
       </div>
@@ -470,7 +618,7 @@ function Pitch({ className }: { className?: string }) {
       <p className="text-sm text-mute">{t('guests.page.pitchBody')}</p>
       <div className="flex items-center justify-between gap-2">
         <Button asChild size="sm" variant="ghost" className="-ml-2 self-start">
-          <Link to="/">{t('guests.page.pitchAction')}</Link>
+          <Link to="/sign-up">{t('guests.page.pitchAction')}</Link>
         </Button>
         <Help topic="guestLinks" />
       </div>

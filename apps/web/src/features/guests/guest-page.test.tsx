@@ -132,9 +132,11 @@ describe('GuestPage', () => {
     renderPage()
     fireEvent.click(await screen.findByRole('radio', { name: t('guests.page.tabs.everyone') }))
     const grid = screen.getByRole('grid', { name: /How everyone looks/ })
-    expect(screen.getByText(t('guests.page.respondents', { count: 3 }))).toBeInTheDocument()
-    fireEvent.focus(within(grid).getByLabelText(/2 free, 1 maybe/))
+    expect(screen.getByText(new RegExp(t('guests.page.respondents', { count: 3 })))).toBeVisible()
+    // The readout starts on the warmest cell, so a phone shows something before any tap.
     expect(screen.getByText(t('guests.page.cellCount', { count: 3, total: 3 }))).toBeInTheDocument()
+    fireEvent.focus(cell(slot('19:30')))
+    expect(screen.getByText(t('guests.page.cellCount', { count: 0, total: 3 }))).toBeInTheDocument()
   })
 
   it('says why a save was refused', async () => {
@@ -166,6 +168,72 @@ describe('GuestPage', () => {
       'href',
       '/',
     )
+    expect(screen.getByRole('link', { name: t('guests.closed.signUp') })).toHaveAttribute(
+      'href',
+      '/sign-up',
+    )
+  })
+
+  it('says the times were not saved when the link closes while painting', async () => {
+    db()
+      .respond('rpc:guest_link_preview', { data: [open] }, { data: [closed('revoked')] })
+      .respond('rpc:set_guest_availability', { error: { message: 'guest_link_revoked' } })
+    renderPage()
+    const name = await screen.findByLabelText(t('guests.page.nameLabel'))
+    paint(slot('19:00'))
+    fireEvent.change(name, { target: { value: 'Ben' } })
+    fireEvent.click(screen.getByRole('button', { name: t('guests.page.submit') }))
+    expect(await screen.findByRole('heading', { name: t('guests.closed.title') })).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveTextContent(t('guests.closed.unsaved'))
+    expect(screen.getByText(t('guests.closed.revoked'))).toBeInTheDocument()
+  })
+
+  it('cleans the name before sending it', async () => {
+    db()
+      .respond('rpc:guest_link_preview', { data: [open] })
+      .respond('rpc:set_guest_availability', { data: [{ guest_token: 'tok', saved: 1 }] })
+    renderPage()
+    const field = await screen.findByLabelText(t('guests.page.nameLabel'))
+    paint(slot('18:00'))
+    fireEvent.change(field, { target: { value: String.fromCodePoint(0x200b, 0x2066) } })
+    fireEvent.click(screen.getByRole('button', { name: t('guests.page.submit') }))
+    expect(await screen.findByText(t('guests.page.needName'))).toBeInTheDocument()
+    fireEvent.change(field, {
+      target: { value: ` An${String.fromCodePoint(0x200b)}a${String.fromCodePoint(0xa0)}B ` },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('guests.page.submit') }))
+    await waitFor(() =>
+      expect(db().rpcArgs('set_guest_availability')[0]).toMatchObject({ name: 'Ana B' }),
+    )
+  })
+
+  it('shows a scheduled plan with the time picked', async () => {
+    db().respond('rpc:guest_link_preview', {
+      data: [
+        {
+          ...closed('scheduled'),
+          title: 'Dumpling night',
+          host_name: 'Musa',
+          timezone: 'UTC',
+          my_name: 'Ana',
+          starts_at: '2026-06-12T18:00:00+00:00',
+          ends_at: '2026-06-12T19:00:00+00:00',
+        },
+      ],
+    })
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Dumpling night' })).toBeVisible()
+    expect(screen.getByText(t('guests.scheduled.kicker', { name: 'Musa' }))).toBeVisible()
+    expect(screen.getByText(t('guests.scheduled.thanks', { name: 'Ana' }))).toBeVisible()
+    expect(screen.getByText(/June 12/)).toBeVisible()
+  })
+
+  it('tells a removed guest their answer was taken off', async () => {
+    db().respond('rpc:guest_link_preview', { data: [closed('removed')] })
+    renderPage()
+    expect(
+      await screen.findByRole('heading', { name: t('guests.closed.removedTitle') }),
+    ).toBeVisible()
   })
 
   it('treats an unknown code as closed', async () => {
