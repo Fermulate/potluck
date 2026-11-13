@@ -359,3 +359,51 @@ $$;
 
 revoke execute on function public.my_blocks() from public, anon;
 grant execute on function public.my_blocks() to authenticated, service_role;
+
+-- A 1:1 tab across a block: the blocked person can no longer change its money (expenses,
+-- payments, repeating expenses), and is told what a stranger is told. The person who blocked
+-- them still can, so nothing they need to see happens behind the mute (ADR 19). Turning a
+-- repeating expense off is always allowed, and the nightly run of one (no signed in user) is
+-- not a change by anyone.
+create or replace function private.freeze_blocked_direct_money()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+  gid uuid := (coalesce(to_jsonb(new), to_jsonb(old)) ->> 'group_id')::uuid;
+begin
+  if uid is null or private.claiming() then
+    return coalesce(new, old);
+  end if;
+  if tg_table_name = 'recurring_expenses' and tg_op = 'UPDATE'
+     and (to_jsonb(old) ->> 'active')::boolean and not (to_jsonb(new) ->> 'active')::boolean then
+    return new;
+  end if;
+  if exists (select 1 from public.groups g where g.id = gid and g.is_direct)
+     and exists (
+       select 1 from public.blocks b
+       join public.group_members m on m.group_id = gid and m.user_id = b.blocker_id
+       where b.blocked_id = uid
+     ) then
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function private.freeze_blocked_direct_money() from public, anon, authenticated;
+
+create trigger expenses_freeze_blocked_direct
+before insert or update or delete on public.expenses
+for each row execute function private.freeze_blocked_direct_money();
+
+create trigger settlements_freeze_blocked_direct
+before insert or update or delete on public.settlements
+for each row execute function private.freeze_blocked_direct_money();
+
+create trigger recurring_expenses_freeze_blocked_direct
+before insert or update or delete on public.recurring_expenses
+for each row execute function private.freeze_blocked_direct_money();

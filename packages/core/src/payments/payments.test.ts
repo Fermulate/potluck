@@ -26,19 +26,6 @@ describe('paymentProblem', () => {
     expect(paymentProblem({ ...base, fromUser: 'b', toUser: 'c' })).toBe('not_a_party')
   })
 
-  it('lets any member record what someone not on Potluck yet paid or was paid, like check_payment', () => {
-    // Same as "any member records that a seat paid someone" in 27_placeholder_members.test.sql.
-    expect(
-      paymentProblem({ ...base, fromUser: 'b', toUser: 'c', placeholderIds: ['b'] }),
-    ).toBeNull()
-    expect(
-      paymentProblem({ ...base, fromUser: 'c', toUser: 'b', placeholderIds: ['b'] }),
-    ).toBeNull()
-    expect(paymentProblem({ ...base, fromUser: 'b', toUser: 'c', placeholderIds: ['d'] })).toBe(
-      'not_a_party',
-    )
-  })
-
   it('lets owners and admins record between two others', () => {
     expect(paymentProblem({ ...base, viewerRole: 'admin', fromUser: 'b', toUser: 'c' })).toBeNull()
     expect(paymentProblem({ ...base, viewerRole: 'owner', fromUser: 'b', toUser: 'c' })).toBeNull()

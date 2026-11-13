@@ -57,6 +57,8 @@ export function BalancesTab({ groupId }: { groupId: string }) {
   )
   const personOf = (id: string) => people.get(id) ?? group.data!.members.find((m) => m.id === id)
   const seat = (id: string) => !!group.data!.members.find((m) => m.id === id)?.is_placeholder
+  const myRole = group.data.members.find((m) => m.id === me)?.role
+  const isAdmin = myRole === 'owner' || myRole === 'admin'
 
   return (
     <div className="flex flex-col gap-6">
@@ -188,22 +190,26 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                           name={nameOf(d.from_user)}
                         />
                       )}
-                      {open && d.from_user !== me && (seat(d.from_user) || seat(d.to_user)) && (
-                        // Someone not on Potluck yet cannot record what they paid: anyone can.
-                        <Button asChild size="sm" variant="secondary">
-                          <Link
-                            to="/new/settle"
-                            search={{
-                              groupId,
-                              from: d.from_user,
-                              to: d.to_user,
-                              amount: d.amount_cents,
-                            }}
-                          >
-                            {t('settle.recordPayment')}
-                          </Link>
-                        </Button>
-                      )}
+                      {open &&
+                        d.from_user !== me &&
+                        (seat(d.from_user) || seat(d.to_user)) &&
+                        (d.to_user === me || isAdmin) && (
+                          // Someone not on Potluck yet cannot record what they paid: whoever they
+                          // paid can, and admins can for anyone (check_payment).
+                          <Button asChild size="sm" variant="secondary">
+                            <Link
+                              to="/new/settle"
+                              search={{
+                                groupId,
+                                from: d.from_user,
+                                to: d.to_user,
+                                amount: d.amount_cents,
+                              }}
+                            >
+                              {t('settle.recordPayment')}
+                            </Link>
+                          </Button>
+                        )}
                       {open && d.from_user === me && (
                         <Button asChild size="sm" variant="ink">
                           <Link

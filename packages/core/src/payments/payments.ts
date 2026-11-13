@@ -15,11 +15,6 @@ export interface PaymentCheck {
   amountCents: number | null | undefined
   /** Current members of the group. */
   memberIds: readonly string[]
-  /**
-   * Members not on Potluck yet (ADR 19). Anyone in the group may record a payment one side of
-   * which is one of them, since they cannot record it themselves.
-   */
-  placeholderIds?: readonly string[]
 }
 
 /**
@@ -36,10 +31,7 @@ export function paymentProblem(p: PaymentCheck): PaymentProblem | null {
     return 'invalid_amount'
   }
   if (!p.fromUser || !p.toUser || p.fromUser === p.toUser) return 'invalid_parties'
-  const isParty =
-    p.viewerId === p.fromUser ||
-    p.viewerId === p.toUser ||
-    !!p.placeholderIds?.some((id) => id === p.fromUser || id === p.toUser)
+  const isParty = p.viewerId === p.fromUser || p.viewerId === p.toUser
   if (!can(p.viewerRole, 'settlement.record', { isParty })) return 'not_a_party'
   if (!p.memberIds.includes(p.fromUser) || !p.memberIds.includes(p.toUser)) {
     return 'member_not_in_group'

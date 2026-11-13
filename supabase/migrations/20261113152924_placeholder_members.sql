@@ -6,7 +6,7 @@
 -- private.group_members_activity, private.group_members_notify, private.befriend_group_members,
 -- private.expenses_activity, private.expenses_notify_update, private.guard_open_group_write,
 -- private.set_updated_at, private.notification_channels, private.send_email_notifications,
--- private.settlements_activity, private.settlements_notify_change, private.check_payment,
+-- private.settlements_activity, private.settlements_notify_change,
 -- public.accept_invite, public.leave_group, public.delete_my_account,
 -- public.request_availability, public.best_slots, public.invite_preview,
 -- public.get_or_create_direct_group.
@@ -237,6 +237,28 @@ for each row execute function private.forget_orphan_placeholder();
 
 -- Notifications: placeholders only ever get their invite ---------------------------
 
+-- Whether a seat's email belongs to an account with a block, either way, with this person.
+-- Nobody may reach someone across a block through a seat's invite (ADR 19).
+create or replace function private.seat_email_blocked(seat uuid, person uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select person is not null and exists (
+    select 1
+    from public.placeholders x
+    join auth.users u on private.ascii_lower(u.email) = x.email
+    join public.blocks b
+      on (b.blocker_id = u.id and b.blocked_id = person)
+      or (b.blocked_id = u.id and b.blocker_id = person)
+    where x.profile_id = seat and x.email is not null
+  );
+$$;
+
+revoke execute on function private.seat_email_blocked(uuid, uuid) from public, anon, authenticated;
+
 create or replace function private.skip_placeholder_notification()
 returns trigger
 language plpgsql
@@ -247,6 +269,11 @@ begin
   -- A placeholder only ever gets its invite.
   if new.type <> 'member.added'
      and exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
+    return null;
+  end if;
+  -- Its invite never goes to an address whose account has a block with whoever sent it.
+  if new.type = 'member.added'
+     and private.seat_email_blocked(new.user_id, private.try_uuid(new.data ->> 'actor_id')) then
     return null;
   end if;
   -- Blocking mutes: nothing someone did reaches a person who blocked them.
@@ -515,7 +542,7 @@ begin
     elsif current_setting('potluck.adding_member', true) = new.user_id::text then
       -- Someone added an account by its email (add_placeholder_member).
       perform private.log_activity(new.group_id, auth.uid(), 'member.added', new.user_id,
-        jsonb_build_object('user_id', new.user_id, 'role', new.role));
+        jsonb_build_object('user_id', new.user_id, 'role', new.role, 'by_email', true));
     else
       perform private.log_activity(new.group_id, new.user_id, 'member.joined', new.user_id,
         jsonb_build_object('user_id', new.user_id, 'role', new.role));
@@ -831,48 +858,6 @@ begin
 end;
 $$;
 
--- Body as in 20261113115254_payments_v2.sql plus: anyone in the group may record a payment one
--- side of which is someone not on Potluck yet ("Sam paid you", "you paid Sam", "Sam paid Ben"),
--- since that person cannot record it themselves.
-create or replace function private.check_payment(
-  gid uuid,
-  my_role public.group_role,
-  payer uuid,
-  payee uuid,
-  amount bigint
-) returns void
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  uid uuid := auth.uid();
-begin
-  if amount is null or amount <= 0 or amount > 100000000000 then
-    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
-  end if;
-  if payer is null or payee is null or payer = payee then
-    raise exception using message = 'invalid_parties', detail = 'A payment needs two different people', errcode = '22023';
-  end if;
-  if my_role = 'member' and uid is distinct from payer and uid is distinct from payee
-     and not exists (
-       select 1 from public.profiles p where p.id in (payer, payee) and p.is_placeholder
-     ) then
-    raise exception using
-      message = 'not_a_party',
-      detail = 'Only owners and admins can record a payment between two other people',
-      errcode = '42501';
-  end if;
-  if (
-    select count(*) from public.group_members m
-    where m.group_id = gid and m.user_id in (payer, payee)
-  ) <> 2 then
-    raise exception using message = 'member_not_in_group', detail = 'Both people must be in the group', errcode = '23514';
-  end if;
-end;
-$$;
-
 -- Body as in schema/current.sql plus: a claim does not count as an edit. Runs as the
 -- caller (not security definer), so it reads the setting itself.
 create or replace function private.set_updated_at()
@@ -1144,7 +1129,8 @@ $$;
 
 revoke execute on function private.require_can_add_people(uuid) from public, anon, authenticated;
 
--- At most 20 placeholders with an email per person per day: each one sends an email.
+-- At most 20 adds by email per person per day, seats and existing accounts alike: each one
+-- sends an email.
 create or replace function private.require_invite_budget(uid uuid)
 returns void
 language plpgsql
@@ -1156,6 +1142,10 @@ begin
   if (
     select count(*) from public.placeholders x
     where x.created_by = uid and x.invited_at > now() - interval '1 day'
+  ) + (
+    select count(*) from public.activity a
+    where a.actor_id = uid and a.verb = 'member.added'
+      and a.data ->> 'by_email' = 'true' and a.created_at > now() - interval '1 day'
   ) >= 20 then
     raise exception using message = 'too_many_invites', detail = 'That is a lot of invites for one day. Try again tomorrow', errcode = '23514';
   end if;
@@ -1193,6 +1183,7 @@ begin
     if exists (select 1 from public.placeholders x where x.group_id = gid and x.email = clean_email) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
+    perform private.require_invite_budget(uid);
 
     -- Already on Potluck (confirmed address, open account): add the account itself, as
     -- Splitwise does. They hear about it (member.added) and show under their own name. A block
@@ -1211,8 +1202,6 @@ begin
       perform set_config('potluck.adding_member', '', true);
       return existing;
     end if;
-
-    perform private.require_invite_budget(uid);
   end if;
 
   select g.currency into group_currency from public.groups g where g.id = gid;
@@ -1326,7 +1315,7 @@ begin
   end if;
 
   perform private.log_activity(ph.group_id, uid, 'member.invite_changed', ph.profile_id,
-    jsonb_build_object('user_id', ph.profile_id, 'from', ph.email_hint, 'to', private.mask_email(new_email)));
+    jsonb_build_object('user_id', ph.profile_id));
   if ph.created_by is distinct from uid then
     perform private.notify(
       array[ph.created_by],
@@ -1370,6 +1359,11 @@ begin
   end if;
 
   update public.placeholders x set reminded_at = now() where x.profile_id = ph.profile_id;
+
+  -- Across a block the reminder is spent like any other, and nothing is sent.
+  if private.seat_email_blocked(ph.profile_id, uid) then
+    return;
+  end if;
 
   perform private.notify(
     array[ph.profile_id],

@@ -314,7 +314,6 @@ export function PaymentForm({
         toUser,
         amountCents: amount,
         memberIds,
-        placeholderIds: group.members.filter((m) => m.is_placeholder).map((m) => m.id),
       })
   const error =
     problem === 'invalid_amount'

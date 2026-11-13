@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(134);
+select plan(149);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -616,6 +616,8 @@ select throws_ok(
 -- Blocking -----------------------------------------------------------------------------------
 
 select tests.login('ben');
+-- A 1:1 tab with Dan from before the block.
+select tests.remember('dm', public.get_or_create_direct_group(tests.uid('dan')));
 select lives_ok(format($$ select public.block_user(%L) $$, tests.uid('dan')), 'Ben blocks Dan');
 select is(
   (select count(*)::int from public.friendships f
@@ -699,6 +701,13 @@ select ok(
   'the old preview never names a seat'
 );
 
+select is(
+  (select a.data ->> 'by_email' from public.activity a
+   where a.group_id = tests.id('g') and a.verb = 'member.added' and a.subject_id = tests.uid('nora')),
+  'true',
+  'an account added by email is logged as such'
+);
+
 -- Who changes where a seat's invite goes ---------------------------------------------------------
 
 select tests.login('ava');
@@ -723,6 +732,11 @@ select is(
   (select count(*)::int from public.notifications n where n.user_id = tests.uid('ava') and n.type = 'member.invite_changed'),
   1,
   'and whoever added the seat is told'
+);
+select ok(
+  (select not (a.data ? 'from') and not (a.data ? 'to') from public.activity a
+   where a.verb = 'member.invite_changed' and a.subject_id = tests.id('lu')),
+  'the feed says the email changed, never what it was or is'
 );
 
 -- A removed seat forgets its address
@@ -806,6 +820,86 @@ select is(
   true,
   'and the shared group keeps working: the expense counts for Ben'
 );
+select tests.login('dan');
+select throws_ok(
+  format($$ select public.create_expense_v2(jsonb_build_object(
+    'group_id', %L, 'description', 'Lunch', 'amount_cents', 800, 'paid_by', %L,
+    'splits', jsonb_build_array(jsonb_build_object('user_id', %L), jsonb_build_object('user_id', %L)))) $$,
+    tests.id('dm'), tests.uid('dan'), tests.uid('dan'), tests.uid('ben')),
+  '42501', 'not_a_friend', 'the blocked person can no longer change money in the 1:1 tab'
+);
+select throws_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('dm'), tests.uid('dan'), tests.uid('ben')),
+  '42501', 'not_a_friend', 'nor record payments there'
+);
+select tests.login('ben');
+select lives_ok(
+  format($$ select public.create_expense_v2(jsonb_build_object(
+    'group_id', %L, 'description', 'Lunch', 'amount_cents', 800, 'paid_by', %L,
+    'splits', jsonb_build_array(jsonb_build_object('user_id', %L), jsonb_build_object('user_id', %L)))) $$,
+    tests.id('dm'), tests.uid('ben'), tests.uid('dan'), tests.uid('ben')),
+  'the person who blocked them still can'
+);
+reset role;
+
+-- A seat's invite never crosses a block ---------------------------------------------------------
+
+select tests.remember('bx', tests.group_with('eve', array['cleo'], '{}', 'Choir', 'USD'));
+select tests.login('eve');
+select tests.remember('avie', public.add_placeholder_member(tests.id('bx'), 'Avie', 'ava@test.local'));
+reset role;
+select isnt(tests.id('avie'), tests.uid('ava'), 'an email across a block makes a seat, not the account');
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('avie')),
+  0,
+  'and its invite is never sent to the person who blocked the adder'
+);
+select tests.login('eve');
+select lives_ok(format($$ select public.remind_placeholder(%L) $$, tests.id('avie')), 'a reminder across the block looks sent');
+reset role;
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('avie')),
+  0,
+  'but sends nothing'
+);
+select isnt(
+  (select x.reminded_at from public.placeholders x where x.profile_id = tests.id('avie')),
+  null,
+  'and is spent like any other'
+);
+
+-- Ben blocked Dan. Cleo adds Dan's address as a seat where Ben is: Cleo's invite goes, Ben's
+-- reminder does not.
+select tests.remember('bx2', tests.group_with('cleo', array['ben'], '{}', 'Band', 'USD'));
+select tests.login('cleo');
+select tests.remember('danno', public.add_placeholder_member(tests.id('bx2'), 'Danno', 'dan@test.local'));
+reset role;
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('danno')),
+  1,
+  'an invite from someone without a block goes'
+);
+select tests.login('ben');
+select lives_ok(format($$ select public.remind_placeholder(%L) $$, tests.id('danno')), 'the blocker may press remind');
+reset role;
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('danno')),
+  1,
+  'but nothing reaches the person they blocked'
+);
+
+-- Every add by email counts toward the daily limit -------------------------------------------------
+
+select tests.remember('mlim', tests.group_with('mallory', '{}', '{}', 'Limits', 'USD'));
+insert into public.activity (group_id, actor_id, verb, subject_id, data)
+select tests.id('mlim'), tests.uid('mallory'), 'member.added', tests.uid('nora'), '{"by_email": true}'::jsonb
+from generate_series(1, 20);
+select tests.login('mallory');
+select throws_ok(
+  format($$ select public.add_placeholder_member(%L, 'Zed', 'zed@test.local') $$, tests.id('mlim')),
+  '23514', 'too_many_invites', 'accounts added by email count toward the daily limit'
+);
+reset role;
 
 -- Recording what a seat paid -------------------------------------------------------------------
 
@@ -817,9 +911,14 @@ select public.create_expense_v2(jsonb_build_object(
   'group_id', tests.id('pay'), 'description', 'Firewood', 'amount_cents', 1000, 'paid_by', tests.uid('ava'),
   'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.id('quinn')))));
 select tests.login('ben');
+select throws_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 500) $$, tests.id('pay'), tests.id('quinn'), tests.uid('ava')),
+  '42501', 'not_a_party', 'a plain member cannot record that a seat paid someone else'
+);
+select tests.login('ava');
 select lives_ok(
   format($$ select public.settle_up_v2(%L, %L, %L, 500) $$, tests.id('pay'), tests.id('quinn'), tests.uid('ava')),
-  'any member records that a seat paid someone'
+  'whoever the seat paid records it'
 );
 select throws_ok(
   format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('pay'), tests.uid('ava'), tests.uid('ava')),

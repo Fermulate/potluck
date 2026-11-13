@@ -72,9 +72,10 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   person: make it one, or add it (jsonb, arrays) to `claim_placeholder`.
 - Triggers on tables with user ids return early when `private.claiming()` if they log, notify, bump
   `updated_at` or guard archived groups.
-- `notifications_skip_placeholders` lets placeholders get only `member.added` and drops rows whose
-  `data.actor_id` the recipient blocked: put `actor_id` in new notification data. Leave placeholders
-  out of anything asking someone to act (availability, RSVPs, heirs).
+- `notifications_skip_placeholders` lets placeholders get only `member.added` (not across a block
+  with the sender) and drops rows whose `data.actor_id` the recipient blocked: put `actor_id` in new
+  notification data. Leave placeholders out of anything asking someone to act (availability,
+  RSVPs, heirs).
 
 ## Notifications
 

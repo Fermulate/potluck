@@ -235,4 +235,20 @@ describe('BalancesTab', () => {
       `/new/settle?groupId=${GROUP_ID}&from=${CLEO}&to=${ME}&amount=3000`,
     )
   })
+
+  it('leaves what a seat paid someone else to them or an admin', async () => {
+    renderTab({
+      nets: [
+        [ME, 0],
+        [BEN, 3000],
+        [CLEO, -3000],
+      ],
+      simplified: [{ from_user: CLEO, to_user: BEN, amount_cents: 3000 }],
+      seats: [CLEO],
+    })
+    expect(
+      await screen.findByText(t('balances.owes', { from: 'Cleo', to: 'Ben', amount: '$30.00' })),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('settle.recordPayment') })).not.toBeInTheDocument()
+  })
 })
