@@ -228,7 +228,7 @@ export function SheetContent({
                         {title}
                       </DialogPrimitive.Title>
                       {description && (
-                        <DialogPrimitive.Description className="mt-1 text-sm text-mute">
+                        <DialogPrimitive.Description className="mt-1 text-sm wrap-anywhere text-mute">
                           {description}
                         </DialogPrimitive.Description>
                       )}

@@ -6,7 +6,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { group, groupTables, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
-import { db, emitChange, resetDb, subscriptions } from '@/test/supabase'
+import { db, emitChange, emitJoined, resetDb, subscriptions } from '@/test/supabase'
 import { GroupNotesPage } from './notes-page'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -132,6 +132,36 @@ describe('GroupNotesPage', () => {
 
     await waitFor(() => expect(box()).toHaveValue('Wifi changed to soup'))
     expect(screen.getByText(t('groups.notes.theyEdited', { name: 'Cleo' }))).toBeInTheDocument()
+  })
+
+  it.each(['status', 'postgres'] as const)(
+    'fetches an edit saved before the live channel joined (%s)',
+    async (step) => {
+      renderNotes(group(), [])
+      await waitFor(() => expect(box()).toHaveValue(''))
+      // Saved by Cleo while this page was still joining: no change event will ever come for it.
+      db().respond('from:group_whiteboards', { data: board('Wifi: soup', 1, 'u-cleo') })
+      act(() => emitJoined('group_whiteboards', step))
+
+      await waitFor(() => expect(box()).toHaveValue('Wifi: soup'))
+      expect(screen.getByText(t('groups.notes.theyEdited', { name: 'Cleo' }))).toBeInTheDocument()
+    },
+  )
+
+  it('keeps unsaved text when the channel joins late, and saves nothing on its own', async () => {
+    renderNotes()
+    await waitFor(() => expect(box()).toHaveValue('Wifi: potluck123'))
+    db().respond('rpc:save_group_whiteboard', { data: board('Bins on Tuesday', 4, VIEWER) })
+    db().respond('from:group_whiteboards', { data: board('Wifi: potluck123', 3) })
+    fireEvent.change(box(), { target: { value: 'Bins on Tuesday' } })
+    act(() => emitJoined('group_whiteboards', 'postgres'))
+
+    await waitFor(() =>
+      expect(db().rpcArgs('save_group_whiteboard')).toEqual([
+        { group_id: 'g-hike', body: 'Bins on Tuesday', base_version: 3 },
+      ]),
+    )
+    expect(box()).toHaveValue('Bins on Tuesday')
   })
 
   it('lets the person choose when a newer version arrives while they type', async () => {

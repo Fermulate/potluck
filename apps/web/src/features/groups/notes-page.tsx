@@ -30,10 +30,15 @@ export function GroupNotesPage({ groupId }: { groupId: string }) {
   const { data: group } = useGroup(groupId)
   const board = useQuery(whiteboardQueryOptions(supabase, groupId))
   const invalidate = useBatchedInvalidate()
+  const catchUp = () =>
+    invalidate(groupKeys.whiteboard(groupId), groupKeys.whiteboardHistory(groupId))
+  // The page often loads before the live channel joins: an edit saved in that gap is fetched
+  // once it does, or the notes would sit stale until the next edit.
   useRealtime(
     `whiteboard-${groupId}`,
     [{ table: 'group_whiteboards', filter: `group_id=eq.${groupId}` }],
-    () => invalidate(groupKeys.whiteboard(groupId), groupKeys.whiteboardHistory(groupId)),
+    catchUp,
+    catchUp,
   )
 
   return (

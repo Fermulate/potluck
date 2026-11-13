@@ -191,20 +191,27 @@ test('a long group name keeps the groups page and its sheets on a phone screen',
   const long = `${unique('Supercalifragilisticexpialidocious')}Weekendaway`
   await groupWith(owner, [], { name: long })
   const gone = await groupWith(owner, [], {
-    name: `${unique('Gone')}Withaverylongnamethatneverbreaks`,
+    name: `${unique('Gone')}Withaverylongnamethatneverbreaksanywhere`,
   })
   const page = await openAs(owner)
+  // Against the layout width: a phone zooms out to show a wider page, which grows innerWidth too.
+  const fits = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    )
+
+  // The header and the delete note show the name; it wraps rather than widening the page.
   await page.goto(`/groups/${gone.id}/settings`)
-  await page.getByRole('button', { name: t('groups.settings.delete') }).click()
+  const remove = page.getByRole('button', { name: t('groups.settings.delete') })
+  await expect(remove).toBeEnabled()
+  expect(await fits()).toBe(true)
+  await remove.click()
   await page
     .getByRole('dialog', { name: t('groups.settings.delete') })
     .getByRole('button', { name: t('groups.settings.delete') })
     .click()
   await expect(page).toHaveURL(/\/groups$/)
   await expect(page.getByRole('heading', { name: long })).toBeVisible()
-
-  const fits = () =>
-    page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
   expect(await fits()).toBe(true)
   const toggle = page.getByRole('button', { name: t('groups.deleted.show', { count: 1 }) })
   await expect(toggle).toBeInViewport({ ratio: 1 })

@@ -282,7 +282,7 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           )}
           {me && me.role !== 'owner' && (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-sm text-sm text-mute">
+              <p className="max-w-sm text-sm wrap-anywhere text-mute">
                 {me.net_cents !== 0
                   ? t('groups.settings.leaveBlocked')
                   : t('groups.settings.leaveConfirm', { group: group.name })}
@@ -297,7 +297,8 @@ function SettingsBody({ group }: { group: GroupDetail }) {
           )}
           {deletable && (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-sm text-sm text-mute">
+              {/* wrap-anywhere: a name with no spaces wraps instead of widening the phone page. */}
+              <p className="max-w-sm text-sm wrap-anywhere text-mute">
                 {deleteBlocked
                   ? t('groups.settings.deleteBlocked')
                   : t('groups.settings.deleteConfirm', { group: group.name })}

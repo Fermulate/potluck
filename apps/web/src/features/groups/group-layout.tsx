@@ -174,7 +174,7 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
         <div className="min-w-0">
           <h1
             id={titleId(group.id)}
-            className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] break-words lg:text-5xl"
+            className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] wrap-anywhere lg:text-5xl"
           >
             {group.name}
           </h1>
