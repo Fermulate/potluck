@@ -319,3 +319,17 @@ test('an accepted friend link opens the new friend', () => {
   assert.equal(e.subject, 'Cleo is now your friend on Potluck')
   assert.match(e.text, /https:\/\/potluck\.example\/friends\/u2/)
 })
+
+test('a changed seat invite tells whoever added the seat and opens the members page', () => {
+  const e = renderEmail(
+    job(
+      'member.invite_changed',
+      { group_id: 'g1', group_name: 'Roommates', user_id: 'p1', actor_name: 'Ava' },
+      { category: 'groups' },
+    ),
+    links,
+  )
+  assert.equal(e.subject, 'Ava changed an invite in Roommates')
+  assert.match(e.text, /new address/)
+  assert.match(e.text, /https:\/\/potluck\.example\/groups\/g1\/members/)
+})

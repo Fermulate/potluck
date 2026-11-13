@@ -256,6 +256,15 @@ function copyFor(job: EmailJob): Copy {
         lines: ['Expenses and plans in the group now include you. Pull up a chair.'],
         cta: 'Open the group',
       }
+    case 'member.invite_changed':
+      return {
+        subject: `${actor} changed an invite${inGroup}`,
+        heading: `${actor} sent an invite you made to a new address.`,
+        lines: [
+          'Someone you added to the group will now get their invite at a different email. The old link no longer works.',
+        ],
+        cta: 'See members',
+      }
     case 'friend.added':
       return {
         subject: `${actor} is now your friend on Potluck`,
