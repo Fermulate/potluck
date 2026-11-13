@@ -1,4 +1,4 @@
--- Deleted groups, the rest of the way (ADR 20). 20261113160352 hid a deleted group from
+-- Deleted groups, the rest of the way (ADR 20). 20261113213126 hid a deleted group from
 -- my_group_ids and the member helpers; these paths joined group_members on their own:
 --
 -- 1. private.my_event_ids and private.can_manage_event (event, RSVP and availability policies,
@@ -12,7 +12,7 @@
 --    get_or_create_direct_group would otherwise keep handing back a group nobody can see. It
 --    now also tells the other members (group.deleted, data keyed deleted_group_id so the
 --    notification is not dropped like other news about a deleted group) and restore_group
---    tells them it is back (group.restored). Bodies as in 20261113160352 plus those.
+--    tells them it is back (group.restored). Bodies as in 20261113213126 plus those.
 -- 5. Members keep reading the group.deleted line of a deleted group's activity, so the feed
 --    says what happened (private.my_deleted_group_ids, one more select policy).
 -- 6. groups.cover_path is exactly `<group id>/<one file name>`.

@@ -1,4 +1,4 @@
--- Groups (20261113160352_group_types_restore_and_whiteboard, ADR 20): type and trip dates,
+-- Groups (20261113213126_group_types_restore_and_whiteboard, ADR 20): type and trip dates,
 -- delete that can be undone for 30 days and the purge after it, cover storage, whiteboard.
 begin;
 select plan(89);
@@ -303,7 +303,7 @@ select throws_ok(
 select is((select count(*)::int from public.group_whiteboards where group_id = tests.id('g')), 0,
   'and their notes are hidden with them');
 
--- Deleted groups everywhere (20261113160703) -----------------------------------------------
+-- Deleted groups everywhere (20261113213127) -----------------------------------------------
 
 reset role;
 update public.groups set deleted_at = null, archived_at = null where id = tests.id('g');
@@ -375,7 +375,7 @@ select throws_ok(
   '23514', null, 'a cover must sit under its own group folder'
 );
 
--- Debts in a circle (20261113160703) ----------------------------------------------------------
+-- Debts in a circle (20261113213127) ----------------------------------------------------------
 
 reset role;
 select tests.create_user('c1');
