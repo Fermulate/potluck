@@ -181,4 +181,22 @@ describe('JoinPage', () => {
       await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-hike'))
     })
   })
+
+  it('explains when a seat is saved for another email than the one signed in', async () => {
+    state.session = { user: { id: 'u-cleo', user_metadata: { onboarded: true } } }
+    state.preview = {
+      ...valid,
+      placeholder_name: 'Sam',
+      email_hint: 's***@example.com',
+      email_matches: false,
+    }
+    renderWithProviders(<JoinPage code="sam-seat" />, { path: '/join/sam-seat' })
+    expect(
+      await screen.findByText(t('people.claim.wrongEmail', { email: 's***@example.com' })),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: t('people.claim.switchAccount') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('people.claim.accept') })).toBeNull()
+  })
 })

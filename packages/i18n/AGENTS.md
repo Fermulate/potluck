@@ -23,10 +23,6 @@ recipe: the `add-i18n-strings-and-error-code` skill.
 - Add keys to the feature file in `src/en/` (`shell.ts`, `auth.ts`, `groups.ts`, `money.ts`, `plans.ts`,
   `me.ts`, `help.ts`), never to `src/en.ts`. A new top-level namespace needs one import and one entry
   in `en.ts` ([ADR 9](../../docs/adr/0009-i18n-strings-split-per-feature.md)).
-- People not on Potluck yet, friend links, the friend page, blocking and reporting are the `people`
-  namespace (`src/en/people.ts`); `src/es/people.ts` holds the Spanish, plus this feature's lines for
-  `errors.codes`, `activity.member`, `notifications.types.friend` and `help.topics`, to join `es.ts`
-  and the other Spanish feature files with the language switcher.
 - Keys are typed: `t('expenses.paidSummary', { name, amount })`. A missing key or placeholder fails
   `pnpm typecheck`. Placeholders are `{name}`; pass values already formatted (`formatMoney`, `formatDate`).
 - Plurals: `_one` / `_other` (optional `_zero`) siblings, looked up by the base key with `{ count }`;

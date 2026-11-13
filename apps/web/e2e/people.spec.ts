@@ -1,4 +1,9 @@
-import { createExpense, fetchMyFriendLink } from '@potluck/api'
+import {
+  addPlaceholderMember,
+  createExpense,
+  fetchMyFriendLink,
+  removePlaceholder,
+} from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import { groupWith } from './support/api'
 import { expect, PASSWORD, test, unique } from './support/fixtures'
@@ -124,4 +129,38 @@ test('a friend link makes friends; blocking ends it and Unblock is on Me', async
     .click()
   await expect(page.getByText(t('people.blocked.unblocked', { name: ava.name }))).toBeVisible()
   await expect(page.getByText(t('settings.privacy.noneBlocked'))).toBeVisible()
+})
+
+test('Ava records that Pat, not on Potluck yet, paid her, then removes the settled seat', async ({
+  newUser,
+  openAs,
+}) => {
+  const ava = await newUser({ name: unique('Ava') })
+  const group = await groupWith(ava, [], { name: unique('Cabin') })
+  const patName = unique('Pat')
+  const pat = await addPlaceholderMember(ava.client, { groupId: group.id, displayName: patName })
+  await createExpense(ava.client, {
+    group_id: group.id,
+    description: unique('Firewood'),
+    amount_cents: 2000,
+    currency: 'USD',
+    paid_by: ava.id,
+    split_type: 'equal',
+    splits: [{ user_id: ava.id }, { user_id: pat }],
+    spent_at: new Date().toISOString().slice(0, 10),
+  })
+
+  const page = await openAs(ava)
+  await page.goto(`/groups/${group.id}/balances`)
+  const owed = t('balances.owesYou', { name: patName, amount: formatMoney(1000, 'USD') })
+  const row = page.getByRole('listitem').filter({ hasText: owed })
+  await row.getByRole('link', { name: t('settle.recordPayment') }).click()
+  await expect(page).toHaveURL(/\/new\/settle/)
+  await page.getByRole('button', { name: t('settle.recordPayment') }).click()
+
+  await page.goto(`/groups/${group.id}/balances`)
+  await expect(page.getByText(t('balances.youAreSquare'))).toBeVisible()
+  await removePlaceholder(ava.client, pat)
+  await page.goto(`/groups/${group.id}/members`)
+  await expect(page.getByRole('listitem').filter({ hasText: patName })).toHaveCount(0)
 })

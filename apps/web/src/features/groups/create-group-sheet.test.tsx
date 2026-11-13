@@ -97,4 +97,29 @@ describe('CreateGroupSheet', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(router.state.location.pathname).toBe('/groups')
   })
+
+  it('adds people not on Potluck yet once the group exists', async () => {
+    db()
+      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:add_placeholder_member', { data: 'p-1' })
+    renderSheet()
+    const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
+      target: { value: 'Taco Tuesdays' },
+    })
+    const seat = within(dialog).getByRole('textbox', { name: t('people.createGroup.label') })
+    fireEvent.change(seat, { target: { value: 'Sam' } })
+    fireEvent.click(screen.getByRole('button', { name: t('people.createGroup.add') }))
+    fireEvent.change(seat, { target: { value: 'Pat' } })
+    fireEvent.keyDown(seat, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Sam`) }))
+    fireEvent.change(seat, { target: { value: 'Jo' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: t('groups.create.submit') }))
+    await waitFor(() =>
+      expect(db().rpcArgs('add_placeholder_member')).toEqual([
+        { group_id: 'g-taco', display_name: 'Pat' },
+        { group_id: 'g-taco', display_name: 'Jo' },
+      ]),
+    )
+  })
 })

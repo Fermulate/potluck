@@ -65,21 +65,16 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 
 ## People not on Potluck yet (placeholders)
 
-- A placeholder is a `profiles` row with `is_placeholder` and no auth user, a plain member of one
-  group ([ADR 19](../docs/adr/0019-placeholder-members-and-claiming.md)). `profiles` has no foreign
-  key to `auth.users` any more; `profiles_need_account` and `on_auth_user_deleted` keep that rule.
-- Claiming (`private.claim_placeholder`) rewrites every column with a foreign key to `profiles(id)`,
-  found in the catalog. A new column that stores a person: make it a foreign key to `profiles`, or
-  add it (jsonb, arrays) to `claim_placeholder`; a table keyed on the user alone (prefs, tokens) must
-  be cleared there instead.
-- A trigger on a table that holds user ids sees a claim as an update: return early when
-  `private.claiming()` is true if it logs, notifies, bumps `updated_at` or guards archived groups.
-- `notifications_skip_placeholders` also mutes blocks: a row whose `data.actor_id` the recipient
-  blocked is dropped. Put `actor_id` in a new notification's data (`private.notify` does) or a
-  blocked person can still reach the blocker.
-- Placeholders get no notifications but `member.added` (their invite email, sent to
-  `placeholders.email`); `notifications_skip_placeholders` drops the rest. Leave them out of
-  anything that asks someone to act (availability, RSVPs, heirs). Tests: `27_placeholder_members`.
+- A placeholder is a `profiles` row with `is_placeholder` and no auth user
+  ([ADR 19](../docs/adr/0019-placeholder-members-and-claiming.md)); `profiles` has no foreign key to
+  `auth.users`.
+- `private.claim_placeholder` rewrites every foreign key to `profiles(id)`. A new column holding a
+  person: make it one, or add it (jsonb, arrays) to `claim_placeholder`.
+- Triggers on tables with user ids return early when `private.claiming()` if they log, notify, bump
+  `updated_at` or guard archived groups.
+- `notifications_skip_placeholders` lets placeholders get only `member.added` and drops rows whose
+  `data.actor_id` the recipient blocked: put `actor_id` in new notification data. Leave placeholders
+  out of anything asking someone to act (availability, RSVPs, heirs).
 
 ## Notifications
 

@@ -1,3 +1,4 @@
+import { t } from '@potluck/i18n'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,7 +8,7 @@ import { initialDraft, type SplitDraft } from './split-state'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 
-function Harness({ mode }: { mode: SplitDraft['mode'] }) {
+function Harness({ mode, onAddPerson }: { mode: SplitDraft['mode']; onAddPerson?: () => void }) {
   const [draft, setDraft] = useState<SplitDraft>(() => ({
     ...initialDraft(members.map((m) => m.id)),
     mode,
@@ -22,6 +23,7 @@ function Harness({ mode }: { mode: SplitDraft['mode'] }) {
         amountCents={9000}
         currency="EUR"
         locale="de-DE"
+        onAddPerson={onAddPerson}
       />
       <output aria-label="draft">{JSON.stringify(draft)}</output>
     </>
@@ -63,5 +65,17 @@ describe('SplitEditor locale', () => {
     expect(draft().items[0]!.amountCents).toBe(1250)
     expect(draft().taxCents).toBe(125)
     expect(draft().tipCents).toBe(250)
+  })
+})
+
+describe('SplitEditor people', () => {
+  it('offers adding someone new only when the form can', () => {
+    const { unmount } = render(<Harness mode="equal" />)
+    expect(screen.queryByRole('button', { name: t('people.placeholder.addToSplit') })).toBeNull()
+    unmount()
+    const onAddPerson = vi.fn()
+    render(<Harness mode="equal" onAddPerson={onAddPerson} />)
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.addToSplit') }))
+    expect(onAddPerson).toHaveBeenCalledOnce()
   })
 })

@@ -33,12 +33,10 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   read who paid with `payersOf()` and feed core with `toBalanceExpense()` (`features/expenses/expense-math.ts`),
   never `paid_by` alone. What an expense means for the viewer (`viewerLine`) comes from core `expenseEffect`
   in the group currency, so a row can never disagree with the balance.
-- People not on Potluck yet ([ADR 19](../../docs/adr/0019-placeholder-members-and-claiming.md)): a
-  member or person with `is_placeholder` is a saved seat (dashed row, "Not on Potluck yet" badge). They
-  are split with like anyone, but never offered roles, friendship, blocking or a 1:1 tab. Placeholder
-  sheets and the menu are in `features/groups/placeholders.tsx`, rules in `placeholder-helpers.ts`.
-  The friend page (`/friends/$friendId`) nets each shared group with core `netBetween`; friend links
-  open `/friend/$code` (public).
+- `is_placeholder` marks a saved seat ([ADR 19](../../docs/adr/0019-placeholder-members-and-claiming.md)):
+  split with like anyone, never offered roles, friendship, blocking or a 1:1 tab
+  (`features/groups/placeholders.tsx`, rules in `placeholder-helpers.ts`). The friend page reads the
+  same `friend_balances` as the Friends list.
 - Repeating expenses (`features/recurring/`, [ADR 14](../../docs/adr/0014-editable-recurring-templates.md)):
   a template opens in the expense form (`ExpenseForm mode="recurring"`, route `/recurring/$recurringId`)
   through `templateAsExpense()`, so payers, adjustments and items work as for an expense. Skip, pause and

@@ -200,4 +200,86 @@ describe('MembersPage with people not on Potluck yet', () => {
       screen.queryByRole('button', { name: new RegExp(t('people.placeholder.add')) }),
     ).not.toBeInTheDocument()
   })
+
+  it('adds one after another with the sheet still open', async () => {
+    renderMembers()
+    db().respond('rpc:add_placeholder_member', { data: 'p-one' })
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(t('people.placeholder.add')) }),
+    )
+    const sheet = await screen.findByRole('dialog', { name: t('people.placeholder.addTitle') })
+    const name = within(sheet).getByLabelText(t('people.placeholder.nameLabel'))
+    fireEvent.change(name, { target: { value: 'Jo' } })
+    fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.addAnother') }))
+    expect(
+      await screen.findByText(t('people.placeholder.added', { name: 'Jo' })),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('dialog', { name: t('people.placeholder.addTitle') }),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(name).toHaveValue(''))
+  })
+
+  it('says so when the email belonged to someone already on Potluck', async () => {
+    renderMembers()
+    db()
+      .respond('rpc:add_placeholder_member', { data: 'u-eli' })
+      .respond('from:profiles', {
+        data: [
+          {
+            id: 'u-eli',
+            display_name: 'Eli Moss',
+            avatar_path: null,
+            deleted_at: null,
+            is_placeholder: false,
+          },
+        ],
+      })
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(t('people.placeholder.add')) }),
+    )
+    const sheet = await screen.findByRole('dialog', { name: t('people.placeholder.addTitle') })
+    fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.nameLabel')), {
+      target: { value: 'Eli' },
+    })
+    fireEvent.change(within(sheet).getByLabelText(t('people.placeholder.emailLabel')), {
+      target: { value: 'eli@example.com' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: t('people.placeholder.submit', { group: 'Hike crew' }) }),
+    )
+    expect(
+      await screen.findByText(t('people.placeholder.addedExisting', { name: 'Eli Moss' })),
+    ).toBeInTheDocument()
+  })
+
+  it('lets only whoever added a seat, or an admin, change its email', async () => {
+    const asMember = group({
+      members: [
+        member(VIEWER, 'Ava Chen', 'member'),
+        member('u-ben', 'Ben Ortiz', 'owner'),
+        { ...member('p-pat', 'Pat Kim'), is_placeholder: true },
+      ],
+    })
+    resetDb({
+      tables: {
+        ...groupTables(asMember),
+        placeholders: [seat('p-pat', { created_by: 'u-ben' })],
+        group_invites: [],
+      },
+    })
+    renderWithProviders(<MembersPage groupId="g-hike" />, { path: '/groups/g-hike/members' })
+    const menu = await openMenu('Pat Kim')
+    fireEvent.click(within(menu).getByRole('button', { name: t('people.placeholder.edit') }))
+    const sheet = await screen.findByRole('dialog', {
+      name: t('people.placeholder.editTitle', { name: 'Pat Kim' }),
+    })
+    expect(within(sheet).getByLabelText(t('people.placeholder.nameLabel'))).toBeInTheDocument()
+    expect(within(sheet).queryByLabelText(t('people.placeholder.emailLabel'))).toBeNull()
+  })
+
+  it('says leaving closes the group when only seats are left', async () => {
+    renderMembers(group({ members: [member(VIEWER, 'Ava Chen', 'owner'), pat] }))
+    expect(await screen.findByText(t('people.placeholder.leaveOnlySeats'))).toBeInTheDocument()
+  })
 })

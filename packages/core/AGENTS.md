@@ -7,26 +7,26 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
 - Everything public is exported from `src/index.ts` through each folder's `index.ts`.
 - These rules also exist in SQL. Change both sides in the same PR and give both the same test cases:
 
-  | core                                           | SQL (live body in `supabase/schema/current.sql`)                                  |
-  | ---------------------------------------------- | --------------------------------------------------------------------------------- |
-  | `money/` splits, `allocate()`                  | `private.compute_splits`                                                          |
-  | `money/splitAdjustment`                        | `private.compute_split_rows`                                                      |
-  | `money/splitItemized` (tax, tip, discount)     | `private.itemized_splits`                                                         |
-  | `money/checkPayers`, `primaryPayer`            | payers checks in `private.save_expense`                                           |
-  | `balances/expenseEffect`, `computeBalances`    | view `public.group_balances` (payers credited, refunds flipped)                   |
-  | `balances/pairwiseDebts`                       | `private.pairwise_debts` (settle all, friend balances)                            |
-  | `payments/paymentProblem`, `settleAllPayments` | `private.check_payment`, `public.settle_all`                                      |
-  | `payments/isValidHandle`                       | `private.valid_payment_handle` (table `payment_methods`)                          |
-  | `balances/simplifyDebts`                       | `public.simplified_debts`                                                         |
-  | `currency/convert`, `minorUnits`, `invertRate` | `private.convert_minor`, `private.minor_units`, `private.fx_rate`                 |
-  | `availability/` slots, `rankSlots`, heat       | `public.set_availability` grid check, `public.best_slots`                         |
-  | `people/cleanGuestName`                        | `private.clean_guest_name`                                                        |
-  | `recurrence/nextOccurrence` (biweekly too)     | `private.recurring_step` (used by the materialize job)                            |
-  | `recurrence/firstOccurrenceFrom`               | `private.recurring_next_from` (`make_expense_recurring`)                          |
-  | `roles/can()`                                  | role checks inside each RPC                                                       |
-  | `roles` `placeholder.*`                        | `add_placeholder_member`, `update_placeholder`, `remove_placeholder`              |
-  | `schemas/placeholderSchema`, `isPlainEmail`    | `private.placeholder_name`, `private.placeholder_email`, `private.is_plain_email` |
-  | `schemas/asciiLower`                           | `private.ascii_lower` (seat and friend link emails)                               |
+  | core                                           | SQL (live body in `supabase/schema/current.sql`)                  |
+  | ---------------------------------------------- | ----------------------------------------------------------------- |
+  | `money/` splits, `allocate()`                  | `private.compute_splits`                                          |
+  | `money/splitAdjustment`                        | `private.compute_split_rows`                                      |
+  | `money/splitItemized` (tax, tip, discount)     | `private.itemized_splits`                                         |
+  | `money/checkPayers`, `primaryPayer`            | payers checks in `private.save_expense`                           |
+  | `balances/expenseEffect`, `computeBalances`    | view `public.group_balances` (payers credited, refunds flipped)   |
+  | `balances/pairwiseDebts`                       | `private.pairwise_debts` (settle all, friend balances)            |
+  | `payments/paymentProblem`, `settleAllPayments` | `private.check_payment`, `public.settle_all`                      |
+  | `payments/isValidHandle`                       | `private.valid_payment_handle` (table `payment_methods`)          |
+  | `balances/simplifyDebts`                       | `public.simplified_debts`                                         |
+  | `currency/convert`, `minorUnits`, `invertRate` | `private.convert_minor`, `private.minor_units`, `private.fx_rate` |
+  | `availability/` slots, `rankSlots`, heat       | `public.set_availability` grid check, `public.best_slots`         |
+  | `people/cleanGuestName`                        | `private.clean_guest_name`                                        |
+  | `recurrence/nextOccurrence` (biweekly too)     | `private.recurring_step` (used by the materialize job)            |
+  | `recurrence/firstOccurrenceFrom`               | `private.recurring_next_from` (`make_expense_recurring`)          |
+  | `roles/can()`                                  | role checks inside each RPC                                       |
+  | `roles` `placeholder.*`                        | `add_placeholder_member` and the other seat RPCs                  |
+  | `schemas/placeholderSchema`, `isPlainEmail`    | `private.placeholder_email`, `private.is_plain_email`             |
+  | `schemas/asciiLower`                           | `private.ascii_lower` (seat and friend link emails)               |
 
 - `payments/paymentAction` and `payableMethods` build pay links (PayPal.me, Venmo, ...) on the client
   only; Potluck never moves money ([ADR 15](../../docs/adr/0015-payment-links-and-cross-group-settle.md)).
