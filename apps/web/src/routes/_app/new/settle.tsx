@@ -11,7 +11,7 @@ export const Route = createFileRoute('/_app/new/settle')({
 })
 
 function Settle() {
-  const { groupId, to, amount } = Route.useSearch()
+  const { groupId, from, to, amount } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
   // Only step back inside the app; a shared or typed link has nothing in-app to return to.
@@ -41,14 +41,15 @@ function Settle() {
     <SettleFlow
       key={groupId}
       groupId={groupId}
+      from={from}
       to={to}
       amount={amount}
       onClose={close}
-      onPickPerson={(userId, cents) =>
+      onPickPerson={(pick) =>
         void navigate({
           to: '/new/settle',
-          search: { groupId, to: userId, amount: cents },
-          replace: !!userId === !!to,
+          search: { groupId, from: pick?.from, to: pick?.to, amount: pick?.amount },
+          replace: !!pick === !!(from || to),
         })
       }
       onFinish={() =>

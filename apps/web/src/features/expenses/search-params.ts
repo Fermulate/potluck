@@ -16,6 +16,8 @@ export function validateNewExpenseSearch(search: Record<string, unknown>): NewEx
 
 export interface SettleSearch {
   groupId?: string
+  /** Who paid. Leave out for the viewer. */
+  from?: string
   to?: string
   /** Minor units. */
   amount?: number
@@ -25,6 +27,7 @@ export function validateSettleSearch(search: Record<string, unknown>): SettleSea
   const raw = typeof search.amount === 'string' ? Number(search.amount) : search.amount
   return {
     groupId: uuidParam(search.groupId),
+    from: uuidParam(search.from),
     to: uuidParam(search.to),
     amount: typeof raw === 'number' && Number.isSafeInteger(raw) && raw > 0 ? raw : undefined,
   }

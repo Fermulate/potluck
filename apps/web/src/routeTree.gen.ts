@@ -32,6 +32,7 @@ import { Route as AppMeIndexRouteImport } from './routes/_app/me/index'
 import { Route as AppNewExpenseRouteImport } from './routes/_app/new/expense'
 import { Route as AppNewPlanRouteImport } from './routes/_app/new/plan'
 import { Route as AppNewSettleRouteImport } from './routes/_app/new/settle'
+import { Route as AppPaymentsPaymentIdRouteImport } from './routes/_app/payments/$paymentId'
 import { Route as AppPlansIndexRouteImport } from './routes/_app/plans/index'
 import { Route as AppPlansEventIdRouteImport } from './routes/_app/plans/$eventId'
 import { Route as AppExpensesExpenseIdEditRouteImport } from './routes/_app/expenses/$expenseId_.edit'
@@ -40,6 +41,7 @@ import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/grou
 import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
 import { Route as AppGroupsGroupIdPlansRouteImport } from './routes/_app/groups/$groupId/plans'
 import { Route as AppGroupsGroupIdSettingsRouteImport } from './routes/_app/groups/$groupId/settings'
+import { Route as AppPaymentsPaymentIdEditRouteImport } from './routes/_app/payments/$paymentId_.edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -155,6 +157,11 @@ const AppNewSettleRoute = AppNewSettleRouteImport.update({
   path: '/new/settle',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPaymentsPaymentIdRoute = AppPaymentsPaymentIdRouteImport.update({
+  id: '/payments/$paymentId',
+  path: '/payments/$paymentId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPlansIndexRoute = AppPlansIndexRouteImport.update({
   id: '/plans/',
   path: '/plans/',
@@ -198,6 +205,12 @@ const AppGroupsGroupIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AppGroupsGroupIdRoute,
   } as any)
+const AppPaymentsPaymentIdEditRoute =
+  AppPaymentsPaymentIdEditRouteImport.update({
+    id: '/payments/$paymentId_/edit',
+    path: '/payments/$paymentId/edit',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -219,6 +232,7 @@ export interface FileRoutesByFullPath {
   '/new/expense': typeof AppNewExpenseRoute
   '/new/plan': typeof AppNewPlanRoute
   '/new/settle': typeof AppNewSettleRoute
+  '/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/plans/$eventId': typeof AppPlansEventIdRoute
   '/friends/': typeof AppFriendsIndexRoute
   '/groups/': typeof AppGroupsIndexRoute
@@ -229,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/payments/$paymentId/edit': typeof AppPaymentsPaymentIdEditRoute
   '/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -250,6 +265,7 @@ export interface FileRoutesByTo {
   '/new/expense': typeof AppNewExpenseRoute
   '/new/plan': typeof AppNewPlanRoute
   '/new/settle': typeof AppNewSettleRoute
+  '/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/plans/$eventId': typeof AppPlansEventIdRoute
   '/friends': typeof AppFriendsIndexRoute
   '/groups': typeof AppGroupsIndexRoute
@@ -260,6 +276,7 @@ export interface FileRoutesByTo {
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/payments/$paymentId/edit': typeof AppPaymentsPaymentIdEditRoute
   '/groups/$groupId': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRoutesById {
@@ -284,6 +301,7 @@ export interface FileRoutesById {
   '/_app/new/expense': typeof AppNewExpenseRoute
   '/_app/new/plan': typeof AppNewPlanRoute
   '/_app/new/settle': typeof AppNewSettleRoute
+  '/_app/payments/$paymentId': typeof AppPaymentsPaymentIdRoute
   '/_app/plans/$eventId': typeof AppPlansEventIdRoute
   '/_app/friends/': typeof AppFriendsIndexRoute
   '/_app/groups/': typeof AppGroupsIndexRoute
@@ -294,6 +312,7 @@ export interface FileRoutesById {
   '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
   '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/_app/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
+  '/_app/payments/$paymentId_/edit': typeof AppPaymentsPaymentIdEditRoute
   '/_app/groups/$groupId/': typeof AppGroupsGroupIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -318,6 +337,7 @@ export interface FileRouteTypes {
     | '/new/expense'
     | '/new/plan'
     | '/new/settle'
+    | '/payments/$paymentId'
     | '/plans/$eventId'
     | '/friends/'
     | '/groups/'
@@ -328,6 +348,7 @@ export interface FileRouteTypes {
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
+    | '/payments/$paymentId/edit'
     | '/groups/$groupId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -349,6 +370,7 @@ export interface FileRouteTypes {
     | '/new/expense'
     | '/new/plan'
     | '/new/settle'
+    | '/payments/$paymentId'
     | '/plans/$eventId'
     | '/friends'
     | '/groups'
@@ -359,6 +381,7 @@ export interface FileRouteTypes {
     | '/groups/$groupId/members'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
+    | '/payments/$paymentId/edit'
     | '/groups/$groupId'
   id:
     | '__root__'
@@ -382,6 +405,7 @@ export interface FileRouteTypes {
     | '/_app/new/expense'
     | '/_app/new/plan'
     | '/_app/new/settle'
+    | '/_app/payments/$paymentId'
     | '/_app/plans/$eventId'
     | '/_app/friends/'
     | '/_app/groups/'
@@ -392,6 +416,7 @@ export interface FileRouteTypes {
     | '/_app/groups/$groupId/members'
     | '/_app/groups/$groupId/plans'
     | '/_app/groups/$groupId/settings'
+    | '/_app/payments/$paymentId_/edit'
     | '/_app/groups/$groupId/'
   fileRoutesById: FileRoutesById
 }
@@ -573,6 +598,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNewSettleRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/payments/$paymentId': {
+      id: '/_app/payments/$paymentId'
+      path: '/payments/$paymentId'
+      fullPath: '/payments/$paymentId'
+      preLoaderRoute: typeof AppPaymentsPaymentIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/plans/': {
       id: '/_app/plans/'
       path: '/plans'
@@ -629,6 +661,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsGroupIdSettingsRouteImport
       parentRoute: typeof AppGroupsGroupIdRoute
     }
+    '/_app/payments/$paymentId_/edit': {
+      id: '/_app/payments/$paymentId_/edit'
+      path: '/payments/$paymentId/edit'
+      fullPath: '/payments/$paymentId/edit'
+      preLoaderRoute: typeof AppPaymentsPaymentIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -660,12 +699,14 @@ interface AppRouteChildren {
   AppNewExpenseRoute: typeof AppNewExpenseRoute
   AppNewPlanRoute: typeof AppNewPlanRoute
   AppNewSettleRoute: typeof AppNewSettleRoute
+  AppPaymentsPaymentIdRoute: typeof AppPaymentsPaymentIdRoute
   AppPlansEventIdRoute: typeof AppPlansEventIdRoute
   AppFriendsIndexRoute: typeof AppFriendsIndexRoute
   AppGroupsIndexRoute: typeof AppGroupsIndexRoute
   AppMeIndexRoute: typeof AppMeIndexRoute
   AppPlansIndexRoute: typeof AppPlansIndexRoute
   AppExpensesExpenseIdEditRoute: typeof AppExpensesExpenseIdEditRoute
+  AppPaymentsPaymentIdEditRoute: typeof AppPaymentsPaymentIdEditRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -677,12 +718,14 @@ const AppRouteChildren: AppRouteChildren = {
   AppNewExpenseRoute: AppNewExpenseRoute,
   AppNewPlanRoute: AppNewPlanRoute,
   AppNewSettleRoute: AppNewSettleRoute,
+  AppPaymentsPaymentIdRoute: AppPaymentsPaymentIdRoute,
   AppPlansEventIdRoute: AppPlansEventIdRoute,
   AppFriendsIndexRoute: AppFriendsIndexRoute,
   AppGroupsIndexRoute: AppGroupsIndexRoute,
   AppMeIndexRoute: AppMeIndexRoute,
   AppPlansIndexRoute: AppPlansIndexRoute,
   AppExpensesExpenseIdEditRoute: AppExpensesExpenseIdEditRoute,
+  AppPaymentsPaymentIdEditRoute: AppPaymentsPaymentIdEditRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

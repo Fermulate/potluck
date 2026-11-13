@@ -167,28 +167,34 @@ export function SettlementRow({
 }) {
   const text = settlementText(settlement, viewerId, nameOf, locale)
   return (
-    <div className={cn(rowClass, actions && 'pr-2')}>
-      <RowShell
-        leading={
-          <span
-            aria-hidden
-            className="grid size-11 shrink-0 place-items-center rounded-[0.875rem] bg-olive-soft text-olive-ink"
-          >
-            <ArrowRightLeft className="size-5" />
-          </span>
-        }
-        title={text}
-        subtitle={settlement.note ?? t('balances.settledShort')}
-        right={
-          <Money
-            cents={settlement.amount_cents}
-            currency={settlement.currency}
-            locale={locale}
-            tone="settled"
-            className="text-[0.9375rem] font-bold"
-          />
-        }
-      />
+    <div className="flex items-center pr-2 transition-colors duration-150 hover:bg-sunken/70">
+      <Link
+        to="/payments/$paymentId"
+        params={{ paymentId: settlement.id }}
+        className={cn(rowClass, 'min-w-0 flex-1 pr-2 active:bg-sunken')}
+      >
+        <RowShell
+          leading={
+            <span
+              aria-hidden
+              className="grid size-11 shrink-0 place-items-center rounded-[0.875rem] bg-olive-soft text-olive-ink"
+            >
+              <ArrowRightLeft className="size-5" />
+            </span>
+          }
+          title={text}
+          subtitle={settlement.note ?? t('balances.settledShort')}
+          right={
+            <Money
+              cents={settlement.amount_cents}
+              currency={settlement.currency}
+              locale={locale}
+              tone="settled"
+              className="text-[0.9375rem] font-bold"
+            />
+          }
+        />
+      </Link>
       {actions}
     </div>
   )
