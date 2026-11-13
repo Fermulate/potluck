@@ -1,4 +1,5 @@
 import { en, type Dictionary } from './en'
+import { LOCALES, SOURCE_LOCALE, type Locale, type Translation } from './locales'
 
 type PluralForm = 'zero' | 'one' | 'other'
 
@@ -50,9 +51,42 @@ function flatten(node: object, prefix: string, out: Map<string, string>): Map<st
   return out
 }
 
-const messages = flatten(en, '', new Map())
-const pluralRules = new Intl.PluralRules('en-US')
-const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 20 })
+const english = flatten(en, '', new Map())
+let messages = english
+let active: Locale = SOURCE_LOCALE
+let pluralRules = new Intl.PluralRules(LOCALES[SOURCE_LOCALE].intl)
+let numberFormat = new Intl.NumberFormat(LOCALES[SOURCE_LOCALE].intl, { maximumFractionDigits: 20 })
+const listeners = new Set<(locale: Locale) => void>()
+
+/** The language `t()` answers in. */
+export function currentLocale(): Locale {
+  return active
+}
+
+/** The Intl tag for the active language ("es-ES"), for dates and numbers. */
+export function intlLocale(): string {
+  return LOCALES[active].intl
+}
+
+/**
+ * Switch `t()` to `locale`. `translation` holds its strings; keys it leaves out answer in
+ * English. Listeners run after the switch. Use `setLocale` to load and apply a language by code.
+ */
+export function activateLocale(locale: Locale, translation?: Translation<Dictionary>) {
+  messages =
+    translation && locale !== SOURCE_LOCALE ? flatten(translation, '', new Map(english)) : english
+  pluralRules = new Intl.PluralRules(LOCALES[locale].intl)
+  numberFormat = new Intl.NumberFormat(LOCALES[locale].intl, { maximumFractionDigits: 20 })
+  const changed = locale !== active
+  active = locale
+  if (changed) for (const listener of listeners) listener(locale)
+}
+
+/** Called after every language switch. Returns the unsubscribe function. */
+export function onLocaleChange(listener: (locale: Locale) => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
 
 function resolve(key: string, count: unknown): string | undefined {
   if (typeof count === 'number') {
