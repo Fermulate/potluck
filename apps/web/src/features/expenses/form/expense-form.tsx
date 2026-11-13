@@ -6,6 +6,7 @@ import {
   MAX_ATTACHMENTS,
   moneyKeys,
   moneyQueries,
+  removeReceiptFiles,
   setDefaultSplit,
   updateExpense,
   updateRecurring,
@@ -50,7 +51,7 @@ import { Money } from '../money'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CalendarHeart, Repeat } from 'lucide-react'
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
@@ -286,6 +287,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   })
   const [attachments, setAttachments] = useState<AttachmentDraft[] | null>(expense ? null : [])
   const fileDrafts = attachments ?? draftsFromStored(storedFiles.data ?? [])
+  // Files uploaded for a save that has not gone through yet: reused on a retry, deleted if the
+  // form closes without saving.
+  const uploaded = useRef(new Map<string, string>())
+  useEffect(() => {
+    const pending = uploaded.current
+    return () => {
+      if (pending.size > 0) void removeReceiptFiles(supabase, [...pending.values()])
+    }
+  }, [])
   const [recurrence, setRecurrence] = useState<Recurrence>(
     template?.recurrence ?? (preset ? 'monthly' : 'none'),
   )
@@ -383,21 +393,26 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       let paths: string[] = []
       if (attachments && filesChanged) {
         try {
-          paths = await uploadDrafts(supabase, group.id, attachments)
+          paths = await uploadDrafts(supabase, group.id, attachments, uploaded.current)
         } catch {
           throw new Error('receipt_upload_failed')
         }
       }
       // The first file also rides along as receipt_path on a new expense; the rest are set once
-      // it exists (ADR 21).
+      // it exists (ADR 21). Uploads the expense does not end up with are deleted.
       const withFiles = async (saved: Awaited<ReturnType<typeof createExpense>>) => {
+        let kept = expense ? stored.map((a) => a.path) : paths.slice(0, 1)
         if (filesChanged && (expense || paths.length > 1)) {
           try {
             await saveAttachments(supabase, saved.id, paths, stored)
+            kept = paths
           } catch {
             toast.error(t('expenses.attachments.partial'))
           }
         }
+        const unused = [...uploaded.current.values()].filter((p) => !kept.includes(p))
+        uploaded.current.clear()
+        void removeReceiptFiles(supabase, unused)
         return saved
       }
       const payload: ExpensePayload = {

@@ -60,21 +60,29 @@ export function attachmentsChanged(
   return drafts.length !== before.length || drafts.some((d, i) => d.path !== before[i])
 }
 
-/** Uploads the new files in order and returns every path, in the form's order. */
+/**
+ * Uploads the new files and returns every path, in the form's order. `uploaded` remembers what
+ * already went up (draft key to path), so a retry after a failed save sends nothing twice; the
+ * form deletes whatever is left in it when it closes without saving.
+ */
 export async function uploadDrafts(
   client: PotluckClient,
   groupId: string,
   drafts: readonly AttachmentDraft[],
+  uploaded: Map<string, string> = new Map(),
 ): Promise<string[]> {
   return Promise.all(
-    drafts.map((d) =>
-      d.path !== undefined
-        ? d.path
-        : uploadReceipt(client, groupId, d.file, {
-            extension: receiptExtension(d.file),
-            contentType: d.contentType,
-          }),
-    ),
+    drafts.map(async (d) => {
+      if (d.path !== undefined) return d.path
+      const done = uploaded.get(d.key)
+      if (done) return done
+      const path = await uploadReceipt(client, groupId, d.file, {
+        extension: receiptExtension(d.file),
+        contentType: d.contentType,
+      })
+      uploaded.set(d.key, path)
+      return path
+    }),
   )
 }
 

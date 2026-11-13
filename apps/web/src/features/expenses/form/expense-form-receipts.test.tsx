@@ -29,13 +29,13 @@ vi.mock('@potluck/api', async (importOriginal) => {
 })
 vi.mock('../receipts/ocr', async (original) => ({
   ...(await original<typeof Ocr>()),
-  readReceiptText: vi.fn(
-    async () => `TAQUERIA SOL
+  readReceiptText: vi.fn(async () => [
+    `TAQUERIA SOL
 11/08/2026
 Tacos al pastor   12.00
 Horchata           4.00
 TOTAL             16.00`,
-  ),
+  ]),
 }))
 
 const photo = (name = 'p.jpg') => new File(['jpg'], name, { type: 'image/jpeg' })
@@ -137,6 +137,50 @@ describe('expense form files', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('e2'))
     expect(vi.mocked(setExpenseAttachments)).not.toHaveBeenCalled()
+  })
+
+  it('reuses uploads when a failed save is retried, and deletes them if the form closes', async () => {
+    vi.mocked(createExpense).mockRejectedValueOnce({ message: 'fx_rate_unavailable' })
+    const onDone = vi.fn()
+    const view = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '20' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Lunch' },
+    })
+    await addFiles([photo('a.jpg'), photo('b.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(vi.mocked(createExpense)).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(uploadReceipt)).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    expect(vi.mocked(uploadReceipt)).toHaveBeenCalledTimes(2)
+    const [first, second] = vi.mocked(createExpense).mock.calls
+    expect(second![1].receipt_path).toBe(first![1].receipt_path)
+    view.unmount()
+    expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([first![1].receipt_path]),
+    )
+  })
+
+  it('deletes uploads for a save that never went through when the form closes', async () => {
+    vi.mocked(createExpense).mockRejectedValueOnce({ message: 'fx_rate_unavailable' })
+    const view = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '20' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Lunch' },
+    })
+    await addFiles([photo('a.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(vi.mocked(createExpense)).toHaveBeenCalledTimes(1))
+    const path = vi.mocked(createExpense).mock.calls[0]![1].receipt_path
+    view.unmount()
+    expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), [path])
   })
 
   it('tells the person when the expense saved but its files did not', async () => {
