@@ -20,6 +20,7 @@ import { useUserId } from '@/lib/auth'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { CommentThread } from '@/features/expenses/comments'
+import { groupTitle } from '@/features/expenses/format'
 import { Money } from '@/features/expenses/money'
 import {
   useGroupMoneyRealtime,
@@ -123,7 +124,16 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
         )}
       </div>
 
-      {!deleted && departed && mayEdit && (
+      {archived && group.data && (
+        <p
+          role="note"
+          className="mt-4 rounded-card bg-sunken px-4 py-3 text-sm font-medium text-mute"
+        >
+          {t('settle.detail.archived', { group: groupTitle(group.data, me) })}
+        </p>
+      )}
+
+      {!deleted && !archived && departed && mayEdit && (
         <p role="note" className="mt-4 text-sm font-medium text-saffron-ink">
           {t('settle.detail.departedLocked')}
         </p>
@@ -225,6 +235,7 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
 
         <CommentThread
           subject={{ settlementId: p.id }}
+          readOnly={archived}
           canModerate={role === 'owner' || role === 'admin'}
         />
       </div>

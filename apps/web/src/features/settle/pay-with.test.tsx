@@ -67,6 +67,24 @@ describe('PayWith', () => {
     expect(onConfirmed).not.toHaveBeenCalled()
   })
 
+  it('lists links before details to copy, and UPI only for rupees', () => {
+    const client = seededClient((c) =>
+      c.setQueryData(paymentKeys.methods(BEN), [
+        { user_id: BEN, kind: 'bank', handle: 'Sort code 12-34-56', updated_at: 'x' },
+        { user_id: BEN, kind: 'upi', handle: 'ben@okhdfc', updated_at: 'x' },
+        { user_id: BEN, kind: 'venmo', handle: 'Ben-Okafor', updated_at: 'x' },
+      ]),
+    )
+    renderWithClient(
+      <PayWith recipient={ben} amountCents={100} currency="USD" onConfirmed={() => {}} />,
+      client,
+    )
+    const rows = screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toContain('Venmo')
+    expect(rows[1]).toContain(t('settle.apps.bank'))
+  })
+
   it('shows nothing when they saved no methods', () => {
     const client = seededClient((c) => c.setQueryData(paymentKeys.methods(BEN), []))
     const { container } = renderWithClient(

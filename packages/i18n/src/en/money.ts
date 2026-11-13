@@ -420,6 +420,12 @@ export const balances = {
   yourSpending: 'Your share of spending',
   remind: 'Remind',
   remindLabel: 'Remind {name}',
+  remindTitle: 'Remind {name}',
+  remindBody:
+    '{name} gets a nudge in their inbox, and on their phone if they turned push on. Once a day at most.',
+  remindNote: 'Note',
+  remindNotePlaceholder: 'Rent is due Friday',
+  remindSend: 'Send reminder',
   reminded: 'Reminded',
   remindSent: 'Nudge sent. {name} will see it in their inbox.',
   alreadyReminded: 'You already nudged {name} today. Try again tomorrow.',
@@ -519,6 +525,7 @@ export const settle = {
     converted: '{amount} in {currency} at {rate}',
     departedLocked:
       'Someone in this payment has left the group, so only the note and date can change.',
+    archived: '{group} is archived, so its payments can be read but not changed.',
     note: 'Note',
     actions: 'Payment actions',
   },

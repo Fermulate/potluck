@@ -100,6 +100,30 @@ describe('PaymentDetail', () => {
     expect(db().rpcArgs('restore_settlement')).toEqual([{ id: 's1' }])
   })
 
+  it('is read only in an archived group', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(paymentKeys.settlement('s1'), payment())
+      c.setQueryData(paymentKeys.comments('s1'), [])
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+        ...group,
+        archived_at: '2026-11-10T00:00:00Z',
+      })
+    })
+    renderWithProviders(<PaymentDetail paymentId="s1" />, {
+      path: '/payments/$paymentId',
+      url: '/payments/s1',
+      client,
+    })
+    expect(await screen.findByRole('note')).toHaveTextContent(
+      t('settle.detail.archived', { group: 'Hike crew' }),
+    )
+    expect(screen.queryByRole('link', { name: t('common.edit') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('settle.delete') })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('textbox', { name: t('expenses.comments.placeholder') }),
+    ).not.toBeInTheDocument()
+  })
+
   it('hides Restore from members who were not part of it', async () => {
     renderPayment(payment({ to_user: CLEO, deleted_at: '2026-11-05T00:00:00Z' }))
     expect(await screen.findByText(t('settle.detail.deletedBanner'))).toBeInTheDocument()

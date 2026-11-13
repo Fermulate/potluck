@@ -93,5 +93,19 @@ describe('PaymentMethodsSection', () => {
         t('settings.paymentMethods.removed', { app: t('settle.apps.venmo') }),
       ),
     ).toBeInTheDocument()
+
+    // Undo saves the same handle again.
+    fireEvent.click(screen.getByRole('button', { name: t('common.undo') }))
+    await waitFor(() =>
+      expect(
+        db()
+          .queries('payment_methods')
+          .some((q) => q.ops.some((op) => op.method === 'upsert')),
+      ).toBe(true),
+    )
+    const upsert = db()
+      .queries('payment_methods')
+      .find((q) => q.ops.some((op) => op.method === 'upsert'))!
+    expect(payloadOf(upsert, 'upsert')).toEqual({ kind: 'venmo', handle: 'Ava-Chen' })
   })
 })

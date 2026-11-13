@@ -63,6 +63,9 @@ export interface PickPerson {
   amount?: number
 }
 
+/** Long names end in an ellipsis inside a Select instead of pushing the field wider. */
+const TRUNCATE = 'min-w-0 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate'
+
 const settleHelp = <GoodToKnow topic="settleUp" tip="settleUp" className="mr-2" />
 
 /** What `from` owes `to` in `debts`, or 0. */
@@ -512,16 +515,23 @@ export function PaymentForm({
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label={t('settle.paidBy')}>
+          <Field label={t('settle.paidBy')} className="min-w-0">
             <Select
               value={fromUser}
               onValueChange={setFromUser}
               options={options}
               disabled={locked}
+              className={TRUNCATE}
             />
           </Field>
-          <Field label={t('settle.paidTo')}>
-            <Select value={toUser} onValueChange={setToUser} options={options} disabled={locked} />
+          <Field label={t('settle.paidTo')} className="min-w-0">
+            <Select
+              value={toUser}
+              onValueChange={setToUser}
+              options={options}
+              disabled={locked}
+              className={TRUNCATE}
+            />
           </Field>
           <Field label={t('settle.date')}>
             <Input

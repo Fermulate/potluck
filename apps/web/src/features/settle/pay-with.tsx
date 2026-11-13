@@ -1,5 +1,5 @@
 import { paymentQueries, type MoneyMember } from '@potluck/api'
-import { firstName, paymentAction, type PaymentMethod } from '@potluck/core'
+import { firstName, payableMethods, paymentAction, type PaymentMethod } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Button, Card, ConfirmDialog, Skeleton, toast } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
@@ -35,7 +35,8 @@ export function PayWith({
   const name = firstName(recipient.display_name)
 
   if (methods.isPending) return <Skeleton className="h-24" />
-  if (!methods.data?.length) return null
+  const shown = payableMethods(methods.data ?? [], currency)
+  if (shown.length === 0) return null
 
   const amount = amountCents && amountCents > 0 ? amountCents : 0
   const formatted = amount ? formatMoney(amount, currency) : ''
@@ -48,73 +49,77 @@ export function PayWith({
         </h2>
         <GoodToKnow topic="paymentLinks" tip="paymentLinks" align="start" />
       </div>
-      <Card padding="none" className="divide-y divide-line overflow-hidden">
-        {methods.data.map((m) => {
-          const app = t(`settle.apps.${m.kind}`)
-          const action = paymentAction(m as PaymentMethod, {
-            amountCents: amount,
-            currency,
-            note,
-            payeeName: recipient.display_name,
-          })
-          if (action.type === 'copy') {
+      <Card padding="none" className="overflow-hidden">
+        <ul className="divide-y divide-line">
+          {shown.map((m) => {
+            const app = t(`settle.apps.${m.kind}`)
+            const action = paymentAction(m as PaymentMethod, {
+              amountCents: amount,
+              currency,
+              note,
+              payeeName: recipient.display_name,
+            })
+            if (action.type === 'copy') {
+              return (
+                <li key={m.kind} className="flex items-center gap-3 px-4 py-3">
+                  <AppMark kind={m.kind} />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-sm font-semibold">{app}</span>
+                    <span className="truncate text-[0.9375rem] break-all select-all">
+                      {m.handle}
+                    </span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon={<Copy />}
+                    aria-label={t('settle.copyLabel', { name, app })}
+                    onClick={() =>
+                      void copyText(m.handle).then((ok) => ok && toast.success(t('settle.copied')))
+                    }
+                  >
+                    {t('settle.copy')}
+                  </Button>
+                </li>
+              )
+            }
             return (
-              <div key={m.kind} className="flex items-center gap-3 px-4 py-3">
+              <li key={m.kind} className="flex items-center gap-3 px-4 py-3">
                 <AppMark kind={m.kind} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-semibold">{app}</span>
-                  <span className="truncate text-[0.9375rem] break-all select-all">{m.handle}</span>
+                <span className="min-w-0 flex-1 text-sm text-mute">
+                  {amount
+                    ? action.prefilled
+                      ? t('settle.payWithPrefilled', { app, amount: formatted })
+                      : t('settle.payWithManual', { app, amount: formatted })
+                    : app}
                 </span>
                 <Button
+                  asChild
                   size="sm"
-                  variant="secondary"
-                  leadingIcon={<Copy />}
-                  aria-label={t('settle.copyLabel', { name, app })}
-                  onClick={() =>
-                    void copyText(m.handle).then((ok) => ok && toast.success(t('settle.copied')))
-                  }
+                  variant="ink"
+                  className={amount ? undefined : 'pointer-events-none opacity-50'}
                 >
-                  {t('settle.copy')}
+                  <a
+                    href={action.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    aria-disabled={!amount || undefined}
+                    onClick={(e) => {
+                      if (!amount) {
+                        e.preventDefault()
+                        return
+                      }
+                      setAsking(m.kind)
+                    }}
+                  >
+                    {t('settle.payWith', { app })}
+                    <ExternalLink aria-hidden className="-mr-1 size-4" />
+                  </a>
                 </Button>
-              </div>
+              </li>
             )
-          }
-          return (
-            <div key={m.kind} className="flex items-center gap-3 px-4 py-3">
-              <AppMark kind={m.kind} />
-              <span className="min-w-0 flex-1 text-sm text-mute">
-                {amount
-                  ? action.prefilled
-                    ? t('settle.payWithPrefilled', { app, amount: formatted })
-                    : t('settle.payWithManual', { app, amount: formatted })
-                  : app}
-              </span>
-              <Button
-                asChild
-                size="sm"
-                variant="ink"
-                className={amount ? undefined : 'pointer-events-none opacity-50'}
-              >
-                <a
-                  href={action.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  aria-disabled={!amount || undefined}
-                  onClick={(e) => {
-                    if (!amount) {
-                      e.preventDefault()
-                      return
-                    }
-                    setAsking(m.kind)
-                  }}
-                >
-                  {t('settle.payWith', { app })}
-                  <ExternalLink aria-hidden className="-mr-1 size-4" />
-                </a>
-              </Button>
-            </div>
-          )
-        })}
+          })}
+        </ul>
       </Card>
       <ConfirmDialog
         open={asking !== null}

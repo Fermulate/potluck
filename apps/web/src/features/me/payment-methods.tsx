@@ -47,12 +47,23 @@ export function PaymentMethodsSection() {
   const methods = useQuery(paymentQueries.methods(supabase, userId))
   const [editing, setEditing] = useState<{ kind: PaymentKind | null; handle: string } | null>(null)
 
+  const refresh = () => queryClient.invalidateQueries({ queryKey: paymentKeys.methods(userId) })
   const remove = useMutation({
-    mutationFn: (kind: PaymentKind) => removePaymentMethod(supabase, userId, kind),
-    onSuccess: (_v, kind) =>
-      toast.success(t('settings.paymentMethods.removed', { app: t(`settle.apps.${kind}`) })),
+    mutationFn: (method: SavedPaymentMethod) => removePaymentMethod(supabase, userId, method.kind),
+    onSuccess: (_v, method) =>
+      toast(t('settings.paymentMethods.removed', { app: t(`settle.apps.${method.kind}`) }), {
+        action: {
+          label: t('common.undo'),
+          // Saving it again brings it back as it was.
+          onClick: () =>
+            void savePaymentMethod(supabase, { kind: method.kind, handle: method.handle })
+              .then(refresh)
+              .catch((error: unknown) => toast.error(errorMessage(error))),
+        },
+        duration: 8000,
+      }),
     onError: (error) => toast.error(errorMessage(error)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: paymentKeys.methods(userId) }),
+    onSettled: refresh,
   })
 
   return (
@@ -93,7 +104,7 @@ export function PaymentMethodsSection() {
                       size="sm"
                       label={t('settings.paymentMethods.remove', { app })}
                       icon={<Trash2 />}
-                      onClick={() => remove.mutate(m.kind)}
+                      onClick={() => remove.mutate(m)}
                     />
                   </li>
                 )

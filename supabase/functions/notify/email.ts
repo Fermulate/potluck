@@ -214,7 +214,7 @@ function copyFor(job: EmailJob): Copy {
       return {
         subject: `${actor} sent you a reminder`,
         heading: `${actor} is waiting on ${amount ?? 'a payment'}${inGroup}.`,
-        lines: ['Settle up when you get a moment.'],
+        lines: [...(str(d.note) ? [`"${str(d.note)}"`] : []), 'Settle up when you get a moment.'],
         cta: 'Settle up',
       }
     case 'comment.created':

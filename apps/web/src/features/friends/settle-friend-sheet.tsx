@@ -1,7 +1,13 @@
 import { groupKeys, paymentKeys, settleWithFriend, type Friend } from '@potluck/api'
-import { firstName, type FriendTotal } from '@potluck/core'
+import {
+  firstName,
+  parseAmount,
+  plainAmount,
+  type FriendBalanceRow,
+  type FriendTotal,
+} from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
-import { Button, Field, Input, Sheet, SheetContent, cn, toast } from '@potluck/ui'
+import { Button, Checkbox, Field, Input, Sheet, SheetContent, cn, toast } from '@potluck/ui'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCheck } from 'lucide-react'
 import { useState } from 'react'
@@ -12,9 +18,22 @@ import { todayIn } from '@/features/expenses/format'
 import { invalidateMoney, moneyErrorMessage, useTimeZone } from '@/features/expenses/money-data'
 import { supabase } from '@/lib/supabase'
 
+interface Pick {
+  on: boolean
+  /** What was typed, in the group currency. */
+  text: string
+}
+
+/** Minor units typed for a group, or null when it is not a usable amount for that debt. */
+function pickedCents(row: FriendBalanceRow, pick: Pick): number | null {
+  const cents = parseAmount(pick.text, row.currency)
+  return cents !== null && cents > 0 && cents <= Math.abs(row.netCents) ? cents : null
+}
+
 /**
- * Settle up with a friend across every group you share: one payment per open group, in that
- * group's currency, recorded together by `settle_with_friend`.
+ * Settle up with a friend across the groups you share: one payment per picked group, in that
+ * group's currency, recorded together by `settle_with_friend`. Every open group starts picked
+ * with its full amount; untick a group to leave it, or lower an amount to pay part of it.
  */
 export function SettleFriendSheet({
   friend,
@@ -32,26 +51,57 @@ export function SettleFriendSheet({
   const today = todayIn(timeZone)
   const { data: groups = [] } = useMyGroups()
   const [day, setDay] = useState(today)
+  const [picks, setPicks] = useState<Record<string, Pick>>(() =>
+    Object.fromEntries(
+      total.settleable.map((row) => [
+        row.groupId,
+        { on: true, text: plainAmount(Math.abs(row.netCents), row.currency) },
+      ]),
+    ),
+  )
   const name = firstName(friend.display_name)
-  const count = total.settleable.length
   const groupOf = (id: string) => groups.find((g) => g.id === id)
+  const groupName = (id: string) => {
+    const g = groupOf(id)
+    return g?.is_direct ? friend.display_name : (g?.name ?? '')
+  }
+
+  const chosen = total.settleable.filter((row) => picks[row.groupId]?.on)
+  const invalid = chosen.some((row) => pickedCents(row, picks[row.groupId]!) === null)
+  const everything =
+    chosen.length === total.settleable.length &&
+    chosen.every((row) => pickedCents(row, picks[row.groupId]!) === Math.abs(row.netCents))
+  const count = chosen.length
 
   const settle = useMutation({
     mutationFn: () =>
-      settleWithFriend(supabase, friend.id, { settledOn: day === today ? null : day }),
+      settleWithFriend(supabase, friend.id, {
+        settledOn: day === today ? null : day,
+        // Everything in full needs no list, so groups that changed meanwhile settle as they are.
+        amounts: everything
+          ? undefined
+          : Object.fromEntries(
+              chosen.map((row) => [row.groupId, pickedCents(row, picks[row.groupId]!)!]),
+            ),
+      }),
     onSuccess: (rows) => {
       for (const id of new Set(rows.map((r) => r.group_id))) invalidateMoney(queryClient, id)
       void queryClient.invalidateQueries({ queryKey: paymentKeys.friendBalances() })
       void queryClient.invalidateQueries({ queryKey: groupKeys.all })
       toast.success(
-        rows.length > 0
-          ? t('friends.settle.done', { name })
-          : t('friends.settle.nothing', { name }),
+        rows.length === 0
+          ? t('friends.settle.nothing', { name })
+          : everything
+            ? t('friends.settle.done', { name })
+            : t('friends.settle.partDone', { count: rows.length }),
       )
       onOpenChange(false)
     },
     onError: (error) => toast.error(moneyErrorMessage(error)),
   })
+
+  const update = (groupId: string, patch: Partial<Pick>) =>
+    setPicks((all) => ({ ...all, [groupId]: { ...all[groupId]!, ...patch } }))
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -65,7 +115,7 @@ export function SettleFriendSheet({
             size="lg"
             leadingIcon={<CheckCheck />}
             loading={settle.isPending}
-            disabled={count === 0}
+            disabled={count === 0 || invalid}
             onClick={() => settle.mutate()}
           >
             {t('friends.settle.record', { count })}
@@ -74,32 +124,70 @@ export function SettleFriendSheet({
       >
         <div className="flex flex-col gap-4">
           <ul className="divide-y divide-line rounded-card border border-line">
-            {[...total.settleable, ...total.archived].map((row) => {
+            {total.settleable.map((row) => {
               const g = groupOf(row.groupId)
-              const amount = formatMoney(Math.abs(row.netCents), row.currency)
+              const label = groupName(row.groupId)
+              const full = formatMoney(Math.abs(row.netCents), row.currency)
+              const pick = picks[row.groupId]!
+              const bad = pick.on && pickedCents(row, pick) === null
               return (
-                <li
-                  key={row.groupId}
-                  className={cn('flex items-center gap-3 px-3 py-3', row.archived && 'opacity-55')}
-                >
-                  <GroupTile emoji={g?.emoji ?? null} color={g?.color ?? null} size="sm" />
-                  <span className="min-w-0 flex-1 truncate font-semibold">
-                    {g?.is_direct ? friend.display_name : (g?.name ?? '')}
-                  </span>
-                  <span
-                    className={cn(
-                      'tabular text-sm font-bold',
-                      row.netCents > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
-                    )}
-                  >
-                    {row.netCents > 0
-                      ? t('friends.settle.owesYou', { amount })
-                      : t('friends.settle.youOwe', { amount })}
-                  </span>
+                <li key={row.groupId} className="flex flex-col gap-2 px-3 py-3">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      checked={pick.on}
+                      onCheckedChange={(on) => update(row.groupId, { on: on === true })}
+                      aria-label={t('friends.settle.include', { group: label })}
+                    />
+                    <GroupTile emoji={g?.emoji ?? null} color={g?.color ?? null} size="sm" />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-semibold">{label}</span>
+                      <span
+                        className={cn(
+                          'tabular text-sm font-medium',
+                          row.netCents > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
+                        )}
+                      >
+                        {row.netCents > 0
+                          ? t('friends.settle.owesYou', { amount: full })
+                          : t('friends.settle.youOwe', { amount: full })}
+                      </span>
+                    </span>
+                    <Input
+                      value={pick.text}
+                      onChange={(e) => update(row.groupId, { text: e.target.value })}
+                      disabled={!pick.on}
+                      inputMode="decimal"
+                      aria-label={t('friends.settle.amountFor', { group: label })}
+                      aria-invalid={bad || undefined}
+                      className="h-10 w-24 text-right tabular"
+                    />
+                  </div>
+                  {bad && (
+                    <p role="alert" className="pl-9 text-sm font-medium text-tomato-ink">
+                      {t('friends.settle.upTo', { amount: full })}
+                    </p>
+                  )}
                 </li>
               )
             })}
+            {total.archived.map((row) => (
+              <li key={row.groupId} className="flex items-center gap-3 px-3 py-3 opacity-55">
+                <span aria-hidden className="w-[1.375rem]" />
+                <GroupTile
+                  emoji={groupOf(row.groupId)?.emoji ?? null}
+                  color={groupOf(row.groupId)?.color ?? null}
+                  size="sm"
+                />
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  {groupName(row.groupId)}
+                </span>
+                <span className="tabular text-sm font-medium text-mute">
+                  {formatMoney(Math.abs(row.netCents), row.currency)}
+                </span>
+              </li>
+            ))}
           </ul>
+          <p className="text-sm text-mute">{t('friends.settle.pickHint')}</p>
           {total.archived.length > 0 && (
             <p className="text-sm text-mute">
               {t('friends.settle.archived', { count: total.archived.length })}

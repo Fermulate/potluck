@@ -79,6 +79,18 @@ describe('describeNotification', () => {
     )
     expect(view.title).toBe('A friendly nudge')
     expect(view.body).toBe('Ben says you owe $25.00 in Hike crew')
+    expect(
+      describeNotification(
+        row('debt.reminder', {
+          actor_id: 'u-ben',
+          group_id: 'g-1',
+          amount_cents: 2500,
+          currency: 'USD',
+          note: 'Rent is due',
+        }),
+        ctx,
+      ).body,
+    ).toBe('Ben says you owe $25.00 in Hike crew: "Rent is due"')
     expect(view.kind).toBe('payment')
     expect(view.target).toEqual({ to: '/new/settle', search: { groupId: 'g-1', to: 'u-ben' } })
     expect(describeNotification(row('debt.reminder', {}), ctx).target).toEqual({

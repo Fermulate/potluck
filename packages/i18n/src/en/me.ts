@@ -38,7 +38,11 @@ export const notifications = {
       },
     },
     debt: {
-      reminder: { title: 'A friendly nudge', body: '{actor} says you owe {amount} in {group}' },
+      reminder: {
+        title: 'A friendly nudge',
+        body: '{actor} says you owe {amount} in {group}',
+        bodyWithNote: '{actor} says you owe {amount} in {group}: "{note}"',
+      },
     },
     settlement: {
       updated: { title: 'Payment changed', body: '{actor} changed a {amount} payment in {group}' },

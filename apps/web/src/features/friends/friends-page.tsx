@@ -8,9 +8,8 @@ import {
   type Friend,
 } from '@potluck/api'
 import { can, friendTotals, type FriendTotal } from '@potluck/core'
-import { formatMoney, intlLocale, t } from '@potluck/i18n'
+import { formatMoney, t } from '@potluck/i18n'
 import {
-  Amount,
   Avatar,
   Button,
   EmptyState,
@@ -49,41 +48,40 @@ function FriendBalance({ friend, total }: { friend: Friend; total: FriendTotal |
       return <span className="text-sm text-mute">{t('friends.noTab')}</span>
     return <span className="text-sm text-mute">{t('friends.settled')}</span>
   }
-  const owed = lines.filter((l) => l.netCents > 0)
-  const owing = lines.filter((l) => l.netCents < 0)
-  const join = (items: typeof lines) =>
+  // Each direction gets its own line, so "you owe" never covers money they owe you.
+  const directions = [
+    { owedToYou: false, items: lines.filter((l) => l.netCents < 0) },
+    { owedToYou: true, items: lines.filter((l) => l.netCents > 0) },
+  ].filter((d) => d.items.length > 0)
+  const amounts = (items: typeof lines) =>
     items
       .map((l) => formatMoney(Math.abs(l.netCents), l.currency))
       .reduce((a, b) => t('friends.and', { first: a, second: b }))
-  const label = [
-    owed.length > 0 ? t('friends.owesYou', { amount: join(owed) }) : null,
-    owing.length > 0 ? t('friends.youOwe', { amount: join(owing) }) : null,
-  ]
-    .filter(Boolean)
-    .join(', ')
-  const main = lines[0]!
+  const label = (owedToYou: boolean) =>
+    (owedToYou ? t('friends.owesYou', { amount: '' }) : t('friends.youOwe', { amount: '' })).trim()
+  const tone = (owedToYou: boolean) => (owedToYou ? 'text-saffron-ink' : 'text-tomato-ink')
+
+  if (directions.length === 1) {
+    const [only] = directions
+    return (
+      <span className="flex flex-col items-end text-right leading-tight">
+        <span className="text-xs text-mute">{label(only!.owedToYou)}</span>
+        <span className={`tabular text-[0.9375rem] font-bold ${tone(only!.owedToYou)}`}>
+          {amounts(only!.items)}
+        </span>
+      </span>
+    )
+  }
   return (
-    <span className="flex flex-col items-end text-right leading-tight">
-      <span className="sr-only">{label}</span>
-      <span aria-hidden className="text-xs text-mute">
-        {(main.netCents > 0
-          ? t('friends.owesYou', { amount: '' })
-          : t('friends.youOwe', { amount: '' })
-        ).trim()}
-      </span>
-      <span aria-hidden className="flex flex-col items-end">
-        {lines.map((l) => (
-          <Amount
-            key={l.currency}
-            cents={Math.abs(l.netCents)}
-            currency={l.currency}
-            locale={intlLocale()}
-            tone={l.netCents > 0 ? 'owed' : 'owe'}
-            className="text-[0.9375rem] font-bold"
-            srLabel=""
-          />
-        ))}
-      </span>
+    <span className="flex flex-col items-end gap-0.5 text-right leading-tight">
+      {directions.map((d) => (
+        <span key={String(d.owedToYou)} className="flex items-baseline gap-1.5">
+          <span className="text-xs text-mute">{label(d.owedToYou)}</span>
+          <span className={`tabular text-[0.9375rem] font-bold ${tone(d.owedToYou)}`}>
+            {amounts(d.items)}
+          </span>
+        </span>
+      ))}
     </span>
   )
 }
@@ -263,7 +261,6 @@ export function FriendsPage() {
                   <button
                     type="button"
                     onClick={() => void open(friend)}
-                    aria-label={t('friends.open', { name: friend.display_name })}
                     className="flex w-full items-center gap-3 p-3 text-left transition-transform duration-150 active:scale-[0.99]"
                   >
                     <Avatar

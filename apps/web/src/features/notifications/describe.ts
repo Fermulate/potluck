@@ -152,7 +152,14 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
     case 'debt.reminder':
       return {
         title: t('notifications.types.debt.reminder.title'),
-        body: t('notifications.types.debt.reminder.body', { actor, amount, group }),
+        body: str(d.note)
+          ? t('notifications.types.debt.reminder.bodyWithNote', {
+              actor,
+              amount,
+              group,
+              note: str(d.note)!,
+            })
+          : t('notifications.types.debt.reminder.body', { actor, amount, group }),
         kind: 'payment',
         // Straight to paying them back.
         target: groupId
