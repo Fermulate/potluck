@@ -1,20 +1,39 @@
-import { importExpenses, moneyQueries, type MoneyGroup } from '@potluck/api'
 import {
+  importExpenses,
+  moneyQueries,
+  transferKeys,
+  transferQueries,
+  type ImportFailure,
+  type MoneyGroup,
+} from '@potluck/api'
+import {
+  MAX_IMPORT_ROWS,
+  SKIP_PERSON,
+  alreadyThere,
   failedLine,
   guessMapping,
+  isRate,
+  peopleInScope,
   planImport,
+  rateOnDay,
+  utcDay,
+  type DateFormat,
+  type ExistingRow,
   type ImportPlan,
   type ImportRow,
+  type SkipReason,
   type SourceFile,
   type SourceIssue,
 } from '@potluck/core'
-import { formatDate, formatMoney, t } from '@potluck/i18n'
+import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
 import {
   Avatar,
   Badge,
   Button,
   Card,
+  Checkbox,
   Field,
+  Input,
   LoadingDots,
   Select,
   Skeleton,
@@ -25,25 +44,42 @@ import {
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Upload } from 'lucide-react'
-import { useId, useMemo, useState, type DragEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
+import { namesOf } from '@/features/expenses/expense-math'
+import { Money } from '@/features/expenses/money'
 import {
   invalidateMoney,
   moneyErrorMessage,
   useMoneyGroup,
   useNameOf,
   usePeople,
+  useTimeZone,
 } from '@/features/expenses/money-data'
-import { namesOf } from '@/features/expenses/expense-math'
-import { Money } from '@/features/expenses/money'
 import { Help } from '@/features/help/help'
 import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { importLabelSets } from './labels'
-import { readFile } from './read-file'
+import { fingerprint, readFile } from './read-file'
 
 /** How many rows of the file the preview lists before "and N more". */
 const PREVIEW_ROWS = 6
+
+/** Server codes that mean someone in the row has left the group. */
+const LEFT_CODES = new Set([
+  'split_member_not_in_group',
+  'payer_not_in_group',
+  'member_not_in_group',
+])
 
 function issueText(issue: SourceIssue): string {
   const message = t(`transfer.import.issues.${issue.code}` as 'transfer.import.issues.bad_date', {
@@ -52,12 +88,43 @@ function issueText(issue: SourceIssue): string {
   return issue.line > 0 ? t('transfer.import.rowFailed', { line: issue.line, message }) : message
 }
 
-function Step({ title, help, children }: { title: string; help?: ReactNode; children: ReactNode }) {
+/** What to say when the server refuses the import. */
+function failureText(error: unknown, plan: ImportPlan): string {
+  const e = (error ?? {}) as Partial<ImportFailure>
+  const line = failedLine(plan, e.hint)
+  let text: string
+  if (e.code === '57014') text = t('transfer.import.errors.timeout')
+  else if (line && e.message && LEFT_CODES.has(e.message))
+    text = t('transfer.import.errors.left', { line })
+  else {
+    const message = moneyErrorMessage(error)
+    text = line ? t('transfer.import.rowFailed', { line, message }) : message
+  }
+  const before = (e.imported?.expenses ?? 0) + (e.imported?.payments ?? 0)
+  return before > 0 ? `${text} ${t('transfer.import.errors.partly', { count: before })}` : text
+}
+
+function Step({
+  title,
+  help,
+  headingRef,
+  children,
+}: {
+  title: string
+  help?: ReactNode
+  headingRef?: RefObject<HTMLHeadingElement | null>
+  children: ReactNode
+}) {
   const id = useId()
   return (
     <section aria-labelledby={id} className="grid gap-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 id={id} className="text-sm font-bold text-mute">
+        <h3
+          id={id}
+          ref={headingRef}
+          tabIndex={headingRef ? -1 : undefined}
+          className="text-sm font-bold text-mute outline-none"
+        >
           {title}
         </h3>
         {help}
@@ -160,145 +227,110 @@ function rowLine(row: ImportRow, me: string, nameOf: ReturnType<typeof useNameOf
       to: nameOf(row.to_user, { lower: true }),
     })
   }
-  const names = namesOf(
-    row.payers.map((p) => p.user_id),
-    me,
-    nameOf,
-  )
+  const ids = row.payers.map((p) => p.user_id)
   return row.is_refund
-    ? t('transfer.import.rowRefund', {
-        names: namesOf(
-          row.payers.map((p) => p.user_id),
-          me,
-          nameOf,
-          { start: false },
-        ),
-      })
-    : t('transfer.import.rowPaid', { names })
+    ? t('transfer.import.rowRefund', { names: namesOf(ids, me, nameOf, { start: false }) })
+    : t('transfer.import.rowPaid', { names: namesOf(ids, me, nameOf) })
 }
 
-/** Balances in the group currency after the import, drawn like the balances tab. */
+/** Everyone's balance after the import, in the group currency, drawn like the balances tab. */
 function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup }) {
   const nameOf = useNameOf()
   const people = usePeople()
   const balances = useQuery(moneyQueries.balances(supabase, group.id))
-  const delta = plan.effects[group.currency] ?? {}
   const now = new Map((balances.data ?? []).map((b) => [b.user_id, b.net_cents]))
-  const rows = Object.keys(delta)
-    .map((id) => ({ id, now: now.get(id) ?? 0, after: (now.get(id) ?? 0) + delta[id]! }))
+  const ids = [...new Set([...group.members.map((m) => m.id), ...Object.keys(plan.balances)])]
+  const rows = ids
+    .map((id) => ({
+      id,
+      now: now.get(id) ?? 0,
+      after: (now.get(id) ?? 0) + (plan.balances[id] ?? 0),
+    }))
     .sort((a, b) => b.after - a.after)
   const scale = Math.max(1, ...rows.map((r) => Math.abs(r.after)))
-  const others = Object.entries(plan.effects).filter(([currency]) => currency !== group.currency)
-
   return (
-    <div className="grid gap-3">
-      {rows.length > 0 && (
-        <Card padding="none" className="overflow-hidden">
-          <ul className="divide-y divide-line">
-            {rows.map((r) => {
-              const person = people.get(r.id)
-              return (
-                <li key={r.id} className="flex flex-col gap-2 px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar
-                      name={person?.display_name ?? '?'}
-                      seed={r.id}
-                      src={avatarSrc(person?.avatar_path)}
-                      size="sm"
+    <Card padding="none" className="overflow-hidden">
+      <ul className="divide-y divide-line">
+        {rows.map((r) => {
+          const person = people.get(r.id)
+          return (
+            <li key={r.id} className="flex flex-col gap-2 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Avatar
+                  name={person?.display_name ?? '?'}
+                  seed={r.id}
+                  src={avatarSrc(person?.avatar_path)}
+                  size="sm"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{nameOf(r.id)}</span>
+                  <span className="block text-xs text-mute">
+                    {t('transfer.import.now', { amount: formatMoney(r.now, group.currency) })}
+                  </span>
+                </span>
+                <span className="flex flex-col items-end">
+                  <span className="text-xs text-mute">
+                    {r.after > 0
+                      ? t('balances.isOwedShort')
+                      : r.after < 0
+                        ? t('balances.owesShort')
+                        : t('balances.settledShort')}
+                  </span>
+                  {r.after !== 0 && (
+                    <Money
+                      cents={Math.abs(r.after)}
+                      currency={group.currency}
+                      tone={r.after > 0 ? 'owed' : 'owe'}
+                      className="font-bold"
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">{nameOf(r.id)}</span>
-                      <span className="block text-xs text-mute">
-                        {t('transfer.import.now', {
-                          amount: formatMoney(r.now, group.currency),
-                        })}
-                      </span>
-                    </span>
-                    <span className="flex flex-col items-end">
-                      <span className="text-xs text-mute">
-                        {r.after > 0
-                          ? t('balances.isOwedShort')
-                          : r.after < 0
-                            ? t('balances.owesShort')
-                            : t('balances.settledShort')}
-                      </span>
-                      {r.after !== 0 && (
-                        <Money
-                          cents={Math.abs(r.after)}
-                          currency={group.currency}
-                          tone={r.after > 0 ? 'owed' : 'owe'}
-                          className="font-bold"
-                        />
-                      )}
-                    </span>
-                  </div>
-                  <div aria-hidden className="relative h-1.5 rounded-pill bg-sunken">
-                    <span className="absolute inset-y-0 left-1/2 w-px bg-line-strong" />
-                    <span
-                      className={cn(
-                        'absolute inset-y-0 rounded-pill',
-                        r.after >= 0 ? 'left-1/2 bg-saffron' : 'right-1/2 bg-tomato',
-                      )}
-                      style={{ width: `${(Math.abs(r.after) / scale) * 50}%` }}
-                    />
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </Card>
-      )}
-      {others.map(([currency, effect]) => (
-        <Card key={currency} padding="default" className="grid gap-2">
-          <p className="text-sm font-semibold">{t('transfer.import.balancesIn', { currency })}</p>
-          <ul className="grid gap-1 text-sm">
-            {Object.entries(effect)
-              .filter(([, cents]) => cents !== 0)
-              .sort(([, a], [, b]) => b - a)
-              .map(([id, cents]) => (
-                <li key={id} className="flex justify-between gap-3">
-                  <span>{nameOf(id)}</span>
-                  <Money cents={cents} currency={currency} sign="exceptZero" />
-                </li>
-              ))}
-          </ul>
-          <p className="text-xs text-mute">
-            {t('transfer.import.converted', { currency, group: group.currency })}
-          </p>
-        </Card>
-      ))}
-    </div>
+                  )}
+                </span>
+              </div>
+              <div aria-hidden className="relative h-1.5 rounded-pill bg-sunken">
+                <span className="absolute inset-y-0 left-1/2 w-px bg-line-strong" />
+                <span
+                  className={cn(
+                    'absolute inset-y-0 rounded-pill',
+                    r.after >= 0 ? 'left-1/2 bg-saffron' : 'right-1/2 bg-tomato',
+                  )}
+                  style={{ width: `${(Math.abs(r.after) / scale) * 50}%` }}
+                />
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
   )
 }
 
-/** Rates the server will need: the earliest day of each other currency must have one. */
-function useMissingRates(plan: ImportPlan | null, groupCurrency: string | undefined): string[] {
-  const earliest = useMemo(() => {
-    const out = new Map<string, string>()
-    for (const row of plan?.rows ?? []) {
-      if (!groupCurrency || row.currency === groupCurrency) continue
-      const day = row.kind === 'payment' ? row.paid_on : row.spent_at
-      const seen = out.get(row.currency)
-      if (!seen || day < seen) out.set(row.currency, day)
+/**
+ * Stored rates for every other currency in the file, the same ones the server would take. The
+ * lookup answers undefined while a currency is still loading.
+ */
+function useRates(source: SourceFile | null, groupCurrency: string) {
+  const needed = useMemo(() => {
+    const until = new Map<string, string>()
+    for (const e of source?.entries ?? []) {
+      if (e.currency === groupCurrency) continue
+      const seen = until.get(e.currency)
+      if (!seen || e.date > seen) until.set(e.currency, e.date)
     }
-    return [...out]
-  }, [plan, groupCurrency])
-  const quotes = useQueries({
-    queries: earliest.map(([currency, day]) =>
-      moneyQueries.fxRate(supabase, currency, groupCurrency ?? '', day),
+    return [...until].sort(([a], [b]) => a.localeCompare(b))
+  }, [source, groupCurrency])
+  const loaded = useQueries({
+    queries: needed.map(([currency, until]) =>
+      transferQueries.fxHistory(supabase, currency, groupCurrency, until),
     ),
+    combine: (results) => results.map((r) => r.data),
   })
-  return earliest.flatMap(([currency, day], i) =>
-    quotes[i]?.isSuccess && quotes[i]?.data === null
-      ? [
-          t('transfer.import.rateMissing', {
-            from: currency,
-            to: groupCurrency ?? '',
-            date: formatDate(day, { timeZone: 'UTC' }),
-          }),
-        ]
-      : [],
-  )
+  return useMemo(() => {
+    const byCurrency = new Map(needed.map(([currency], i) => [currency, loaded[i]]))
+    return (currency: string, day: string): string | null | undefined => {
+      const history = byCurrency.get(currency)
+      return history ? rateOnDay(history, day) : undefined
+    }
+  }, [needed, loaded])
 }
 
 export function ImportScreen({ groupId }: { groupId: string }) {
@@ -317,74 +349,176 @@ export function ImportScreen({ groupId }: { groupId: string }) {
 function ImportBody({ group }: { group: MoneyGroup }) {
   const me = useUserId()
   const nameOf = useNameOf()
+  const people = usePeople()
+  const timeZone = useTimeZone()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const expenses = useQuery(moneyQueries.expenses(supabase, group.id))
+  const settlements = useQuery(moneyQueries.settlements(supabase, group.id))
+  const pastImports = useQuery(transferQueries.pastImports(supabase, group.id))
+  const [text, setText] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [fileId, setFileId] = useState<string | undefined>()
   const [reading, setReading] = useState(false)
   const [source, setSource] = useState<SourceFile | null>(null)
   const [mapping, setMapping] = useState<(string | null)[]>([])
   const [fromGroup, setFromGroup] = useState<string | null>(null)
+  const [typedRates, setTypedRates] = useState<Record<string, string>>({})
+  const [skipCurrencies, setSkipCurrencies] = useState<ReadonlySet<string>>(new Set())
+  const [leaveOutDuplicates, setLeaveOutDuplicates] = useState(false)
+  const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  const previewHeading = useRef<HTMLHeadingElement>(null)
+  const fileHeading = useRef<HTMLParagraphElement>(null)
+  const [focusAfterRead, setFocusAfterRead] = useState(false)
+
+  // People who were in the group and have left: they can be matched, but rows with them wait.
+  const former = useMemo(() => {
+    const members = new Set(group.members.map((m) => m.id))
+    const ids = new Set<string>()
+    for (const e of expenses.data ?? []) {
+      for (const p of e.expense_payers) ids.add(p.user_id)
+      for (const s of e.expense_splits) ids.add(s.user_id)
+    }
+    for (const s of settlements.data ?? []) ids.add(s.from_user).add(s.to_user)
+    return [...ids]
+      .filter((id) => !members.has(id))
+      .map((id) => ({ id, name: people.get(id)?.display_name ?? t('transfer.csv.someoneWhoLeft') }))
+  }, [group.members, expenses.data, settlements.data, people])
+
+  async function read(content: string, options: { dateFormat?: DateFormat } = {}) {
+    const read = await readFile(content, importLabelSets(), options)
+    setSource(read)
+    return read
+  }
 
   async function choose(file: File) {
     setReading(true)
     setFailure(null)
     setFileName(file.name)
     try {
-      const read = await readFile(file, importLabelSets())
-      setSource(read)
+      const content = await file.text()
+      setText(content)
+      const [read_, id] = await Promise.all([read(content), fingerprint(content)])
+      setFileId(id)
       setMapping(
-        guessMapping(
-          read.people,
-          group.members.map((m) => ({ id: m.id, name: m.display_name })),
-        ),
+        guessMapping(read_.people, [
+          ...group.members.map((m) => ({ id: m.id, name: m.display_name })),
+          ...former,
+        ]),
       )
-      setFromGroup(read.groups.includes(group.name) ? group.name : (read.groups[0] ?? null))
+      setFromGroup(read_.groups.includes(group.name) ? group.name : (read_.groups[0] ?? null))
+      setTypedRates({})
+      setSkipCurrencies(new Set())
+      setLeaveOutDuplicates(false)
+      setFocusAfterRead(true)
     } finally {
       setReading(false)
     }
   }
 
+  const rateOn = useRates(source, group.currency)
+  const existing = useMemo<ExistingRow[]>(
+    () => [
+      ...(expenses.data ?? []).map((e) => ({
+        kind: 'expense' as const,
+        day: e.spent_at,
+        amountCents: e.amount_cents,
+        currency: e.currency,
+        description: e.description,
+      })),
+      ...(settlements.data ?? []).map((s) => ({
+        kind: 'payment' as const,
+        day: utcDay(s.settled_at),
+        amountCents: s.amount_cents,
+        currency: s.currency,
+        fromUser: s.from_user,
+        toUser: s.to_user,
+      })),
+    ],
+    [expenses.data, settlements.data],
+  )
+
+  const options = useMemo(
+    () => ({
+      mapping,
+      group: fromGroup,
+      untitled: t('transfer.import.untitled'),
+      groupCurrency: group.currency,
+      rateOn,
+      typedRates,
+      skipCurrencies,
+    }),
+    [mapping, fromGroup, group.currency, rateOn, typedRates, skipCurrencies],
+  )
+  const basePlan = useMemo(() => (source ? planImport(source, options) : null), [source, options])
+  const duplicates = useMemo(
+    () => (basePlan ? alreadyThere(basePlan, existing) : []),
+    [basePlan, existing],
+  )
   const plan = useMemo(
     () =>
-      source
-        ? planImport(source, {
-            mapping,
-            group: fromGroup,
-            untitled: t('transfer.import.untitled'),
-          })
-        : null,
-    [source, mapping, fromGroup],
+      source && leaveOutDuplicates && duplicates.length > 0
+        ? planImport(source, { ...options, skipLines: new Set(duplicates) })
+        : basePlan,
+    [source, options, leaveOutDuplicates, duplicates, basePlan],
   )
-  const missingRates = useMissingRates(plan, group.currency)
-  const issues = [...(plan?.issues ?? []).map(issueText), ...missingRates]
+
+  useEffect(() => {
+    if (!focusAfterRead || !source) return
+    ;(previewHeading.current ?? fileHeading.current)?.focus()
+    setFocusAfterRead(false)
+  }, [focusAfterRead, source, plan])
+
+  const formerIds = new Set(former.map((f) => f.id))
+  const inScope = source ? peopleInScope(source, fromGroup) : []
+  const leftIssues = inScope
+    .filter((i) => mapping[i] && formerIds.has(mapping[i]!))
+    .map((i) => t('transfer.import.left', { name: source!.people[i]!, group: group.name }))
+  const issues = [...leftIssues, ...(plan?.issues ?? []).map(issueText)]
   const total = plan?.rows.length ?? 0
-  const ready = !!plan && issues.length === 0 && total > 0
+  const blocked =
+    !plan || issues.length > 0 || plan.missingRates.length > 0 || plan.ratesPending || total === 0
+  const sameFile = fileId ? pastImports.data?.find((p) => p.fingerprint === fileId) : undefined
+  const parts = Math.ceil(total / MAX_IMPORT_ROWS)
 
   const submit = useMutation({
-    mutationFn: () => importExpenses(supabase, group.id, plan!.rows, source!.format),
+    mutationFn: () =>
+      importExpenses(supabase, group.id, plan!.rows, source!.format, {
+        fingerprint: fileId,
+        onProgress: (sent, all) => setProgress({ sent, total: all }),
+      }),
     onSuccess: async (result) => {
       invalidateMoney(queryClient, group.id)
+      void queryClient.invalidateQueries({ queryKey: transferKeys.imports(group.id) })
       toast.success(
         t('transfer.import.done', { count: result.expenses + result.payments, group: group.name }),
       )
       await navigate({ to: '/groups/$groupId', params: { groupId: group.id } })
     },
     onError: (error) => {
-      const message = moneyErrorMessage(error)
-      const line = plan ? failedLine(plan, (error as { hint?: unknown }).hint) : null
-      setFailure(line ? t('transfer.import.rowFailed', { line, message }) : message)
+      setFailure(failureText(error, plan!))
+      if (LEFT_CODES.has((error as { message?: string }).message ?? '')) {
+        invalidateMoney(queryClient, group.id)
+      }
+      if (((error as Partial<ImportFailure>).imported?.expenses ?? 0) > 0) {
+        invalidateMoney(queryClient, group.id)
+      }
     },
+    onSettled: () => setProgress(null),
   })
 
-  const members = group.members.map((m) => ({ value: m.id, label: m.display_name }))
-  const peopleWithMoney = source
-    ? source.people
-        .map((name, i) => ({ name, i }))
-        .filter(({ i }) =>
-          source.entries.some((e) => [e.nets, e.paid, e.shares].some((v) => (v?.[i] ?? 0) !== 0)),
-        )
-    : []
+  const options_ = [
+    ...group.members.map((m) => ({ value: m.id, label: m.display_name })),
+    ...former.map((f) => ({
+      value: f.id,
+      label: t('transfer.import.leftOption', { name: f.name }),
+    })),
+    { value: SKIP_PERSON, label: t('transfer.import.skipPerson') },
+  ]
+
+  const skippedBy = (reason: SkipReason) =>
+    plan?.skipped.filter((s) => s.reason === reason).length ?? 0
 
   return (
     <div className="grid gap-8">
@@ -408,7 +542,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
         <p className="rounded-card bg-sunken p-4 text-sm text-mute">
           {t('transfer.import.archived')}
         </p>
-      ) : !source || reading ? (
+      ) : !source || reading || !text ? (
         <FilePicker onFile={choose} busy={reading} />
       ) : (
         <>
@@ -420,7 +554,9 @@ function ImportBody({ group }: { group: MoneyGroup }) {
               <FileSpreadsheet className="size-5" />
             </span>
             <div className="min-w-0 flex-1 basis-48">
-              <p className="truncate font-semibold">{fileName}</p>
+              <p ref={fileHeading} tabIndex={-1} className="truncate font-semibold outline-none">
+                {fileName}
+              </p>
               <p className="text-sm text-mute">
                 {t(`transfer.import.format.${source.format}`)}
                 {source.entries.length > 0 &&
@@ -429,12 +565,31 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                     people: source.people.join(', '),
                   })}`}
               </p>
+              {source.dateFormat !== 'iso' && (
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-mute">
+                  {t(`transfer.import.dates.${source.dateFormat}`)}
+                  {(source.dateAmbiguous || source.issues.some((i) => i.code === 'bad_date')) && (
+                    <button
+                      type="button"
+                      className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+                      onClick={() =>
+                        void read(text, { dateFormat: source.dateFormat === 'mdy' ? 'dmy' : 'mdy' })
+                      }
+                    >
+                      {source.dateFormat === 'mdy'
+                        ? t('transfer.import.dates.toDmy')
+                        : t('transfer.import.dates.toMdy')}
+                    </button>
+                  )}
+                </p>
+              )}
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setSource(null)
+                setText(null)
                 setFailure(null)
               }}
             >
@@ -442,42 +597,156 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             </Button>
           </Card>
 
+          {sameFile && (
+            <p className="flex items-start gap-2 rounded-card bg-saffron-soft p-4 text-sm text-saffron-ink">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              {t('transfer.import.duplicates.sameFile', {
+                group: group.name,
+                when: formatRelative(sameFile.at, { timeZone }),
+              })}
+            </p>
+          )}
+
           {source.groups.length > 1 && (
             <Field label={t('transfer.import.sourceGroup')}>
               <Select
-                value={fromGroup ?? undefined}
+                value={fromGroup ?? ''}
                 onValueChange={setFromGroup}
                 options={source.groups.map((g) => ({ value: g, label: g }))}
               />
             </Field>
           )}
 
-          {peopleWithMoney.length > 0 && (
+          {inScope.length > 0 && (
             <Step title={t('transfer.import.who')}>
               <p className="text-sm text-mute">
                 {t('transfer.import.whoHint', { group: group.name })}
               </p>
               <Card padding="roomy" className="grid gap-4 sm:grid-cols-2">
-                {peopleWithMoney.map(({ name, i }) => (
-                  <Field key={`${name}-${i}`} label={name}>
-                    <Select
-                      value={mapping[i] ?? undefined}
-                      onValueChange={(id) =>
-                        setMapping((m) => m.map((value, j) => (j === i ? id : value)))
+                {inScope.map((i) => {
+                  const name = source.people[i]!
+                  const left = !!mapping[i] && formerIds.has(mapping[i]!)
+                  return (
+                    <Field
+                      key={`${name}-${i}`}
+                      label={name}
+                      error={
+                        left ? t('transfer.import.left', { name, group: group.name }) : undefined
                       }
-                      placeholder={t('transfer.import.notMatched')}
-                      options={members}
-                    />
-                  </Field>
-                ))}
+                    >
+                      <Select
+                        value={mapping[i] ?? ''}
+                        onValueChange={(id) =>
+                          setMapping((m) => m.map((value, j) => (j === i ? id : value)))
+                        }
+                        placeholder={t('transfer.import.notMatched')}
+                        options={options_}
+                      />
+                    </Field>
+                  )
+                })}
               </Card>
             </Step>
           )}
 
-          <IssueList issues={issues} />
+          <IssueList issues={issues.filter((text) => !leftIssues.includes(text))} />
+
+          {plan && (plan.missingRates.length > 0 || plan.fileRates.rows > 0) && (
+            <Step title={t('transfer.import.rates.title')}>
+              {plan.missingRates.map((m) => (
+                <Card key={m.currency} padding="default" className="grid gap-3">
+                  <p className="text-sm">
+                    {t('transfer.import.rates.missing', {
+                      currency: m.currency,
+                      group: group.currency,
+                      count: m.rows,
+                      from: formatDate(m.from, { timeZone: 'UTC' }),
+                      to: formatDate(m.to, { timeZone: 'UTC' }),
+                    })}
+                  </p>
+                  <Field
+                    label={t('transfer.import.rates.typed', {
+                      currency: m.currency,
+                      group: group.currency,
+                    })}
+                    className="max-w-60"
+                  >
+                    <Input
+                      inputMode="decimal"
+                      value={typedRates[m.currency] ?? ''}
+                      onChange={(e) =>
+                        setTypedRates((r) => ({
+                          ...r,
+                          [m.currency]: e.target.value.replace(',', '.'),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Checkbox
+                    label={t('transfer.import.rates.skip')}
+                    checked={skipCurrencies.has(m.currency)}
+                    onCheckedChange={(checked) =>
+                      setSkipCurrencies((s) => {
+                        const next = new Set(s)
+                        if (checked === true) next.add(m.currency)
+                        else next.delete(m.currency)
+                        return next
+                      })
+                    }
+                  />
+                </Card>
+              ))}
+              {/* Typed rates and skipped currencies stay listed once they are dealt with. */}
+              {Object.entries(typedRates)
+                .filter(([c, r]) => isRate(r) && !plan.missingRates.some((m) => m.currency === c))
+                .map(([currency, rate]) => (
+                  <Card key={currency} padding="default" className="grid gap-3">
+                    <Field
+                      label={t('transfer.import.rates.typed', { currency, group: group.currency })}
+                      className="max-w-60"
+                    >
+                      <Input
+                        inputMode="decimal"
+                        value={rate}
+                        onChange={(e) =>
+                          setTypedRates((r) => ({
+                            ...r,
+                            [currency]: e.target.value.replace(',', '.'),
+                          }))
+                        }
+                      />
+                    </Field>
+                  </Card>
+                ))}
+              {plan.fileRates.rows > 0 && (
+                <p className="text-sm text-mute">
+                  {t('transfer.import.rates.file', { count: plan.fileRates.rows })}
+                  {plan.fileRates.differ > 0 &&
+                    ` ${t('transfer.import.rates.differ', { count: plan.fileRates.differ })}`}
+                </p>
+              )}
+            </Step>
+          )}
+
+          {duplicates.length > 0 && (
+            <Card padding="default" className="grid gap-3 bg-saffron-soft text-saffron-ink">
+              <p className="flex items-start gap-2 text-sm">
+                <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+                {t('transfer.import.duplicates.rows', {
+                  count: duplicates.length,
+                  group: group.name,
+                })}
+              </p>
+              <Checkbox
+                label={t('transfer.import.duplicates.leaveOut')}
+                checked={leaveOutDuplicates}
+                onCheckedChange={(checked) => setLeaveOutDuplicates(checked === true)}
+              />
+            </Card>
+          )}
 
           {plan && plan.rows.length > 0 && (
-            <Step title={t('transfer.import.preview')}>
+            <Step title={t('transfer.import.preview')} headingRef={previewHeading}>
               <div className="flex flex-wrap gap-2">
                 {plan.counts.expenses > 0 && (
                   <Badge tone="saffron">
@@ -495,10 +764,19 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                   </Badge>
                 )}
               </div>
-              {plan.skipped.length > 0 && (
-                <p className="text-sm text-mute">
-                  {t('transfer.import.skipped', { count: plan.skipped.length })}
-                </p>
+              {(
+                [
+                  ['no_effect', 'transfer.import.skipped'],
+                  ['person', 'transfer.import.skippedPerson'],
+                  ['rate', 'transfer.import.skippedRate'],
+                  ['duplicate', 'transfer.import.skippedDuplicate'],
+                ] as const
+              ).map(([reason, key]) =>
+                skippedBy(reason) > 0 ? (
+                  <p key={reason} className="text-sm text-mute">
+                    {t(key, { count: skippedBy(reason) })}
+                  </p>
+                ) : null,
               )}
               {plan.totals !== 'none' && (
                 <p
@@ -519,7 +797,15 @@ function ImportBody({ group }: { group: MoneyGroup }) {
               )}
 
               <h4 className="mt-2 text-sm font-bold text-mute">{t('transfer.import.balances')}</h4>
-              <BalancesAfter plan={plan} group={group} />
+              {plan.ratesPending ? (
+                <p className="flex items-center gap-2 text-sm text-mute">
+                  <LoadingDots /> {t('transfer.import.rates.pending')}
+                </p>
+              ) : plan.missingRates.length > 0 ? (
+                <p className="text-sm text-mute">{t('transfer.import.rates.waiting')}</p>
+              ) : (
+                <BalancesAfter plan={plan} group={group} />
+              )}
 
               <h4 className="mt-2 text-sm font-bold text-mute">{t('transfer.import.rows')}</h4>
               <Card padding="none" className="overflow-hidden">
@@ -556,6 +842,11 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                   </p>
                 )}
               </Card>
+              {parts > 1 && (
+                <p className="text-sm text-mute">
+                  {t('transfer.import.parts', { count: total, parts })}
+                </p>
+              )}
             </Step>
           )}
 
@@ -568,16 +859,20 @@ function ImportBody({ group }: { group: MoneyGroup }) {
           <Button
             size="lg"
             className="justify-self-stretch sm:justify-self-start"
-            disabled={!ready}
-            loading={submit.isPending}
+            disabled={blocked}
+            loading={submit.isPending && !progress}
             onClick={() => {
               setFailure(null)
               submit.mutate()
             }}
           >
             {submit.isPending
-              ? t('transfer.import.importing')
-              : t('transfer.import.submit', { count: total })}
+              ? progress
+                ? t('transfer.import.progress', { sent: progress.sent, total: progress.total })
+                : t('transfer.import.importing')
+              : blocked
+                ? t('transfer.import.submitBlocked')
+                : t('transfer.import.submit', { count: total })}
           </Button>
         </>
       )}

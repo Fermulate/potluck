@@ -21,7 +21,7 @@ function Row({
   children: ReactNode
 }) {
   return (
-    <div className="grid gap-3 border-line not-first:border-t not-first:pt-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <div className="grid gap-3 border-line not-first:border-t not-first:pt-5">
       <div className="flex items-start gap-3">
         <span
           aria-hidden
@@ -34,7 +34,7 @@ function Row({
           <p className="text-sm text-mute">{hint}</p>
         </div>
       </div>
-      <div className="flex flex-wrap items-end gap-2 sm:justify-end">{children}</div>
+      <div className="flex flex-wrap items-end gap-2 pl-13">{children}</div>
     </div>
   )
 }

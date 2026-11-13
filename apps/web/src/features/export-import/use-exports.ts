@@ -5,6 +5,7 @@ import { toast } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { groupCsv } from '@/features/expenses/expense-math'
+import { categoryLabel } from '@/features/expenses/format'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 import { fileName, saveFile } from './download'
@@ -53,7 +54,7 @@ export function useGroupExport(groupId: string) {
 
 /** Everyone in a backup as spreadsheet columns: the viewer first, then by name. */
 function everyone(backup: Backup) {
-  const { nameOf } = backupLedger(backup)
+  const { nameOf } = backupLedger(backup, t('transfer.csv.someoneWhoLeft'))
   const ids = new Set<string>()
   for (const g of backup.groups) {
     for (const m of g.members) ids.add(m.user_id)
@@ -75,13 +76,15 @@ function everyone(backup: Backup) {
 }
 
 function accountCsv(backup: Backup, friend?: string): string {
-  const { groups, nameOf } = backupLedger(backup)
+  const { groups, nameOf } = backupLedger(backup, t('transfer.csv.someoneWhoLeft'))
   return ledgerCsv(groups, {
     labels: ledgerLabels(),
     people: everyone(backup),
     paymentText: (from, to) =>
       t('transfer.import.rowPayment', { from: nameOf(from), to: nameOf(to) }),
     friend: friend ? { me: backup.profile.id, friend } : undefined,
+    nameOf,
+    categoryLabel,
   })
 }
 

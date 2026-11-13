@@ -11,6 +11,7 @@ import {
 import { formatMoney, t } from '@potluck/i18n'
 import { ledgerLabels } from '@/features/export-import/labels'
 import { joinNames } from '@/features/plans/format'
+import { categoryLabel } from './format'
 
 /** What an expense does to the viewer's balance, in the group currency. */
 export type ViewerLine =
@@ -181,7 +182,8 @@ export function groupCsv(
   settlements: readonly Settlement[],
   people: ReadonlyMap<string, Pick<MoneyPerson, 'display_name'>>,
 ): string {
-  const fullName = (id: string) => people.get(id)?.display_name ?? t('activity.someone')
+  const fullName = (id: string) =>
+    people.get(id)?.display_name ?? t('transfer.csv.someoneWhoLeft')
   const involved = [
     ...expenses.flatMap((e) => [
       ...payersOf(e).map((p) => p.user_id),
@@ -207,6 +209,8 @@ export function groupCsv(
       ),
       paymentText: (from, to) =>
         t('transfer.import.rowPayment', { from: fullName(from), to: fullName(to) }),
+      nameOf: fullName,
+      categoryLabel,
     },
   )
 }

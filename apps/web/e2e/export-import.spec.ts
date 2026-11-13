@@ -42,6 +42,24 @@ async function importFile(page: Page, group: TestGroup, name: string, content: s
   await expect(page.getByText(name)).toBeVisible()
 }
 
+/** A Splitwise export of `count` groceries rows, each paid by one of three and split three ways. */
+function splitwiseFile(people: TestUser[], count: number) {
+  // Splitwise writes full names as the person columns; ours match the members exactly.
+  const rows = ['Date,Description,Category,Cost,Currency,' + people.map((p) => p.name).join(',')]
+  const totals = [0, 0, 0]
+  for (let i = 0; i < count; i++) {
+    const nets = [-1000, -1000, -1000]
+    nets[i % 3] = 2000
+    nets.forEach((cents, p) => (totals[p]! += cents))
+    const day = `2026-0${1 + (i % 9)}-${String(1 + (i % 28)).padStart(2, '0')}`
+    const cells = nets.map((c) => (c / 100).toFixed(2)).join(',')
+    rows.push(`${day},Groceries ${i + 1},Groceries,30.00,USD,${cells}`)
+  }
+  const sums = totals.map((c) => (c / 100).toFixed(2)).join(',')
+  rows.push('', `2026-09-30,Total balance, , ,USD,${sums}`)
+  return { csv: rows.join('\n'), totals }
+}
+
 test.describe('export and import', () => {
   test('a group exported to a spreadsheet and imported into an empty group keeps its balances', async ({
     newUser,
@@ -111,52 +129,45 @@ test.describe('export and import', () => {
     ])
   })
 
-  test('a 200 row Splitwise export is previewed, then written all at once or not at all', async ({
+  test('a 5,000 row Splitwise export is previewed, then written all at once', async ({
     newUser,
     openAs,
   }) => {
     const { me, ben, cleo } = await threePeople(newUser)
     const flat = await groupWith(me, [ben, cleo], { name: unique('Flat') })
-    // Splitwise writes full names as the person columns; ours match the members exactly.
-    const rows = [
-      'Date,Description,Category,Cost,Currency,' + [me, ben, cleo].map((p) => p.name).join(','),
-    ]
-    const totals = [0, 0, 0]
-    for (let i = 0; i < 200; i++) {
-      const payer = i % 3
-      const nets = [-1000, -1000, -1000]
-      nets[payer] = 2000
-      nets.forEach((cents, p) => (totals[p]! += cents))
-      const day = `2026-0${1 + (i % 9)}-${String(1 + (i % 28)).padStart(2, '0')}`
-      rows.push(
-        `${day},Groceries ${i + 1},Groceries,30.00,USD,${nets.map((c) => (c / 100).toFixed(2)).join(',')}`,
-      )
-    }
-    rows.push(
-      '',
-      `2026-09-30,Total balance, , ,USD,${totals.map((c) => (c / 100).toFixed(2)).join(',')}`,
-    )
+    const { csv, totals } = splitwiseFile([me, ben, cleo], 5000)
     const page = await openAs(me)
-    await importFile(page, flat, 'splitwise.csv', rows.join('\n'))
+    await importFile(page, flat, 'splitwise.csv', csv)
 
-    await expect(page.getByText(t('transfer.import.expenses', { count: 200 }))).toBeVisible()
+    await expect(page.getByText(t('transfer.import.expenses', { count: 5000 }))).toBeVisible()
     await expect(page.getByText(t('transfer.import.totalsMatch'))).toBeVisible()
-    await expect(page.getByText(t('transfer.import.more', { count: 194 }))).toBeVisible()
+    await expect(page.getByText(t('transfer.import.more', { count: 4994 }))).toBeVisible()
     // Nothing is written by the preview.
     expect(await fetchGroupExpenses(me.client, flat.id)).toHaveLength(0)
 
-    // Someone leaves before the import: the server refuses the whole file and names a row.
+    await page.getByRole('button', { name: t('transfer.import.submit', { count: 5000 }) }).click()
+    await expect(page).toHaveURL(new RegExp(`/groups/${flat.id}$`), { timeout: 60_000 })
+    expect(await fetchGroupExpenses(me.client, flat.id)).toHaveLength(5000)
+    expect(await balancesOf(me, flat)).toEqual({
+      [me.id]: totals[0],
+      [ben.id]: totals[1],
+      [cleo.id]: totals[2],
+    })
+  })
+
+  test('when someone leaves before the import, nothing is written and the row is named', async ({
+    newUser,
+    openAs,
+  }) => {
+    const { me, ben, cleo } = await threePeople(newUser)
+    const flat = await groupWith(me, [ben, cleo], { name: unique('Flat') })
+    const page = await openAs(me)
+    await importFile(page, flat, 'splitwise.csv', splitwiseFile([me, ben, cleo], 3000).csv)
+    await expect(page.getByText(t('transfer.import.expenses', { count: 3000 }))).toBeVisible()
+
     await leaveGroup(cleo.client, flat.id)
-    const submit = page.getByRole('button', { name: t('transfer.import.submit', { count: 200 }) })
-    await submit.click()
-    await expect(
-      page.getByText(
-        t('transfer.import.rowFailed', {
-          line: 2,
-          message: t('expenses.errors.split_member_not_in_group'),
-        }),
-      ),
-    ).toBeVisible()
+    await page.getByRole('button', { name: t('transfer.import.submit', { count: 3000 }) }).click()
+    await expect(page.getByText(t('transfer.import.errors.left', { line: 2 }))).toBeVisible()
     expect(await fetchGroupExpenses(me.client, flat.id)).toHaveLength(0)
   })
 
