@@ -5,6 +5,7 @@ import {
 } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, LoadingDots, usePrefersReducedMotion } from '@potluck/ui'
+import { CloudOff } from 'lucide-react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
@@ -107,6 +108,14 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
     )
   }
 
+  // Mutations and the preview wait for a connection instead of failing; say so where the tap was.
+  const offline = (off.isPaused || on.isPaused || preview.fetchStatus === 'paused') && (
+    <p role="status" className="flex items-start justify-center gap-2 text-sm text-mute">
+      <CloudOff aria-hidden className="mt-0.5 size-4 shrink-0" />
+      {t('unsubscribe.offline')}
+    </p>
+  )
+
   if (!preview.data) {
     return (
       <Frame>
@@ -114,6 +123,7 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
         <p role="status" className="text-mute">
           {t('unsubscribe.working')}
         </p>
+        {offline}
       </Frame>
     )
   }
@@ -132,7 +142,7 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
   )
 
   // Back on: either undone here, or resubscribed from an already-off link.
-  if (on.isSuccess) {
+  if (on.isSuccess && on.data.restored) {
     return (
       <Frame>
         <Mailbox open reduced={reduced} />
@@ -146,8 +156,10 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
     )
   }
 
-  // Off: just now, or the link's emails were already off.
+  // Off: just now, or the link's emails were already off. An 'all' link with nothing saved to put
+  // back changes nothing when asked to send again, and says so.
   if (off.isSuccess || !link.subscribed) {
+    const nothingToUndo = on.isSuccess && !on.data.restored
     return (
       <Frame>
         <Mailbox open={false} reduced={reduced} />
@@ -156,12 +168,24 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
         </h1>
         {account}
         <p role="status" className="max-w-xs text-mute">
-          {topic ? t('unsubscribe.doneOne', { what: topic }) : t('unsubscribe.doneAll')}
+          {nothingToUndo
+            ? t('unsubscribe.nothingToUndo')
+            : topic
+              ? t('unsubscribe.doneOne', { what: topic })
+              : t('unsubscribe.doneAll')}
         </p>
         <div className="grid w-full gap-2">
-          <Button variant="secondary" block loading={on.isPending} onClick={() => on.mutate(token)}>
-            {off.isSuccess ? t('unsubscribe.undo') : t('unsubscribe.resubscribe')}
-          </Button>
+          {!nothingToUndo && (
+            <Button
+              variant="secondary"
+              block
+              loading={on.isPending && !on.isPaused}
+              onClick={() => on.mutate(token)}
+            >
+              {off.isSuccess ? t('unsubscribe.undo') : t('unsubscribe.resubscribe')}
+            </Button>
+          )}
+          {offline}
           {failed}
           {manage}
         </div>
@@ -178,9 +202,10 @@ export function UnsubscribePage({ token }: { token: string | undefined }) {
         {topic ? t('unsubscribe.askOne', { what: topic }) : t('unsubscribe.askAll')}
       </p>
       <div className="grid w-full gap-2">
-        <Button block loading={off.isPending} onClick={() => off.mutate(token)}>
+        <Button block loading={off.isPending && !off.isPaused} onClick={() => off.mutate(token)}>
           {t('unsubscribe.confirm')}
         </Button>
+        {offline}
         {failed}
         {manage}
       </div>

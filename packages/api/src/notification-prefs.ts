@@ -24,8 +24,12 @@ export interface NotificationPref {
   category: NotificationCategory
   push: boolean
   email: boolean
+  /** Whether it reaches the inbox. Always true unless `inbox_allowed` (the monthly summary). */
+  inbox: boolean
   push_allowed: boolean
   email_allowed: boolean
+  /** This setting has its own inbox switch. */
+  inbox_allowed: boolean
 }
 
 export const isNotificationCategory = (value: string): value is NotificationCategory =>
@@ -54,7 +58,7 @@ export const notificationPrefsQueryOptions = (client: PotluckClient, userId: str
 export async function setNotificationPref(
   client: PotluckClient,
   category: NotificationCategory,
-  change: { push?: boolean; email?: boolean },
+  change: { push?: boolean; email?: boolean; inbox?: boolean },
 ) {
   const { error } = await client.rpc('set_notification_pref', { category, ...change })
   if (error) throw error
@@ -69,6 +73,8 @@ export interface UnsubscribeResult {
   email: string | null
   /** Whether any email the link covers is still on, after the action. */
   subscribed: boolean
+  /** For `undo`: whether anything changed (an `all` link with nothing saved changes nothing). */
+  restored: boolean
 }
 
 /**
@@ -82,12 +88,18 @@ export async function emailUnsubscribe(
 ): Promise<UnsubscribeResult> {
   const { data, error } = await client.rpc('email_unsubscribe', { token, action })
   if (error) throw error
-  const row = (data ?? {}) as { category?: unknown; email?: unknown; subscribed?: unknown }
+  const row = (data ?? {}) as {
+    category?: unknown
+    email?: unknown
+    subscribed?: unknown
+    restored?: unknown
+  }
   const category = typeof row.category === 'string' ? row.category : ''
   return {
     category: category === 'all' || isNotificationCategory(category) ? category : null,
     email: typeof row.email === 'string' ? row.email : null,
     subscribed: row.subscribed === true,
+    restored: row.restored === true,
   }
 }
 

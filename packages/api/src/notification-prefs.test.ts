@@ -15,8 +15,10 @@ const pref = (category: string, push = true, email = true) => ({
   category,
   push,
   email,
+  inbox: true,
   push_allowed: true,
   email_allowed: true,
+  inbox_allowed: false,
 })
 
 describe('notification settings', () => {
@@ -64,26 +66,29 @@ describe('notification settings', () => {
   it('previews, applies and undoes an unsubscribe link', async () => {
     const fake = fakeSupabase()
       .respond('rpc:email_unsubscribe', {
-        data: { category: 'payments', email: 'a***@x.y', subscribed: true },
+        data: { category: 'payments', email: 'a***@x.y', subscribed: true, restored: false },
       })
       .respond('rpc:email_unsubscribe', {
-        data: { category: 'all', email: null, subscribed: false },
+        data: { category: 'all', email: null, subscribed: false, restored: false },
       })
-      .respond('rpc:email_unsubscribe', { data: { category: 'something_new' } })
+      .respond('rpc:email_unsubscribe', { data: { category: 'something_new', restored: true } })
     expect(await emailUnsubscribe(fake.client, 'tok', 'preview')).toEqual({
       category: 'payments',
       email: 'a***@x.y',
       subscribed: true,
+      restored: false,
     })
     expect(await emailUnsubscribe(fake.client, 'tok', 'unsubscribe')).toEqual({
       category: 'all',
       email: null,
       subscribed: false,
+      restored: false,
     })
     expect(await emailUnsubscribe(fake.client, 'tok', 'undo')).toEqual({
       category: null,
       email: null,
       subscribed: false,
+      restored: true,
     })
     expect(fake.calls.map((c) => (c as { args: unknown }).args)).toEqual([
       { token: 'tok', action: 'preview' },
@@ -96,6 +101,7 @@ describe('notification settings', () => {
       category: null,
       email: null,
       subscribed: false,
+      restored: false,
     })
     const bad = fakeSupabase().respond('rpc:email_unsubscribe', {
       error: { message: 'invalid_unsubscribe_link' },

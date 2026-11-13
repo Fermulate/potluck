@@ -7,13 +7,12 @@ import {
 } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, cn, Skeleton, Switch, toast } from '@potluck/ui'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { onlineManager, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlarmClock,
   ArrowRightLeft,
   BellRing,
   CalendarHeart,
-  CloudOff,
   Mail,
   MessageCircle,
   PencilLine,
@@ -40,7 +39,7 @@ const LOOK: Record<NotificationCategory, { icon: ReactNode; tile: string }> = {
   monthly_summary: { icon: <ScrollText />, tile: 'bg-olive-soft text-olive-ink' },
 }
 
-type Channel = 'push' | 'email'
+type Channel = 'push' | 'email' | 'inbox'
 interface Change {
   category: NotificationCategory
   channel: Channel
@@ -61,6 +60,11 @@ function useSavePref(userId: string) {
     mutationFn: ({ category, channel, on }: Change) =>
       setNotificationPref(supabase, category, { [channel]: on }),
     onMutate: async ({ category, channel, on }) => {
+      // The switch moves right away; say why it has not saved yet. A toast stays in view on a
+      // phone, where a note under the list would be off screen.
+      if (!onlineManager.isOnline()) {
+        toast(t('settings.notificationPrefs.offline'), { id: 'notification-prefs-offline' })
+      }
       await queryClient.cancelQueries({ queryKey: key })
       const previous = queryClient.getQueryData<NotificationPref[]>(key)
       queryClient.setQueryData<NotificationPref[]>(key, (rows) =>
@@ -110,8 +114,8 @@ function PushHere({ push }: { push: DevicePush }) {
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card bg-sunken px-3 py-2.5 text-sm">
       <BellRing aria-hidden className="size-4 shrink-0 text-mute" />
       <span className="min-w-0 flex-1 text-mute">
+        {/* "Blocked in your browser settings" is already under the device switch above. */}
         {t('settings.notificationPrefs.pushOffHere')}
-        {push.state === 'blocked' && <> {t('notifications.pushBlocked')}</>}
       </span>
       {push.state === 'off' && (
         <Button
@@ -135,17 +139,18 @@ function PushHere({ push }: { push: DevicePush }) {
 
 /**
  * Per type push and email settings, for the whole account (every device). The inbox always gets
- * everything. The email column shows once `app_config.email_notifications` is on. With `push`,
- * the push column dims while this device is not subscribed and says how to fix that.
+ * everything except the monthly summary, which has its own inbox switch. The email column shows
+ * once `app_config.email_notifications` is on. With `push`, the push column dims while this
+ * device is not subscribed and says how to fix that.
  */
 export function NotificationPrefs({ push }: { push?: DevicePush }) {
   const userId = useUserId()
   const emailOn = useFlag('email_notifications')
   const prefs = useQuery(notificationPrefsQueryOptions(supabase, userId))
   const save = useSavePref(userId)
-  const channels: Channel[] = emailOn ? ['push', 'email'] : ['push']
+  const channels: ('push' | 'email')[] = emailOn ? ['push', 'email'] : ['push']
   const pushQuiet = !!push && push.state !== 'on' && push.state !== 'loading'
-  // The monthly summary has its own row below: its one switch covers the card and the email.
+  // The monthly summary has its own row below, with an inbox switch and an email switch.
   const rows = (prefs.data ?? []).filter(
     (p) => p.category !== 'monthly_summary' && channels.some((c) => p[`${c}_allowed`]),
   )
@@ -224,30 +229,45 @@ export function NotificationPrefs({ push }: { push?: DevicePush }) {
               )
             })}
             {summary && (
-              <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 border-t border-line py-3">
+              <li className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-start gap-3 border-t border-line py-3">
                 <Tile category="monthly_summary" />
-                <Words category="monthly_summary" />
-                {/* Under the Email column once there is one; it also covers the inbox card. */}
-                <span className="flex gap-3">
-                  {emailOn && <span aria-hidden className="w-12" />}
-                  <span className="grid w-12 place-items-center">
+                <div className="grid gap-3">
+                  <span className="min-w-0">
+                    <span className="block text-[0.9375rem] font-semibold">
+                      {t('settings.notificationPrefs.categories.monthly_summary.label')}
+                    </span>
+                    <span className="block text-sm text-mute">
+                      {emailOn
+                        ? t('settings.notificationPrefs.categories.monthly_summary.hintEmail')
+                        : t('settings.notificationPrefs.categories.monthly_summary.hint')}
+                    </span>
+                  </span>
+                  {/* Two labelled switches, not the columns: the card is not a push. */}
+                  <Switch
+                    label={t('settings.notificationPrefs.summaryInbox')}
+                    aria-label={t('settings.notificationPrefs.channel', {
+                      category: t('settings.notificationPrefs.categories.monthly_summary.label'),
+                      channel: t('settings.notificationPrefs.summaryInbox'),
+                    })}
+                    checked={summary.inbox}
+                    onCheckedChange={(on) => change('monthly_summary', 'inbox', on)}
+                  />
+                  {emailOn && (
                     <Switch
-                      aria-label={t('settings.notificationPrefs.categories.monthly_summary.label')}
+                      label={t('settings.notificationPrefs.summaryEmail')}
+                      aria-label={t('settings.notificationPrefs.channel', {
+                        category: t('settings.notificationPrefs.categories.monthly_summary.label'),
+                        channel: t('settings.notificationPrefs.summaryEmail'),
+                      })}
                       checked={summary.email}
                       onCheckedChange={(on) => change('monthly_summary', 'email', on)}
                     />
-                  </span>
-                </span>
+                  )}
+                </div>
               </li>
             )}
           </ul>
         </div>
-      )}
-      {save.isPaused && (
-        <p role="status" className="flex items-start gap-2 text-sm text-mute">
-          <CloudOff aria-hidden className="mt-0.5 size-4 shrink-0" />
-          {t('settings.notificationPrefs.offline')}
-        </p>
       )}
       {!emailOn && (
         <p className="flex items-start gap-2 text-sm text-mute">

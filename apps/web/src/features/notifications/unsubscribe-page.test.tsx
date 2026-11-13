@@ -1,7 +1,8 @@
 import type * as AuthModule from '@/lib/auth'
 import { t } from '@potluck/i18n'
+import { onlineManager } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb } from '@/test/supabase'
 import { UnsubscribePage } from './unsubscribe-page'
@@ -18,8 +19,8 @@ const actions = () =>
     .calls.filter((c) => c.kind === 'rpc' && c.name === 'email_unsubscribe')
     .map((c) => (c as { args: { action: string } }).args.action)
 
-const answer = (category: string, subscribed: boolean) => ({
-  data: { category, email: 'a***@example.com', subscribed },
+const answer = (category: string, subscribed: boolean, restored = true) => ({
+  data: { category, email: 'a***@example.com', subscribed, restored },
 })
 
 function open(token: string | undefined) {
@@ -30,6 +31,31 @@ describe('UnsubscribePage', () => {
   beforeEach(() => {
     signedIn = false
     resetDb()
+  })
+  afterEach(() => {
+    onlineManager.setOnline(true)
+  })
+
+  it('sending an all link again with nothing saved changes nothing, and says so', async () => {
+    db().respond('rpc:email_unsubscribe', answer('all', false), answer('all', false, false))
+    open('u1.all.sig')
+    fireEvent.click(await screen.findByRole('button', { name: t('unsubscribe.resubscribe') }))
+    expect(await screen.findByText(t('unsubscribe.nothingToUndo'))).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: t('unsubscribe.alreadyTitle') })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('unsubscribe.resubscribe') })).toBeNull()
+  })
+
+  it('a tap made offline says it will go through once back online', async () => {
+    db().respond('rpc:email_unsubscribe', answer('payments', true), answer('payments', false))
+    open('u1.payments.sig')
+    const confirm = await screen.findByRole('button', { name: t('unsubscribe.confirm') })
+    onlineManager.setOnline(false)
+    fireEvent.click(confirm)
+    expect(await screen.findByText(t('unsubscribe.offline'))).toBeInTheDocument()
+    expect(actions()).toEqual(['preview'])
+    onlineManager.setOnline(true)
+    expect(await screen.findByRole('heading', { name: t('unsubscribe.done') })).toBeInTheDocument()
+    expect(actions()).toEqual(['preview', 'unsubscribe'])
   })
 
   it('opening the link changes nothing: it asks first, naming the account', async () => {
