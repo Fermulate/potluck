@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(83);
+select plan(84);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -515,9 +515,17 @@ reset role;
 delete from public.group_members where group_id = tests.id('left') and user_id = tests.uid('eve');
 delete from public.friendships where tests.uid('eve') in (user_id, friend_id);
 select tests.login('ava');
+-- The template keeps its splits as sent, keys of the app's own included.
 select create_expense_v2(jsonb_build_object(
   'group_id', tests.id('left'), 'description', 'Wifi', 'amount_cents', 4000, 'recurrence', 'monthly',
-  'spent_at', '2026-03-31', 'notes', 'Router in the hall', 'splits', tests.people('ava', 'ben')));
+  'spent_at', '2026-03-31', 'notes', 'Router in the hall', 'splits', jsonb_build_array(
+    jsonb_build_object('user_id', tests.uid('ava'), 'author_id', 'x',
+                       'note', jsonb_build_object('user_id', tests.uid('outsider'))),
+    jsonb_build_object('user_id', tests.uid('ben')))));
+select lives_ok(
+  $$ select public.export_my_data() $$,
+  'a template split with keys of its own does not stop the backup'
+);
 select set_config('tests.backup', public.export_my_data()::text, true);
 reset role;
 create view pg_temp.backup as select current_setting('tests.backup')::jsonb as doc;

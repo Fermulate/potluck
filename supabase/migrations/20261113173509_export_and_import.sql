@@ -32,7 +32,7 @@
 -- version 1, documented in docs/backup-format.md). Rates are decimal text, like every read.
 -- It carries payment comments, repeating expense templates and the caller's own payment methods
 -- (other people's methods stay out of it). `people` names every person id the groups mention,
--- read back from the groups document itself, plus the caller's friends.
+-- read back from the id fields of the groups document itself, plus the caller's friends.
 
 -- Holding back per row side effects -----------------------------------------------------------
 
@@ -814,11 +814,22 @@ begin
       from public.profiles p
       where p.id in (
         select (v #>> '{}')::uuid
-        from unnest(array['strict $.**.user_id', 'strict $.**.user_ids[*]', 'strict $.**.created_by',
-                          'strict $.**.paid_by', 'strict $.**.from_user', 'strict $.**.to_user',
-                          'strict $.**.author_id']::jsonpath[]) k (path),
+        from unnest(array[
+          '$[*].created_by', '$[*].members[*].user_id',
+          '$[*].expenses[*].created_by', '$[*].expenses[*].payers[*].user_id',
+          '$[*].expenses[*].splits[*].user_id', '$[*].expenses[*].items[*].user_ids[*]',
+          '$[*].expenses[*].comments[*].author_id',
+          '$[*].payments[*].from_user', '$[*].payments[*].to_user', '$[*].payments[*].created_by',
+          '$[*].payments[*].comments[*].author_id',
+          '$[*].recurring[*].created_by', '$[*].recurring[*].paid_by',
+          '$[*].recurring[*].payers[*].user_id', '$[*].recurring[*].splits[*].user_id',
+          '$[*].recurring[*].items[*].user_ids[*]',
+          '$[*].plans[*].created_by', '$[*].plans[*].rsvps[*].user_id',
+          '$[*].plans[*].availability[*].user_id', '$[*].plans[*].comments[*].author_id'
+        ]::jsonpath[]) k (path),
              jsonb_path_query(v_groups, k.path) v
-        where jsonb_typeof(v) = 'string'
+        -- Templates keep their payers, splits and items as sent: only real ids count.
+        where jsonb_typeof(v) = 'string' and pg_input_is_valid(v #>> '{}', 'uuid')
         union select f.friend_id from public.friendships f where f.user_id = uid
         union select uid
       )
