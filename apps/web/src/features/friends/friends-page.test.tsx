@@ -95,27 +95,95 @@ describe('FriendsPage', () => {
     expect(within(await openTab('Ben Ortiz')).getByText(t('friends.settled'))).toBeInTheDocument()
   })
 
-  it('opens the existing one to one tab', async () => {
-    const { router } = renderPage()
-    fireEvent.click(await openTab('Ben Ortiz'))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-ben'))
-    expect(db().rpcArgs('get_or_create_direct_group')).toEqual([])
+  it('opens the friend page', async () => {
+    renderPage()
+    expect(await openTab('Ben Ortiz')).toHaveAttribute('href', '/friends/u-ben')
   })
 
-  it('starts a tab with a friend who has none yet', async () => {
-    db().respond('rpc:get_or_create_direct_group', { data: 'g-cleo' })
-    const { router } = renderPage()
-    fireEvent.click(await openTab('Cleo Park'))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-cleo'))
-    expect(db().rpcArgs('get_or_create_direct_group')).toEqual([{ friend_id: 'u-cleo' }])
+  it('suggests people from your groups who are not friends, never placeholders', async () => {
+    seed({
+      groups: [
+        withBen,
+        group({
+          members: [...group().members, { ...member('p-sam', 'Sam Lee'), is_placeholder: true }],
+        }),
+      ],
+    })
+    db().respond('rpc:my_blocks', {
+      data: [{ user_id: 'u-dev', display_name: 'Dev Patel', avatar_path: null, blocked_at: 't' }],
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: t('friends.add') }))
+    const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
+    // Ben and Cleo are friends, Dev is blocked and Sam is not on Potluck yet.
+    await within(sheet).findByRole('button', { name: /Hike crew/ })
+    await waitFor(() => expect(db().rpcArgs('my_blocks')).toHaveLength(1))
+    expect(within(sheet).queryByText(t('people.addFriend.suggestions'))).toBeNull()
   })
 
-  it('stays put and explains when the tab cannot be opened', async () => {
-    db().respond('rpc:get_or_create_direct_group', { error: { message: 'Server error' } })
-    const { router } = renderPage()
-    fireEvent.click(await openTab('Cleo Park'))
-    expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/friends')
+  it('adds back someone you share a group with', async () => {
+    seed({ friends: false, groups: [group()] })
+    db().respond('rpc:my_blocks', { data: [] })
+    renderPage()
+    fireEvent.click((await screen.findAllByRole('button', { name: t('friends.add') }))[0]!)
+    const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
+    const add = await within(sheet).findByRole('button', {
+      name: t('people.addFriend.addName', { name: 'Ben Ortiz' }),
+    })
+    expect(
+      within(sheet)
+        .getAllByRole('button', { name: /as a friend$/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual([
+      t('people.addFriend.addName', { name: 'Ben Ortiz' }),
+      t('people.addFriend.addName', { name: 'Cleo Park' }),
+      t('people.addFriend.addName', { name: 'Dev Patel' }),
+    ])
+    fireEvent.click(add)
+    expect(
+      await screen.findByText(t('people.addFriend.added', { name: 'Ben Ortiz' })),
+    ).toBeInTheDocument()
+    expect(db().rpcArgs('add_friend')).toEqual([{ user_id: 'u-ben' }])
+  })
+
+  it('copies the personal friend link', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    db().respond('rpc:my_friend_link', { data: 'ava-link-123' })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: t('friends.add') }))
+    const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
+    await within(sheet).findByText(/ava-link-123/)
+    fireEvent.click(within(sheet).getByRole('button', { name: t('people.friendLink.copy') }))
+    expect(await screen.findByText(t('people.friendLink.copied'))).toBeInTheDocument()
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/friend.ava-link-123$/))
+  })
+
+  it('makes a new friend link', async () => {
+    db().respond('rpc:my_friend_link', { data: 'old-link-123' }, { data: 'new-link-456' })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: t('friends.add') }))
+    const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
+    await within(sheet).findByText(/old-link-123/)
+    fireEvent.click(within(sheet).getByRole('button', { name: t('people.friendLink.rotate') }))
+    expect(await within(sheet).findByText(/new-link-456/)).toBeInTheDocument()
+    expect(db().rpcArgs('my_friend_link')).toEqual([{ rotate: false }, { rotate: true }])
+  })
+
+  it('makes an email invite and hands it to the mail app', async () => {
+    db().respond('rpc:create_friend_invite', { data: { code: 'mail-link-789' } })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: t('friends.add') }))
+    const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
+    const input = within(sheet).getByLabelText(t('people.friendEmail.label'))
+    fireEvent.change(input, { target: { value: 'nope' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: t('people.friendEmail.send') }))
+    expect(await within(sheet).findByText(t('errors.validation.invalidEmail'))).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: 'Cleo@Example.com' } })
+    fireEvent.click(within(sheet).getByRole('button', { name: t('people.friendEmail.send') }))
+    expect(await screen.findByText(t('people.friendEmail.ready'))).toBeInTheDocument()
+    expect(db().rpcArgs('create_friend_invite')).toEqual([{ email: 'cleo@example.com' }])
   })
 
   it('suggests starting a group when there is nobody and nowhere to invite them', async () => {

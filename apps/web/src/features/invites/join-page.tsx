@@ -95,7 +95,11 @@ export function JoinPage({ code }: { code: string }) {
       const groupId = await acceptInvite(supabase, code)
       setBurst((n) => n + 1)
       await queryClient.invalidateQueries({ queryKey: groupKeys.all })
-      toast.success(t('invites.join.welcome', { group: preview.data.name }))
+      toast.success(
+        preview.data.placeholder_name
+          ? t('people.claim.welcome', { name: preview.data.placeholder_name })
+          : t('invites.join.welcome', { group: preview.data.name }),
+      )
       window.setTimeout(
         () => void navigate({ to: '/groups/$groupId', params: { groupId }, replace: true }),
         reduced ? 0 : 650,
@@ -160,6 +164,8 @@ export function JoinPage({ code }: { code: string }) {
   )
   const line = namesLine(group)
   const host = group.first_names[0]
+  // A claim link: someone added this person by name and their history is waiting.
+  const seat = group.placeholder_name ?? null
 
   return (
     <Frame>
@@ -177,9 +183,24 @@ export function JoinPage({ code }: { code: string }) {
         />
       </motion.div>
       <div className="grid gap-3">
-        <p className="flourish text-2xl text-mute">{t('invites.join.title')}</p>
+        <p className="flourish text-2xl text-mute">
+          {seat ? t('people.claim.title') : t('invites.join.title')}
+        </p>
         <h1 className="font-display text-5xl leading-[0.95] sm:text-6xl">{group.name}</h1>
-        {host && <p className="text-[0.9375rem]">{t('invites.join.body', { name: host })}</p>}
+        {seat ? (
+          <div className="grid gap-1">
+            <p className="text-[0.9375rem]">
+              {t('people.claim.seatFor', { host: host ?? group.name, name: seat })}
+            </p>
+            {group.email_hint && !group.is_member && (
+              <p className="text-sm text-mute">
+                {t('people.claim.emailNote', { email: group.email_hint })}
+              </p>
+            )}
+          </div>
+        ) : (
+          host && <p className="text-[0.9375rem]">{t('invites.join.body', { name: host })}</p>
+        )}
       </div>
       <div className="flex flex-col items-center gap-2">
         <AvatarStack people={faces} max={5} size="lg" animate label={line ?? undefined} />
@@ -200,7 +221,7 @@ export function JoinPage({ code }: { code: string }) {
           </>
         ) : session && !needsOnboarding(session) ? (
           <Button size="lg" block loading={joining} onClick={join}>
-            {t('invites.join.accept', { group: group.name })}
+            {seat ? t('people.claim.accept') : t('invites.join.accept', { group: group.name })}
           </Button>
         ) : session ? (
           <Button asChild size="lg" block>
@@ -212,12 +233,12 @@ export function JoinPage({ code }: { code: string }) {
           <>
             <Button asChild size="lg" block>
               <Link to="/sign-up" search={{ redirect: here }}>
-                {t('invites.join.signUpToJoin')}
+                {seat ? t('people.claim.signUp') : t('invites.join.signUpToJoin')}
               </Link>
             </Button>
             <Button asChild variant="ghost" block>
               <Link to="/sign-in" search={{ redirect: here }}>
-                {t('invites.join.signInToJoin')}
+                {seat ? t('people.claim.signIn') : t('invites.join.signInToJoin')}
               </Link>
             </Button>
           </>

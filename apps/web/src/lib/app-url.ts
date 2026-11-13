@@ -13,3 +13,7 @@ export function inviteUrl(code: string): string {
 export function guestUrl(code: string): string {
   return `${appOrigin()}/a/${encodeURIComponent(code)}`
 }
+
+export function friendUrl(code: string): string {
+  return `${appOrigin()}/friend/${encodeURIComponent(code)}`
+}

@@ -1,7 +1,9 @@
 import {
   groupKeys,
   leaveGroup,
+  peopleKeys,
   removeMember,
+  removePlaceholder,
   setMemberRole,
   transferOwnership,
   type GroupDetail,
@@ -42,6 +44,18 @@ import { errorMessage } from '@/lib/errors'
 import { avatarSrc, useViewerTimezone } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { displayName } from './people'
+import {
+  canAddPeople,
+  placeholderActions,
+  placeholderLine,
+  usePlaceholders,
+} from './placeholder-helpers'
+import {
+  AddPlaceholderSheet,
+  AddSeatRow,
+  EditPlaceholderSheet,
+  PlaceholderMenu,
+} from './placeholders'
 import { useGroup } from './use-groups'
 
 const roleTone: Record<GroupRole, BadgeTone> = {
@@ -80,6 +94,7 @@ type PendingAction =
   | { kind: 'role'; member: GroupMember; role: GroupRole }
   | { kind: 'transfer'; member: GroupMember }
   | { kind: 'remove'; member: GroupMember }
+  | { kind: 'removePlaceholder'; member: GroupMember }
   | { kind: 'leave' }
 
 function ActionRow({
@@ -139,8 +154,22 @@ function memberActions(group: GroupDetail, member: GroupMember) {
   }
 }
 
-function hasMemberActions(group: GroupDetail, member: GroupMember, viewerId: string) {
+function hasMemberActions(
+  group: GroupDetail,
+  member: GroupMember,
+  viewerId: string,
+  placeholders: ReturnType<typeof usePlaceholders>['data'],
+) {
   if (member.id === viewerId) return false
+  if (member.is_placeholder) {
+    const { share, remind, edit, remove } = placeholderActions(
+      group,
+      member,
+      placeholders?.get(member.id),
+      viewerId,
+    )
+    return share || remind || edit || remove
+  }
   const { promote, demote, transfer, remove } = memberActions(group, member)
   return promote || demote || transfer || remove
 }
@@ -216,9 +245,12 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: group, isPending } = useGroup(groupId)
+  const { data: placeholders } = usePlaceholders(groupId)
   const [menuFor, setMenuFor] = useState<GroupMember | null>(null)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [editing, setEditing] = useState<GroupMember | null>(null)
 
   if (isPending || !group) return <MembersSkeleton />
 
@@ -233,10 +265,11 @@ export function MembersPage({ groupId }: { groupId: string }) {
   const lastMember = group.members.length === 1
   // A brand new group: put the invite link right here instead of behind a button.
   const alone = canInvite && lastMember
-  // Only closed accounts are left with the owner: nobody can take over, so leaving deletes
-  // the group (the server checks nobody active still has an open balance).
+  // Only closed accounts and people not on Potluck yet are left with the owner: nobody can take
+  // over, so leaving deletes the group (the server checks nobody still has an open balance).
   const onlyClosedLeft =
-    !lastMember && group.members.every((m) => m.id === viewerId || Boolean(m.deleted_at))
+    !lastMember &&
+    group.members.every((m) => m.id === viewerId || Boolean(m.deleted_at) || m.is_placeholder)
   const ownerClosesGroup = me?.role === 'owner' && onlyClosedLeft
   const canLeave = me
     ? can(me.role, 'group.leave', { netCents: me.net_cents }) ||
@@ -253,7 +286,11 @@ export function MembersPage({ groupId }: { groupId: string }) {
           ? t('groups.settings.ownerCannotLeave')
           : undefined
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: groupKeys.all })
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: groupKeys.all }),
+      queryClient.invalidateQueries({ queryKey: peopleKeys.placeholders(groupId) }),
+    ])
 
   async function run(action: PendingAction) {
     try {
@@ -274,6 +311,10 @@ export function MembersPage({ groupId }: { groupId: string }) {
         case 'remove':
           await removeMember(supabase, group!.id, action.member.id)
           toast.success(t('members.removed', { name: displayName(action.member) }))
+          break
+        case 'removePlaceholder':
+          await removePlaceholder(supabase, action.member.id)
+          toast.success(t('people.placeholder.removed', { name: action.member.display_name }))
           break
         case 'leave':
           await leaveGroup(supabase, group!.id)
@@ -303,6 +344,16 @@ export function MembersPage({ groupId }: { groupId: string }) {
           description: t('groups.settings.transferConfirm', { name: displayName(action.member) }),
           confirm: t('members.makeOwner'),
           tone: 'primary' as const,
+        }
+      case 'removePlaceholder':
+        return {
+          title: t('people.placeholder.remove', { name: action.member.display_name }),
+          description: t('people.placeholder.removeConfirm', {
+            name: action.member.display_name,
+            group: group!.name,
+          }),
+          confirm: t('common.remove'),
+          tone: 'danger' as const,
         }
       case 'remove':
         return {
@@ -345,29 +396,43 @@ export function MembersPage({ groupId }: { groupId: string }) {
         {group.members.map((member) => {
           const name = displayName(member)
           const isMe = member.id === viewerId
+          const seat = member.is_placeholder
           return (
             <li
               key={member.id}
-              className="flex items-center gap-3 rounded-card border border-line bg-card p-3 [--avatar-ring:var(--pl-card)]"
+              className={
+                seat
+                  ? 'flex items-center gap-3 rounded-card border border-dashed border-line-strong bg-card p-3 [--avatar-ring:var(--pl-card)]'
+                  : 'flex items-center gap-3 rounded-card border border-line bg-card p-3 [--avatar-ring:var(--pl-card)]'
+              }
             >
-              <Avatar name={name} seed={member.id} src={avatarSrc(member.avatar_path)} size="md" />
+              <Avatar
+                name={name}
+                seed={member.id}
+                src={avatarSrc(member.avatar_path)}
+                size="md"
+                className={seat ? 'opacity-75 grayscale-[35%]' : undefined}
+              />
               <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-2">
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="truncate font-semibold">
                     {isMe ? t('members.you', { name }) : name}
                   </span>
                   {member.role !== 'member' && (
                     <Badge tone={roleTone[member.role]}>{t(`roles.${member.role}.label`)}</Badge>
                   )}
+                  {seat && <Badge tone="neutral">{t('people.placeholder.badge')}</Badge>}
                 </p>
-                <p className="text-xs text-mute">
-                  {t('members.joined', {
-                    date: formatDate(member.joined_at, { timeZone, style: 'medium' }),
-                  })}
+                <p className="truncate text-xs text-mute">
+                  {seat
+                    ? placeholderLine(placeholders?.get(member.id), timeZone)
+                    : t('members.joined', {
+                        date: formatDate(member.joined_at, { timeZone, style: 'medium' }),
+                      })}
                 </p>
               </div>
               <MemberBalance member={member} currency={group.currency} />
-              {hasMemberActions(group, member, viewerId) ? (
+              {hasMemberActions(group, member, viewerId, placeholders) ? (
                 <IconButton
                   size="sm"
                   label={t('members.actions', { name })}
@@ -380,6 +445,7 @@ export function MembersPage({ groupId }: { groupId: string }) {
             </li>
           )
         })}
+        {canAddPeople(group) && <AddSeatRow onClick={() => setAddOpen(true)} />}
       </ul>
 
       {alone && (
@@ -414,14 +480,31 @@ export function MembersPage({ groupId }: { groupId: string }) {
       <Sheet open={!!menuFor} onOpenChange={(open) => !open && setMenuFor(null)}>
         {menuFor && (
           <SheetContent title={displayName(menuFor)} closeLabel={t('common.close')} size="sm">
-            <MemberActions
-              group={group}
-              member={menuFor}
-              onPick={(action) => {
-                setMenuFor(null)
-                setPending(action)
-              }}
-            />
+            {menuFor.is_placeholder ? (
+              <PlaceholderMenu
+                group={group}
+                member={menuFor}
+                info={placeholders?.get(menuFor.id)}
+                onEdit={() => {
+                  setMenuFor(null)
+                  setEditing(menuFor)
+                }}
+                onRemove={() => {
+                  setMenuFor(null)
+                  setPending({ kind: 'removePlaceholder', member: menuFor })
+                }}
+                onDone={() => setMenuFor(null)}
+              />
+            ) : (
+              <MemberActions
+                group={group}
+                member={menuFor}
+                onPick={(action) => {
+                  setMenuFor(null)
+                  setPending(action)
+                }}
+              />
+            )}
           </SheetContent>
         )}
       </Sheet>
@@ -443,6 +526,15 @@ export function MembersPage({ groupId }: { groupId: string }) {
       {canInvite && !alone && (
         <InviteSheet group={group} open={inviteOpen} onOpenChange={setInviteOpen} />
       )}
+      {canAddPeople(group) && (
+        <AddPlaceholderSheet group={group} open={addOpen} onOpenChange={setAddOpen} />
+      )}
+      <EditPlaceholderSheet
+        key={editing?.id ?? 'none'}
+        member={editing}
+        info={editing ? placeholders?.get(editing.id) : undefined}
+        onOpenChange={(open) => !open && setEditing(null)}
+      />
     </div>
   )
 }

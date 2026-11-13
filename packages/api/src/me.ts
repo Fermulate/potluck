@@ -40,7 +40,7 @@ export async function fetchProfilesByIds(client: PotluckClient, ids: string[]) {
   if (unique.length === 0) return []
   const { data, error } = await client
     .from('profiles')
-    .select('id, display_name, avatar_path, deleted_at')
+    .select('id, display_name, avatar_path, deleted_at, is_placeholder')
     .in('id', unique)
   if (error) throw error
   return data ?? []

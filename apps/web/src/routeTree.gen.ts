@@ -26,9 +26,11 @@ import { Route as AppSearchRouteImport } from './routes/_app/search'
 import { Route as ACodeRouteImport } from './routes/a.$code'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
+import { Route as FriendCodeRouteImport } from './routes/friend.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as AppExpensesExpenseIdRouteImport } from './routes/_app/expenses/$expenseId'
 import { Route as AppFriendsIndexRouteImport } from './routes/_app/friends/index'
+import { Route as AppFriendsFriendIdRouteImport } from './routes/_app/friends/$friendId'
 import { Route as AppGroupsIndexRouteImport } from './routes/_app/groups/index'
 import { Route as AppGroupsGroupIdRouteImport } from './routes/_app/groups/$groupId'
 import { Route as AppMeIndexRouteImport } from './routes/_app/me/index'
@@ -133,6 +135,11 @@ const DevKitRoute = DevKitRouteImport.update({
   path: '/dev/kit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FriendCodeRoute = FriendCodeRouteImport.update({
+  id: '/friend/$code',
+  path: '/friend/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JoinCodeRoute = JoinCodeRouteImport.update({
   id: '/join/$code',
   path: '/join/$code',
@@ -146,6 +153,11 @@ const AppExpensesExpenseIdRoute = AppExpensesExpenseIdRouteImport.update({
 const AppFriendsIndexRoute = AppFriendsIndexRouteImport.update({
   id: '/friends/',
   path: '/friends/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFriendsFriendIdRoute = AppFriendsFriendIdRouteImport.update({
+  id: '/friends/$friendId',
+  path: '/friends/$friendId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGroupsIndexRoute = AppGroupsIndexRouteImport.update({
@@ -265,8 +277,10 @@ export interface FileRoutesByFullPath {
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
+  '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
   '/new/expense': typeof AppNewExpenseRoute
   '/new/plan': typeof AppNewPlanRoute
@@ -305,8 +319,10 @@ export interface FileRoutesByTo {
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
+  '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/new/expense': typeof AppNewExpenseRoute
   '/new/plan': typeof AppNewPlanRoute
   '/new/settle': typeof AppNewSettleRoute
@@ -346,8 +362,10 @@ export interface FileRoutesById {
   '/a/$code': typeof ACodeRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/dev/kit': typeof DevKitRoute
+  '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/_app/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
+  '/_app/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/_app/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
   '/_app/new/expense': typeof AppNewExpenseRoute
   '/_app/new/plan': typeof AppNewPlanRoute
@@ -388,8 +406,10 @@ export interface FileRouteTypes {
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
+    | '/friend/$code'
     | '/join/$code'
     | '/expenses/$expenseId'
+    | '/friends/$friendId'
     | '/groups/$groupId'
     | '/new/expense'
     | '/new/plan'
@@ -428,8 +448,10 @@ export interface FileRouteTypes {
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
+    | '/friend/$code'
     | '/join/$code'
     | '/expenses/$expenseId'
+    | '/friends/$friendId'
     | '/new/expense'
     | '/new/plan'
     | '/new/settle'
@@ -468,8 +490,10 @@ export interface FileRouteTypes {
     | '/a/$code'
     | '/auth/callback'
     | '/dev/kit'
+    | '/friend/$code'
     | '/join/$code'
     | '/_app/expenses/$expenseId'
+    | '/_app/friends/$friendId'
     | '/_app/groups/$groupId'
     | '/_app/new/expense'
     | '/_app/new/plan'
@@ -505,6 +529,7 @@ export interface RootRouteChildren {
   ACodeRoute: typeof ACodeRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   DevKitRoute: typeof DevKitRoute
+  FriendCodeRoute: typeof FriendCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
 }
 
@@ -629,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DevKitRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/friend/$code': {
+      id: '/friend/$code'
+      path: '/friend/$code'
+      fullPath: '/friend/$code'
+      preLoaderRoute: typeof FriendCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/join/$code': {
       id: '/join/$code'
       path: '/join/$code'
@@ -648,6 +680,13 @@ declare module '@tanstack/react-router' {
       path: '/friends'
       fullPath: '/friends/'
       preLoaderRoute: typeof AppFriendsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/friends/$friendId': {
+      id: '/_app/friends/$friendId'
+      path: '/friends/$friendId'
+      fullPath: '/friends/$friendId'
+      preLoaderRoute: typeof AppFriendsFriendIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/groups/': {
@@ -816,6 +855,7 @@ interface AppRouteChildren {
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppSearchRoute: typeof AppSearchRoute
   AppExpensesExpenseIdRoute: typeof AppExpensesExpenseIdRoute
+  AppFriendsFriendIdRoute: typeof AppFriendsFriendIdRoute
   AppGroupsGroupIdRoute: typeof AppGroupsGroupIdRouteWithChildren
   AppNewExpenseRoute: typeof AppNewExpenseRoute
   AppNewPlanRoute: typeof AppNewPlanRoute
@@ -838,6 +878,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppNotificationsRoute: AppNotificationsRoute,
   AppSearchRoute: AppSearchRoute,
   AppExpensesExpenseIdRoute: AppExpensesExpenseIdRoute,
+  AppFriendsFriendIdRoute: AppFriendsFriendIdRoute,
   AppGroupsGroupIdRoute: AppGroupsGroupIdRouteWithChildren,
   AppNewExpenseRoute: AppNewExpenseRoute,
   AppNewPlanRoute: AppNewPlanRoute,
@@ -868,6 +909,7 @@ const rootRouteChildren: RootRouteChildren = {
   ACodeRoute: ACodeRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   DevKitRoute: DevKitRoute,
+  FriendCodeRoute: FriendCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
 }
 export const routeTree = rootRouteImport

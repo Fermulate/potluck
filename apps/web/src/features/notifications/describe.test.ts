@@ -197,6 +197,17 @@ describe('deletions, being added, and the monthly summary', () => {
     )
   })
 
+  it('opens a new friend from an accepted friend link', () => {
+    const view = describeNotification(
+      row('friend.added', { actor_id: 'u-ben', user_id: 'u-ben' }),
+      ctx,
+    )
+    expect(view.title).toBe('New friend')
+    expect(view.body).toBe('Ben accepted your friend link.')
+    expect(view.target).toEqual({ to: '/friends/$friendId', params: { friendId: 'u-ben' } })
+    expect(describeNotification(row('friend.added', {}), ctx).target).toEqual({ to: '/friends' })
+  })
+
   it('welcomes someone added to a group and opens it', () => {
     const view = describeNotification(
       row('member.added', { actor_id: 'u-ben', group_id: 'g-1' }),

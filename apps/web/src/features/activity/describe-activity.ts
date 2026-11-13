@@ -82,7 +82,14 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       break
     }
     case 'member':
-      emoji = item.verb === 'member.joined' ? '👋' : item.verb === 'member.left' ? '🚪' : '🪪'
+      emoji =
+        item.verb === 'member.joined' || item.verb === 'member.claimed'
+          ? '👋'
+          : item.verb === 'member.added'
+            ? '🪑'
+            : item.verb === 'member.left'
+              ? '🚪'
+              : '🪪'
       tone = 'plum'
       named = str(d.user_id)
       params.name = ctx.nameOf(named, { lower: true })
