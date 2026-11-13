@@ -212,6 +212,7 @@ export const errors = {
     invalid_unsubscribe_link:
       'Este link de cancelamento não funciona. Altere as configurações de e-mail na página Eu.',
     mfa_required: 'Conclua primeiro a entrada em duas etapas.',
+    invalid_payment_handle: 'Isso não parece um usuário para este app.',
   },
   auth: {
     invalidCredentials: 'Esse e-mail e essa senha não combinam.',

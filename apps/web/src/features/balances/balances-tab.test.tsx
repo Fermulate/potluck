@@ -1,6 +1,6 @@
 import { moneyKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { BEN, CLEO, GROUP_ID, ME, expense, group, seededClient } from '../expenses/test-utils'
@@ -100,7 +100,7 @@ describe('BalancesTab', () => {
     expect(rows[1]).toHaveTextContent('Cleo owes Ben $20.00')
   })
 
-  it('points a creditor at who owes them, without a settle up', async () => {
+  it('lets a creditor remind who owes them, or record that they paid', async () => {
     renderTab({
       nets: [
         [ME, 3000],
@@ -113,8 +113,39 @@ describe('BalancesTab', () => {
     expect(
       screen.getByText(t('balances.owesYou', { name: 'Ben', amount: '$30.00' })),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: t('balances.remindLabel', { name: 'Ben' }) }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('balances.settleUp') })).toHaveAttribute(
+      'href',
+      `/new/settle?groupId=${GROUP_ID}`,
+    )
+    expect(screen.queryByRole('button', { name: t('balances.settleAll') })).not.toBeInTheDocument()
     expect(screen.getByText(t('balances.settledShort'))).toBeInTheDocument()
+  })
+
+  it('hides payment actions in an archived group', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+        ...group,
+        archived_at: '2026-11-01T00:00:00Z',
+      })
+      c.setQueryData(moneyKeys.balances(GROUP_ID), [
+        { group_id: GROUP_ID, user_id: ME, net_cents: 3000 },
+        { group_id: GROUP_ID, user_id: BEN, net_cents: -3000 },
+      ])
+      c.setQueryData(moneyKeys.simplified(GROUP_ID), [
+        { from_user: BEN, to_user: ME, amount_cents: 3000 },
+      ])
+    })
+    renderWithProviders(<BalancesTab groupId={GROUP_ID} />, {
+      path: '/groups/$groupId/balances',
+      url: `/groups/${GROUP_ID}/balances`,
+      client,
+    })
+    expect(await screen.findByText(t('balances.youAreOwedTotal'))).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Remind/ })).not.toBeInTheDocument()
   })
 
   it('lists every pair when simplifying is off', async () => {
@@ -168,5 +199,14 @@ describe('BalancesTab', () => {
     })
     const [hero] = await screen.findAllByRole('link', { name: t('balances.settleUp') })
     expect(hero).toHaveAttribute('href', `/new/settle?groupId=${GROUP_ID}`)
+
+    // Settle everything lists both payments before recording them.
+    fireEvent.click(screen.getByRole('button', { name: t('balances.settleAll') }))
+    const sheet = await screen.findByRole('dialog', { name: t('settle.settleAllTitle') })
+    expect(within(sheet).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(sheet).getByText('You paid Ben $10.00')).toBeInTheDocument()
+    expect(
+      within(sheet).getByRole('button', { name: t('settle.settleAllRecord', { count: 2 }) }),
+    ).toBeInTheDocument()
   })
 })

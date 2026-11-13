@@ -3,12 +3,13 @@ import {
   friendsQueryOptions,
   getOrCreateDirectGroup,
   groupKeys,
+  paymentKeys,
+  paymentQueries,
   type Friend,
 } from '@potluck/api'
-import { can } from '@potluck/core'
-import { intlLocale, formatMoney, t } from '@potluck/i18n'
+import { can, friendTotals, type FriendTotal } from '@potluck/core'
+import { formatMoney, t } from '@potluck/i18n'
 import {
-  Amount,
   Avatar,
   Button,
   EmptyState,
@@ -22,7 +23,8 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ChevronLeft, ChevronRight, UserPlus } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { SettleFriendSheet } from './settle-friend-sheet'
 import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { shareInvite } from '@/features/invites/share'
@@ -31,29 +33,55 @@ import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 
-function FriendBalance({ friend }: { friend: Friend }) {
-  if (!friend.direct_group_id)
-    return <span className="text-sm text-mute">{t('friends.noTab')}</span>
-  if (friend.net_cents === 0 || !friend.currency) {
+/**
+ * What the two of you owe each other across every shared group, per currency. Falls back to the
+ * 1:1 tab while the totals load.
+ */
+function FriendBalance({ friend, total }: { friend: Friend; total: FriendTotal | undefined }) {
+  const lines = total
+    ? total.byCurrency
+    : friend.direct_group_id && friend.currency && friend.net_cents !== 0
+      ? [{ currency: friend.currency, netCents: friend.net_cents }]
+      : []
+  if (lines.length === 0) {
+    if (!total && !friend.direct_group_id)
+      return <span className="text-sm text-mute">{t('friends.noTab')}</span>
     return <span className="text-sm text-mute">{t('friends.settled')}</span>
   }
-  const amount = formatMoney(Math.abs(friend.net_cents), friend.currency)
-  const label =
-    friend.net_cents > 0 ? t('friends.owesYou', { amount }) : t('friends.youOwe', { amount })
-  return (
-    <span className="flex flex-col items-end text-right leading-tight">
-      <span className="sr-only">{label}</span>
-      <span aria-hidden className="text-xs text-mute">
-        {label.replace(amount, '').trim()}
+  // Each direction gets its own line, so "you owe" never covers money they owe you.
+  const directions = [
+    { owedToYou: false, items: lines.filter((l) => l.netCents < 0) },
+    { owedToYou: true, items: lines.filter((l) => l.netCents > 0) },
+  ].filter((d) => d.items.length > 0)
+  const amounts = (items: typeof lines) =>
+    items
+      .map((l) => formatMoney(Math.abs(l.netCents), l.currency))
+      .reduce((a, b) => t('friends.and', { first: a, second: b }))
+  const label = (owedToYou: boolean) =>
+    (owedToYou ? t('friends.owesYou', { amount: '' }) : t('friends.youOwe', { amount: '' })).trim()
+  const tone = (owedToYou: boolean) => (owedToYou ? 'text-saffron-ink' : 'text-tomato-ink')
+
+  if (directions.length === 1) {
+    const [only] = directions
+    return (
+      <span className="flex flex-col items-end text-right leading-tight">
+        <span className="text-xs text-mute">{label(only!.owedToYou)}</span>
+        <span className={`tabular text-[0.9375rem] font-bold ${tone(only!.owedToYou)}`}>
+          {amounts(only!.items)}
+        </span>
       </span>
-      <Amount
-        cents={Math.abs(friend.net_cents)}
-        currency={friend.currency}
-        locale={intlLocale()}
-        tone={friend.net_cents > 0 ? 'owed' : 'owe'}
-        className="text-[0.9375rem] font-bold"
-        srLabel=""
-      />
+    )
+  }
+  return (
+    <span className="flex flex-col items-end gap-0.5 text-right leading-tight">
+      {directions.map((d) => (
+        <span key={String(d.owedToYou)} className="flex items-baseline gap-1.5">
+          <span className="text-xs text-mute">{label(d.owedToYou)}</span>
+          <span className={`tabular text-[0.9375rem] font-bold ${tone(d.owedToYou)}`}>
+            {amounts(d.items)}
+          </span>
+        </span>
+      ))}
     </span>
   )
 }
@@ -151,7 +179,16 @@ export function FriendsPage() {
   const { data: friends, isPending } = useQuery(friendsQueryOptions(supabase, userId))
   const [opening, setOpening] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  useMyGroupsRealtime('friends-live', FRIEND_TABLES, () => [groupKeys.friends(userId)])
+  const [settling, setSettling] = useState<Friend | null>(null)
+  const balances = useQuery(paymentQueries.friendBalances(supabase))
+  const totals = useMemo(
+    () => (balances.data ? friendTotals(balances.data) : undefined),
+    [balances.data],
+  )
+  useMyGroupsRealtime('friends-live', FRIEND_TABLES, () => [
+    groupKeys.friends(userId),
+    paymentKeys.friendBalances(),
+  ])
 
   async function open(friend: Friend) {
     setOpening(friend.id)
@@ -213,35 +250,66 @@ export function FriendsPage() {
           />
         ) : (
           <ul className="grid gap-2">
-            {friends.map((friend) => (
-              <li key={friend.id}>
-                <button
-                  type="button"
-                  onClick={() => void open(friend)}
-                  aria-label={t('friends.open', { name: friend.display_name })}
-                  className="flex w-full items-center gap-3 rounded-card border border-line bg-card p-3 text-left transition-[border-color,transform] duration-150 hover:border-ink/25 active:scale-[0.99]"
+            {friends.map((friend) => {
+              const total = totals?.get(friend.id)
+              const groupsWithBalance = total ? total.settleable.length + total.archived.length : 0
+              return (
+                <li
+                  key={friend.id}
+                  className="overflow-hidden rounded-card border border-line bg-card transition-[border-color] duration-150 hover:border-ink/25"
                 >
-                  <Avatar
-                    name={friend.display_name}
-                    seed={friend.id}
-                    src={avatarSrc(friend.avatar_path)}
-                  />
-                  <span className="min-w-0 flex-1 truncate font-semibold">
-                    {friend.display_name}
-                  </span>
-                  {opening === friend.id ? (
-                    <LoadingDots size={16} />
-                  ) : (
-                    <FriendBalance friend={friend} />
+                  <button
+                    type="button"
+                    onClick={() => void open(friend)}
+                    className="flex w-full items-center gap-3 p-3 text-left transition-transform duration-150 active:scale-[0.99]"
+                  >
+                    <Avatar
+                      name={friend.display_name}
+                      seed={friend.id}
+                      src={avatarSrc(friend.avatar_path)}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-semibold">
+                      {friend.display_name}
+                    </span>
+                    {opening === friend.id ? (
+                      <LoadingDots size={16} />
+                    ) : (
+                      <FriendBalance friend={friend} total={totals ? total : undefined} />
+                    )}
+                    <ChevronRight aria-hidden className="size-4 text-mute" />
+                  </button>
+                  {total && total.settleable.length > 0 && (
+                    <div className="flex items-center gap-3 border-t border-dashed border-line bg-sunken/50 py-2 pr-2 pl-[3.75rem]">
+                      <span className="min-w-0 flex-1 truncate text-sm text-mute">
+                        {t('friends.acrossGroups', { count: groupsWithBalance })}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ink"
+                        aria-label={t('friends.settle.actionLabel', {
+                          name: friend.display_name,
+                        })}
+                        onClick={() => setSettling(friend)}
+                      >
+                        {t('friends.settle.action')}
+                      </Button>
+                    </div>
                   )}
-                  <ChevronRight aria-hidden className="size-4 text-mute" />
-                </button>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
       <AddFriendSheet open={addOpen} onOpenChange={setAddOpen} />
+      {settling && totals?.get(settling.id) && (
+        <SettleFriendSheet
+          friend={settling}
+          total={totals.get(settling.id)!}
+          open
+          onOpenChange={(o) => !o && setSettling(null)}
+        />
+      )}
     </div>
   )
 }

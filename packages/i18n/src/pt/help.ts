@@ -35,6 +35,11 @@ export const help = {
     payers: 'Quando várias pessoas pagaram',
     refunds: 'Como funcionam os reembolsos',
     defaultSplit: 'Sobre a divisão padrão',
+    paymentLinks: 'Como funciona pagar com um app',
+    remind: 'Sobre lembretes',
+    settleEverything: 'Sobre acertar tudo',
+    settleFriend: 'Sobre acertar entre grupos',
+    paymentMethods: 'Quem vê suas formas de receber',
   },
   tips: {
     simplifiedDebts:
@@ -45,6 +50,8 @@ export const help = {
       'O Potluck não movimenta dinheiro. Pague do jeito de sempre (dinheiro, transferência, um app) e depois registre aqui para o saldo baixar.',
     bestTimes:
       'Só contam os horários em que as pessoas estão livres durante o plano inteiro. Livre vale 1 e Talvez vale meio; a maior pontuação ganha e o horário mais cedo desempata.',
+    paymentLinks:
+      'O botão abre o app com o valor já preenchido. O Potluck nunca vê o pagamento, então pede que você confirme antes de registrar.',
   },
   rounding: {
     one: '{amount} a mais para {names} para a conta bater.',

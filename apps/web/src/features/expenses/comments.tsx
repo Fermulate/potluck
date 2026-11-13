@@ -1,9 +1,12 @@
 import { avatarSrc } from '@/lib/queries'
 import {
   addExpenseComment,
+  addPaymentComment,
   deleteExpenseComment,
-  moneyKeys,
+  fetchExpenseComments,
+  fetchPaymentComments,
   moneyQueries,
+  paymentQueries,
   type ExpenseComment,
 } from '@potluck/api'
 import { formatRelative, t } from '@potluck/i18n'
@@ -16,7 +19,37 @@ import { isSendEnter } from '@/lib/keyboard'
 import { supabase } from '@/lib/supabase'
 import { moneyErrorMessage, useNameOf, usePeople, useTimeZone } from './money-data'
 
-/** Comment thread on an expense. New comments show up instantly and for everyone (realtime). */
+type ThreadComment = Pick<ExpenseComment, 'id' | 'author_id' | 'body' | 'created_at'>
+
+/** What a thread hangs off: an expense or a payment. */
+export type CommentSubject = { expenseId: string } | { settlementId: string }
+
+interface ThreadSource {
+  queryKey: readonly unknown[]
+  fetch: () => Promise<ThreadComment[]>
+  add: (body: string) => Promise<ThreadComment>
+}
+
+function threadSource(subject: CommentSubject): ThreadSource {
+  if ('expenseId' in subject) {
+    const { expenseId } = subject
+    const query = moneyQueries.comments(supabase, expenseId)
+    return {
+      queryKey: query.queryKey,
+      fetch: () => fetchExpenseComments(supabase, expenseId),
+      add: (body) => addExpenseComment(supabase, { expenseId, body }),
+    }
+  }
+  const { settlementId } = subject
+  const query = paymentQueries.comments(supabase, settlementId)
+  return {
+    queryKey: query.queryKey,
+    fetch: () => fetchPaymentComments(supabase, settlementId),
+    add: (body) => addPaymentComment(supabase, { settlementId, body }),
+  }
+}
+
+/** Comment thread on an expense. */
 export function ExpenseComments({
   expenseId,
   canModerate,
@@ -27,28 +60,42 @@ export function ExpenseComments({
   /** Archived groups: comments can be read but not added or removed. */
   readOnly?: boolean
 }) {
+  return <CommentThread subject={{ expenseId }} canModerate={canModerate} readOnly={readOnly} />
+}
+
+/** Comment thread on an expense or a payment. New comments show up instantly and for everyone. */
+export function CommentThread({
+  subject,
+  canModerate,
+  readOnly = false,
+}: {
+  subject: CommentSubject
+  canModerate: boolean
+  /** Archived groups: comments can be read but not added or removed. */
+  readOnly?: boolean
+}) {
   const me = useUserId()
   const people = usePeople()
   const nameOf = useNameOf()
   const timeZone = useTimeZone()
   const queryClient = useQueryClient()
-  const key = moneyKeys.comments(expenseId)
-  const { data, isPending } = useQuery(moneyQueries.comments(supabase, expenseId))
+  const source = threadSource(subject)
+  const key = source.queryKey
+  const { data: comments, isPending } = useQuery({ queryKey: key, queryFn: source.fetch })
   const [body, setBody] = useState('')
 
   const send = useMutation({
-    mutationFn: (text: string) => addExpenseComment(supabase, { expenseId, body: text }),
+    mutationFn: (text: string) => source.add(text),
     onMutate: async (text) => {
       await queryClient.cancelQueries({ queryKey: key })
-      const previous = queryClient.getQueryData<ExpenseComment[]>(key)
-      const optimistic: ExpenseComment = {
+      const previous = queryClient.getQueryData<ThreadComment[]>(key)
+      const optimistic: ThreadComment = {
         id: `pending-${Date.now()}`,
-        expense_id: expenseId,
         author_id: me,
         body: text,
         created_at: new Date().toISOString(),
       }
-      queryClient.setQueryData<ExpenseComment[]>(key, (rows) => [...(rows ?? []), optimistic])
+      queryClient.setQueryData<ThreadComment[]>(key, (rows) => [...(rows ?? []), optimistic])
       setBody('')
       return { previous, text }
     },
@@ -63,8 +110,8 @@ export function ExpenseComments({
   const remove = useMutation({
     mutationFn: (id: string) => deleteExpenseComment(supabase, id),
     onMutate: async (id) => {
-      const previous = queryClient.getQueryData<ExpenseComment[]>(key)
-      queryClient.setQueryData<ExpenseComment[]>(key, (rows) => rows?.filter((c) => c.id !== id))
+      const previous = queryClient.getQueryData<ThreadComment[]>(key)
+      queryClient.setQueryData<ThreadComment[]>(key, (rows) => rows?.filter((c) => c.id !== id))
       return { previous }
     },
     onError: (error, _id, ctx) => {
@@ -81,7 +128,7 @@ export function ExpenseComments({
     if (text) send.mutate(text)
   }
 
-  const count = data?.length ?? 0
+  const count = comments?.length ?? 0
   // Read only with nothing to read: no empty "Comments" heading.
   if (readOnly && !isPending && count === 0) return null
   return (
@@ -100,7 +147,7 @@ export function ExpenseComments({
       ) : (
         count > 0 && (
           <ol className="flex flex-col gap-3" aria-live="polite">
-            {data!.map((c) => {
+            {comments!.map((c) => {
               const author = people.get(c.author_id)
               const mine = c.author_id === me
               return (

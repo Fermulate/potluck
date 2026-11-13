@@ -58,7 +58,8 @@ passes; if a journey changed, its e2e spec passes. Report the commands you ran a
   with the same cases.
 - Lock order: an RPC that moves a balance takes `perform 1 from public.groups g where g.id = gid for share`
   before `private.require_member(gid)` and before touching any expense or payment row. Several groups:
-  lock in id order.
+  lock in id order. Bulk settles that read debts (`settle_all`, `settle_with_friend`) take
+  `for no key update` instead (see the lock order in [architecture](docs/architecture.md)).
 - Departed members: nothing may move a former member's balance. Restore, delete, or editing amount,
   currency, payer or split of an expense that names someone who left raises `split_member_not_in_group`;
   payments raise `member_not_in_group`. Details stay editable.

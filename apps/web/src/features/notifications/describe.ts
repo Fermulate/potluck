@@ -8,10 +8,12 @@ export type NotificationKind =
 /** Where tapping a notification goes. Shaped for the router's `navigate`. */
 export type NotificationTarget =
   | { to: '/expenses/$expenseId'; params: { expenseId: string } }
+  | { to: '/payments/$paymentId'; params: { paymentId: string } }
   | { to: '/plans/$eventId'; params: { eventId: string } }
   | { to: '/groups/$groupId'; params: { groupId: string } }
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
   | { to: '/groups/$groupId/members'; params: { groupId: string } }
+  | { to: '/new/settle'; search: { groupId: string; to?: string }; params?: undefined }
   | { to: '/notifications'; params?: undefined }
   | { to: '/home'; params?: undefined }
   | { to: '/me'; params?: undefined }
@@ -85,6 +87,9 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
     expenseId ? { to: '/expenses/$expenseId', params: { expenseId } } : toGroup()
   const toEvent = (): NotificationTarget =>
     eventId ? { to: '/plans/$eventId', params: { eventId } } : toGroup()
+  const paymentId = str(d.settlement_id)
+  const toPayment = (): NotificationTarget =>
+    paymentId ? { to: '/payments/$paymentId', params: { paymentId } } : toGroup('balances')
 
   switch (n.type) {
     case 'expense.created':
@@ -131,8 +136,36 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
                   amount,
                 }),
               }
-      return { ...view, kind: 'payment', target: toGroup('balances') }
+      return { ...view, kind: 'payment', target: toPayment() }
     }
+    case 'settlement.updated':
+    case 'settlement.deleted':
+    case 'settlement.restored': {
+      const verb = n.type.slice('settlement.'.length) as 'updated' | 'deleted' | 'restored'
+      return {
+        title: t(`notifications.types.settlement.${verb}.title`),
+        body: t(`notifications.types.settlement.${verb}.body`, { actor, amount, group }),
+        kind: 'payment',
+        target: toPayment(),
+      }
+    }
+    case 'debt.reminder':
+      return {
+        title: t('notifications.types.debt.reminder.title'),
+        body: str(d.note)
+          ? t('notifications.types.debt.reminder.bodyWithNote', {
+              actor,
+              amount,
+              group,
+              note: str(d.note)!,
+            })
+          : t('notifications.types.debt.reminder.body', { actor, amount, group }),
+        kind: 'payment',
+        // Straight to paying them back.
+        target: groupId
+          ? { to: '/new/settle', search: { groupId, to: str(d.from_user) } }
+          : { to: '/notifications' },
+      }
     case 'member.joined':
       return {
         title: t('notifications.types.member.joined.title', { group }),
@@ -200,7 +233,7 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
           preview: str(d.excerpt) ?? str(d.body) ?? '',
         }),
         kind: 'comment',
-        target: eventId ? toEvent() : toExpense(),
+        target: eventId ? toEvent() : paymentId ? toPayment() : toExpense(),
       }
     case 'expense.deleted':
       return {

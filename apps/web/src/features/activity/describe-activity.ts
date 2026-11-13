@@ -3,6 +3,7 @@ import { formatDate, formatMoney, hasMessage, t } from '@potluck/i18n'
 
 export type ActivityLink =
   | { to: '/expenses/$expenseId'; params: { expenseId: string } }
+  | { to: '/payments/$paymentId'; params: { paymentId: string } }
   | { to: '/groups/$groupId'; params: { groupId: string } }
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
   | { to: '/plans/$eventId'; params: { eventId: string } }
@@ -32,7 +33,9 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : und
  */
 export function describeActivity(item: ActivityItem, ctx: Context): ActivityView {
   const d = item.data ?? {}
-  const actor = ctx.nameOf(item.actor_id)
+  const subjectId =
+    item.verb === 'settlement.created' ? (str(d.from_user) ?? item.actor_id) : item.actor_id
+  const actor = ctx.nameOf(subjectId)
   const amountCents = num(d.amount_cents)
   const currency = str(d.currency)
   const amount = amountCents !== undefined && currency ? formatMoney(amountCents, currency) : ''
@@ -69,11 +72,13 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
         link = { to: '/expenses/$expenseId', params: { expenseId: item.subject_id } }
       break
     case 'settlement': {
-      emoji = '🤝'
+      emoji = item.verb === 'settlement.deleted' ? '🗑️' : '🤝'
       tone = 'olive'
       named = str(d.to_user)
       params.name = ctx.nameOf(named, { lower: true })
-      link = { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
+      link = item.subject_id
+        ? { to: '/payments/$paymentId', params: { paymentId: item.subject_id } }
+        : { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
       break
     }
     case 'member':
@@ -94,13 +99,20 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       emoji = '💬'
       const expenseId = str(d.expense_id)
       const eventId = str(d.event_id)
-      params.subject = expenseId ? t('activity.anExpense') : t('activity.aPlan')
+      const paymentId = str(d.settlement_id)
+      params.subject = expenseId
+        ? t('activity.anExpense')
+        : paymentId
+          ? t('activity.aPayment')
+          : t('activity.aPlan')
       detail = str(d.excerpt)
       link = expenseId
         ? { to: '/expenses/$expenseId', params: { expenseId } }
-        : eventId
-          ? { to: '/plans/$eventId', params: { eventId } }
-          : link
+        : paymentId
+          ? { to: '/payments/$paymentId', params: { paymentId } }
+          : eventId
+            ? { to: '/plans/$eventId', params: { eventId } }
+            : link
       break
     }
     case 'group':
@@ -110,7 +122,7 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
 
   // Other languages conjugate for "you", so the viewer as subject or object gets its own line.
   const own =
-    item.actor_id === ctx.viewerId
+    subjectId === ctx.viewerId
       ? `activity.self.${item.verb}`
       : named === ctx.viewerId
         ? `activity.toYou.${item.verb}`

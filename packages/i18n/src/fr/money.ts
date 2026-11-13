@@ -251,6 +251,13 @@ export const expenses = {
     negative_share: "Un ajustement en moins fait passer quelqu'un sous zéro.",
     items_required: 'Ajoute au moins un article.',
     invalid_items: 'Un des articles cloche. Vérifie les prix et qui les a pris.',
+    invalid_parties: 'Choisis deux personnes différentes.',
+    not_a_party:
+      'Seuls les propriétaires et admins peuvent enregistrer un paiement entre deux autres personnes.',
+    note_too_long: 'Garde la note sous 500 caractères.',
+    settlement_deleted: 'Restaure ce paiement avant de le modifier.',
+    nothing_owed: 'Cette personne ne te doit rien ici.',
+    already_reminded: "Déjà envoyé aujourd'hui. Réessaie demain.",
   },
   payers: {
     title: 'Qui a payé ?',
@@ -423,6 +430,18 @@ export const balances = {
   settledShort: 'à jour',
   totalSpent: 'Dépenses du groupe',
   yourSpending: 'Ta part des dépenses',
+  remind: 'Relancer',
+  remindLabel: 'Relancer {name}',
+  remindTitle: 'Relancer {name}',
+  remindBody:
+    '{name} reçoit un rappel dans sa boîte, et sur son téléphone si les notifications sont activées. Une fois par jour au plus.',
+  remindNote: 'Note',
+  remindNotePlaceholder: 'Le loyer est dû vendredi',
+  remindSend: 'Envoyer le rappel',
+  reminded: 'Relancé',
+  remindSent: 'Rappel envoyé. {name} le verra dans sa boîte.',
+  alreadyReminded: "Tu as déjà relancé {name} aujourd'hui. Réessaie demain.",
+  settleAll: 'Tout régler',
 } satisfies Translation<typeof en.balances>
 
 export const settle = {
@@ -439,7 +458,7 @@ export const settle = {
   paidYou: "{name} t'a payé {amount}",
   paid: '{from} a payé {amount} à {to}',
   pickGroup: 'Tu règles quel groupe ?',
-  pickPersonHint: 'Les paiements vont de toi vers eux.',
+  pickPersonHint: "Paie ce que tu dois, ou note ce qu'on t'a payé.",
   youOwe: 'Tu dois {amount} à {name}',
   noDebt: 'Tu ne dois rien à {name} pour le moment.',
   everyoneElse: 'Tous les autres',
@@ -454,8 +473,75 @@ export const settle = {
   nothingToSettle: 'Rien à régler. Fais-toi plaisir.',
   actions: 'Options pour {payment}',
   delete: 'Supprimer le paiement',
-  deleteConfirm: 'Supprimer ce paiement ? Les soldes reviendront comme avant.',
+  deleteConfirm:
+    "Supprimer ce paiement ? Les soldes reviennent à ce qu'ils étaient, et tu pourras le restaurer.",
   deleted: 'Paiement supprimé.',
+  owesYou: '{name} te doit {amount}',
+  owes: '{from} doit {amount} à {to}',
+  noDebtFrom: '{name} ne te doit rien pour le moment.',
+  noDebtBetween: '{from} ne doit rien à {to} pour le moment.',
+  youOweSection: 'Tu dois',
+  owedSection: 'On te doit',
+  receiving: "{name} t'a payé",
+  between: '{from} a payé {to}',
+  swap: 'Inverser qui a payé',
+  paidBy: 'Payé par',
+  paidTo: 'Payé à',
+  date: 'Payé le',
+  currency: 'Devise',
+  settledBetween: '{from} et {to} sont quittes',
+  stillOwesYou: '{name} te doit encore {amount}',
+  stillOwes: '{from} doit encore {amount} à {to}',
+  open: 'Ouvrir le paiement',
+  edit: 'Modifier le paiement',
+  editTitle: 'Modifier le paiement',
+  saveChanges: 'Enregistrer',
+  updated: 'Paiement modifié.',
+  undo: 'Annuler',
+  restore: 'Restaurer',
+  restored: 'Paiement restauré. Le solde est revenu.',
+  apps: {
+    paypal: 'PayPal',
+    venmo: 'Venmo',
+    cashapp: 'Cash App',
+    revolut: 'Revolut',
+    monzo: 'Monzo',
+    upi: 'UPI',
+    interac: 'Virement Interac',
+    bank: 'Virement bancaire',
+  },
+  payWithTitle: 'Comment {name} préfère être payé',
+  payWith: 'Payer avec {app}',
+  payWithPrefilled: 'Ouvre {app} avec {amount} déjà saisi.',
+  payWithManual: 'Ouvre {app}. Saisis {amount} là-bas.',
+  copy: 'Copier',
+  copyLabel: 'Copier les coordonnées {app} de {name}',
+  copied: 'Copié. Colle-le dans ton appli bancaire.',
+  confirmTitle: 'Le paiement est passé ?',
+  confirmBody:
+    "Potluck ne voit pas ton compte {app}. Enregistre le paiement une fois l'argent parti.",
+  confirmYes: "Oui, l'enregistrer",
+  confirmNo: 'Pas encore',
+  settleAllTitle: 'Tout régler',
+  settleAllBody:
+    "Enregistre d'un coup tous les paiements ci-dessous. Fais-le une fois l'argent vraiment transféré.",
+  settleAllRecord_one: 'Enregistrer {count} paiement',
+  settleAllRecord_other: 'Enregistrer {count} paiements',
+  settleAllDone_one: '{count} paiement enregistré. Vous êtes quittes.',
+  settleAllDone_other: '{count} paiements enregistrés. Vous êtes quittes.',
+  detail: {
+    title: 'Paiement',
+    loading: 'Chargement du paiement',
+    notFound: 'Ce paiement a disparu. Il a peut-être été supprimé.',
+    deletedBanner: 'Ce paiement a été supprimé.',
+    recordedBy: 'Enregistré par {name} {when}',
+    converted: '{amount} en {currency} à {rate}',
+    departedLocked:
+      "Quelqu'un de ce paiement a quitté le groupe, seuls la note et la date peuvent changer.",
+    archived: '{group} est archivé : ses paiements se lisent mais ne changent plus.',
+    note: 'Note',
+    actions: 'Actions du paiement',
+  },
 } satisfies Translation<typeof en.settle>
 
 export const activity = {
@@ -492,6 +578,8 @@ export const activity = {
     settlement: {
       created: 'Tu as payé {amount} à {name}',
       deleted: 'Tu as supprimé un paiement à {name}',
+      updated: 'Tu as modifié un paiement à {name}',
+      restored: 'Tu as restauré un paiement à {name}',
     },
     event: {
       created: 'Tu organises {event}',
@@ -513,6 +601,8 @@ export const activity = {
     settlement: {
       created: "{actor} t'a payé {amount}",
       deleted: "{actor} a supprimé un paiement qui t'était destiné",
+      updated: "{actor} a modifié un paiement qu'il t'a fait",
+      restored: "{actor} a restauré un paiement qu'il t'a fait",
     },
   },
   group: {
@@ -535,6 +625,8 @@ export const activity = {
   settlement: {
     created: '{actor} a payé {amount} à {name}',
     deleted: '{actor} a supprimé un paiement à {name}',
+    updated: '{actor} a modifié un paiement à {name}',
+    restored: '{actor} a restauré un paiement à {name}',
   },
   event: {
     created: '{actor} organise {event}',
@@ -547,4 +639,5 @@ export const activity = {
   comment: {
     created: '{actor} a commenté {subject}',
   },
+  aPayment: 'un paiement',
 } satisfies Translation<typeof en.activity>

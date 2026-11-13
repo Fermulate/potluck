@@ -19,6 +19,7 @@ export const queryKeys = {
 
 export * from './groups'
 export * from './money'
+export * from './payments'
 export * from './plans'
 export * from './me'
 export * from './notification-prefs'

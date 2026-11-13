@@ -213,6 +213,7 @@ export const errors = {
     invalid_unsubscribe_link:
       'Dieser Abmeldelink funktioniert nicht. Ändere deine E-Mail-Einstellungen stattdessen auf der Ich-Seite.',
     mfa_required: 'Schließ zuerst die Anmeldung in zwei Schritten ab.',
+    invalid_payment_handle: 'Das sieht nicht nach einem Namen für diese App aus.',
   },
   auth: {
     invalidCredentials: 'E-Mail und Passwort passen nicht zusammen.',

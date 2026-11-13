@@ -9,6 +9,10 @@ export interface ActionContext {
   'expense.delete': { isOwn: boolean }
   /** `isParty`: the viewer paid, was paid, or recorded the payment. */
   'settlement.delete': { isParty: boolean }
+  'settlement.edit': { isParty: boolean }
+  'settlement.restore': { isParty: boolean }
+  /** `isParty`: the viewer is the payer or the person paid. Between two others: owners and admins. */
+  'settlement.record': { isParty: boolean }
   'availability.set': undefined
   'availability.request': undefined
   'rsvp.set': undefined
@@ -40,6 +44,9 @@ const RULES: { [A in Action]: Rule<A> } = {
   'expense.edit': (role, { isOwn }) => isOwn || isManager(role),
   'expense.delete': (role, { isOwn }) => isOwn || isManager(role),
   'settlement.delete': (role, { isParty }) => isParty || isManager(role),
+  'settlement.edit': (role, { isParty }) => isParty || isManager(role),
+  'settlement.restore': (role, { isParty }) => isParty || isManager(role),
+  'settlement.record': (role, { isParty }) => isParty || isManager(role),
   'availability.set': anyone,
   'availability.request': anyone,
   'rsvp.set': anyone,

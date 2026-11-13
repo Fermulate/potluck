@@ -218,6 +218,11 @@ test('payment edits, deletions, restores and debt reminders from settle up have 
   const nudge = renderEmail(job('debt.reminder', data, { category: 'reminders' }), links)
   assert.equal(nudge.subject, 'Ben sent you a reminder')
   assert.match(nudge.text, /Ben is waiting on \$25\.00 in Flat\./)
+  const withNote = renderEmail(
+    job('debt.reminder', { ...data, note: 'Rent is due Friday' }, { category: 'reminders' }),
+    links,
+  )
+  assert.match(withNote.text, /"Rent is due Friday"/)
 })
 
 test('money keeps every minor digit for 0, 2 and 3 digit currencies', () => {

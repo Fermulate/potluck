@@ -35,6 +35,11 @@ export const help = {
     payers: 'Wenn mehrere bezahlt haben',
     refunds: 'So funktionieren Erstattungen',
     defaultSplit: 'Über die Standardaufteilung',
+    paymentLinks: 'So funktioniert Zahlen mit einer App',
+    remind: 'Über Erinnerungen',
+    settleEverything: 'Über „Alles ausgleichen“',
+    settleFriend: 'Über Ausgleichen über Gruppen hinweg',
+    paymentMethods: 'Wer deine Zahlungswege sieht',
   },
   tips: {
     simplifiedDebts:
@@ -45,6 +50,8 @@ export const help = {
       'Potluck bewegt kein Geld. Bezahl auf deinem üblichen Weg (bar, Überweisung, App) und trag es dann hier ein, damit der Saldo sinkt.',
     bestTimes:
       'Es zählen nur Zeiten, in denen Leute den ganzen Plan über Zeit haben. Frei zählt 1 und Vielleicht zählt halb; die höchste Punktzahl gewinnt, bei Gleichstand die frühere Zeit.',
+    paymentLinks:
+      'Der Knopf öffnet die App mit dem Betrag schon eingetragen. Potluck sieht die Zahlung nie und fragt deshalb nach, bevor sie erfasst wird.',
   },
   rounding: {
     one: '{amount} extra für {names}, damit es aufgeht.',

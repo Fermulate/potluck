@@ -57,7 +57,9 @@ function renderPage() {
   )
 }
 
-const openTab = (name: string) => screen.findByRole('button', { name: t('friends.open', { name }) })
+/** A friend's row: the button whose name starts with what it shows, their name. */
+const openTab = (name: string) =>
+  screen.findByRole('button', { name: new RegExp(`^(\\S+ )?${name}`) })
 
 describe('FriendsPage', () => {
   beforeEach(() => seed())
@@ -65,10 +67,10 @@ describe('FriendsPage', () => {
   it('lists friends by name with what they owe, skipping closed accounts', async () => {
     renderPage()
     const ben = await openTab('Ben Ortiz')
-    expect(within(ben).getByText('owes you $15.00')).toBeInTheDocument()
+    expect(ben).toHaveTextContent('owes you$15.00')
     expect(within(await openTab('Cleo Park')).getByText(t('friends.noTab'))).toBeInTheDocument()
     expect(
-      screen.getAllByRole('button', { name: /Open tab with/ }).map((b) => b.textContent),
+      screen.getAllByRole('button', { name: /Ben Ortiz|Cleo Park/ }).map((b) => b.textContent),
     ).toEqual([expect.stringContaining('Ben'), expect.stringContaining('Cleo')])
     expect(screen.queryByText('Gone Person')).not.toBeInTheDocument()
   })
@@ -83,7 +85,7 @@ describe('FriendsPage', () => {
       ],
     })
     const first = renderPage()
-    expect(within(await openTab('Ben Ortiz')).getByText('you owe $8.00')).toBeInTheDocument()
+    expect(await openTab('Ben Ortiz')).toHaveTextContent('you owe$8.00')
     first.unmount()
 
     seed({
@@ -165,6 +167,153 @@ describe('FriendsPage', () => {
     const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
     fireEvent.click(await within(sheet).findByRole('button', { name: /Hike crew/ }))
     expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
+  })
+
+  it('adds up every shared group and settles them all in one go', async () => {
+    seed({ groups: [withBen, group({ id: 'g-hike', name: 'Hike crew' })] })
+    db().respond('rpc:friend_balances', {
+      data: [
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-ben',
+          currency: 'USD',
+          net_cents: 1500,
+          archived: false,
+        },
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-hike',
+          currency: 'USD',
+          net_cents: 500,
+          archived: false,
+        },
+        { friend_id: 'u-ben', group_id: 'g-old', currency: 'EUR', net_cents: -700, archived: true },
+      ],
+    })
+    db().respond('rpc:settle_with_friend', {
+      data: [{ group_id: 'g-ben' }, { group_id: 'g-hike' }],
+    })
+    renderPage()
+    const ben = await openTab('Ben Ortiz')
+    await waitFor(() => expect(ben).toHaveTextContent(/you owe€7\.00\s*owes you\$20\.00/))
+    expect(screen.getByText(t('friends.acrossGroups', { count: 3 }))).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: t('friends.settle.actionLabel', { name: 'Ben Ortiz' }) }),
+    )
+    const sheet = await screen.findByRole('dialog', {
+      name: t('friends.settle.title', { name: 'Ben' }),
+    })
+    expect(within(sheet).getByText(t('friends.settle.archived', { count: 1 }))).toBeInTheDocument()
+    expect(
+      within(sheet).getByText(t('friends.settle.owesYou', { amount: '$5.00' })),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(sheet).getByRole('button', { name: t('friends.settle.record', { count: 2 }) }),
+    )
+
+    expect(await screen.findByText(t('friends.settle.done', { name: 'Ben' }))).toBeInTheDocument()
+    expect(db().rpcArgs('settle_with_friend')).toEqual([{ friend_id: 'u-ben' }])
+  })
+
+  it('settles only the picked groups, and part of an amount', async () => {
+    seed({ groups: [withBen, group({ id: 'g-hike', name: 'Hike crew' })] })
+    db().respond('rpc:friend_balances', {
+      data: [
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-ben',
+          currency: 'USD',
+          net_cents: 1500,
+          archived: false,
+        },
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-hike',
+          currency: 'USD',
+          net_cents: 500,
+          archived: false,
+        },
+      ],
+    })
+    db().respond('rpc:settle_with_friend', { data: [{ group_id: 'g-hike' }] })
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: t('friends.settle.actionLabel', { name: 'Ben Ortiz' }),
+      }),
+    )
+    const sheet = await screen.findByRole('dialog', {
+      name: t('friends.settle.title', { name: 'Ben' }),
+    })
+    fireEvent.click(
+      within(sheet).getByRole('checkbox', {
+        name: t('friends.settle.include', { group: 'Ben Ortiz' }),
+      }),
+    )
+    const amount = within(sheet).getByRole('textbox', {
+      name: t('friends.settle.amountFor', { group: 'Hike crew', currency: 'USD' }),
+    })
+    // The box says which currency it is in.
+    expect(amount.parentElement).toHaveTextContent('$')
+    fireEvent.change(amount, { target: { value: '9' } })
+    expect(within(sheet).getByRole('alert')).toHaveTextContent(
+      t('friends.settle.upTo', { amount: '$5.00' }),
+    )
+    const record = within(sheet).getByRole('button', {
+      name: t('friends.settle.record', { count: 1 }),
+    })
+    expect(record).toBeDisabled()
+
+    fireEvent.change(amount, { target: { value: '2.50' } })
+    fireEvent.click(record)
+    expect(await screen.findByText(t('friends.settle.partDone', { count: 1 }))).toBeInTheDocument()
+    expect(db().rpcArgs('settle_with_friend')).toEqual([
+      { friend_id: 'u-ben', amounts: { 'g-hike': 250 } },
+    ])
+  })
+
+  it('leaves a group that gains a debt while the sheet is open unpicked', async () => {
+    seed({ groups: [withBen, group({ id: 'g-hike', name: 'Hike crew' })] })
+    const row = (group_id: string, net_cents: number) => ({
+      friend_id: 'u-ben',
+      group_id,
+      currency: 'USD',
+      net_cents,
+      archived: false,
+    })
+    let balances = [row('g-ben', 1500)]
+    db().respond('rpc:friend_balances', () => ({ data: balances }))
+    db().respond('rpc:settle_with_friend', { data: [{ group_id: 'g-ben' }] })
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: t('friends.settle.actionLabel', { name: 'Ben Ortiz' }),
+      }),
+    )
+    const sheet = await screen.findByRole('dialog', {
+      name: t('friends.settle.title', { name: 'Ben' }),
+    })
+
+    balances = [row('g-ben', 1500), row('g-hike', 500)]
+    emitChange('settlements')
+    const hike = await within(sheet).findByRole('checkbox', {
+      name: t('friends.settle.include', { group: 'Hike crew' }),
+    })
+    expect(hike).not.toBeChecked()
+    expect(
+      within(sheet).getByRole('textbox', {
+        name: t('friends.settle.amountFor', { group: 'Hike crew', currency: 'USD' }),
+      }),
+    ).toBeDisabled()
+
+    fireEvent.click(
+      within(sheet).getByRole('button', { name: t('friends.settle.record', { count: 1 }) }),
+    )
+    expect(await screen.findByText(t('friends.settle.partDone', { count: 1 }))).toBeInTheDocument()
+    expect(db().rpcArgs('settle_with_friend')).toEqual([
+      { friend_id: 'u-ben', amounts: { 'g-ben': 1500 } },
+    ])
   })
 
   it('refreshes balances when money moves', async () => {

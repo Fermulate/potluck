@@ -252,6 +252,12 @@ export const expenses = {
     negative_share: 'Ein Abzug bringt jemanden unter null.',
     items_required: 'Füge mindestens einen Posten hinzu.',
     invalid_items: 'Ein Posten stimmt nicht. Prüf die Preise und wer was hatte.',
+    invalid_parties: 'Wähl zwei verschiedene Personen.',
+    not_a_party: 'Nur Eigentümer und Admins können eine Zahlung zwischen zwei anderen erfassen.',
+    note_too_long: 'Halte die Notiz unter 500 Zeichen.',
+    settlement_deleted: 'Stell diese Zahlung wieder her, bevor du sie bearbeitest.',
+    nothing_owed: 'Hier schuldet diese Person dir nichts.',
+    already_reminded: 'Heute schon verschickt. Versuch es morgen.',
   },
   payers: {
     title: 'Wer hat bezahlt?',
@@ -420,6 +426,18 @@ export const balances = {
   settledShort: 'beglichen',
   totalSpent: 'Gruppenausgaben',
   yourSpending: 'Dein Anteil an den Ausgaben',
+  remind: 'Erinnern',
+  remindLabel: '{name} erinnern',
+  remindTitle: '{name} erinnern',
+  remindBody:
+    '{name} bekommt eine Erinnerung in den Posteingang und aufs Handy, wenn Push an ist. Höchstens einmal am Tag.',
+  remindNote: 'Notiz',
+  remindNotePlaceholder: 'Die Miete ist Freitag fällig',
+  remindSend: 'Erinnerung senden',
+  reminded: 'Erinnert',
+  remindSent: 'Erinnerung verschickt. {name} sieht sie im Posteingang.',
+  alreadyReminded: 'Du hast {name} heute schon erinnert. Versuch es morgen.',
+  settleAll: 'Alles ausgleichen',
 } satisfies Translation<typeof en.balances>
 
 export const settle = {
@@ -436,7 +454,7 @@ export const settle = {
   paidYou: '{name} hat dir {amount} gezahlt',
   paid: '{from} hat {to} {amount} gezahlt',
   pickGroup: 'Welche Gruppe begleichst du?',
-  pickPersonHint: 'Zahlungen gehen von dir an die Person.',
+  pickPersonHint: 'Zahl, was du schuldest, oder trag ein, was dir jemand gezahlt hat.',
   youOwe: 'Du schuldest {name} {amount}',
   noDebt: 'Du schuldest {name} gerade nichts.',
   everyoneElse: 'Alle anderen',
@@ -451,8 +469,75 @@ export const settle = {
   nothingToSettle: 'Nichts zu begleichen. Gönn dir was.',
   actions: 'Optionen für {payment}',
   delete: 'Zahlung löschen',
-  deleteConfirm: 'Diese Zahlung löschen? Die Salden gehen auf den alten Stand zurück.',
+  deleteConfirm:
+    'Diese Zahlung löschen? Die Salden gehen zurück, und du kannst sie wiederherstellen.',
   deleted: 'Zahlung gelöscht.',
+  owesYou: '{name} schuldet dir {amount}',
+  owes: '{from} schuldet {to} {amount}',
+  noDebtFrom: '{name} schuldet dir gerade nichts.',
+  noDebtBetween: '{from} schuldet {to} gerade nichts.',
+  youOweSection: 'Du schuldest',
+  owedSection: 'Dir geschuldet',
+  receiving: '{name} hat dich bezahlt',
+  between: '{from} hat {to} bezahlt',
+  swap: 'Tauschen, wer bezahlt hat',
+  paidBy: 'Bezahlt von',
+  paidTo: 'Bezahlt an',
+  date: 'Bezahlt am',
+  currency: 'Währung',
+  settledBetween: '{from} und {to} sind quitt',
+  stillOwesYou: '{name} schuldet dir noch {amount}',
+  stillOwes: '{from} schuldet {to} noch {amount}',
+  open: 'Zahlung öffnen',
+  edit: 'Zahlung bearbeiten',
+  editTitle: 'Zahlung bearbeiten',
+  saveChanges: 'Änderungen speichern',
+  updated: 'Zahlung aktualisiert.',
+  undo: 'Rückgängig',
+  restore: 'Wiederherstellen',
+  restored: 'Zahlung wiederhergestellt. Der Saldo ist zurück.',
+  apps: {
+    paypal: 'PayPal',
+    venmo: 'Venmo',
+    cashapp: 'Cash App',
+    revolut: 'Revolut',
+    monzo: 'Monzo',
+    upi: 'UPI',
+    interac: 'Interac e-Transfer',
+    bank: 'Banküberweisung',
+  },
+  payWithTitle: 'So bekommt {name} am liebsten Geld',
+  payWith: 'Mit {app} zahlen',
+  payWithPrefilled: 'Öffnet {app} mit {amount} schon eingetragen.',
+  payWithManual: 'Öffnet {app}. Trag dort {amount} ein.',
+  copy: 'Kopieren',
+  copyLabel: '{app}-Daten von {name} kopieren',
+  copied: 'Kopiert. Füg es in deiner Banking-App ein.',
+  confirmTitle: 'Hat es geklappt?',
+  confirmBody:
+    'Potluck sieht dein {app}-Konto nicht. Erfass die Zahlung, sobald das Geld unterwegs ist.',
+  confirmYes: 'Ja, erfassen',
+  confirmNo: 'Noch nicht',
+  settleAllTitle: 'Alles ausgleichen',
+  settleAllBody:
+    'Erfasst alle Zahlungen unten auf einmal. Mach das, wenn das Geld wirklich geflossen ist.',
+  settleAllRecord_one: '{count} Zahlung erfassen',
+  settleAllRecord_other: '{count} Zahlungen erfassen',
+  settleAllDone_one: '{count} Zahlung erfasst. Ihr seid quitt.',
+  settleAllDone_other: '{count} Zahlungen erfasst. Ihr seid quitt.',
+  detail: {
+    title: 'Zahlung',
+    loading: 'Zahlung wird geladen',
+    notFound: 'Diese Zahlung ist verschwunden. Vielleicht wurde sie gelöscht.',
+    deletedBanner: 'Diese Zahlung wurde gelöscht.',
+    recordedBy: 'Erfasst von {name} {when}',
+    converted: '{amount} in {currency} zu {rate}',
+    departedLocked:
+      'Jemand aus dieser Zahlung hat die Gruppe verlassen, daher lassen sich nur Notiz und Datum ändern.',
+    archived: '{group} ist archiviert: Zahlungen lassen sich lesen, aber nicht ändern.',
+    note: 'Notiz',
+    actions: 'Aktionen zur Zahlung',
+  },
 } satisfies Translation<typeof en.settle>
 
 export const activity = {
@@ -489,6 +574,8 @@ export const activity = {
     settlement: {
       created: 'Du hast {name} {amount} gezahlt',
       deleted: 'Du hast eine Zahlung an {name} gelöscht',
+      updated: 'Du hast eine Zahlung an {name} geändert',
+      restored: 'Du hast eine Zahlung an {name} wiederhergestellt',
     },
     event: {
       created: 'Du planst {event}',
@@ -510,6 +597,8 @@ export const activity = {
     settlement: {
       created: '{actor} hat dir {amount} gezahlt',
       deleted: '{actor} hat eine Zahlung an dich gelöscht',
+      updated: '{actor} hat eine Zahlung an dich geändert',
+      restored: '{actor} hat eine Zahlung an dich wiederhergestellt',
     },
   },
   group: {
@@ -532,6 +621,8 @@ export const activity = {
   settlement: {
     created: '{actor} hat {name} {amount} gezahlt',
     deleted: '{actor} hat eine Zahlung an {name} gelöscht',
+    updated: '{actor} hat eine Zahlung an {name} geändert',
+    restored: '{actor} hat eine Zahlung an {name} wiederhergestellt',
   },
   event: {
     created: '{actor} plant {event}',
@@ -544,4 +635,5 @@ export const activity = {
   comment: {
     created: '{actor} hat {subject} kommentiert',
   },
+  aPayment: 'eine Zahlung',
 } satisfies Translation<typeof en.activity>

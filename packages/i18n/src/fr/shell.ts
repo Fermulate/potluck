@@ -213,6 +213,7 @@ export const errors = {
     invalid_unsubscribe_link:
       'Ce lien de désabonnement ne marche pas. Change plutôt tes réglages e-mail sur la page Moi.',
     mfa_required: "Termine d'abord la connexion en deux étapes.",
+    invalid_payment_handle: 'Ça ne ressemble pas à un identifiant pour cette appli.',
   },
   auth: {
     invalidCredentials: 'Cet e-mail et ce mot de passe ne correspondent pas.',

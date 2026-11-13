@@ -29,7 +29,7 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   #variable_conflict use_column
   declare uid uuid := private.require_user();
   begin
-    perform 1 from public.groups g where g.id = gid for share;
+    perform 1 from public.groups g where g.id = gid for share;  -- bulk settles: for no key update
     perform private.require_member(gid);
     perform private.require_group_open(gid);  -- money RPCs: private.require_unarchived(gid)
     -- role checks, then:
@@ -88,6 +88,9 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - Test both sides of every policy and every error code an RPC raises (`throws_ok(sql, '<state>', '<code>', ...)`).
 - The seed writes 60 days of EUR and GBP rates: a test that depends on rates starts with
   `delete from public.fx_rates;`.
+- Payments beyond v1 (`settle_up_v2`, edit, restore, bulk settle, reminders, payment methods,
+  `private.pairwise_debts` with the core cases) are in `23_payments.test.sql`. Debts for bulk
+  writes come from `private.group_debts`, never from the client (ADR 15).
 
 ## Local stack
 

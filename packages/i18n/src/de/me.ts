@@ -59,6 +59,18 @@ export const notifications = {
         title: 'Zahlung erfasst',
         body: '{actor} hat deine Zahlung über {amount} an {payee} erfasst',
       },
+      updated: {
+        title: 'Zahlung geändert',
+        body: '{actor} hat eine Zahlung über {amount} in {group} geändert',
+      },
+      deleted: {
+        title: 'Zahlung gelöscht',
+        body: '{actor} hat eine Zahlung über {amount} in {group} gelöscht',
+      },
+      restored: {
+        title: 'Zahlung wiederhergestellt',
+        body: '{actor} hat eine Zahlung über {amount} in {group} wiederhergestellt',
+      },
     },
     member: {
       joined: {
@@ -87,6 +99,13 @@ export const notifications = {
     },
     comment: {
       created: { title: 'Neuer Kommentar', body: '{actor}: {preview}' },
+    },
+    debt: {
+      reminder: {
+        title: 'Eine freundliche Erinnerung',
+        body: '{actor} sagt, du schuldest {amount} in {group}',
+        bodyWithNote: '{actor} sagt, du schuldest {amount} in {group}: "{note}"',
+      },
     },
   },
 } satisfies Translation<typeof en.notifications>
@@ -219,6 +238,40 @@ export const settings = {
         about: 'der Monatsübersicht',
       },
     },
+  },
+  paymentMethods: {
+    title: 'Zahlungswege',
+    hint: 'Leute in deinen Gruppen sehen sie, wenn sie mit dir ausgleichen, und können dich mit einem Tipp bezahlen. Potluck bewegt nie Geld.',
+    empty: 'Noch nichts gespeichert.',
+    add: 'Zahlungsweg hinzufügen',
+    edit: '{app} ändern',
+    remove: '{app} entfernen',
+    removed: '{app} entfernt.',
+    saved: '{app} gespeichert.',
+    pickApp: 'Welche App?',
+    save: 'Speichern',
+    invalid: 'Das sieht nicht nach einem {app}-Namen aus.',
+    handle: {
+      paypal: 'PayPal.me-Name',
+      venmo: 'Venmo-Name',
+      cashapp: 'Cashtag',
+      revolut: 'Revolut-Name',
+      monzo: 'Monzo.me-Name',
+      upi: 'UPI-ID',
+      interac: 'E-Mail oder Telefon für e-Transfers',
+      bank: 'Bankverbindung',
+    },
+    placeholder: {
+      paypal: 'deinname',
+      venmo: 'dein-name',
+      cashapp: 'deinname',
+      revolut: 'deinname',
+      monzo: 'deinname',
+      upi: 'name@bank',
+      interac: 'du@beispiel.de',
+      bank: 'IBAN oder Bankleitzahl und Kontonummer',
+    },
+    pasteHint: 'Du kannst auch den Link zu deinem Profil einfügen.',
   },
 } satisfies Translation<typeof en.settings>
 

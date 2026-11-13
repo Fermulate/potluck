@@ -40,6 +40,10 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
 - Two-step sign in: signed-in routes check `needsSecondFactor(session)` (`src/lib/auth.ts`) and send
   the person to `/two-factor`; the database refuses that session anyway ([ADR 13](../../docs/adr/0013-two-step-sign-in-enforced-in-the-database.md)).
   Sign in and security sections live in `src/features/account/`, mounted on Me with one line each.
+- Payments live in `src/features/settle`: the settle form (`PaymentForm`, also used to edit at
+  `/payments/$paymentId/edit`), the payment page `/payments/$paymentId` (restore, comments through
+  `CommentThread` from `features/expenses/comments.tsx`), pay links, reminders and "Settle
+  everything". Cross-group settle is on the Friends page. Pay links never move money (ADR 15).
 
 ## Tests
 

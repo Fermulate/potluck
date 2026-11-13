@@ -321,6 +321,7 @@ export type Database = {
           expense_id: string | null
           group_id: string
           id: string
+          settlement_id: string | null
         }
         ComputedFields: never
         Insert: {
@@ -332,6 +333,7 @@ export type Database = {
           expense_id?: string | null
           group_id: string
           id?: string
+          settlement_id?: string | null
         }
         Update: {
           author_id?: string
@@ -342,6 +344,7 @@ export type Database = {
           expense_id?: string | null
           group_id?: string
           id?: string
+          settlement_id?: string | null
         }
         Relationships: [
           {
@@ -370,6 +373,72 @@ export type Database = {
             columns: ['group_id']
             isOneToOne: false
             referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_settlement_id_fkey'
+            columns: ['settlement_id']
+            isOneToOne: false
+            referencedRelation: 'settlements'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      debt_reminders: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          from_user: string
+          group_id: string
+          id: string
+          note: string | null
+          sent_on: string
+          to_user: string
+        }
+        ComputedFields: never
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          currency: string
+          from_user: string
+          group_id: string
+          id?: string
+          note?: string | null
+          sent_on?: string
+          to_user: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          currency?: string
+          from_user?: string
+          group_id?: string
+          id?: string
+          note?: string | null
+          sent_on?: string
+          to_user?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'debt_reminders_from_user_fkey'
+            columns: ['from_user']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'debt_reminders_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'debt_reminders_to_user_fkey'
+            columns: ['to_user']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
         ]
@@ -1004,6 +1073,39 @@ export type Database = {
           },
         ]
       }
+      payment_methods: {
+        Row: {
+          created_at: string
+          handle: string
+          kind: string
+          updated_at: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          handle: string
+          kind: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          handle?: string
+          kind?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'payment_methods_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_path: string | null
@@ -1526,6 +1628,16 @@ export type Database = {
       }
       email_unsubscribe: { Args: { action?: string; token: string }; Returns: Json }
       forget_mfa_recovery_codes: { Args: { target: string }; Returns: undefined }
+      friend_balances: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          archived: boolean
+          currency: string
+          friend_id: string
+          group_id: string
+          net_cents: number
+        }[]
+      }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
       invite_preview: {
         Args: { code: string }
@@ -1580,6 +1692,26 @@ export type Database = {
       }
       notify_mfa_recovered: { Args: { target: string }; Returns: undefined }
       record_mfa_recover_attempt: { Args: { target: string }; Returns: boolean }
+      remind_debt: {
+        Args: { group_id: string; note?: string; user_id: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          currency: string
+          from_user: string
+          group_id: string
+          id: string
+          note: string | null
+          sent_on: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'debt_reminders'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
       request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
       restore_expense: {
@@ -1611,6 +1743,29 @@ export type Database = {
         SetofOptions: {
           from: '*'
           to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      restore_settlement: {
+        Args: { id: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
           isOneToOne: true
           isSetofReturn: false
         }
@@ -1658,6 +1813,29 @@ export type Database = {
         Args: { category: string; email?: boolean; push?: boolean }
         Returns: undefined
       }
+      settle_all: {
+        Args: { group_id: string; note?: string; settled_on?: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       settle_up: {
         Args: {
           amount_cents: number
@@ -1685,6 +1863,60 @@ export type Database = {
           to: 'settlements'
           isOneToOne: true
           isSetofReturn: false
+        }
+      }
+      settle_up_v2: {
+        Args: {
+          amount_cents: number
+          currency?: string
+          from_user: string
+          group_id: string
+          note?: string
+          settled_on?: string
+          to_user: string
+        }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      settle_with_friend: {
+        Args: { amounts?: Json; friend_id: string; note?: string; settled_on?: string }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: false
+          isSetofReturn: true
         }
       }
       simplified_debts: {
@@ -1758,6 +1990,29 @@ export type Database = {
         SetofOptions: {
           from: '*'
           to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_settlement: {
+        Args: { id: string; payload: Json }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
           isOneToOne: true
           isSetofReturn: false
         }
