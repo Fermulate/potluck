@@ -6,6 +6,7 @@
 -- private.group_members_activity, private.group_members_notify, private.befriend_group_members,
 -- private.expenses_activity, private.expenses_notify_update, private.guard_open_group_write,
 -- private.set_updated_at, private.notification_channels, private.send_email_notifications,
+-- private.settlements_activity, private.settlements_notify_change, private.check_payment,
 -- public.accept_invite, public.leave_group, public.delete_my_account,
 -- public.request_availability, public.best_slots, public.invite_preview,
 -- public.get_or_create_direct_group.
@@ -708,7 +709,8 @@ begin
 end;
 $$;
 
--- Body as in schema/current.sql plus the claiming check (claims also run in archived groups).
+-- Body as in 20261113115257_payment_comments.sql plus the claiming check (claims also run in
+-- archived groups).
 create or replace function private.guard_open_group_write()
 returns trigger
 language plpgsql
@@ -731,6 +733,7 @@ begin
     gid := coalesce(
       (select x.group_id from public.expenses x where x.id = (row ->> 'expense_id')::uuid),
       (select e.group_id from public.events e where e.id = (row ->> 'event_id')::uuid),
+      (select s.group_id from public.settlements s where s.id = (row ->> 'settlement_id')::uuid),
       (row ->> 'group_id')::uuid
     );
   else
@@ -743,6 +746,130 @@ begin
     raise exception using message = 'rsvp_closed', detail = 'RSVPs for this plan are closed', errcode = '23514';
   end if;
   return coalesce(new, old);
+end;
+$$;
+
+-- Body as in 20261113115254_payments_v2.sql plus the claiming check.
+create or replace function private.settlements_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  verb text;
+begin
+  if private.claiming() then
+    return null;
+  end if;
+  if tg_op = 'INSERT' then
+    verb := 'settlement.created';
+  elsif old.deleted_at is null and new.deleted_at is not null then
+    verb := 'settlement.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    verb := 'settlement.restored';
+  elsif new.deleted_at is null
+    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.fx_rate, new.note, new.settled_at)
+        is distinct from
+        (old.from_user, old.to_user, old.amount_cents, old.currency, old.fx_rate, old.note, old.settled_at) then
+    verb := 'settlement.updated';
+  else
+    return null;
+  end if;
+
+  perform private.log_activity(new.group_id, coalesce(auth.uid(), new.created_by), verb, new.id,
+    jsonb_build_object(
+      'from_user', new.from_user,
+      'to_user', new.to_user,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ));
+  return null;
+end;
+$$;
+
+-- Body as in 20261113144132_settlement_change_notifications.sql plus the claiming check.
+create or replace function private.settlements_notify_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kind text;
+begin
+  if private.claiming() then
+    return null;
+  end if;
+  if old.deleted_at is null and new.deleted_at is not null then
+    kind := 'settlement.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    kind := 'settlement.restored';
+  elsif new.deleted_at is null
+    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.settled_at)
+        is distinct from
+        (old.from_user, old.to_user, old.amount_cents, old.currency, old.settled_at) then
+    kind := 'settlement.updated';
+  else
+    return null;
+  end if;
+
+  perform private.notify(
+    array[old.from_user, old.to_user, new.from_user, new.to_user],
+    kind,
+    jsonb_build_object(
+      'settlement_id', new.id,
+      'group_id', new.group_id,
+      'from_user', new.from_user,
+      'to_user', new.to_user,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+-- Body as in 20261113115254_payments_v2.sql plus: anyone in the group may record a payment one
+-- side of which is someone not on Potluck yet ("Sam paid you", "you paid Sam", "Sam paid Ben"),
+-- since that person cannot record it themselves.
+create or replace function private.check_payment(
+  gid uuid,
+  my_role public.group_role,
+  payer uuid,
+  payee uuid,
+  amount bigint
+) returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if amount is null or amount <= 0 or amount > 100000000000 then
+    raise exception using message = 'invalid_amount', detail = 'Enter an amount greater than zero', errcode = '22023';
+  end if;
+  if payer is null or payee is null or payer = payee then
+    raise exception using message = 'invalid_parties', detail = 'A payment needs two different people', errcode = '22023';
+  end if;
+  if my_role = 'member' and uid is distinct from payer and uid is distinct from payee
+     and not exists (
+       select 1 from public.profiles p where p.id in (payer, payee) and p.is_placeholder
+     ) then
+    raise exception using
+      message = 'not_a_party',
+      detail = 'Only owners and admins can record a payment between two other people',
+      errcode = '42501';
+  end if;
+  if (
+    select count(*) from public.group_members m
+    where m.group_id = gid and m.user_id in (payer, payee)
+  ) <> 2 then
+    raise exception using message = 'member_not_in_group', detail = 'Both people must be in the group', errcode = '23514';
+  end if;
 end;
 $$;
 
@@ -820,6 +947,8 @@ begin
   delete from public.notification_prefs p where p.user_id = ph;
   delete from private.email_unsubscribe_undo u where u.user_id = ph;
   delete from public.friendships f where f.user_id = ph or f.friend_id = ph;
+  -- A seat cannot be reminded (it gets no notifications); the once-a-day key is per person.
+  delete from public.debt_reminders r where r.from_user = ph or r.to_user = ph;
   update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
   where i.placeholder_id = ph;
 

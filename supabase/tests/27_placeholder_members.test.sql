@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(130);
+select plan(134);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -806,6 +806,29 @@ select is(
   true,
   'and the shared group keeps working: the expense counts for Ben'
 );
+
+-- Recording what a seat paid -------------------------------------------------------------------
+
+reset role;
+select tests.remember('pay', tests.group_with('ava', array['ben'], '{}', 'Cabin', 'USD'));
+select tests.login('ava');
+select tests.remember('quinn', public.add_placeholder_member(tests.id('pay'), 'Quinn'));
+select public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('pay'), 'description', 'Firewood', 'amount_cents', 1000, 'paid_by', tests.uid('ava'),
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.id('quinn')))));
+select tests.login('ben');
+select lives_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 500) $$, tests.id('pay'), tests.id('quinn'), tests.uid('ava')),
+  'any member records that a seat paid someone'
+);
+select throws_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('pay'), tests.uid('ava'), tests.uid('ava')),
+  '22023', 'invalid_parties', 'the usual payment checks still apply'
+);
+reset role;
+select is(pg_temp.bal('pay', tests.id('quinn')), 0::bigint, 'the seat is settled');
+select tests.login('ava');
+select lives_ok(format($$ select public.remove_placeholder(%L) $$, tests.id('quinn')), 'and can be removed once settled');
 
 select * from finish();
 rollback;
