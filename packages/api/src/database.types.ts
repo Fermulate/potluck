@@ -847,8 +847,42 @@ export type Database = {
           },
         ]
       }
+      notification_prefs: {
+        Row: {
+          category: string
+          email: boolean | null
+          push: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        ComputedFields: never
+        Insert: {
+          category: string
+          email?: boolean | null
+          push?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          email?: boolean | null
+          push?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'notification_prefs_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       notifications: {
         Row: {
+          channels: string[]
           created_at: string
           data: NonNullable<Json>
           id: string
@@ -858,6 +892,7 @@ export type Database = {
         }
         ComputedFields: never
         Insert: {
+          channels?: string[]
           created_at?: string
           data?: NonNullable<Json>
           id?: string
@@ -866,6 +901,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          channels?: string[]
           created_at?: string
           data?: NonNullable<Json>
           id?: string
@@ -1352,6 +1388,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      email_unsubscribe: { Args: { subscribe?: boolean; token: string }; Returns: string }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
       invite_preview: {
         Args: { code: string }
@@ -1368,6 +1405,16 @@ export type Database = {
         }[]
       }
       leave_group: { Args: { group_id: string }; Returns: undefined }
+      my_notification_prefs: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          category: string
+          email: boolean
+          email_allowed: boolean
+          push: boolean
+          push_allowed: boolean
+        }[]
+      }
       my_timeline: {
         Args: { from?: string; to?: string }
         Returns: {
@@ -1459,6 +1506,10 @@ export type Database = {
       set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
       set_member_role: {
         Args: { group_id: string; role: Database['public']['Enums']['group_role']; user_id: string }
+        Returns: undefined
+      }
+      set_notification_pref: {
+        Args: { category: string; email?: boolean; push?: boolean }
         Returns: undefined
       }
       settle_up: {

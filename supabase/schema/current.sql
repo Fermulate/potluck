@@ -533,6 +533,20 @@ $$;
 ALTER FUNCTION "private"."editable_expense"("eid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."email_enabled"() RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(
+    (select c.value = 'true'::jsonb from public.app_config c where c.key = 'email_notifications'),
+    false
+  );
+$$;
+
+
+ALTER FUNCTION "private"."email_enabled"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."events_activity"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -713,6 +727,49 @@ $$;
 ALTER FUNCTION "private"."expenses_notify"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."expenses_notify_removal"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  kind text;
+  recipients uuid[];
+begin
+  if old.deleted_at is null and new.deleted_at is not null then
+    kind := 'expense.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    kind := 'expense.restored';
+  else
+    return null;
+  end if;
+
+  select array_agg(distinct u) into recipients
+  from (
+    select s.user_id as u from public.expense_splits s where s.expense_id = new.id
+    union
+    select new.paid_by
+  ) x;
+
+  perform private.notify(
+    recipients,
+    kind,
+    jsonb_build_object(
+      'expense_id', new.id,
+      'group_id', new.group_id,
+      'description', new.description,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."expenses_notify_removal"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."expenses_notify_update"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -785,6 +842,20 @@ $$;
 
 
 ALTER FUNCTION "private"."forget_closed_account"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."forget_notification_prefs"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  delete from public.notification_prefs p where p.user_id = new.id;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."forget_notification_prefs"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."fx_rate"("from_currency" character, "to_currency" character, "on_day" "date" DEFAULT CURRENT_DATE) RETURNS numeric
@@ -888,6 +959,32 @@ $$;
 
 
 ALTER FUNCTION "private"."group_members_notify"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."group_members_notify_added"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  actor uuid := auth.uid();
+begin
+  if actor is null or actor = new.user_id
+     or exists (select 1 from public.groups g where g.id = new.group_id and g.is_direct) then
+    return null;
+  end if;
+
+  perform private.notify(
+    array[new.user_id],
+    'member.added',
+    jsonb_build_object('group_id', new.group_id, 'role', new.role),
+    actor
+  );
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."group_members_notify_added"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."group_role"("gid" "uuid") RETURNS "public"."group_role"
@@ -1352,6 +1449,70 @@ $$;
 ALTER FUNCTION "private"."member_event"("eid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "date") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  with bounds as (
+    select date_trunc('month', month::timestamp)::date as starts,
+           (date_trunc('month', month::timestamp) + interval '1 month')::date as ends
+  ),
+  mine as (
+    select
+      g.id,
+      case
+        when g.is_direct then coalesce((
+          select o.display_name from public.group_members m2
+          join public.profiles o on o.id = m2.user_id
+          where m2.group_id = g.id and m2.user_id <> uid
+          limit 1
+        ), g.name)
+        else g.name
+      end as name,
+      g.emoji,
+      g.is_direct,
+      g.currency::text as currency,
+      coalesce((select b.net_cents from public.group_balances b where b.group_id = g.id and b.user_id = uid), 0) as net_cents,
+      (select count(*) from public.expenses e, bounds
+       where e.group_id = g.id and e.deleted_at is null
+         and e.created_at >= bounds.starts and e.created_at < bounds.ends
+         and (e.paid_by = uid or exists (
+           select 1 from public.expense_splits s where s.expense_id = e.id and s.user_id = uid
+         )))::int as expenses,
+      (select count(*) from public.settlements s, bounds
+       where s.group_id = g.id and s.deleted_at is null
+         and s.created_at >= bounds.starts and s.created_at < bounds.ends
+         and uid in (s.from_user, s.to_user))::int as payments
+    from public.group_members m
+    join public.groups g on g.id = m.group_id
+    where m.user_id = uid
+  )
+  select jsonb_build_object(
+    'month', (select to_char(bounds.starts, 'YYYY-MM-DD') from bounds),
+    'groups', coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'group_id', mine.id,
+          'name', mine.name,
+          'emoji', mine.emoji,
+          'is_direct', mine.is_direct,
+          'currency', mine.currency,
+          'net_cents', mine.net_cents,
+          'expenses', mine.expenses,
+          'payments', mine.payments
+        )
+        order by abs(mine.net_cents) desc, mine.name, mine.id
+      ) filter (where mine.net_cents <> 0 or mine.expenses > 0 or mine.payments > 0),
+      '[]'::jsonb
+    )
+  )
+  from mine;
+$$;
+
+
+ALTER FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "date") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."my_contact_ids"() RETURNS SETOF "uuid"
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -1407,6 +1568,34 @@ $$;
 ALTER FUNCTION "private"."my_group_ids"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") RETURNS "text"[]
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select array_remove(array[
+    case
+      when c.category is null or (c.push_allowed and coalesce(p.push, c.push_default)) then 'push'
+    end,
+    case
+      when c.email_allowed and coalesce(p.email, c.email_default)
+        and private.email_enabled()
+        and exists (
+          select 1 from auth.users u
+          where u.id = uid and u.email is not null and u.email_confirmed_at is not null
+        )
+      then 'email'
+    end
+  ], null)
+  from (select 1) as one
+  left join private.notification_types t on t.type = kind
+  left join private.notification_categories c on c.category = t.category
+  left join public.notification_prefs p on p.user_id = uid and p.category = c.category;
+$$;
+
+
+ALTER FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."notify"("recipients" "uuid"[], "kind" "text", "payload" "jsonb", "actor" "uuid" DEFAULT NULL::"uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1430,16 +1619,42 @@ CREATE OR REPLACE FUNCTION "private"."push_notification"() RETURNS "trigger"
     SET "search_path" TO ''
     AS $$
 begin
-  perform private.invoke_edge_function(
-    'notify',
-    jsonb_build_object('id', new.id, 'user_id', new.user_id, 'type', new.type, 'data', new.data)
-  );
+  if 'push' = any (new.channels) then
+    perform private.invoke_edge_function(
+      'notify',
+      jsonb_build_object('id', new.id, 'user_id', new.user_id, 'type', new.type, 'data', new.data)
+    );
+  end if;
   return null;
 end;
 $$;
 
 
 ALTER FUNCTION "private"."push_notification"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."queue_email"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if 'email' = any (new.channels) then
+    insert into private.email_outbox (notification_id, user_id, subject)
+    values (
+      new.id,
+      new.user_id,
+      case
+        when new.type like 'expense.%' and new.data ? 'expense_id' then 'expense:' || (new.data ->> 'expense_id')
+        else new.id::text
+      end
+    );
+  end if;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."queue_email"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."random_code"("bytes" integer DEFAULT 9) RETURNS "text"
@@ -1643,6 +1858,20 @@ $$;
 
 
 ALTER FUNCTION "private"."require_user"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."route_notification"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  new.channels := private.notification_channels(new.user_id, new.type);
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."route_notification"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."rsvp_open"("eid" "uuid") RETURNS boolean
@@ -1966,6 +2195,118 @@ $_$;
 ALTER FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."send_email_notifications"("hold" interval DEFAULT '00:01:00'::interval) RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  r record;
+  chosen uuid;
+  ex public.expenses;
+  emails jsonb := '[]'::jsonb;
+  item jsonb;
+begin
+  if not pg_try_advisory_xact_lock(hashtext('private.send_email_notifications')) then
+    return 0;
+  end if;
+
+  update private.email_outbox o set handled_at = now(), outcome = 'dropped'
+  where o.handled_at is null and o.queued_at < now() - interval '1 day';
+
+  if not private.email_enabled() then
+    return 0;
+  end if;
+
+  for r in
+    -- Oldest first; within one transaction (same created_at) a creation comes before a change.
+    select o.user_id, o.subject,
+      array_agg(o.notification_id order by n.created_at, n.type <> 'expense.created', n.id) as ids,
+      array_agg(n.type order by n.created_at, n.type <> 'expense.created', n.id) as types
+    from private.email_outbox o
+    join public.notifications n on n.id = o.notification_id
+    where o.handled_at is null
+    group by o.user_id, o.subject
+    having max(o.queued_at) <= now() - hold
+    order by min(o.queued_at)
+    limit 100
+  loop
+    chosen := null;
+    ex := null;
+    if r.subject like 'expense:%' then
+      select * into ex from public.expenses e where e.id = private.try_uuid(substr(r.subject, 9));
+      if ex.id is null or ex.deleted_at is not null then
+        if not ('expense.created' = any (r.types)) then
+          select x.i into chosen from unnest(r.ids, r.types) with ordinality as x (i, ty, ord)
+          where x.ty = 'expense.deleted' order by x.ord limit 1;
+        end if;
+      else
+        select x.i into chosen from unnest(r.ids, r.types) with ordinality as x (i, ty, ord)
+        where x.ty <> 'expense.deleted' order by x.ord limit 1;
+      end if;
+    else
+      chosen := r.ids[1];
+    end if;
+
+    update private.email_outbox o
+    set handled_at = now(), outcome = case when o.notification_id = chosen then 'sent' else 'folded' end
+    where o.notification_id = any (r.ids);
+
+    if chosen is null then
+      continue;
+    end if;
+
+    item := null;
+    select jsonb_build_object(
+      'id', n.id,
+      'type', n.type,
+      'category', t.category,
+      'to', u.email,
+      'name', p.display_name,
+      'timezone', p.timezone,
+      'unsubscribe', private.unsubscribe_token(n.user_id, t.category),
+      'unsubscribe_all', private.unsubscribe_token(n.user_id, 'all'),
+      'data', n.data
+        || jsonb_strip_nulls(jsonb_build_object(
+          'group_name', case when g.is_direct then null else g.name end,
+          'group_emoji', g.emoji,
+          'actor_name', a.display_name
+        ))
+        || case when ex.id is not null and ex.deleted_at is null then jsonb_strip_nulls(jsonb_build_object(
+          'description', ex.description,
+          'amount_cents', ex.amount_cents,
+          'currency', ex.currency,
+          'share_cents', (select s.share_cents from public.expense_splits s
+                          where s.expense_id = ex.id and s.user_id = n.user_id)
+        )) else '{}'::jsonb end
+    )
+    into item
+    from public.notifications n
+    join private.notification_types t on t.type = n.type
+    join public.profiles p on p.id = n.user_id and p.deleted_at is null
+    join auth.users u on u.id = n.user_id and u.email is not null and u.email_confirmed_at is not null
+    left join public.groups g on g.id = private.try_uuid(n.data ->> 'group_id')
+    left join public.profiles a on a.id = private.try_uuid(n.data ->> 'actor_id')
+    where n.id = chosen
+      and 'email' = any (private.notification_channels(n.user_id, n.type));
+
+    if item is null then
+      update private.email_outbox o set outcome = 'dropped' where o.notification_id = chosen;
+    else
+      emails := emails || jsonb_build_array(item);
+    end if;
+  end loop;
+
+  if jsonb_array_length(emails) > 0 then
+    perform private.invoke_edge_function('notify', jsonb_build_object('emails', emails));
+  end if;
+  return jsonb_array_length(emails);
+end;
+$$;
+
+
+ALTER FUNCTION "private"."send_email_notifications"("hold" interval) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."send_event_reminders"() RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -2015,6 +2356,39 @@ $$;
 
 
 ALTER FUNCTION "private"."send_event_reminders"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."send_monthly_summaries"("month" "date" DEFAULT (("date_trunc"('month'::"text", "now"()) - '1 mon'::interval))::"date") RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid;
+  starts date := date_trunc('month', month::timestamp)::date;
+  sent int := 0;
+begin
+  for uid in
+    select distinct b.user_id
+    from public.group_balances b
+    join public.group_members m on m.group_id = b.group_id and m.user_id = b.user_id
+    join public.profiles p on p.id = b.user_id and p.deleted_at is null
+    where b.net_cents <> 0
+      and not exists (
+        select 1 from public.notifications n
+        where n.user_id = b.user_id and n.type = 'summary.monthly'
+          and n.data ->> 'month' = to_char(starts, 'YYYY-MM-DD')
+      )
+    order by b.user_id
+  loop
+    perform private.notify(array[uid], 'summary.monthly', private.monthly_summary(uid, starts));
+    sent := sent + 1;
+  end loop;
+  return sent;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."send_monthly_summaries"("month" "date") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."set_updated_at"() RETURNS "trigger"
@@ -2145,6 +2519,26 @@ $$;
 
 
 ALTER FUNCTION "private"."try_uuid"("value" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select uid::text || '.' || category || '.' || left(
+    translate(
+      encode(extensions.hmac(convert_to(uid::text || '.' || category, 'UTF8'), k.secret, 'sha256'), 'base64'),
+      '+/=',
+      '-_'
+    ),
+    32
+  )
+  from private.signing_keys k
+  where k.name = 'email_unsubscribe';
+$$;
+
+
+ALTER FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."accept_invite"("code" "text") RETURNS "uuid"
@@ -2691,6 +3085,44 @@ $$;
 ALTER FUNCTION "public"."delete_settlement"("id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean DEFAULT false) RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  parts text[] := string_to_array(coalesce(token, ''), '.');
+  uid uuid;
+  cat text;
+begin
+  if cardinality(parts) = 3 then
+    uid := private.try_uuid(parts[1]);
+    cat := parts[2];
+  end if;
+
+  if uid is null
+     or not (cat = 'all' or exists (
+       select 1 from private.notification_categories c where c.category = cat and c.email_allowed
+     ))
+     or token is distinct from private.unsubscribe_token(uid, cat) then
+    raise exception using message = 'invalid_unsubscribe_link', detail = 'This unsubscribe link is not valid', errcode = '22023';
+  end if;
+
+  if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null) then
+    insert into public.notification_prefs as p (user_id, category, email)
+    select uid, c.category, case when cat = 'all' and subscribe then null else subscribe end
+    from private.notification_categories c
+    where c.email_allowed and (cat = 'all' or c.category = cat)
+    on conflict (user_id, category) do update set email = excluded.email;
+  end if;
+
+  return cat;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") RETURNS "uuid"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -2862,6 +3294,31 @@ $$;
 
 
 ALTER FUNCTION "public"."leave_group"("group_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."my_notification_prefs"() RETURNS TABLE("category" "text", "push" boolean, "email" boolean, "push_allowed" boolean, "email_allowed" boolean)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  return query
+  select
+    c.category,
+    c.push_allowed and coalesce(p.push, c.push_default),
+    c.email_allowed and coalesce(p.email, c.email_default),
+    c.push_allowed,
+    c.email_allowed
+  from private.notification_categories c
+  left join public.notification_prefs p on p.user_id = uid and p.category = c.category
+  order by c.position;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."my_notification_prefs"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."my_timeline"("from" timestamp with time zone DEFAULT "now"(), "to" timestamp with time zone DEFAULT ("now"() + '60 days'::interval)) RETURNS TABLE("event_id" "uuid", "group_id" "uuid", "group_name" "text", "group_emoji" "text", "group_color" "text", "title" "text", "emoji" "text", "location" "text", "status" "public"."event_status", "timezone" "text", "starts_at" timestamp with time zone, "ends_at" timestamp with time zone, "window_start" "date", "window_end" "date", "rsvp_deadline" timestamp with time zone, "my_rsvp" "public"."rsvp_status", "going_count" integer, "availability_requested" boolean, "availability_submitted" boolean)
@@ -3231,6 +3688,32 @@ $$;
 ALTER FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean DEFAULT NULL::boolean, "email" boolean DEFAULT NULL::boolean) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+begin
+  if not exists (
+    select 1 from private.notification_categories c where c.category = set_notification_pref.category
+  ) then
+    raise exception using message = 'invalid_notification_category', detail = 'Unknown notification setting', errcode = '22023';
+  end if;
+
+  insert into public.notification_prefs as p (user_id, category, push, email)
+  values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email)
+  on conflict (user_id, category) do update
+    set push = coalesce(excluded.push, p.push),
+        email = coalesce(excluded.email, p.email);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text" DEFAULT NULL::"text", "note" "text" DEFAULT NULL::"text") RETURNS "public"."settlements"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3403,6 +3886,20 @@ $$;
 ALTER FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "private"."email_outbox" (
+    "notification_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "subject" "text" NOT NULL,
+    "queued_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "handled_at" timestamp with time zone,
+    "outcome" "text",
+    CONSTRAINT "email_outbox_outcome_check" CHECK (("outcome" = ANY (ARRAY['sent'::"text", 'folded'::"text", 'dropped'::"text"])))
+);
+
+
+ALTER TABLE "private"."email_outbox" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "private"."former_members" (
     "group_id" "uuid" NOT NULL,
     "user_id" "uuid" NOT NULL,
@@ -3411,6 +3908,47 @@ CREATE TABLE IF NOT EXISTS "private"."former_members" (
 
 
 ALTER TABLE "private"."former_members" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."notification_categories" (
+    "category" "text" NOT NULL,
+    "position" integer NOT NULL,
+    "push_default" boolean NOT NULL,
+    "email_default" boolean NOT NULL,
+    "push_allowed" boolean DEFAULT true NOT NULL,
+    "email_allowed" boolean DEFAULT true NOT NULL,
+    CONSTRAINT "notification_categories_category_check" CHECK (("category" ~ '^[a-z_]+$'::"text"))
+);
+
+
+ALTER TABLE "private"."notification_categories" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."notification_categories" IS 'One row per notification setting people see, with its defaults. Labels live in packages/i18n (settings.notificationPrefs.categories).';
+
+
+
+CREATE TABLE IF NOT EXISTS "private"."notification_types" (
+    "type" "text" NOT NULL,
+    "category" "text" NOT NULL
+);
+
+
+ALTER TABLE "private"."notification_types" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."notification_types" IS 'Which setting governs each notification type. Add one row per new type.';
+
+
+
+CREATE TABLE IF NOT EXISTS "private"."signing_keys" (
+    "name" "text" NOT NULL,
+    "secret" "bytea" DEFAULT "extensions"."gen_random_bytes"(32) NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."signing_keys" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."activity" (
@@ -3709,17 +4247,38 @@ COMMENT ON VIEW "public"."group_balances" IS 'Net balance per member in group cu
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."notification_prefs" (
+    "user_id" "uuid" NOT NULL,
+    "category" "text" NOT NULL,
+    "push" boolean,
+    "email" boolean,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."notification_prefs" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."notification_prefs" IS 'Notification settings someone changed. Null means the category default. Written through set_notification_pref and email_unsubscribe.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."notifications" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "user_id" "uuid" NOT NULL,
     "type" "text" NOT NULL,
     "data" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
     "read_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "channels" "text"[] DEFAULT '{}'::"text"[] NOT NULL
 );
 
 
 ALTER TABLE "public"."notifications" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."notifications"."channels" IS 'Where this notification was sent besides the inbox (push, email), decided from notification_prefs when it was created.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."profiles" (
@@ -3773,8 +4332,28 @@ CREATE TABLE IF NOT EXISTS "public"."reports" (
 ALTER TABLE "public"."reports" OWNER TO "postgres";
 
 
+ALTER TABLE ONLY "private"."email_outbox"
+    ADD CONSTRAINT "email_outbox_pkey" PRIMARY KEY ("notification_id");
+
+
+
 ALTER TABLE ONLY "private"."former_members"
     ADD CONSTRAINT "former_members_pkey" PRIMARY KEY ("group_id", "user_id");
+
+
+
+ALTER TABLE ONLY "private"."notification_categories"
+    ADD CONSTRAINT "notification_categories_pkey" PRIMARY KEY ("category");
+
+
+
+ALTER TABLE ONLY "private"."notification_types"
+    ADD CONSTRAINT "notification_types_pkey" PRIMARY KEY ("type");
+
+
+
+ALTER TABLE ONLY "private"."signing_keys"
+    ADD CONSTRAINT "signing_keys_pkey" PRIMARY KEY ("name");
 
 
 
@@ -3888,6 +4467,11 @@ ALTER TABLE ONLY "public"."groups"
 
 
 
+ALTER TABLE ONLY "public"."notification_prefs"
+    ADD CONSTRAINT "notification_prefs_pkey" PRIMARY KEY ("user_id", "category");
+
+
+
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
 
@@ -3918,7 +4502,19 @@ ALTER TABLE ONLY "public"."settlements"
 
 
 
+CREATE INDEX "email_outbox_pending_idx" ON "private"."email_outbox" USING "btree" ("user_id", "subject") WHERE ("handled_at" IS NULL);
+
+
+
+CREATE INDEX "email_outbox_user_id_idx" ON "private"."email_outbox" USING "btree" ("user_id");
+
+
+
 CREATE INDEX "former_members_user_id_idx" ON "private"."former_members" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "notification_types_category_idx" ON "private"."notification_types" USING "btree" ("category");
 
 
 
@@ -4031,6 +4627,10 @@ CREATE INDEX "group_members_user_id_idx" ON "public"."group_members" USING "btre
 
 
 CREATE INDEX "groups_created_by_idx" ON "public"."groups" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "notification_prefs_category_idx" ON "public"."notification_prefs" USING "btree" ("category");
 
 
 
@@ -4150,6 +4750,10 @@ CREATE CONSTRAINT TRIGGER "expenses_notify" AFTER INSERT ON "public"."expenses" 
 
 
 
+CREATE OR REPLACE TRIGGER "expenses_notify_removal" AFTER UPDATE OF "deleted_at" ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."expenses_notify_removal"();
+
+
+
 CREATE CONSTRAINT TRIGGER "expenses_notify_update" AFTER UPDATE ON "public"."expenses" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."expenses_notify_update"();
 
 
@@ -4171,6 +4775,10 @@ CREATE OR REPLACE TRIGGER "group_members_befriend" AFTER INSERT ON "public"."gro
 
 
 CREATE OR REPLACE TRIGGER "group_members_notify" AFTER INSERT ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_notify"();
+
+
+
+CREATE OR REPLACE TRIGGER "group_members_notify_added" AFTER INSERT ON "public"."group_members" FOR EACH ROW EXECUTE FUNCTION "private"."group_members_notify_added"();
 
 
 
@@ -4202,11 +4810,27 @@ CREATE OR REPLACE TRIGGER "groups_set_updated_at" BEFORE UPDATE ON "public"."gro
 
 
 
+CREATE OR REPLACE TRIGGER "notification_prefs_set_updated_at" BEFORE UPDATE ON "public"."notification_prefs" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "notifications_push" AFTER INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "private"."push_notification"();
 
 
 
+CREATE OR REPLACE TRIGGER "notifications_queue_email" AFTER INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "private"."queue_email"();
+
+
+
+CREATE OR REPLACE TRIGGER "notifications_route" BEFORE INSERT ON "public"."notifications" FOR EACH ROW EXECUTE FUNCTION "private"."route_notification"();
+
+
+
 CREATE OR REPLACE TRIGGER "profiles_forget_closed_account" AFTER UPDATE OF "deleted_at" ON "public"."profiles" FOR EACH ROW WHEN ((("old"."deleted_at" IS NULL) AND ("new"."deleted_at" IS NOT NULL))) EXECUTE FUNCTION "private"."forget_closed_account"();
+
+
+
+CREATE OR REPLACE TRIGGER "profiles_forget_notification_prefs" AFTER UPDATE OF "deleted_at" ON "public"."profiles" FOR EACH ROW WHEN ((("old"."deleted_at" IS NULL) AND ("new"."deleted_at" IS NOT NULL))) EXECUTE FUNCTION "private"."forget_notification_prefs"();
 
 
 
@@ -4234,6 +4858,16 @@ CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlem
 
 
 
+ALTER TABLE ONLY "private"."email_outbox"
+    ADD CONSTRAINT "email_outbox_notification_id_fkey" FOREIGN KEY ("notification_id") REFERENCES "public"."notifications"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."email_outbox"
+    ADD CONSTRAINT "email_outbox_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "private"."former_members"
     ADD CONSTRAINT "former_members_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
 
@@ -4241,6 +4875,11 @@ ALTER TABLE ONLY "private"."former_members"
 
 ALTER TABLE ONLY "private"."former_members"
     ADD CONSTRAINT "former_members_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."notification_types"
+    ADD CONSTRAINT "notification_types_category_fkey" FOREIGN KEY ("category") REFERENCES "private"."notification_categories"("category");
 
 
 
@@ -4414,6 +5053,16 @@ ALTER TABLE ONLY "public"."groups"
 
 
 
+ALTER TABLE ONLY "public"."notification_prefs"
+    ADD CONSTRAINT "notification_prefs_category_fkey" FOREIGN KEY ("category") REFERENCES "private"."notification_categories"("category");
+
+
+
+ALTER TABLE ONLY "public"."notification_prefs"
+    ADD CONSTRAINT "notification_prefs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
 
@@ -4479,7 +5128,19 @@ ALTER TABLE ONLY "public"."settlements"
 
 
 
+ALTER TABLE "private"."email_outbox" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "private"."former_members" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."notification_categories" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."notification_types" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."signing_keys" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."activity" ENABLE ROW LEVEL SECURITY;
@@ -4674,6 +5335,13 @@ CREATE POLICY "groups: members read" ON "public"."groups" FOR SELECT TO "authent
 
 
 
+ALTER TABLE "public"."notification_prefs" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "notification_prefs: read own" ON "public"."notification_prefs" FOR SELECT TO "authenticated" USING (("user_id" = ( SELECT "auth"."uid"() AS "uid")));
+
+
+
 ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
 
 
@@ -4802,6 +5470,14 @@ REVOKE ALL ON FUNCTION "private"."editable_expense"("eid" "uuid") FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."email_enabled"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."expenses_notify_removal"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."finish_past_events"() FROM PUBLIC;
 
 
@@ -4810,9 +5486,17 @@ REVOKE ALL ON FUNCTION "private"."forget_closed_account"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."forget_notification_prefs"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_members_notify_added"() FROM PUBLIC;
 
 
 
@@ -4933,6 +5617,10 @@ REVOKE ALL ON FUNCTION "private"."member_event"("eid" "uuid") FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "date") FROM PUBLIC;
+
+
+
 GRANT ALL ON FUNCTION "private"."my_contact_ids"() TO "authenticated";
 GRANT ALL ON FUNCTION "private"."my_contact_ids"() TO "service_role";
 
@@ -4953,7 +5641,15 @@ GRANT ALL ON FUNCTION "private"."my_group_ids"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."notification_channels"("uid" "uuid", "kind" "text") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."push_notification"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."queue_email"() FROM PUBLIC;
 
 
 
@@ -5010,6 +5706,10 @@ REVOKE ALL ON FUNCTION "private"."require_user"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."route_notification"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."rsvp_open"("eid" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."rsvp_open"("eid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."rsvp_open"("eid" "uuid") TO "service_role";
@@ -5020,7 +5720,15 @@ REVOKE ALL ON FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb")
 
 
 
+REVOKE ALL ON FUNCTION "private"."send_email_notifications"("hold" interval) FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."send_event_reminders"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."send_monthly_summaries"("month" "date") FROM PUBLIC;
 
 
 
@@ -5036,6 +5744,10 @@ REVOKE ALL ON FUNCTION "private"."track_former_members"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "anon";
 GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."try_uuid"("value" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."unsubscribe_token"("uid" "uuid", "category" "text") FROM PUBLIC;
 
 
 
@@ -5156,6 +5868,13 @@ GRANT ALL ON FUNCTION "public"."delete_settlement"("id" "uuid") TO "service_role
 
 
 
+REVOKE ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "service_role";
@@ -5172,6 +5891,12 @@ GRANT ALL ON FUNCTION "public"."invite_preview"("code" "text") TO "anon";
 REVOKE ALL ON FUNCTION "public"."leave_group"("group_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."leave_group"("group_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."leave_group"("group_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."my_notification_prefs"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."my_notification_prefs"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."my_notification_prefs"() TO "service_role";
 
 
 
@@ -5217,6 +5942,12 @@ GRANT ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "u
 
 
 
+REVOKE ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text") TO "service_role";
@@ -5241,7 +5972,19 @@ GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") 
 
 
 
+GRANT ALL ON TABLE "private"."email_outbox" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "private"."former_members" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."notification_categories" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."notification_types" TO "service_role";
 
 
 
@@ -5371,6 +6114,11 @@ GRANT SELECT ON TABLE "public"."group_balances" TO "authenticated";
 
 
 
+GRANT ALL ON TABLE "public"."notification_prefs" TO "service_role";
+GRANT SELECT ON TABLE "public"."notification_prefs" TO "authenticated";
+
+
+
 GRANT ALL ON TABLE "public"."notifications" TO "service_role";
 GRANT SELECT,DELETE ON TABLE "public"."notifications" TO "authenticated";
 
@@ -5458,6 +6206,8 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- pg_cron jobs (from cron.job)
 --
 
+-- cron email-notifications '* * * * *': select private.send_email_notifications()
 -- cron event-reminders '5 * * * *': select private.send_event_reminders(); select private.finish_past_events()
 -- cron fx-sync '30 16 * * *': select private.invoke_edge_function('fx-sync')
 -- cron materialize-recurring-expenses '10 0 * * *': select private.materialize_recurring_expenses()
+-- cron monthly-summary '0 15 1 * *': select private.send_monthly_summaries()

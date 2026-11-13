@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(63);
+select plan(68);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -19,7 +19,7 @@ select tables_are('public', array[
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
-  'calendar_feed_tokens'
+  'calendar_feed_tokens', 'notification_prefs'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances'], 'public has the balances view');
@@ -69,6 +69,9 @@ select has_function('public', 'cancel_event', array['uuid'], 'cancel_event');
 select has_function('public', 'my_timeline', array['timestamp with time zone', 'timestamp with time zone'], 'my_timeline');
 select has_function('public', 'delete_my_account', array[]::text[], 'delete_my_account');
 select has_function('public', 'delete_group', array['uuid'], 'delete_group');
+select has_function('public', 'my_notification_prefs', array[]::text[], 'my_notification_prefs');
+select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
+select has_function('public', 'email_unsubscribe', array['text', 'boolean'], 'email_unsubscribe(token, subscribe)');
 
 select is(
   (select count(*)::int from pg_proc p
@@ -82,8 +85,8 @@ select is(
   (select array_agg(p.proname::text order by p.proname) from pg_proc p
    where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
      and has_function_privilege('anon', p.oid, 'execute')),
-  array['invite_preview'],
-  'anon can only execute invite_preview'
+  array['email_unsubscribe', 'invite_preview'],
+  'anon can only execute invite_preview and email_unsubscribe'
 );
 
 -- Not found is PT404 (HTTP 404). P0002 reaches clients as HTTP 500; old migration files still
@@ -138,6 +141,7 @@ select results_eq(
   $$ values
     ('apple_auth', 'false'::jsonb),
     ('calendar_import', 'false'::jsonb),
+    ('email_notifications', 'false'::jsonb),
     ('google_auth', 'false'::jsonb),
     ('min_client_version', '{"web": "0.0.0", "ios": "0.0.0", "android": "0.0.0"}'::jsonb),
     ('multi_currency', 'true'::jsonb),
@@ -171,6 +175,14 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'event-reminders' and schedule = '5 * * * *'),
   'hourly reminder job is scheduled'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'email-notifications' and schedule = '* * * * *'),
+  'email job runs every minute'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'monthly-summary' and schedule = '0 15 1 * *'),
+  'monthly summary runs on the first of the month'
 );
 
 -- Grants: clients never write money tables directly.
