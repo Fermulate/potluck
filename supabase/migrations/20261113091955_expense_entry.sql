@@ -5,6 +5,7 @@
 --   * by-item bills stored as entered (`expense_items` plus tax, tip and discount on expenses);
 --   * a saved default split per group (`groups.default_split`, `set_default_split`);
 --   * `create_expense_v2` / `update_expense_v2` take the new keys; v1 ignores them.
+--   * the monthly summary and expense.deleted / expense.restored (ADR 11) count every payer.
 -- Everything is additive. Every existing expense gets one payer row from `paid_by`.
 
 -- Columns ---------------------------------------------------------------------------------------
@@ -1423,5 +1424,119 @@ begin
   end loop;
 
   return made;
+end;
+$$;
+
+-- Notifications from 20261113062656_notification_prefs_and_email.sql ------------------------------
+
+-- Body as in 20261113062656_notification_prefs_and_email.sql plus every payer: an expense
+-- someone paid part of counts in their monthly summary.
+create or replace function private.monthly_summary(uid uuid, month date)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with bounds as (
+    select date_trunc('month', month::timestamp)::date as starts,
+           (date_trunc('month', month::timestamp) + interval '1 month')::date as ends
+  ),
+  mine as (
+    select
+      g.id,
+      case
+        when g.is_direct then coalesce((
+          select o.display_name from public.group_members m2
+          join public.profiles o on o.id = m2.user_id
+          where m2.group_id = g.id and m2.user_id <> uid
+          limit 1
+        ), g.name)
+        else g.name
+      end as name,
+      g.emoji,
+      g.is_direct,
+      g.currency::text as currency,
+      coalesce((select b.net_cents from public.group_balances b where b.group_id = g.id and b.user_id = uid), 0) as net_cents,
+      (select count(*) from public.expenses e, bounds
+       where e.group_id = g.id and e.deleted_at is null
+         and e.created_at >= bounds.starts and e.created_at < bounds.ends
+         and (e.paid_by = uid or exists (
+           select 1 from public.expense_splits s where s.expense_id = e.id and s.user_id = uid
+         ) or exists (
+           select 1 from public.expense_payers x where x.expense_id = e.id and x.user_id = uid
+         )))::int as expenses,
+      (select count(*) from public.settlements s, bounds
+       where s.group_id = g.id and s.deleted_at is null
+         and s.created_at >= bounds.starts and s.created_at < bounds.ends
+         and uid in (s.from_user, s.to_user))::int as payments
+    from public.group_members m
+    join public.groups g on g.id = m.group_id
+    where m.user_id = uid
+  )
+  select jsonb_build_object(
+    'month', (select to_char(bounds.starts, 'YYYY-MM-DD') from bounds),
+    'groups', coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'group_id', mine.id,
+          'name', mine.name,
+          'emoji', mine.emoji,
+          'is_direct', mine.is_direct,
+          'currency', mine.currency,
+          'net_cents', mine.net_cents,
+          'expenses', mine.expenses,
+          'payments', mine.payments
+        )
+        order by abs(mine.net_cents) desc, mine.name, mine.id
+      ) filter (where mine.net_cents <> 0 or mine.expenses > 0 or mine.payments > 0),
+      '[]'::jsonb
+    )
+  )
+  from mine;
+$$;
+
+-- Body as in 20261113062656_notification_prefs_and_email.sql plus every payer as a recipient of
+-- expense.deleted and expense.restored.
+create or replace function private.expenses_notify_removal()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  kind text;
+  recipients uuid[];
+begin
+  if old.deleted_at is null and new.deleted_at is not null then
+    kind := 'expense.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    kind := 'expense.restored';
+  else
+    return null;
+  end if;
+
+  select array_agg(distinct u) into recipients
+  from (
+    select s.user_id as u from public.expense_splits s where s.expense_id = new.id
+    union
+    select y.user_id from public.expense_payers y where y.expense_id = new.id
+    union
+    select new.paid_by
+  ) x;
+
+  perform private.notify(
+    recipients,
+    kind,
+    jsonb_build_object(
+      'expense_id', new.id,
+      'group_id', new.group_id,
+      'description', new.description,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
 end;
 $$;

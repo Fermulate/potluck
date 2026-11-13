@@ -95,6 +95,7 @@ CREATE TYPE "public"."split_type" AS ENUM (
     'exact',
     'percent',
     'shares',
+    'adjustment',
     'itemized'
 );
 
@@ -165,6 +166,46 @@ $$;
 
 
 ALTER FUNCTION "private"."can_manage_event"("eid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."check_expense_payers"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  eid uuid;
+  amount bigint;
+  total bigint;
+begin
+  if tg_table_name = 'expenses' then
+    eid := new.id;
+  elsif tg_op = 'DELETE' then
+    eid := old.expense_id;
+  else
+    eid := new.expense_id;
+  end if;
+
+  select e.amount_cents into amount from public.expenses e where e.id = eid;
+  if not found then
+    return null;
+  end if;
+
+  select coalesce(sum(p.paid_cents), 0) into total
+  from public.expense_payers p
+  where p.expense_id = eid;
+
+  if total <> amount then
+    raise exception using
+      message = 'payers_sum_mismatch',
+      detail = format('Payers add up to %s but the expense is %s', total, amount),
+      errcode = '23514';
+  end if;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."check_expense_payers"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."check_expense_splits"() RETURNS "trigger"
@@ -296,6 +337,8 @@ begin
     from (
       select s.user_id as u from public.expense_splits s where s.expense_id = new.expense_id
       union
+      select y.user_id from public.expense_payers y where y.expense_id = new.expense_id
+      union
       select e.paid_by from public.expenses e where e.id = new.expense_id
       union
       select e.created_by from public.expenses e where e.id = new.expense_id
@@ -346,6 +389,83 @@ $$;
 
 
 ALTER FUNCTION "private"."comments_set_group"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."compute_split_rows"("amount" bigint, "kind" "public"."split_type", "splits" "jsonb") RETURNS TABLE("user_id" "uuid", "share_cents" bigint, "weight" numeric, "adjustment_cents" bigint)
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uids uuid[];
+  adjs bigint[];
+  n int;
+  rest bigint;
+begin
+  if kind is distinct from 'adjustment'::public.split_type then
+    return query
+      select c.user_id, c.share_cents, c.weight, null::bigint
+      from private.compute_splits(amount, kind, splits) c;
+    return;
+  end if;
+
+  if splits is null or jsonb_typeof(splits) <> 'array' or jsonb_array_length(splits) = 0 then
+    raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
+  end if;
+
+  begin
+    select
+      array_agg((e.elem ->> 'user_id')::uuid order by e.ord),
+      array_agg(coalesce((e.elem ->> 'adjustment_cents')::bigint, 0) order by e.ord)
+    into uids, adjs
+    from jsonb_array_elements(splits) with ordinality as e (elem, ord);
+  exception
+    when invalid_text_representation or numeric_value_out_of_range or cannot_coerce then
+      raise exception using message = 'invalid_splits', detail = 'The split is not valid', errcode = '22023';
+  end;
+
+  n := cardinality(uids);
+  if array_position(uids, null) is not null then
+    raise exception using message = 'invalid_splits', detail = 'Every split needs a person', errcode = '22023';
+  end if;
+  if (select count(distinct u) from unnest(uids) as u) <> n then
+    raise exception using message = 'duplicate_user', detail = 'A person appears twice in the split', errcode = '22023';
+  end if;
+  if exists (select 1 from unnest(adjs) as a where abs(a) > 100000000000) then
+    raise exception using message = 'invalid_splits', detail = 'An adjustment is too large', errcode = '22023';
+  end if;
+
+  rest := amount - (select sum(a) from unnest(adjs) as a);
+  if rest < 0 then
+    raise exception using
+      message = 'adjustments_exceed_total',
+      detail = format('Adjustments are %s more than the expense', -rest),
+      errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      select t.a, row_number() over (order by t.u) as rn
+      from unnest(uids, adjs) as t (u, a)
+    ) r
+    where rest / n + case when r.rn <= rest % n then 1 else 0 end + r.a < 0
+  ) then
+    raise exception using message = 'negative_share', detail = 'An adjustment takes someone below zero', errcode = '22023';
+  end if;
+
+  return query
+    select r.u, (rest / n + case when r.rn <= rest % n then 1 else 0 end + r.a)::bigint, null::numeric, r.a
+    from (
+      select t.u, t.a, t.ord, row_number() over (order by t.u) as rn
+      from unnest(uids, adjs) with ordinality as t (u, a, ord)
+    ) r
+    order by r.ord;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."compute_split_rows"("amount" bigint, "kind" "public"."split_type", "splits" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."compute_splits"("amount" bigint, "kind" "public"."split_type", "splits" "jsonb") RETURNS TABLE("user_id" "uuid", "share_cents" bigint, "weight" numeric)
@@ -495,16 +615,43 @@ CREATE TABLE IF NOT EXISTS "public"."expenses" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "deleted_at" timestamp with time zone,
+    "is_refund" boolean DEFAULT false NOT NULL,
+    "tax_cents" bigint,
+    "tip_cents" bigint,
+    "discount_cents" bigint,
     CONSTRAINT "expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
     CONSTRAINT "expenses_category_check" CHECK (("char_length"("category") <= 40)),
     CONSTRAINT "expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
     CONSTRAINT "expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
+    CONSTRAINT "expenses_discount_cents_check" CHECK ((("discount_cents" >= 0) AND ("discount_cents" <= '100000000000'::bigint))),
     CONSTRAINT "expenses_fx_rate_check" CHECK (("fx_rate" > (0)::numeric)),
-    CONSTRAINT "expenses_notes_check" CHECK (("char_length"("notes") <= 2000))
+    CONSTRAINT "expenses_notes_check" CHECK (("char_length"("notes") <= 2000)),
+    CONSTRAINT "expenses_tax_cents_check" CHECK ((("tax_cents" >= 0) AND ("tax_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "expenses_tip_cents_check" CHECK ((("tip_cents" >= 0) AND ("tip_cents" <= '100000000000'::bigint)))
 );
 
 
 ALTER TABLE "public"."expenses" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."expenses"."paid_by" IS 'Whoever paid the most (ties: smaller id). Every payer and amount is in expense_payers.';
+
+
+
+COMMENT ON COLUMN "public"."expenses"."is_refund" IS 'Money coming back: the payers received amount_cents and the people in the split are credited.';
+
+
+
+COMMENT ON COLUMN "public"."expenses"."tax_cents" IS 'By-item expenses: tax as entered.';
+
+
+
+COMMENT ON COLUMN "public"."expenses"."tip_cents" IS 'By-item expenses: tip as entered.';
+
+
+
+COMMENT ON COLUMN "public"."expenses"."discount_cents" IS 'By-item expenses: discount as entered.';
+
 
 
 CREATE OR REPLACE FUNCTION "private"."editable_expense"("eid" "uuid") RETURNS "public"."expenses"
@@ -521,7 +668,8 @@ begin
     raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
   end if;
   my_role := private.require_member(e.group_id);
-  if my_role = 'member' and uid is distinct from e.created_by and uid <> e.paid_by then
+  if my_role = 'member' and uid is distinct from e.created_by and uid <> e.paid_by
+     and not exists (select 1 from public.expense_payers p where p.expense_id = e.id and p.user_id = uid) then
     raise exception using message = 'not_allowed', detail = 'You can only change your own expenses', errcode = '42501';
   end if;
   perform private.require_unarchived(e.group_id);
@@ -645,13 +793,48 @@ $$;
 ALTER FUNCTION "private"."events_notify_created"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."expense_row_changes"("o" "public"."expenses", "n" "public"."expenses") RETURNS "jsonb"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(jsonb_object_agg(c.k, jsonb_build_object('from', c.f, 'to', c.t)), '{}'::jsonb)
+  from (
+    values
+      ('description', to_jsonb(o.description), to_jsonb(n.description)),
+      ('amount_cents', to_jsonb(o.amount_cents), to_jsonb(n.amount_cents)),
+      ('currency', to_jsonb(o.currency), to_jsonb(n.currency)),
+      ('spent_at', to_jsonb(o.spent_at), to_jsonb(n.spent_at)),
+      ('category', to_jsonb(o.category), to_jsonb(n.category)),
+      ('notes', to_jsonb(o.notes), to_jsonb(n.notes)),
+      ('is_refund', to_jsonb(o.is_refund), to_jsonb(n.is_refund)),
+      ('paid_by', to_jsonb(o.paid_by), to_jsonb(n.paid_by)),
+      ('split_type', to_jsonb(o.split_type), to_jsonb(n.split_type)),
+      ('receipt', to_jsonb(o.receipt_path is not null), to_jsonb(n.receipt_path is not null)),
+      ('event_id', to_jsonb(o.event_id), to_jsonb(n.event_id)),
+      ('tax_cents', to_jsonb(o.tax_cents), to_jsonb(n.tax_cents)),
+      ('tip_cents', to_jsonb(o.tip_cents), to_jsonb(n.tip_cents)),
+      ('discount_cents', to_jsonb(o.discount_cents), to_jsonb(n.discount_cents))
+  ) as c (k, f, t)
+  where c.f is distinct from c.t;
+$$;
+
+
+ALTER FUNCTION "private"."expense_row_changes"("o" "public"."expenses", "n" "public"."expenses") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."expenses_activity"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
 declare
   verb text;
+  changes jsonb;
 begin
+  if tg_op = 'UPDATE' and current_setting('potluck.expense_logged', true) = new.id::text
+     and (old.deleted_at is null) = (new.deleted_at is null) then
+    return null;
+  end if;
+
   if tg_op = 'INSERT' then
     verb := 'expense.created';
   elsif old.deleted_at is null and new.deleted_at is not null then
@@ -659,11 +842,14 @@ begin
   elsif old.deleted_at is not null and new.deleted_at is null then
     verb := 'expense.restored';
   elsif (new.description, new.amount_cents, new.currency, new.fx_rate, new.paid_by, new.split_type,
-         new.category, new.notes, new.spent_at, new.receipt_path, new.event_id)
+         new.category, new.notes, new.spent_at, new.receipt_path, new.event_id, new.is_refund,
+         new.tax_cents, new.tip_cents, new.discount_cents)
         is distinct from
         (old.description, old.amount_cents, old.currency, old.fx_rate, old.paid_by, old.split_type,
-         old.category, old.notes, old.spent_at, old.receipt_path, old.event_id) then
+         old.category, old.notes, old.spent_at, old.receipt_path, old.event_id, old.is_refund,
+         old.tax_cents, old.tip_cents, old.discount_cents) then
     verb := 'expense.updated';
+    changes := private.expense_row_changes(old, new);
   else
     return null;
   end if;
@@ -673,8 +859,9 @@ begin
       'description', new.description,
       'amount_cents', new.amount_cents,
       'currency', new.currency,
-      'paid_by', new.paid_by
-    ));
+      'paid_by', new.paid_by,
+      'is_refund', new.is_refund
+    ) || case when changes is null then '{}'::jsonb else jsonb_build_object('changes', changes) end);
   return null;
 end;
 $$;
@@ -706,14 +893,16 @@ begin
       'amount_cents', new.amount_cents,
       'currency', new.currency,
       'paid_by', new.paid_by,
+      'is_refund', new.is_refund,
       'share_cents', s.share_cents,
       'actor_id', actor
     )
   from (
     select x.user_id, x.share_cents from public.expense_splits x where x.expense_id = new.id
     union all
-    select new.paid_by, 0
-    where not exists (select 1 from public.expense_splits x where x.expense_id = new.id and x.user_id = new.paid_by)
+    select y.user_id, 0 from public.expense_payers y
+    where y.expense_id = new.id
+      and not exists (select 1 from public.expense_splits x where x.expense_id = new.id and x.user_id = y.user_id)
   ) s
   join public.profiles p on p.id = s.user_id
   where p.deleted_at is null
@@ -747,6 +936,8 @@ begin
   from (
     select s.user_id as u from public.expense_splits s where s.expense_id = new.id
     union
+    select y.user_id from public.expense_payers y where y.expense_id = new.id
+    union
     select new.paid_by
   ) x;
 
@@ -778,15 +969,19 @@ declare
   recipients uuid[];
 begin
   if new.deleted_at is not null or old.deleted_at is not null
-     or (new.description, new.amount_cents, new.currency, new.fx_rate, new.paid_by, new.split_type, new.spent_at)
+     or (new.description, new.amount_cents, new.currency, new.fx_rate, new.paid_by, new.split_type,
+         new.spent_at, new.is_refund)
         is not distinct from
-        (old.description, old.amount_cents, old.currency, old.fx_rate, old.paid_by, old.split_type, old.spent_at) then
+        (old.description, old.amount_cents, old.currency, old.fx_rate, old.paid_by, old.split_type,
+         old.spent_at, old.is_refund) then
     return null;
   end if;
 
   select array_agg(distinct u) into recipients
   from (
     select s.user_id as u from public.expense_splits s where s.expense_id = new.id
+    union
+    select y.user_id from public.expense_payers y where y.expense_id = new.id
     union
     select new.paid_by
   ) x;
@@ -1226,6 +1421,104 @@ $$;
 ALTER FUNCTION "private"."is_time_zone"("tz" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."itemized_splits"("items" "jsonb", "tax" bigint, "tip" bigint, "discount" bigint) RETURNS TABLE("user_id" "uuid", "share_cents" bigint)
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  head_lcm numeric := 1;
+  k int;
+  subtotal bigint;
+  total bigint;
+  weight_sum numeric;
+  people jsonb;
+begin
+  if items is null or jsonb_typeof(items) <> 'array' or jsonb_array_length(items) = 0 then
+    raise exception using message = 'items_required', detail = 'Add at least one item', errcode = '22023';
+  end if;
+  if jsonb_array_length(items) > 200
+     or coalesce(tax, 0) < 0 or coalesce(tip, 0) < 0 or coalesce(discount, 0) < 0
+     or exists (
+       select 1 from jsonb_array_elements(items) e
+       where jsonb_typeof(e) <> 'object'
+          or jsonb_typeof(e -> 'amount_cents') is distinct from 'number'
+          or (e ->> 'amount_cents')::numeric <> trunc((e ->> 'amount_cents')::numeric)
+          or (e ->> 'amount_cents')::numeric < 0
+          or (e ->> 'amount_cents')::numeric > 100000000000
+          or jsonb_typeof(e -> 'user_ids') is distinct from 'array'
+          or jsonb_array_length(e -> 'user_ids') = 0
+          or jsonb_array_length(e -> 'user_ids') > 100
+          or char_length(coalesce(e ->> 'description', '')) > 80
+     ) then
+    raise exception using message = 'invalid_items', detail = 'An item is not valid', errcode = '22023';
+  end if;
+
+  begin
+    -- One row per (item, person): the person's exact part of that item, scaled by the lcm of
+    -- every item's head count so it stays whole.
+    for k in select jsonb_array_length(e -> 'user_ids') from jsonb_array_elements(items) e loop
+      head_lcm := lcm(head_lcm, k::numeric);
+    end loop;
+
+    if exists (
+      select 1 from jsonb_array_elements(items) e
+      where (select count(distinct x) from jsonb_array_elements_text(e -> 'user_ids') x)
+            <> jsonb_array_length(e -> 'user_ids')
+    ) then
+      raise exception using message = 'duplicate_user', detail = 'A person appears twice on an item', errcode = '22023';
+    end if;
+
+    select jsonb_object_agg(w.u, w.weight) into people
+    from (
+      select x::uuid as u,
+             sum((e ->> 'amount_cents')::numeric * head_lcm / jsonb_array_length(e -> 'user_ids')) as weight
+      from jsonb_array_elements(items) e
+      cross join lateral jsonb_array_elements_text(e -> 'user_ids') x
+      group by x::uuid
+    ) w;
+  exception
+    when invalid_text_representation then
+      raise exception using message = 'invalid_items', detail = 'An item is not valid', errcode = '22023';
+  end;
+
+  select sum((e ->> 'amount_cents')::bigint) into subtotal from jsonb_array_elements(items) e;
+  total := subtotal + coalesce(tax, 0) + coalesce(tip, 0) - coalesce(discount, 0);
+  if total < 0 then
+    raise exception using message = 'invalid_items', detail = 'The discount is more than the bill', errcode = '22023';
+  end if;
+  if subtotal = 0 then
+    if total > 0 then
+      raise exception using message = 'zero_shares', detail = 'At least one person needs a share', errcode = '22023';
+    end if;
+    return query select j.key::uuid, 0::bigint from jsonb_each(people) j order by j.key::uuid;
+    return;
+  end if;
+
+  select sum(j.value::numeric) into weight_sum from jsonb_each(people) j;
+
+  return query
+  with raw as (
+    select j.key::uuid as u,
+           div(total::numeric * j.value::numeric, weight_sum)::bigint as base,
+           mod(total::numeric * j.value::numeric, weight_sum) as rem
+    from jsonb_each(people) j
+  ),
+  ranked as (
+    select r.*, row_number() over (order by r.rem desc, r.u) as rn,
+           total - sum(r.base) over () as leftover
+    from raw r
+  )
+  select k2.u, k2.base + case when k2.rn <= k2.leftover then 1 else 0 end
+  from ranked k2
+  order by k2.u;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."itemized_splits"("items" "jsonb", "tax" bigint, "tip" bigint, "discount" bigint) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."log_activity"("gid" "uuid", "actor" "uuid", "verb" "text", "subject" "uuid", "data" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1350,7 +1643,8 @@ declare
   runs int;
   made int := 0;
 begin
-  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check,
+    public.expenses_payers_sum_check, public.expense_payers_sum_check deferred;
 
   select coalesce(array_agg(x.id order by x.next_run_on, x.id), '{}') into due_ids
   from public.recurring_expenses x
@@ -1372,19 +1666,19 @@ begin
       select * into g from public.groups x where x.id = r.group_id;
 
       if g.archived_at is not null
-         or not exists (select 1 from public.group_members m where m.group_id = r.group_id and m.user_id = r.paid_by)
          or exists (
-           select 1 from jsonb_array_elements(r.splits) e
+           select 1 from (
+             select r.paid_by as u
+             union
+             select (e ->> 'user_id')::uuid from jsonb_array_elements(coalesce(r.payers, '[]'::jsonb)) e
+             union
+             select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e
+           ) people
            where not exists (
              select 1 from public.group_members m
-             where m.group_id = r.group_id and m.user_id = (e ->> 'user_id')::uuid
+             where m.group_id = r.group_id and m.user_id = people.u
            )
-         )
-         or exists (
-           select 1 from public.profiles p
-           where p.deleted_at is not null
-             and (p.id = r.paid_by
-                  or p.id in (select (e ->> 'user_id')::uuid from jsonb_array_elements(r.splits) e))
+           or exists (select 1 from public.profiles p where p.id = people.u and p.deleted_at is not null)
          ) then
         update public.recurring_expenses x set active = false where x.id = r.id;
         continue;
@@ -1406,9 +1700,16 @@ begin
         )
         returning id into new_id;
 
-        insert into public.expense_splits (expense_id, user_id, share_cents, weight)
-        select new_id, c.user_id, c.share_cents, c.weight
-        from private.compute_splits(r.amount_cents, r.split_type, r.splits) c;
+        if r.payers is not null then
+          delete from public.expense_payers x where x.expense_id = new_id;
+          insert into public.expense_payers (expense_id, user_id, paid_cents)
+          select new_id, (e ->> 'user_id')::uuid, (e ->> 'paid_cents')::bigint
+          from jsonb_array_elements(r.payers) e;
+        end if;
+
+        insert into public.expense_splits (expense_id, user_id, share_cents, weight, adjustment_cents)
+        select new_id, c.user_id, c.share_cents, c.weight, c.adjustment_cents
+        from private.compute_split_rows(r.amount_cents, r.split_type, r.splits) c;
 
         due := private.recurring_step(due, r.recurrence, anchor_day);
         runs := runs + 1;
@@ -1493,6 +1794,8 @@ CREATE OR REPLACE FUNCTION "private"."monthly_summary"("uid" "uuid", "month" "da
          and e.created_at >= bounds.starts and e.created_at < bounds.ends
          and (e.paid_by = uid or exists (
            select 1 from public.expense_splits s where s.expense_id = e.id and s.user_id = uid
+         ) or exists (
+           select 1 from public.expense_payers x where x.expense_id = e.id and x.user_id = uid
          )))::int as expenses,
       (select count(*) from public.settlements s, bounds
        where s.group_id = g.id and s.deleted_at is null
@@ -1699,10 +2002,12 @@ CREATE TABLE IF NOT EXISTS "public"."recurring_expenses" (
     "created_by" "uuid" DEFAULT "auth"."uid"(),
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "payers" "jsonb",
     CONSTRAINT "recurring_expenses_amount_cents_check" CHECK ((("amount_cents" > 0) AND ("amount_cents" <= '100000000000'::bigint))),
     CONSTRAINT "recurring_expenses_category_check" CHECK (("char_length"("category") <= 40)),
     CONSTRAINT "recurring_expenses_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
     CONSTRAINT "recurring_expenses_description_check" CHECK ((("char_length"("btrim"("description")) >= 1) AND ("char_length"("btrim"("description")) <= 120))),
+    CONSTRAINT "recurring_expenses_payers_check" CHECK ((("payers" IS NULL) OR ("jsonb_typeof"("payers") = 'array'::"text"))),
     CONSTRAINT "recurring_expenses_splits_check" CHECK (("jsonb_typeof"("splits") = 'array'::"text"))
 );
 
@@ -1711,6 +2016,10 @@ ALTER TABLE "public"."recurring_expenses" OWNER TO "postgres";
 
 
 COMMENT ON COLUMN "public"."recurring_expenses"."splits" IS 'Array of {user_id, share_cents?, weight?} in the create_expense payload format.';
+
+
+
+COMMENT ON COLUMN "public"."recurring_expenses"."payers" IS 'Several payers as [{user_id, paid_cents}]; null means paid_by paid it all.';
 
 
 
@@ -1779,6 +2088,11 @@ CREATE OR REPLACE FUNCTION "private"."referenced_in_group"("gid" "uuid", "uid" "
     SET "search_path" TO ''
     AS $$
   select exists (select 1 from public.expenses e where e.group_id = gid and e.paid_by = uid)
+    or exists (
+      select 1 from public.expense_payers p
+      join public.expenses e on e.id = p.expense_id
+      where e.group_id = gid and p.user_id = uid
+    )
     or exists (
       select 1 from public.expense_splits s
       join public.expenses e on e.id = s.expense_id
@@ -1927,15 +2241,26 @@ declare
   v_receipt text;
   v_event uuid;
   v_recurrence public.recurrence;
+  v_refund boolean;
+  v_tax bigint;
+  v_tip bigint;
+  v_discount bigint;
   split_input jsonb;
   rewrite_splits boolean;
+  write_items boolean := false;
   computed jsonb;
   result public.expenses;
   recurring uuid;
   old_shares jsonb;
+  old_items jsonb;
+  new_items jsonb;
   new_shares jsonb;
+  old_payers jsonb := '{}'::jsonb;
+  new_payers jsonb;
+  payers_changed boolean;
   payer_left boolean := false;
   sharer_left boolean := false;
+  changes jsonb;
 begin
   if jsonb_typeof(p) <> 'object' then
     raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
@@ -1966,7 +2291,12 @@ begin
     if prev.id is null then
       raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
     end if;
-    if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by then
+
+    select coalesce(jsonb_object_agg(x.user_id, x.paid_cents), '{}'::jsonb) into old_payers
+    from public.expense_payers x where x.expense_id = prev.id;
+
+    if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by
+       and not (old_payers ? uid::text) then
       raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
     end if;
     if prev.deleted_at is not null then
@@ -1976,11 +2306,21 @@ begin
       raise exception using message = 'invalid_payload', detail = 'An expense cannot move to another group', errcode = '22023';
     end if;
 
+    select jsonb_agg(jsonb_build_object('description', i.description, 'amount_cents', i.amount_cents,
+             'user_ids', to_jsonb(i.user_ids)) order by i.position)
+    into old_items
+    from public.expense_items i where i.expense_id = prev.id;
+
     select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into old_shares
     from public.expense_splits s where s.expense_id = prev.id;
 
-    payer_left := not exists (
-      select 1 from public.group_members m where m.group_id = gid and m.user_id = prev.paid_by
+    payer_left := exists (
+      select 1 from (
+        select k::uuid as u from jsonb_object_keys(old_payers) as k
+        union
+        select prev.paid_by
+      ) x
+      where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = x.u)
     );
     sharer_left := exists (
       select 1 from public.expense_splits s
@@ -2027,10 +2367,63 @@ begin
     v_split_type := coalesce((p ->> 'split_type')::public.split_type, prev.split_type, 'equal');
     v_event := case when p ? 'event_id' then (p ->> 'event_id')::uuid else prev.event_id end;
     v_recurrence := (p ->> 'recurrence')::public.recurrence;
+    v_refund := coalesce((p ->> 'is_refund')::boolean, prev.is_refund, false);
   exception
     when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
       raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
   end;
+
+  if v_refund and v_recurrence is not null then
+    raise exception using message = 'invalid_payload', detail = 'A refund cannot repeat', errcode = '22023';
+  end if;
+
+  -- Who paid. A payers list replaces the stored one; `paid_by` alone means one payer, unless it
+  -- names the same payer of an unchanged amount, which keeps the stored payers (older clients
+  -- always send paid_by). An amount change needs a payers list once several people paid.
+  if p ? 'payers' and jsonb_typeof(p -> 'payers') <> 'null' then
+    if jsonb_typeof(p -> 'payers') <> 'array'
+       or jsonb_array_length(p -> 'payers') > 100
+       or exists (
+         select 1 from jsonb_array_elements(p -> 'payers') e
+         where jsonb_typeof(e) <> 'object'
+            or private.try_uuid(e ->> 'user_id') is null
+            or jsonb_typeof(e -> 'paid_cents') is distinct from 'number'
+            or (e ->> 'paid_cents')::numeric <> trunc((e ->> 'paid_cents')::numeric)
+            or (e ->> 'paid_cents')::numeric < 0
+            or (e ->> 'paid_cents')::numeric > 100000000000
+       )
+       or (select count(distinct private.try_uuid(e ->> 'user_id')) from jsonb_array_elements(p -> 'payers') e)
+          <> jsonb_array_length(p -> 'payers') then
+      raise exception using message = 'invalid_payers', detail = 'Who paid is not valid', errcode = '22023';
+    end if;
+    select jsonb_object_agg(private.try_uuid(e ->> 'user_id'), (e ->> 'paid_cents')::bigint) into new_payers
+    from jsonb_array_elements(p -> 'payers') e
+    where (e ->> 'paid_cents')::bigint > 0;
+    if new_payers is null then
+      raise exception using message = 'invalid_payers', detail = 'Someone has to have paid', errcode = '22023';
+    end if;
+    if (select sum(j.value::bigint) from jsonb_each(new_payers) j) <> v_amount then
+      raise exception using
+        message = 'payers_sum_mismatch',
+        detail = format('Payers add up to %s but the expense is %s',
+          (select sum(j.value::bigint) from jsonb_each(new_payers) j), v_amount),
+        errcode = '22023';
+    end if;
+    select j.key::uuid into v_paid_by from jsonb_each(new_payers) j
+    order by j.value::bigint desc, j.key::uuid limit 1;
+  elsif prev.id is not null and (select count(*) from jsonb_object_keys(old_payers)) > 1
+        and v_paid_by = prev.paid_by then
+    if v_amount <> prev.amount_cents then
+      raise exception using
+        message = 'payers_sum_mismatch',
+        detail = 'Several people paid this; say how much each paid of the new amount',
+        errcode = '22023';
+    end if;
+    new_payers := old_payers;
+  else
+    new_payers := jsonb_build_object(v_paid_by, v_amount);
+  end if;
+  payers_changed := new_payers is distinct from old_payers;
 
   if v_currency = g.currency then
     v_fx := 1;
@@ -2048,8 +2441,11 @@ begin
 
   -- Only a new payer must be a member: an older expense paid by someone who has since left can
   -- still have its details edited.
-  if v_paid_by is distinct from prev.paid_by
-     and not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = v_paid_by) then
+  if exists (
+    select 1 from jsonb_object_keys(new_payers) as k
+    where not old_payers ? k
+      and not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = k::uuid)
+  ) then
     raise exception using message = 'payer_not_in_group', detail = 'The payer is not in this group', errcode = '23514';
   end if;
 
@@ -2065,14 +2461,40 @@ begin
   end if;
 
   -- Decide which splits to write.
-  if p ? 'splits' then
+  if p ? 'items' and jsonb_typeof(p -> 'items') <> 'null' then
+    if v_split_type <> 'itemized' then
+      raise exception using message = 'invalid_payload', detail = 'Items need a by-item split', errcode = '22023';
+    end if;
+    begin
+      v_tax := nullif((p ->> 'tax_cents')::bigint, 0);
+      v_tip := nullif((p ->> 'tip_cents')::bigint, 0);
+      v_discount := nullif((p ->> 'discount_cents')::bigint, 0);
+    exception
+      when invalid_text_representation or numeric_value_out_of_range then
+        raise exception using message = 'invalid_items', detail = 'Tax, tip and discount must be whole amounts', errcode = '22023';
+    end;
+    select jsonb_agg(jsonb_build_object('user_id', c.user_id, 'share_cents', c.share_cents,
+             'weight', null, 'adjustment_cents', null))
+    into computed
+    from private.itemized_splits(p -> 'items', v_tax, v_tip, v_discount) c
+    where c.share_cents > 0;
+    if coalesce((select sum((x ->> 'share_cents')::bigint) from jsonb_array_elements(computed) x), 0) <> v_amount then
+      raise exception using
+        message = 'splits_sum_mismatch',
+        detail = 'The items do not add up to the expense',
+        errcode = '22023';
+    end if;
+    rewrite_splits := true;
+    write_items := true;
+  elsif p ? 'splits' then
     split_input := p -> 'splits';
     rewrite_splits := true;
   elsif prev.id is null then
     raise exception using message = 'splits_required', detail = 'Add at least one person to the split', errcode = '22023';
   elsif v_amount <> prev.amount_cents or v_split_type <> prev.split_type then
-    -- Re-derive from the stored people and weights.
-    select jsonb_agg(jsonb_build_object('user_id', s.user_id, 'weight', s.weight) order by s.user_id)
+    -- Re-derive from the stored people, weights and adjustments.
+    select jsonb_agg(jsonb_build_object('user_id', s.user_id, 'weight', s.weight,
+             'adjustment_cents', s.adjustment_cents) order by s.user_id)
     into split_input
     from public.expense_splits s where s.expense_id = prev.id;
     rewrite_splits := true;
@@ -2080,41 +2502,54 @@ begin
     rewrite_splits := false;
   end if;
 
-  if rewrite_splits then
+  if rewrite_splits and not write_items then
     select jsonb_agg(to_jsonb(c)) into computed
-    from private.compute_splits(v_amount, v_split_type, split_input) c;
+    from private.compute_split_rows(v_amount, v_split_type, split_input) c;
+  end if;
 
+  if rewrite_splits then
     if exists (
-      select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric)
+      select 1 from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint)
       where not exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = s.user_id)
     ) then
       raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
     end if;
 
     select coalesce(jsonb_object_agg(s.user_id, s.share_cents), '{}'::jsonb) into new_shares
-    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
+    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint);
   end if;
 
-  -- A former member's balance is settled at zero and must stay there: the
-  -- payer is credited the converted total and each person debited their share,
-  -- so neither may change while they are out of the group.
-  if (payer_left and (v_paid_by <> prev.paid_by or v_amount <> prev.amount_cents or v_currency <> prev.currency))
-     or (sharer_left and (rewrite_splits or v_amount <> prev.amount_cents or v_currency <> prev.currency)) then
+  -- A former member's balance is settled at zero and must stay there: payers are credited and
+  -- each person debited, so none of that may change while one of them is out of the group.
+  if (payer_left and (payers_changed or v_amount <> prev.amount_cents or v_currency <> prev.currency
+                      or v_refund <> prev.is_refund))
+     or (sharer_left and (rewrite_splits or v_amount <> prev.amount_cents or v_currency <> prev.currency
+                          or v_refund <> prev.is_refund)) then
     raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
   end if;
 
-  -- The expense row and its splits are written one after the other, so the
-  -- sum check must run at commit even if the caller made constraints immediate.
-  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check deferred;
+  -- The expense row, its payers and its splits are written one after the other, so the sum
+  -- checks must run at commit even if the caller made constraints immediate.
+  set constraints public.expenses_splits_sum_check, public.expense_splits_sum_check,
+    public.expenses_payers_sum_check, public.expense_payers_sum_check deferred;
 
   if prev.id is null then
     if v_recurrence is not null then
       insert into public.recurring_expenses (
-        group_id, description, amount_cents, currency, paid_by, split_type, category,
+        group_id, description, amount_cents, currency, paid_by, payers, split_type, category,
         splits, recurrence, next_run_on, created_by
       ) values (
-        gid, v_description, v_amount, v_currency, v_paid_by, v_split_type, p ->> 'category',
-        split_input, v_recurrence,
+        gid, v_description, v_amount, v_currency, v_paid_by,
+        case when (select count(*) from jsonb_object_keys(new_payers)) > 1 then
+          (select jsonb_agg(jsonb_build_object('user_id', j.key, 'paid_cents', j.value::bigint) order by j.key)
+           from jsonb_each(new_payers) j)
+        end,
+        v_split_type, p ->> 'category',
+        case when write_items then
+          (select jsonb_agg(jsonb_build_object('user_id', x ->> 'user_id', 'share_cents', (x ->> 'share_cents')::bigint))
+           from jsonb_array_elements(computed) x)
+        else split_input end,
+        v_recurrence,
         (v_spent_at + case v_recurrence
           when 'weekly' then interval '1 week'
           when 'monthly' then interval '1 month'
@@ -2126,13 +2561,17 @@ begin
 
     insert into public.expenses (
       group_id, event_id, description, amount_cents, currency, fx_rate, paid_by, split_type,
-      category, notes, spent_at, receipt_path, recurring_id, created_by
+      category, notes, spent_at, receipt_path, recurring_id, created_by, is_refund,
+      tax_cents, tip_cents, discount_cents
     ) values (
       gid, v_event, v_description, v_amount, v_currency, v_fx, v_paid_by, v_split_type,
-      nullif(btrim(p ->> 'category'), ''), nullif(p ->> 'notes', ''), v_spent_at, v_receipt, recurring, uid
+      nullif(btrim(p ->> 'category'), ''), nullif(p ->> 'notes', ''), v_spent_at, v_receipt, recurring, uid,
+      v_refund, v_tax, v_tip, v_discount
     )
     returning * into result;
   else
+    -- This function logs the edit itself, once, with payers and split (expenses_activity skips it).
+    perform set_config('potluck.expense_logged', prev.id::text, true);
     update public.expenses e set
       description = v_description,
       amount_cents = v_amount,
@@ -2144,50 +2583,106 @@ begin
       notes = case when p ? 'notes' then nullif(p ->> 'notes', '') else e.notes end,
       spent_at = v_spent_at,
       receipt_path = v_receipt,
-      event_id = v_event
+      event_id = v_event,
+      is_refund = v_refund,
+      tax_cents = case when write_items then v_tax when rewrite_splits or v_split_type <> 'itemized' then null else e.tax_cents end,
+      tip_cents = case when write_items then v_tip when rewrite_splits or v_split_type <> 'itemized' then null else e.tip_cents end,
+      discount_cents = case when write_items then v_discount when rewrite_splits or v_split_type <> 'itemized' then null else e.discount_cents end
     where e.id = prev.id
     returning * into result;
   end if;
 
-  if rewrite_splits then
-    delete from public.expense_splits s where s.expense_id = result.id;
-    insert into public.expense_splits (expense_id, user_id, share_cents, weight)
-    select result.id, s.user_id, s.share_cents, s.weight
-    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric);
+  -- The insert or update above already wrote paid_by as the only payer (expenses_sync_single_payer);
+  -- several payers replace that here.
+  if (select count(*) from jsonb_object_keys(new_payers)) > 1 or payers_changed then
+    delete from public.expense_payers x where x.expense_id = result.id;
+    insert into public.expense_payers (expense_id, user_id, paid_cents)
+    select result.id, j.key::uuid, j.value::bigint from jsonb_each(new_payers) j;
   end if;
 
-  -- The expenses triggers only see the expense row. When the edit changed who
-  -- owes what and nothing they compare, log and notify here instead, with the
-  -- same verb and payload (people dropped from the split hear about it too).
-  if prev.id is not null and rewrite_splits and new_shares <> old_shares then
-    if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
-        result.split_type, result.category, result.notes, result.spent_at, result.receipt_path,
-        result.event_id)
-       is not distinct from
-       (prev.description, prev.amount_cents, prev.currency, prev.fx_rate, prev.paid_by,
-        prev.split_type, prev.category, prev.notes, prev.spent_at, prev.receipt_path,
-        prev.event_id) then
+  if rewrite_splits then
+    delete from public.expense_splits s where s.expense_id = result.id;
+    insert into public.expense_splits (expense_id, user_id, share_cents, weight, adjustment_cents)
+    select result.id, s.user_id, s.share_cents, s.weight, s.adjustment_cents
+    from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint, weight numeric, adjustment_cents bigint);
+  end if;
+
+  -- Stored line items follow the split: written with it, dropped when the split is rewritten any
+  -- other way or stops being by item.
+  if write_items then
+    delete from public.expense_items i where i.expense_id = result.id;
+    insert into public.expense_items (expense_id, position, description, amount_cents, user_ids)
+    select result.id, (e.ord - 1)::smallint, btrim(coalesce(e.elem ->> 'description', '')),
+           (e.elem ->> 'amount_cents')::bigint,
+           array(select distinct x::uuid from jsonb_array_elements_text(e.elem -> 'user_ids') x order by 1)
+    from jsonb_array_elements(p -> 'items') with ordinality as e (elem, ord);
+  elsif prev.id is not null and (rewrite_splits or v_split_type <> 'itemized') then
+    delete from public.expense_items i where i.expense_id = result.id;
+  end if;
+
+  -- One history entry per edit, with the old and new value of every field that changed. Payers
+  -- and the split are listed when their people changed, or when they changed without the amount
+  -- (a new amount alone already rescales them).
+  if prev.id is not null then
+    changes := private.expense_row_changes(prev, result) - 'paid_by' - 'split_type';
+    if payers_changed
+       and ((select array_agg(k order by k) from jsonb_object_keys(old_payers) k)
+              is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_payers) k)
+            or v_amount = prev.amount_cents
+            or (select count(*) from jsonb_object_keys(new_payers)) > 1
+            or (select count(*) from jsonb_object_keys(old_payers)) > 1) then
+      changes := changes || jsonb_build_object('payers', jsonb_build_object('from', old_payers, 'to', new_payers));
+    end if;
+    if rewrite_splits
+       and (prev.split_type <> result.split_type
+            or (select array_agg(k order by k) from jsonb_object_keys(old_shares) k)
+                 is distinct from (select array_agg(k order by k) from jsonb_object_keys(new_shares) k)
+            or (v_amount = prev.amount_cents and new_shares <> old_shares)) then
+      changes := changes || jsonb_build_object('split', jsonb_build_object(
+        'from', jsonb_build_object('type', prev.split_type, 'shares', old_shares),
+        'to', jsonb_build_object('type', result.split_type, 'shares', new_shares)));
+    end if;
+    -- The bill's lines as entered: renamed, repriced, added or dropped items.
+    select jsonb_agg(jsonb_build_object('description', i.description, 'amount_cents', i.amount_cents,
+             'user_ids', to_jsonb(i.user_ids)) order by i.position)
+    into new_items
+    from public.expense_items i where i.expense_id = result.id;
+    if new_items is distinct from old_items then
+      changes := changes || jsonb_build_object('items', jsonb_build_object('from', old_items, 'to', new_items));
+    end if;
+    if changes <> '{}'::jsonb then
       perform private.log_activity(gid, uid, 'expense.updated', result.id,
         jsonb_build_object(
           'description', result.description,
           'amount_cents', result.amount_cents,
           'currency', result.currency,
-          'paid_by', result.paid_by
+          'paid_by', result.paid_by,
+          'is_refund', result.is_refund,
+          'changes', changes
         ));
     end if;
+    perform set_config('potluck.expense_logged', '', true);
+  end if;
 
+  -- The notification triggers only see the expense row. When the edit changed who owes or paid
+  -- what and nothing they compare, notify here instead (people dropped from the split or the
+  -- payers hear about it too).
+  if prev.id is not null
+     and ((rewrite_splits and new_shares <> old_shares) or payers_changed) then
     if (result.description, result.amount_cents, result.currency, result.fx_rate, result.paid_by,
-        result.split_type, result.spent_at)
+        result.split_type, result.spent_at, result.is_refund)
        is not distinct from
        (prev.description, prev.amount_cents, prev.currency, prev.fx_rate, prev.paid_by,
-        prev.split_type, prev.spent_at) then
+        prev.split_type, prev.spent_at, prev.is_refund) then
       perform private.notify(
         array(
           select k::uuid from jsonb_object_keys(old_shares) as k
           union
-          select k::uuid from jsonb_object_keys(new_shares) as k
+          select k::uuid from jsonb_object_keys(coalesce(new_shares, old_shares)) as k
           union
-          select result.paid_by
+          select k::uuid from jsonb_object_keys(old_payers) as k
+          union
+          select k::uuid from jsonb_object_keys(new_payers) as k
         ),
         'expense.updated',
         jsonb_build_object(
@@ -2555,6 +3050,24 @@ $$;
 ALTER FUNCTION "private"."shares_group_with"("other" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."sync_single_payer"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if (select count(*) from public.expense_payers p where p.expense_id = new.id) <= 1 then
+    delete from public.expense_payers p where p.expense_id = new.id;
+    insert into public.expense_payers (expense_id, user_id, paid_cents)
+    values (new.id, new.paid_by, new.amount_cents);
+  end if;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."sync_single_payer"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."track_former_members"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -2799,11 +3312,25 @@ CREATE OR REPLACE FUNCTION "public"."create_expense"("payload" "jsonb") RETURNS 
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-  select * from private.save_expense(null, payload);
+  select * from private.save_expense(
+    null,
+    coalesce(payload, '{}'::jsonb) - array['payers', 'is_refund', 'items', 'tax_cents', 'tip_cents', 'discount_cents']
+  );
 $$;
 
 
 ALTER FUNCTION "public"."create_expense"("payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_expense_v2"("payload" "jsonb") RETURNS "public"."expenses"
+    LANGUAGE "sql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select * from private.save_expense(null, payload);
+$$;
+
+
+ALTER FUNCTION "public"."create_expense_v2"("payload" "jsonb") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."groups" (
@@ -2820,8 +3347,10 @@ CREATE TABLE IF NOT EXISTS "public"."groups" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "archived_at" timestamp with time zone,
+    "default_split" "jsonb",
     CONSTRAINT "groups_color_check" CHECK (("char_length"("color") <= 32)),
     CONSTRAINT "groups_currency_check" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
+    CONSTRAINT "groups_default_split_check" CHECK ((("default_split" IS NULL) OR ("jsonb_typeof"("default_split") = 'object'::"text"))),
     CONSTRAINT "groups_emoji_check" CHECK (("char_length"("emoji") <= 16)),
     CONSTRAINT "groups_name_check" CHECK ((("char_length"("btrim"("name")) >= 1) AND ("char_length"("btrim"("name")) <= 80)))
 );
@@ -2831,6 +3360,10 @@ ALTER TABLE "public"."groups" OWNER TO "postgres";
 
 
 COMMENT ON COLUMN "public"."groups"."is_direct" IS 'Hidden two-person group used for 1:1 expenses between friends.';
+
+
+
+COMMENT ON COLUMN "public"."groups"."default_split" IS 'Where new expenses start: {split_type, splits: [{user_id, weight}]}. Set with set_default_split.';
 
 
 
@@ -2965,6 +3498,8 @@ begin
 
   if e.deleted_at is null and exists (
     select s.user_id from public.expense_splits s where s.expense_id = e.id and s.share_cents > 0
+    union
+    select p.user_id from public.expense_payers p where p.expense_id = e.id
     union
     select e.paid_by
     except
@@ -3673,6 +4208,8 @@ begin
   if exists (
     select s.user_id from public.expense_splits s where s.expense_id = e.id and s.share_cents > 0
     union
+    select p.user_id from public.expense_payers p where p.expense_id = e.id
+    union
     select e.paid_by
     except
     select m.user_id from public.group_members m where m.group_id = e.group_id
@@ -3810,6 +4347,67 @@ $$;
 
 
 ALTER FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  kind public.split_type;
+  normalized jsonb;
+begin
+  perform private.require_member(set_default_split.group_id);
+  perform private.require_group_open(set_default_split.group_id);
+
+  if split is null or jsonb_typeof(split) = 'null' then
+    update public.groups g set default_split = null where g.id = set_default_split.group_id;
+    perform private.log_activity(set_default_split.group_id, uid, 'group.default_split', set_default_split.group_id,
+      jsonb_build_object('split_type', null));
+    return null;
+  end if;
+
+  if jsonb_typeof(split) <> 'object' or jsonb_typeof(split -> 'splits') is distinct from 'array' then
+    raise exception using message = 'invalid_splits', detail = 'The split is not valid', errcode = '22023';
+  end if;
+  begin
+    kind := (split ->> 'split_type')::public.split_type;
+  exception when invalid_text_representation then
+    kind := null;
+  end;
+  if kind is null or kind not in ('equal', 'percent', 'shares') then
+    raise exception using message = 'invalid_splits', detail = 'A default split is equal, by percent or by shares', errcode = '22023';
+  end if;
+
+  -- Same validation as an expense (people, duplicates, weights, percent sum).
+  select jsonb_agg(
+           jsonb_build_object('user_id', c.user_id, 'weight', case when kind = 'equal' then null else c.weight end)
+           order by c.user_id)
+  into normalized
+  from private.compute_splits(10000, kind, split -> 'splits') c;
+
+  if exists (
+    select 1 from jsonb_array_elements(normalized) e
+    where not exists (
+      select 1 from public.group_members m
+      where m.group_id = set_default_split.group_id and m.user_id = (e ->> 'user_id')::uuid
+    )
+  ) then
+    raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
+  end if;
+
+  normalized := jsonb_build_object('split_type', kind, 'splits', normalized);
+  update public.groups g set default_split = normalized where g.id = set_default_split.group_id;
+  perform private.log_activity(set_default_split.group_id, uid, 'group.default_split', set_default_split.group_id,
+    jsonb_build_object('split_type', kind));
+  return normalized;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") RETURNS "void"
@@ -4047,12 +4645,31 @@ begin
   if update_expense.id is null then
     raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
   end if;
-  return private.save_expense(update_expense.id, payload);
+  return private.save_expense(
+    update_expense.id,
+    coalesce(payload, '{}'::jsonb) - array['payers', 'is_refund', 'items', 'tax_cents', 'tip_cents', 'discount_cents']
+  );
 end;
 $$;
 
 
 ALTER FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") RETURNS "public"."expenses"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if update_expense_v2.id is null then
+    raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+  end if;
+  return private.save_expense(update_expense_v2.id, payload);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."email_outbox" (
@@ -4299,11 +4916,48 @@ CREATE TABLE IF NOT EXISTS "public"."event_rsvps" (
 ALTER TABLE "public"."event_rsvps" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."expense_items" (
+    "expense_id" "uuid" NOT NULL,
+    "position" smallint NOT NULL,
+    "description" "text" DEFAULT ''::"text" NOT NULL,
+    "amount_cents" bigint NOT NULL,
+    "user_ids" "uuid"[] NOT NULL,
+    CONSTRAINT "expense_items_amount_cents_check" CHECK ((("amount_cents" >= 0) AND ("amount_cents" <= '100000000000'::bigint))),
+    CONSTRAINT "expense_items_description_check" CHECK (("char_length"("description") <= 80)),
+    CONSTRAINT "expense_items_position_check" CHECK ((("position" >= 0) AND ("position" < 200))),
+    CONSTRAINT "expense_items_user_ids_check" CHECK ((("cardinality"("user_ids") >= 1) AND ("cardinality"("user_ids") <= 100)))
+);
+
+
+ALTER TABLE "public"."expense_items" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."expense_items" IS 'Line items of a by-item expense as entered, so editing reopens them. Shares live in expense_splits.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."expense_payers" (
+    "expense_id" "uuid" NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "paid_cents" bigint NOT NULL,
+    CONSTRAINT "expense_payers_paid_cents_check" CHECK ((("paid_cents" > 0) AND ("paid_cents" <= '100000000000'::bigint)))
+);
+
+
+ALTER TABLE "public"."expense_payers" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."expense_payers" IS 'Who paid an expense (or received a refund) and how much, in the expense currency. Sums to amount_cents.';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."expense_splits" (
     "expense_id" "uuid" NOT NULL,
     "user_id" "uuid" NOT NULL,
     "share_cents" bigint NOT NULL,
     "weight" numeric,
+    "adjustment_cents" bigint,
+    CONSTRAINT "expense_splits_adjustment_cents_check" CHECK ((("adjustment_cents" >= '-100000000000'::bigint) AND ("adjustment_cents" <= '100000000000'::bigint))),
     CONSTRAINT "expense_splits_share_cents_check" CHECK (("share_cents" >= 0)),
     CONSTRAINT "expense_splits_weight_check" CHECK ((("weight" IS NULL) OR ("weight" >= (0)::numeric)))
 );
@@ -4313,6 +4967,10 @@ ALTER TABLE "public"."expense_splits" OWNER TO "postgres";
 
 
 COMMENT ON COLUMN "public"."expense_splits"."weight" IS 'Percent or share count, for display only.';
+
+
+
+COMMENT ON COLUMN "public"."expense_splits"."adjustment_cents" IS 'Adjustment splits: the +/- on top of an equal share, for display and re-deriving.';
 
 
 
@@ -4364,7 +5022,10 @@ CREATE OR REPLACE VIEW "public"."group_balances" WITH ("security_invoker"='true'
  WITH "expense_totals" AS NOT MATERIALIZED (
          SELECT "e"."id",
             "e"."group_id",
-            "e"."paid_by",
+                CASE
+                    WHEN "e"."is_refund" THEN '-1'::integer
+                    ELSE 1
+                END AS "sign",
             "private"."convert_minor"("e"."amount_cents", "e"."fx_rate", ("e"."currency")::"text", ("g"."currency")::"text") AS "total"
            FROM ("public"."expenses" "e"
              JOIN "public"."groups" "g" ON (("g"."id" = "e"."group_id")))
@@ -4373,6 +5034,7 @@ CREATE OR REPLACE VIEW "public"."group_balances" WITH ("security_invoker"='true'
          SELECT "t"."id",
             "t"."group_id",
             "t"."total",
+            "t"."sign",
             "s"."user_id",
             "div"((("t"."total")::numeric * ("s"."share_cents")::numeric), "sum"("s"."share_cents") OVER "w") AS "base",
             "mod"((("t"."total")::numeric * ("s"."share_cents")::numeric), "sum"("s"."share_cents") OVER "w") AS "rem"
@@ -4382,26 +5044,48 @@ CREATE OR REPLACE VIEW "public"."group_balances" WITH ("security_invoker"='true'
         ), "split_shares" AS (
          SELECT "p"."group_id",
             "p"."user_id",
+            "p"."sign",
             ("p"."base" + (
                 CASE
                     WHEN (("row_number"() OVER (PARTITION BY "p"."group_id", "p"."id" ORDER BY "p"."rem" DESC, "p"."user_id"))::numeric <= (("p"."total")::numeric - "sum"("p"."base") OVER (PARTITION BY "p"."group_id", "p"."id"))) THEN 1
                     ELSE 0
                 END)::numeric) AS "share"
            FROM "split_parts" "p"
+        ), "payer_parts" AS (
+         SELECT "t"."id",
+            "t"."group_id",
+            "t"."total",
+            "t"."sign",
+            "x"."user_id",
+            "div"((("t"."total")::numeric * ("x"."paid_cents")::numeric), "sum"("x"."paid_cents") OVER "w") AS "base",
+            "mod"((("t"."total")::numeric * ("x"."paid_cents")::numeric), "sum"("x"."paid_cents") OVER "w") AS "rem"
+           FROM ("expense_totals" "t"
+             JOIN "public"."expense_payers" "x" ON (("x"."expense_id" = "t"."id")))
+          WINDOW "w" AS (PARTITION BY "t"."group_id", "t"."id")
+        ), "payer_shares" AS (
+         SELECT "p"."group_id",
+            "p"."user_id",
+            "p"."sign",
+            ("p"."base" + (
+                CASE
+                    WHEN (("row_number"() OVER (PARTITION BY "p"."group_id", "p"."id" ORDER BY "p"."rem" DESC, "p"."user_id"))::numeric <= (("p"."total")::numeric - "sum"("p"."base") OVER (PARTITION BY "p"."group_id", "p"."id"))) THEN 1
+                    ELSE 0
+                END)::numeric) AS "share"
+           FROM "payer_parts" "p"
         ), "ledger" AS (
          SELECT "m"."group_id",
             "m"."user_id",
             (0)::numeric AS "delta"
            FROM "public"."group_members" "m"
         UNION ALL
-         SELECT "t"."group_id",
-            "t"."paid_by",
-            ("t"."total")::numeric AS "total"
-           FROM "expense_totals" "t"
+         SELECT "x"."group_id",
+            "x"."user_id",
+            (("x"."sign")::numeric * "x"."share")
+           FROM "payer_shares" "x"
         UNION ALL
          SELECT "s"."group_id",
             "s"."user_id",
-            (- "s"."share")
+            (((- "s"."sign"))::numeric * "s"."share")
            FROM "split_shares" "s"
         UNION ALL
          SELECT "st"."group_id",
@@ -4617,6 +5301,16 @@ ALTER TABLE ONLY "public"."events"
 
 
 
+ALTER TABLE ONLY "public"."expense_items"
+    ADD CONSTRAINT "expense_items_pkey" PRIMARY KEY ("expense_id", "position");
+
+
+
+ALTER TABLE ONLY "public"."expense_payers"
+    ADD CONSTRAINT "expense_payers_pkey" PRIMARY KEY ("expense_id", "user_id");
+
+
+
 ALTER TABLE ONLY "public"."expense_splits"
     ADD CONSTRAINT "expense_splits_pkey" PRIMARY KEY ("expense_id", "user_id");
 
@@ -4769,6 +5463,10 @@ CREATE INDEX "events_group_id_idx" ON "public"."events" USING "btree" ("group_id
 
 
 CREATE INDEX "events_starts_at_idx" ON "public"."events" USING "btree" ("starts_at") WHERE ("status" = 'scheduled'::"public"."event_status");
+
+
+
+CREATE INDEX "expense_payers_user_id_idx" ON "public"."expense_payers" USING "btree" ("user_id");
 
 
 
@@ -4932,6 +5630,10 @@ CREATE OR REPLACE TRIGGER "events_set_updated_at" BEFORE UPDATE ON "public"."eve
 
 
 
+CREATE CONSTRAINT TRIGGER "expense_payers_sum_check" AFTER INSERT OR DELETE OR UPDATE ON "public"."expense_payers" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."check_expense_payers"();
+
+
+
 CREATE CONSTRAINT TRIGGER "expense_splits_sum_check" AFTER INSERT OR DELETE OR UPDATE ON "public"."expense_splits" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."check_expense_splits"();
 
 
@@ -4952,11 +5654,19 @@ CREATE CONSTRAINT TRIGGER "expenses_notify_update" AFTER UPDATE ON "public"."exp
 
 
 
+CREATE CONSTRAINT TRIGGER "expenses_payers_sum_check" AFTER INSERT OR UPDATE OF "amount_cents" ON "public"."expenses" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."check_expense_payers"();
+
+
+
 CREATE OR REPLACE TRIGGER "expenses_set_updated_at" BEFORE UPDATE ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
 
 
 
 CREATE CONSTRAINT TRIGGER "expenses_splits_sum_check" AFTER INSERT OR UPDATE OF "amount_cents" ON "public"."expenses" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."check_expense_splits"();
+
+
+
+CREATE OR REPLACE TRIGGER "expenses_sync_single_payer" AFTER INSERT OR UPDATE OF "amount_cents", "paid_by" ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."sync_single_payer"();
 
 
 
@@ -5179,6 +5889,21 @@ ALTER TABLE ONLY "public"."events"
 
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_items"
+    ADD CONSTRAINT "expense_items_expense_id_fkey" FOREIGN KEY ("expense_id") REFERENCES "public"."expenses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_payers"
+    ADD CONSTRAINT "expense_payers_expense_id_fkey" FOREIGN KEY ("expense_id") REFERENCES "public"."expenses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_payers"
+    ADD CONSTRAINT "expense_payers_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE RESTRICT;
 
 
 
@@ -5467,6 +6192,24 @@ CREATE POLICY "events: members create" ON "public"."events" FOR INSERT TO "authe
 
 
 CREATE POLICY "events: members read" ON "public"."events" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+ALTER TABLE "public"."expense_items" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "expense_items: members read" ON "public"."expense_items" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."expenses" "e"
+  WHERE (("e"."id" = "expense_items"."expense_id") AND ("e"."group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids")))))));
+
+
+
+ALTER TABLE "public"."expense_payers" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "expense_payers: members read" ON "public"."expense_payers" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM "public"."expenses" "e"
+  WHERE (("e"."id" = "expense_payers"."expense_id") AND ("e"."group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids")))))));
 
 
 
@@ -5987,6 +6730,12 @@ GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "service_r
 
 
 
+REVOKE ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."groups" TO "service_role";
 GRANT SELECT ON TABLE "public"."groups" TO "authenticated";
 
@@ -6147,6 +6896,12 @@ GRANT ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "js
 
 
 
+REVOKE ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") TO "service_role";
@@ -6180,6 +6935,12 @@ GRANT ALL ON FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id"
 REVOKE ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_expense_v2"("id" "uuid", "payload" "jsonb") TO "service_role";
 
 
 
@@ -6301,6 +7062,46 @@ GRANT SELECT,INSERT,DELETE ON TABLE "public"."event_rsvps" TO "authenticated";
 
 
 GRANT UPDATE("status") ON TABLE "public"."event_rsvps" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."expense_items" TO "service_role";
+
+
+
+GRANT SELECT("expense_id") ON TABLE "public"."expense_items" TO "authenticated";
+
+
+
+GRANT SELECT("position") ON TABLE "public"."expense_items" TO "authenticated";
+
+
+
+GRANT SELECT("description") ON TABLE "public"."expense_items" TO "authenticated";
+
+
+
+GRANT SELECT("amount_cents") ON TABLE "public"."expense_items" TO "authenticated";
+
+
+
+GRANT SELECT("user_ids") ON TABLE "public"."expense_items" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."expense_payers" TO "service_role";
+
+
+
+GRANT SELECT("expense_id") ON TABLE "public"."expense_payers" TO "authenticated";
+
+
+
+GRANT SELECT("user_id") ON TABLE "public"."expense_payers" TO "authenticated";
+
+
+
+GRANT SELECT("paid_cents") ON TABLE "public"."expense_payers" TO "authenticated";
 
 
 

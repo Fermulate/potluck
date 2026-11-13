@@ -3,7 +3,7 @@
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
 begin;
-select plan(82);
+select plan(84);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -603,6 +603,25 @@ select is(
    where user_id = tests.uid('ben') and type = 'expense.created' and data ->> 'expense_id' = tests.id('gift')::text),
   1,
   'a payer outside the split hears about it'
+);
+select is(
+  (select (g ->> 'expenses')::int
+   from jsonb_array_elements(private.monthly_summary(tests.uid('ben'), current_date) -> 'groups') g
+   where g ->> 'group_id' = tests.id('fx')::text),
+  (select count(*)::int from public.expenses e
+   where e.group_id = tests.id('fx') and e.deleted_at is null
+     and (exists (select 1 from public.expense_payers x where x.expense_id = e.id and x.user_id = tests.uid('ben'))
+          or exists (select 1 from public.expense_splits s where s.expense_id = e.id and s.user_id = tests.uid('ben')))),
+  'the monthly summary counts expenses someone paid part of'
+);
+select tests.login('ava');
+select delete_expense(tests.id('gift'));
+reset role;
+select is(
+  (select count(*)::int from public.notifications
+   where user_id = tests.uid('ben') and type = 'expense.deleted' and data ->> 'expense_id' = tests.id('gift')::text),
+  1,
+  'and hears when it is deleted'
 );
 
 select * from finish();
