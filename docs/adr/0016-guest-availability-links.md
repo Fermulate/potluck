@@ -19,8 +19,10 @@ Adding times to a plan needed an account and a seat in the group. For a friend o
 ## Consequences
 
 - No change to auth, sessions or any existing policy; a guest can never become a member by accident, and closing a link closes the door everywhere at once.
-- Two more definer functions open to the internet, each a place where a missing check would leak. pgTAP (`17_guest_links.test.sql`) covers expiry, revocation, the cap, anon permissions, ranking with guests and what the preview leaves out; `01_schema.test.sql` pins the anon allowlist.
-- Limits are per link and per guest in the database, not per IP. Someone with a link can fill it up to its cap; organizers remove answers and turn links off. The preview is a read and has no limit of its own.
-- A guest who clears their browser storage cannot edit their answer anymore. Answering again makes a new guest if the link has room; the organizer can remove the old one.
+- Two more definer functions open to the internet, each a place where a missing check would leak. pgTAP (`22_guest_links.test.sql`) covers expiry, revocation, the cap, anon permissions, ranking with guests and what the preview leaves out; `01_schema.test.sql` pins the anon allowlist.
+- Limits are per link and per guest in the database, not per IP. Someone with a link can fill it up to its cap; organizers remove answers and turn links off. A removed answer keeps its row (`removed_at`) so its token is refused from then on, while its seat opens up. The preview is a read and has no limit of its own.
+- A guest who clears their browser storage cannot edit their answer anymore. Answering again makes a new guest if the link has room; the organizer can remove the old one. The same goes for a removed guest who comes back without the token.
+- Names are cleaned the same way on both sides (`private.clean_guest_name`, `cleanGuestName`): invisible and zero width characters go, whitespace collapses, so a name cannot be blank or impersonate by hiding characters.
+- Once a plan has a time, its links show that time to guests (to anyone while the link is open, to guests who answered after it expires), and the plan keeps the list of who answered as a guest.
 - `best_slots.missing` can now hold guest ids. Clients map them through the plan's guest list; an older client simply does not find them among members.
 - Guest answers outlive their link: turning a link off stops new answers and edits but keeps what guests already said.
