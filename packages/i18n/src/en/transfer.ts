@@ -130,6 +130,10 @@ export const transfer = {
       using: 'Using 1 {currency} = {rate} {group}.',
       far: '1 {currency} = {rate} {group} is far from {reference}, the rate Potluck has nearest those days. Check it.',
       noReference: 'Potluck has no {currency} to {group} rate to compare this with. Check it.',
+      fileFar:
+        "The file's rate 1 {currency} = {rate} {group} is far from {reference}, the rate Potluck has nearest that day. Check the file's {currency} rates.",
+      fileNoReference:
+        "Potluck has no {currency} to {group} rate to compare the file's rates with. Check them.",
       unsupported:
         'Potluck has no exchange rates for {currency}, so these rows cannot come in here. Leave them out below, or import the file into a group that uses {currency}.',
       confirm: 'This rate is right',

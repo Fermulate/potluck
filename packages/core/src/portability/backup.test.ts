@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupLedger, backupSchema, utcDay } from './backup'
+import { backupLedger, backupSchema } from './backup'
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const at = '2026-03-01T12:00:00+00:00'
@@ -18,6 +18,7 @@ const sample = {
     locale: 'en',
     created_at: at,
   },
+  payment_methods: [],
   people: [{ id: id(1), display_name: 'Ava', deleted: false }],
   friends: [id(2)],
   groups: [
@@ -75,9 +76,11 @@ describe('backupSchema', () => {
     expect(backupSchema.parse(sample).groups[0]!.expenses[0]!.fx_rate).toBe('1.000000000000')
   })
 
-  it('reads payment comments, payment methods and template fields, and files without them', () => {
-    const full = JSON.parse(JSON.stringify(sample)) as Record<string, unknown> & typeof sample
-    full.payment_methods = [{ kind: 'paypal', handle: 'avachen', updated_at: at }]
+  it('reads payment comments, payment methods and template fields', () => {
+    const full = JSON.parse(JSON.stringify(sample)) as typeof sample
+    ;(full as Record<string, unknown>).payment_methods = [
+      { kind: 'paypal', handle: 'avachen', updated_at: at },
+    ]
     const group = full.groups[0]! as unknown as Record<string, unknown[]>
     group.payments = [
       {
@@ -121,11 +124,14 @@ describe('backupSchema', () => {
       },
     ]
     const parsed = backupSchema.parse(full)
-    expect(parsed.payment_methods?.[0]?.handle).toBe('avachen')
-    expect(parsed.groups[0]!.payments[0]!.comments?.[0]?.body).toBe('Thanks!')
+    expect(parsed.payment_methods[0]!.handle).toBe('avachen')
+    expect(parsed.groups[0]!.payments[0]!.comments[0]!.body).toBe('Thanks!')
     expect(parsed.groups[0]!.recurring[0]!.anchor_day).toBe(31)
-    // A backup written before these fields existed still reads.
-    expect(backupSchema.parse(sample).payment_methods).toBeUndefined()
+  })
+
+  it('wants every field export_my_data writes', () => {
+    const { payment_methods: _, ...rest } = sample
+    expect(backupSchema.safeParse(rest).success).toBe(false)
   })
 
   it('refuses another format, version, or a rate as a number', () => {
@@ -154,18 +160,36 @@ describe('backupLedger', () => {
       created_by: id(1),
       created_at: at,
       deleted_at: null,
+      comments: [],
     })
     group.payments.push({ ...group.payments[0]!, id: id(41), deleted_at: at })
-    const { groups, nameOf } = backupLedger(backup)
+    const { groups, nameOf } = backupLedger(backup, 'America/New_York')
     expect(groups[0]!.expenses).toHaveLength(1)
     expect(groups[0]!.expenses[0]!.payers).toEqual([{ userId: id(1), paidCents: 9000 }])
     expect(groups[0]!.payments).toHaveLength(1)
-    expect(groups[0]!.payments[0]!.day).toBe('2026-03-02')
+    expect(groups[0]!.payments[0]!.day).toBe('2026-03-01')
     expect(nameOf(id(1))).toBe('Ava')
     expect(nameOf(id(9))).toBe(id(9))
   })
 
-  it('takes the UTC day of a timestamp', () => {
-    expect(utcDay('2026-03-01T12:00:00+00:00')).toBe('2026-03-01')
+  it("dates a payment on the viewer's day, as settle_up_v2 stored it", () => {
+    const backup = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
+    // Noon on March 2 in Auckland (UTC+13) is 23:00 UTC on March 1.
+    backup.groups[0]!.payments.push({
+      id: id(42),
+      from_user: id(1),
+      to_user: id(2),
+      amount_cents: 500,
+      currency: 'USD',
+      fx_rate: '1',
+      note: null,
+      settled_at: '2026-03-01T23:00:00+00:00',
+      created_by: id(1),
+      created_at: at,
+      deleted_at: null,
+      comments: [],
+    })
+    expect(backupLedger(backup, 'Pacific/Auckland').groups[0]!.payments[0]!.day).toBe('2026-03-02')
+    expect(backupLedger(backup, 'UTC').groups[0]!.payments[0]!.day).toBe('2026-03-01')
   })
 })

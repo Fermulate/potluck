@@ -1,9 +1,9 @@
 import type { ExpenseWithSplits, MoneyGroup, MoneyPerson, Settlement } from '@potluck/api'
 import {
+  dayKey,
   expenseEffect,
   ledgerCsv,
   ledgerPeople,
-  utcDay,
   type BalanceExpense,
   type LedgerExpense,
   type LedgerPayment,
@@ -157,8 +157,11 @@ export function toLedgerExpense(e: ExpenseWithSplits): LedgerExpense {
   }
 }
 
-/** A payment as the spreadsheet export takes it, dated the UTC day its rate is from. */
-export function toLedgerPayment(s: Settlement): LedgerPayment {
+/**
+ * A payment as the spreadsheet export takes it, dated in the viewer's zone: the day it was
+ * recorded for, whose rate it took (`settle_up_v2` and `import_expenses` store noon that day).
+ */
+export function toLedgerPayment(s: Settlement, timeZone: string): LedgerPayment {
   return {
     fromUser: s.from_user,
     toUser: s.to_user,
@@ -166,7 +169,7 @@ export function toLedgerPayment(s: Settlement): LedgerPayment {
     currency: s.currency,
     fxRate: s.fx_rate,
     note: s.note,
-    day: utcDay(s.settled_at),
+    day: dayKey(s.settled_at, timeZone),
     settledAt: s.settled_at,
   }
 }
@@ -174,13 +177,15 @@ export function toLedgerPayment(s: Settlement): LedgerPayment {
 /**
  * A group as a spreadsheet (core `ledgerCsv`): every expense and payment, a paid, share and
  * balance column per person (members first, then anyone who has left), and a balance row that
- * matches the balances screen to the cent. Column names follow the app's language.
+ * matches the balances screen to the cent. Column names follow the app's language; payments
+ * are dated in `timeZone`, the viewer's.
  */
 export function groupCsv(
   group: Pick<MoneyGroup, 'name' | 'currency' | 'members'>,
   expenses: readonly ExpenseWithSplits[],
   settlements: readonly Settlement[],
   people: ReadonlyMap<string, Pick<MoneyPerson, 'display_name'>>,
+  timeZone: string,
 ): string {
   const fullName = (id: string) => people.get(id)?.display_name ?? t('transfer.csv.someoneWhoLeft')
   const involved = [
@@ -196,7 +201,7 @@ export function groupCsv(
         name: group.name,
         currency: group.currency,
         expenses: expenses.map(toLedgerExpense),
-        payments: settlements.map(toLedgerPayment),
+        payments: settlements.map((s) => toLedgerPayment(s, timeZone)),
       },
     ],
     {

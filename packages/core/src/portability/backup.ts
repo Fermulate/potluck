@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { dayKey } from '../dates'
 import type { LedgerGroup } from './ledger'
 
 /**
@@ -72,8 +73,7 @@ const payment = z.object({
   created_by: uuid.nullable(),
   created_at: time,
   deleted_at: time.nullable(),
-  /** Added after the first backups: older files have none. */
-  comments: z.array(comment).optional(),
+  comments: z.array(comment),
 })
 
 const recurring = z.object({
@@ -91,14 +91,13 @@ const recurring = z.object({
   active: z.boolean(),
   created_by: uuid.nullable(),
   created_at: time,
-  // Added with editable repeating expenses (ADR 14): older files have none of these.
-  items: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
-  tax_cents: cents.nullable().optional(),
-  tip_cents: cents.nullable().optional(),
-  discount_cents: cents.nullable().optional(),
-  notes: z.string().nullable().optional(),
-  anchor_day: z.number().int().nullable().optional(),
-  updated_at: time.optional(),
+  items: z.array(z.record(z.string(), z.unknown())).nullable(),
+  tax_cents: cents.nullable(),
+  tip_cents: cents.nullable(),
+  discount_cents: cents.nullable(),
+  notes: z.string().nullable(),
+  anchor_day: z.number().int().nullable(),
+  updated_at: time,
 })
 
 const plan = z.object({
@@ -161,9 +160,7 @@ export const backupSchema = z.object({
     created_at: time,
   }),
   /** The account's own ways to be paid (ADR 15); other people's are never in a backup. */
-  payment_methods: z
-    .array(z.object({ kind: z.string(), handle: z.string(), updated_at: time }))
-    .optional(),
+  payment_methods: z.array(z.object({ kind: z.string(), handle: z.string(), updated_at: time })),
   people: z.array(z.object({ id: uuid, display_name: z.string(), deleted: z.boolean() })),
   friends: z.array(uuid),
   groups: z.array(group),
@@ -174,9 +171,14 @@ export type BackupGroup = Backup['groups'][number]
 export type BackupExpense = BackupGroup['expenses'][number]
 export type BackupPayment = BackupGroup['payments'][number]
 
-/** The live expenses and payments of a backup, ready for `ledgerCsv`, and a name for everyone. */
+/**
+ * The live expenses and payments of a backup, ready for `ledgerCsv`, and a name for everyone.
+ * Payments are dated in `timeZone` (the viewer's), the day `settle_up_v2` and `import_expenses`
+ * took their rate for.
+ */
 export function backupLedger(
   backup: Backup,
+  timeZone: string,
   /** Name for an id the backup does not know (never expected; the export lists everyone). */
   unknown?: string,
 ): {
@@ -219,14 +221,9 @@ export function backupLedger(
         currency: p.currency,
         fxRate: p.fx_rate,
         note: p.note,
-        day: utcDay(p.settled_at),
+        day: dayKey(p.settled_at, timeZone),
         settledAt: p.settled_at,
       })),
   }))
   return { groups, nameOf: (id) => names.get(id) ?? unknown ?? id }
-}
-
-/** YYYY-MM-DD in UTC for a timestamp: the day a payment's rate was taken. */
-export function utcDay(timestamp: string): string {
-  return new Date(timestamp).toISOString().slice(0, 10)
 }

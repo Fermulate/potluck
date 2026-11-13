@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(82);
+select plan(83);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -12,6 +12,7 @@ select tests.create_user('ava');
 select tests.create_user('ben');
 select tests.create_user('cleo');
 select tests.create_user('dan');
+select tests.create_user('eve');
 select tests.create_user('outsider');
 
 select tests.remember('g', tests.group_with('ava', array['ben', 'cleo'], '{}', 'Trip', 'USD'));
@@ -104,6 +105,8 @@ select is(
 );
 reset role;
 update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('ben');
+-- Ben is in Auckland (UTC+13 in March).
+update public.profiles set timezone = 'Pacific/Auckland' where id = tests.uid('ben');
 select tests.login('ben');
 select is(
   public.import_expenses(tests.id('g'), pg_temp.file(), 'splitwise'),
@@ -136,8 +139,8 @@ select ok(
 );
 select is(
   (select (from_user, to_user, amount_cents, settled_at)::text from public.settlements where group_id = tests.id('g')),
-  (tests.uid('cleo'), tests.uid('ava'), 1000, '2026-03-02 12:00:00+00'::timestamptz)::text,
-  'the payment is dated the day the file gives'
+  (tests.uid('cleo'), tests.uid('ava'), 1000, '2026-03-01 23:00:00+00'::timestamptz)::text,
+  'the payment is dated the day the file gives, at noon where the importer is (as settle_up_v2)'
 );
 select is(
   (select array_agg(verb) from public.activity
@@ -502,6 +505,15 @@ insert into public.comments (settlement_id, author_id, body)
 select id, tests.uid('ava'), 'Thanks!' from public.settlements where group_id = tests.id('g') and currency = 'EUR';
 insert into public.payment_methods (user_id, kind, handle) values
   (tests.uid('ava'), 'paypal', 'avachen'), (tests.uid('ben'), 'venmo', 'ben-okafor');
+-- Eve adds a taxi Ava paid for Ava and Ben, then leaves (and is no friend of Ava's).
+insert into public.group_members (group_id, user_id, role) values (tests.id('left'), tests.uid('eve'), 'member');
+select tests.login('eve');
+select create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('left'), 'description', 'Taxi', 'amount_cents', 2000, 'paid_by', tests.uid('ava'),
+  'spent_at', '2026-03-30', 'splits', tests.people('ava', 'ben')));
+reset role;
+delete from public.group_members where group_id = tests.id('left') and user_id = tests.uid('eve');
+delete from public.friendships where tests.uid('eve') in (user_id, friend_id);
 select tests.login('ava');
 select create_expense_v2(jsonb_build_object(
   'group_id', tests.id('left'), 'description', 'Wifi', 'amount_cents', 4000, 'recurrence', 'monthly',
@@ -569,6 +581,10 @@ select is(
 select ok(
   (select bool_or(p ->> 'id' = tests.uid('dan')::text) from backup, jsonb_array_elements(doc -> 'people') p),
   'people who left are still named'
+);
+select ok(
+  (select bool_or(p ->> 'id' = tests.uid('eve')::text) from backup, jsonb_array_elements(doc -> 'people') p),
+  'so is whoever added an expense and left, though they are in no split'
 );
 select ok(
   not exists (select 1 from backup, jsonb_array_elements(doc -> 'people') p

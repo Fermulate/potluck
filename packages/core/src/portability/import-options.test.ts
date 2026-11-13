@@ -206,7 +206,21 @@ describe('rates', () => {
       rateOn: () => '1.2',
     })
     expect(plan.rows[0]).toMatchObject({ fx_rate: '1.08' })
-    expect(plan.fileRates).toEqual({ rows: 1, differ: 1 })
+    expect(plan.rows[0]).not.toHaveProperty('fx_rate_confirmed')
+    expect(plan.fileRates).toEqual({
+      rows: 1,
+      differ: 1,
+      rates: [{ currency: 'EUR', day: '2026-03-01', rate: '1.08' }],
+    })
+    // Once the person says the file's EUR rates are right, the server is told so.
+    const confirmed = planImport(read, {
+      mapping: ['a', 'b'],
+      untitled: 'x',
+      groupCurrency: 'USD',
+      rateOn: () => '1.2',
+      confirmedFileRates: new Set(['EUR']),
+    })
+    expect(confirmed.rows[0]).toMatchObject({ fx_rate: '1.08', fx_rate_confirmed: true })
     expect(plan.balances).toEqual(
       computeBalances(
         [
@@ -226,7 +240,7 @@ describe('rates', () => {
     // Into a group in another currency, the file's rate does not apply.
     const other = planImport(read, { mapping: ['a', 'b'], untitled: 'x', groupCurrency: 'EUR' })
     expect(other.rows[0]).not.toHaveProperty('fx_rate')
-    expect(other.fileRates).toEqual({ rows: 0, differ: 0 })
+    expect(other.fileRates).toEqual({ rows: 0, differ: 0, rates: [] })
   })
 
   it('find the rate on a day like the server: latest on or before, else the inverse', () => {

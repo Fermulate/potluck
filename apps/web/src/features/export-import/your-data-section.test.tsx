@@ -47,6 +47,7 @@ const backup: Backup = {
     { id: BEN, display_name: 'Ben Okafor', deleted: false },
     { id: CLEO, display_name: 'Cleo Park', deleted: false },
   ],
+  payment_methods: [],
   friends: [BEN, CLEO],
   groups: [
     {

@@ -85,7 +85,7 @@ export interface LedgerPayment {
   currency: string
   fxRate: string | number
   note: string | null
-  /** YYYY-MM-DD, the UTC day it was recorded (the day its rate is from). */
+  /** YYYY-MM-DD, the day it was recorded in the viewer's zone (the day its rate is from). */
   day: string
   settledAt: string
 }

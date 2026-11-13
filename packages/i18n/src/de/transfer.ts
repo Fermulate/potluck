@@ -134,6 +134,10 @@ export const transfer = {
       using: 'Es gilt 1 {currency} = {rate} {group}.',
       far: '1 {currency} = {rate} {group} liegt weit weg von {reference}, dem Kurs in Potluck, der diesen Tagen am nächsten liegt. Prüf ihn.',
       noReference: 'Potluck hat keinen Kurs von {currency} nach {group} zum Vergleichen. Prüf ihn.',
+      fileFar:
+        'Der Kurs aus der Datei, 1 {currency} = {rate} {group}, liegt weit weg von {reference}, dem Kurs in Potluck, der diesem Tag am nächsten liegt. Prüf die {currency}-Kurse der Datei.',
+      fileNoReference:
+        'Potluck hat keinen Kurs von {currency} nach {group}, um die Kurse der Datei zu vergleichen. Prüf sie.',
       unsupported:
         'Potluck hat keine Wechselkurse für {currency}, deshalb können diese Zeilen hier nicht rein. Lass sie unten weg oder importiere die Datei in eine Gruppe mit {currency}.',
       confirm: 'Dieser Kurs stimmt',

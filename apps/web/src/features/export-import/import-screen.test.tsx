@@ -1,5 +1,6 @@
 import type * as Api from '@potluck/api'
 import { importExpenses, moneyKeys, transferKeys } from '@potluck/api'
+import { ledgerCsv } from '@potluck/core'
 import { formatMoney, setLocale, t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,6 +15,7 @@ import {
   seededClient,
 } from '@/features/expenses/test-utils'
 import { ImportScreen } from './import-screen'
+import { ledgerLabels } from './labels'
 import { fingerprint } from './read-file'
 
 vi.mock('@/lib/supabase', () => import('@/features/expenses/fake-supabase'))
@@ -123,6 +125,27 @@ describe('ImportScreen', () => {
     expect(rows[3]).toMatchObject({ is_refund: false })
     expect(rows[0]).toMatchObject({ payers: [{ user_id: ME, paid_cents: 9000 }] })
     await waitFor(() => expect(invalidate).toHaveBeenCalled())
+  })
+
+  it('keeps Import and Choose another file shut while a long import is on its way', async () => {
+    let finish: (value: { expenses: number; payments: number }) => void = () => {}
+    save.mockImplementationOnce((_client, _group, _rows, _source, options) => {
+      options?.onProgress?.(2, 4)
+      return new Promise((resolve) => {
+        finish = resolve
+      })
+    })
+    renderScreen()
+    await upload(SPLITWISE)
+    fireEvent.click(await submitButton(4))
+    const sending = await screen.findByRole('button', {
+      name: t('transfer.import.progress', { sent: 2, total: 4 }),
+    })
+    expect(sending).toBeDisabled()
+    fireEvent.click(sending)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: t('transfer.import.another') })).toBeDisabled()
+    finish({ expenses: 3, payments: 1 })
   })
 
   it('names the row the server refused, in words about imports', async () => {
@@ -294,6 +317,64 @@ describe('ImportScreen', () => {
     expect(
       await screen.findByText(t('transfer.import.rates.invalid', { example: '0.0091' })),
     ).toBeVisible()
+  })
+
+  it("asks to confirm a Potluck file's rate that is far from Potluck's own", async () => {
+    renderScreen({
+      rates: { EUR: { direct: [{ day: '2026-03-01', rate: '1.1' }], inverse: [], known: true } },
+    })
+    const csv = ledgerCsv(
+      [
+        {
+          name: 'Trip',
+          currency: 'USD',
+          expenses: [
+            {
+              description: 'Museum',
+              category: null,
+              notes: null,
+              spentAt: '2026-03-01',
+              createdAt: '2026-03-01T10:00:00Z',
+              amountCents: 1000,
+              currency: 'EUR',
+              fxRate: '11.000000000000',
+              isRefund: false,
+              payers: [{ userId: ME, paidCents: 1000 }],
+              splits: [
+                { userId: ME, shareCents: 500 },
+                { userId: BEN, shareCents: 500 },
+              ],
+            },
+          ],
+          payments: [],
+        },
+      ],
+      {
+        labels: ledgerLabels(),
+        people: [
+          { id: ME, name: 'Ava Chen' },
+          { id: BEN, name: 'Ben Okafor' },
+        ],
+        paymentText: () => '',
+      },
+    )
+    await upload(csv, 'potluck.csv')
+    // Ten times the stored rate: the server refuses it unless the person says it is right.
+    expect(
+      await screen.findByText(
+        t('transfer.import.rates.fileFar', {
+          currency: 'EUR',
+          rate: '11',
+          reference: '1.1',
+          group: 'USD',
+        }),
+      ),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: t('transfer.import.rates.confirm') }))
+    fireEvent.click(await submitButton(1))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save.mock.calls[0]![2][0]).toMatchObject({ fx_rate: '11', fx_rate_confirmed: true })
   })
 
   it('uses stored rates for every currency, so the balances are the real ones', async () => {

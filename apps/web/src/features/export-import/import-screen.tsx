@@ -11,6 +11,7 @@ import {
   MAX_IMPORT_ROWS,
   SKIP_PERSON,
   alreadyThere,
+  dayKey,
   failedLine,
   guessMapping,
   nearestRate,
@@ -19,7 +20,7 @@ import {
   planImport,
   rateIsOutlier,
   rateOnDay,
-  utcDay,
+  trimRate,
   type DateFormat,
   type ExistingRow,
   type ImportPlan,
@@ -29,7 +30,7 @@ import {
   type SourceFile,
   type SourceIssue,
 } from '@potluck/core'
-import { formatDate, formatMoney, formatRelative, t } from '@potluck/i18n'
+import { formatDate, formatMoney, formatRate, formatRelative, t } from '@potluck/i18n'
 import {
   Avatar,
   Badge,
@@ -72,7 +73,7 @@ import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { importLabelSets } from './labels'
-import { RateCard } from './rate-card'
+import { FarRate, RateCard } from './rate-card'
 
 type RateCheck = Parameters<typeof RateCard>[0]['check']
 import { fingerprint, readFile } from './read-file'
@@ -368,6 +369,35 @@ function rateCheck(missing: MissingRate, history: FxHistory | undefined): RateCh
   }
 }
 
+/** A currency whose rates from a Potluck file `import_expenses` holds as far off. */
+interface FarFileRate {
+  currency: string
+  /** The first such rate, and the stored rate nearest its day (null when there is none). */
+  rate: string
+  reference: string | null
+}
+
+/**
+ * The file's rates held as `import_expenses` will hold them: each against the stored rate nearest
+ * its day. Null while a currency's rates load.
+ */
+function farFileRates(
+  rates: ImportPlan['fileRates']['rates'],
+  historyOf: (currency: string) => FxHistory | undefined,
+): FarFileRate[] | null {
+  const far = new Map<string, FarFileRate>()
+  for (const r of rates) {
+    const history = historyOf(r.currency)
+    if (!history) return null
+    if (!history.known || far.has(r.currency)) continue
+    const reference = nearestRate(history, r.day)
+    if (rateIsOutlier(r.rate, reference)) {
+      far.set(r.currency, { currency: r.currency, rate: r.rate, reference })
+    }
+  }
+  return [...far.values()]
+}
+
 export function ImportScreen({ groupId }: { groupId: string }) {
   const group = useMoneyGroup(groupId)
   if (group.isPending || !group.data) {
@@ -402,6 +432,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const [skipCurrencies, setSkipCurrencies] = useState<ReadonlySet<string>>(new Set())
   const [leaveOutDuplicates, setLeaveOutDuplicates] = useState(false)
   const [confirmedRates, setConfirmedRates] = useState<ReadonlySet<string>>(new Set())
+  const [confirmedFileRates, setConfirmedFileRates] = useState<ReadonlySet<string>>(new Set())
   const [partlyImported, setPartlyImported] = useState(false)
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -447,6 +478,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       setFromGroup(read_.groups.includes(group.name) ? group.name : (read_.groups[0] ?? null))
       setTypedRates({})
       setSkipCurrencies(new Set())
+      setConfirmedFileRates(new Set())
       setLeaveOutDuplicates(false)
       setFocusAfterRead(true)
     } finally {
@@ -466,14 +498,14 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       })),
       ...(settlements.data ?? []).map((s) => ({
         kind: 'payment' as const,
-        day: utcDay(s.settled_at),
+        day: dayKey(s.settled_at, timeZone),
         amountCents: s.amount_cents,
         currency: s.currency,
         fromUser: s.from_user,
         toUser: s.to_user,
       })),
     ],
-    [expenses.data, settlements.data],
+    [expenses.data, settlements.data, timeZone],
   )
 
   const options = useMemo(
@@ -486,8 +518,18 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       typedRates,
       skipCurrencies,
       confirmedRates,
+      confirmedFileRates,
     }),
-    [mapping, fromGroup, group.currency, rateOn, typedRates, skipCurrencies, confirmedRates],
+    [
+      mapping,
+      fromGroup,
+      group.currency,
+      rateOn,
+      typedRates,
+      skipCurrencies,
+      confirmedRates,
+      confirmedFileRates,
+    ],
   )
   const basePlan = useMemo(() => (source ? planImport(source, options) : null), [source, options])
   const duplicates = useMemo(
@@ -537,12 +579,16 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const checks = new Map(
     (plan?.missingRates ?? []).map((m) => [m.currency, rateCheck(m, historyOf(m.currency))]),
   )
-  const ratesOpen = (plan?.missingRates ?? []).some((m) => {
-    if (m.skipped) return false
-    const check = checks.get(m.currency)
-    if (!check || check.unsupported || !m.typed) return true
-    return check.outlier && !confirmedRates.has(m.currency)
-  })
+  const fileFar = plan ? farFileRates(plan.fileRates.rates, historyOf) : []
+  const ratesOpen =
+    fileFar === null ||
+    fileFar.some((f) => !confirmedFileRates.has(f.currency)) ||
+    (plan?.missingRates ?? []).some((m) => {
+      if (m.skipped) return false
+      const check = checks.get(m.currency)
+      if (!check || check.unsupported || !m.typed) return true
+      return check.outlier && !confirmedRates.has(m.currency)
+    })
   const blocked = !plan || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
   const leftOut = (['person', 'rate', 'duplicate'] as const).some((r) =>
     plan?.skipped.some((s) => s.reason === r),
@@ -663,6 +709,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             <Button
               variant="ghost"
               size="sm"
+              disabled={submit.isPending}
               onClick={() => {
                 setSource(null)
                 setText(null)
@@ -777,6 +824,33 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                     ` ${t('transfer.import.rates.differ', { count: plan.fileRates.differ })}`}
                 </p>
               )}
+              {fileFar?.map((f) => (
+                <FarRate
+                  key={f.currency}
+                  text={
+                    f.reference
+                      ? t('transfer.import.rates.fileFar', {
+                          currency: f.currency,
+                          rate: formatRate(trimRate(f.rate)),
+                          reference: formatRate(trimRate(f.reference)),
+                          group: group.currency,
+                        })
+                      : t('transfer.import.rates.fileNoReference', {
+                          currency: f.currency,
+                          group: group.currency,
+                        })
+                  }
+                  confirmed={confirmedFileRates.has(f.currency)}
+                  onConfirm={(yes) =>
+                    setConfirmedFileRates((set) => {
+                      const next = new Set(set)
+                      if (yes) next.add(f.currency)
+                      else next.delete(f.currency)
+                      return next
+                    })
+                  }
+                />
+              ))}
             </Step>
           )}
 
@@ -918,7 +992,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
           <Button
             size="lg"
             className="justify-self-stretch sm:justify-self-start"
-            disabled={blocked}
+            disabled={blocked || submit.isPending}
             loading={submit.isPending && !progress}
             onClick={() => {
               setFailure(null)

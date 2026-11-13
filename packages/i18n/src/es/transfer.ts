@@ -133,6 +133,10 @@ export const transfer = {
       using: 'Usando 1 {currency} = {rate} {group}.',
       far: '1 {currency} = {rate} {group} está lejos de {reference}, el cambio de Potluck más cercano a esos días. Revísalo.',
       noReference: 'Potluck no tiene un cambio de {currency} a {group} para compararlo. Revísalo.',
+      fileFar:
+        'El cambio del archivo, 1 {currency} = {rate} {group}, está lejos de {reference}, el cambio de Potluck más cercano a ese día. Revisa los cambios de {currency} del archivo.',
+      fileNoReference:
+        'Potluck no tiene un cambio de {currency} a {group} para comparar los del archivo. Revísalos.',
       unsupported:
         'Potluck no tiene tipos de cambio para {currency}, así que estas filas no pueden entrar aquí. Déjalas fuera abajo, o importa el archivo en un grupo que use {currency}.',
       confirm: 'Este cambio es correcto',

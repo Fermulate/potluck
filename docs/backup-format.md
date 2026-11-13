@@ -10,7 +10,7 @@ One file, written by `export_my_data()`. Conventions:
 - Exchange rates (`fx_rate`) and split weights are decimal text, never JSON numbers, so no digit is lost (`"1.100000000000"`).
 - Times are ISO 8601 with an offset; days (`spent_at`, `next_run_on`, plan windows) are `YYYY-MM-DD`.
 - Ids are UUIDs; every person id resolves in `people`.
-- Within version 1, fields may be added (payment comments, `payment_methods` and the template fields from `items` on came later; older files lack them). A field that is renamed, removed or changes meaning means version 2, and readers check `format` and `version` first.
+- Within version 1, fields may be added. A field that is renamed, removed or changes meaning means version 2, and readers check `format` and `version` first.
 
 Top level:
 
@@ -45,7 +45,7 @@ The same layout for one group (group settings or the expenses tab), everything (
 
 | Column                       | What                                                                                                              |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Date                         | the expense day, or the UTC day a payment was recorded (the day its rate is from)                                 |
+| Date                         | the expense day, or the day a payment was recorded in your time zone (the day its rate is from)                   |
 | Group                        | group name                                                                                                        |
 | Type                         | Expense, Refund, Payment, or Balance (the closing row of each group)                                              |
 | Description, Category        | as entered; a payment reads "Ava paid Ben"                                                                        |

@@ -134,6 +134,10 @@ export const transfer = {
       using: 'On utilise 1 {currency} = {rate} {group}.',
       far: '1 {currency} = {rate} {group} est loin de {reference}, le taux de Potluck le plus proche de ces dates. Vérifie-le.',
       noReference: 'Potluck n’a pas de taux {currency} vers {group} pour comparer. Vérifie-le.',
+      fileFar:
+        'Le taux du fichier, 1 {currency} = {rate} {group}, est loin de {reference}, le taux de Potluck le plus proche de ce jour. Vérifie les taux {currency} du fichier.',
+      fileNoReference:
+        'Potluck n’a pas de taux {currency} vers {group} pour comparer ceux du fichier. Vérifie-les.',
       unsupported:
         'Potluck n’a aucun taux de change pour {currency}, donc ces lignes ne peuvent pas entrer ici. Écarte-les ci-dessous, ou importe le fichier dans un groupe en {currency}.',
       confirm: 'Ce taux est le bon',

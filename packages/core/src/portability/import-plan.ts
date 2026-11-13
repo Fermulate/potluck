@@ -63,6 +63,8 @@ export interface ImportOptions {
   skipCurrencies?: ReadonlySet<string>
   /** Currencies whose typed rate the person confirmed although it is far from the stored one. */
   confirmedRates?: ReadonlySet<string>
+  /** Currencies whose rates from a Potluck file the person confirmed, far from the stored ones. */
+  confirmedFileRates?: ReadonlySet<string>
   /** File lines to leave out (rows already in the group). */
   skipLines?: ReadonlySet<number>
 }
@@ -98,9 +100,14 @@ export interface ImportPlan {
   /** Currencies with rows on days Potluck has no rate for, and what is done about them; the
    * import waits while any has neither a typed rate nor `skipped`. */
   missingRates: MissingRate[]
-  /** Rows that keep the rate their Potluck file was written with, and how many of those differ
-   * from the rate Potluck has stored for that day. */
-  fileRates: { rows: number; differ: number }
+  /** Rows that keep the rate their Potluck file was written with, how many of those differ from
+   * the rate Potluck has stored for that day, and each rate with its currency and day (once), for
+   * the same check against Potluck's nearest rate as a typed one. */
+  fileRates: {
+    rows: number
+    differ: number
+    rates: { currency: string; day: string; rate: string }[]
+  }
   /** Whether the rows add up to the totals the file carries ('none' if it has none). */
   totals: 'match' | 'mismatch' | 'none'
   counts: { expenses: number; refunds: number; payments: number }
@@ -328,7 +335,8 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
   const balances: Shares = {}
   const missing = new Map<string, MissingRate>()
   const missingDays = new Map<string, Set<string>>()
-  const fileRates = { rows: 0, differ: 0 }
+  const fileRates: ImportPlan['fileRates'] = { rows: 0, differ: 0, rates: [] }
+  const fileRatesSeen = new Set<string>()
   let ratesPending = false
   const counts = { expenses: 0, refunds: 0, payments: 0 }
 
@@ -358,6 +366,12 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
           rate = fromFile
           fileRates.rows++
           if (stored && trimRate(stored) !== trimRate(fromFile)) fileRates.differ++
+          const key = `${row.currency}|${day}|${fromFile}`
+          if (!fileRatesSeen.has(key)) {
+            fileRatesSeen.add(key)
+            fileRates.rates.push({ currency: row.currency, day, rate: fromFile })
+          }
+          if (options.confirmedFileRates?.has(row.currency)) row.fx_rate_confirmed = true
         } else if (stored === undefined) {
           rate = undefined
           ratesPending = true

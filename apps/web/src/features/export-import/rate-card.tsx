@@ -5,6 +5,34 @@ import { AlertTriangle, Check } from 'lucide-react'
 import { useState } from 'react'
 
 /**
+ * A rate far from Potluck's own (or with nothing to compare it with): `import_expenses` refuses it
+ * until the person ticks that it is right.
+ */
+export function FarRate({
+  text,
+  confirmed,
+  onConfirm,
+}: {
+  text: string
+  confirmed: boolean
+  onConfirm: (confirmed: boolean) => void
+}) {
+  return (
+    <div className="grid gap-2 rounded-card bg-saffron-soft p-3 text-sm text-saffron-ink">
+      <p className="flex items-start gap-2">
+        <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+        {text}
+      </p>
+      <Checkbox
+        label={t('transfer.import.rates.confirm')}
+        checked={confirmed}
+        onCheckedChange={(checked) => onConfirm(checked === true)}
+      />
+    </div>
+  )
+}
+
+/**
  * One currency Potluck has no rate for on some days of the file: type a rate (kept as the text
  * typed, applied on leaving the field, Enter or Use this rate), or leave its rows out. A rate far
  * from the stored one nearest those days has to be confirmed; the server refuses it otherwise. A
@@ -126,10 +154,9 @@ export function RateCard({
         </p>
       )}
       {outlier && (
-        <div className="grid gap-2 rounded-card bg-saffron-soft p-3 text-sm text-saffron-ink">
-          <p className="flex items-start gap-2">
-            <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-            {reference
+        <FarRate
+          text={
+            reference
               ? t('transfer.import.rates.far', {
                   currency: missing.currency,
                   rate: formatRate(missing.typed!),
@@ -139,14 +166,11 @@ export function RateCard({
               : t('transfer.import.rates.noReference', {
                   currency: missing.currency,
                   group: groupCurrency,
-                })}
-          </p>
-          <Checkbox
-            label={t('transfer.import.rates.confirm')}
-            checked={confirmed}
-            onCheckedChange={(checked) => onConfirm(checked === true)}
-          />
-        </div>
+                })
+          }
+          confirmed={confirmed}
+          onConfirm={onConfirm}
+        />
       )}
       <Checkbox
         label={t('transfer.import.rates.skip')}

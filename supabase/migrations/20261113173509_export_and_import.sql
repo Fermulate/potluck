@@ -12,7 +12,9 @@
 -- person, adding up, members), split (valid, one per person, adding up, members), a rate into the
 -- group currency for the day. Payments go through private.check_payment (as settle_up_v2: two
 -- different members, and only owners and admins record one between two other people) and keep
--- the day the file gives, at noon UTC (the day the export writes back). A row may carry `fx_rate` (the rate a Potluck file was written
+-- the day the file gives, at noon in the importer's time zone (private.payment_time, as
+-- settle_up_v2), so the export, which dates payments in the viewer's zone, writes the same day
+-- back. A row may carry `fx_rate` (the rate a Potluck file was written
 -- with, or one the person typed); otherwise the day's stored rate is used, as for any expense.
 -- A rate a row brings is bounded: its currency must be one Potluck has rates for, it must lie
 -- between a fifth and five times the nearest stored rate for the pair (or carry
@@ -29,7 +31,8 @@
 -- export_my_data(): the viewer's whole account as one JSON document (format `potluck-backup`,
 -- version 1, documented in docs/backup-format.md). Rates are decimal text, like every read.
 -- It carries payment comments, repeating expense templates and the caller's own payment methods
--- (other people's methods stay out of it).
+-- (other people's methods stay out of it). `people` names every person id the groups mention,
+-- read back from the groups document itself, plus the caller's friends.
 
 -- Holding back per row side effects -----------------------------------------------------------
 
@@ -586,7 +589,7 @@ begin
   insert into public.settlements (group_id, from_user, to_user, amount_cents, currency, fx_rate, note, settled_at, created_by)
   select gid, i.from_user, i.to_user, i.amount, i.currency,
          case when i.currency = g.currency then 1 when i.rate_given then i.rate else r.rate end,
-         i.note, (i.day + time '12:00') at time zone 'UTC', uid
+         i.note, private.payment_time(i.day), uid
   from private.import_input i
   left join private.import_rates r on r.run = v_run and r.currency = i.currency and r.day = i.day
   where i.run = v_run and i.kind = 'payment'
@@ -774,9 +777,13 @@ language plpgsql stable security definer set search_path = '' as $$
 declare
   uid uuid := private.require_user();
   gids uuid[];
+  v_groups jsonb;
 begin
   select coalesce(array_agg(m.group_id), '{}') into gids
   from public.group_members m where m.user_id = uid;
+  select coalesce(jsonb_agg(private.export_group(g.id) order by g.created_at, g.id), '[]'::jsonb)
+    into v_groups
+  from public.groups g where g.id = any (gids);
 
   return jsonb_build_object(
     'format', 'potluck-backup',
@@ -806,14 +813,12 @@ begin
                          'deleted', p.deleted_at is not null) order by p.id)
       from public.profiles p
       where p.id in (
-        select m.user_id from public.group_members m where m.group_id = any (gids)
-        union select x.user_id from public.expense_payers x
-          join public.expenses e on e.id = x.expense_id where e.group_id = any (gids)
-        union select x.user_id from public.expense_splits x
-          join public.expenses e on e.id = x.expense_id where e.group_id = any (gids)
-        union select s.from_user from public.settlements s where s.group_id = any (gids)
-        union select s.to_user from public.settlements s where s.group_id = any (gids)
-        union select c.author_id from public.comments c where c.group_id = any (gids)
+        select (v #>> '{}')::uuid
+        from unnest(array['strict $.**.user_id', 'strict $.**.user_ids[*]', 'strict $.**.created_by',
+                          'strict $.**.paid_by', 'strict $.**.from_user', 'strict $.**.to_user',
+                          'strict $.**.author_id']::jsonpath[]) k (path),
+             jsonb_path_query(v_groups, k.path) v
+        where jsonb_typeof(v) = 'string'
         union select f.friend_id from public.friendships f where f.user_id = uid
         union select uid
       )
@@ -822,10 +827,7 @@ begin
       select jsonb_agg(f.friend_id order by f.friend_id)
       from public.friendships f where f.user_id = uid
     ), '[]'::jsonb),
-    'groups', coalesce((
-      select jsonb_agg(private.export_group(g.id) order by g.created_at, g.id)
-      from public.groups g where g.id = any (gids)
-    ), '[]'::jsonb)
+    'groups', v_groups
   );
 end;
 $$;

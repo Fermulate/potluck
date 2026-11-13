@@ -119,6 +119,7 @@ describe('exportMyData', () => {
       locale: 'en',
       created_at: '2026-03-01T12:00:00+00:00',
     },
+    payment_methods: [],
     people: [],
     friends: [],
     groups: [],

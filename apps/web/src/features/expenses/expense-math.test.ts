@@ -107,6 +107,7 @@ describe('groupCsv', () => {
       ],
       [],
       people,
+      'UTC',
     )
     const rows = csv.split('\r\n')
     expect(rows[0]).toBe(
@@ -123,7 +124,7 @@ describe('groupCsv', () => {
     expect(rows[3]).toBe(',Trip,Balance,,,,,,USD,,,,,14.50,,,-4.50,,,-10.00,,')
   })
 
-  it('lists payments and anyone who has left', () => {
+  it("lists payments, on the viewer's day, and anyone who has left", () => {
     const GONE = 'dddddddd-0000-4000-8000-000000000004'
     const csv = groupCsv(
       trip,
@@ -138,18 +139,20 @@ describe('groupCsv', () => {
           currency: 'USD',
           fx_rate: '1.000000000000',
           note: null,
-          settled_at: '2026-11-05T12:00:00Z',
+          // Noon on November 6 in Auckland (UTC+13), as settle_up_v2 stores it.
+          settled_at: '2026-11-05T23:00:00Z',
           created_by: GONE,
-          created_at: '2026-11-05T12:00:00Z',
+          created_at: '2026-11-05T23:00:00Z',
           deleted_at: null,
         },
       ],
       new Map<string, { display_name: string }>([...people, [GONE, { display_name: 'Dee Gone' }]]),
+      'Pacific/Auckland',
     )
     const rows = csv.split('\r\n')
     expect(rows[0]).toContain('Dee Gone paid')
     expect(rows[1]).toMatch(
-      /^2026-11-05,Trip,Payment,Dee Gone paid Ava Chen,,5.00,USD,1,USD,5.00,Dee Gone,/,
+      /^2026-11-06,Trip,Payment,Dee Gone paid Ava Chen,,5.00,USD,1,USD,5.00,Dee Gone,/,
     )
   })
 })
@@ -225,6 +228,7 @@ describe('several payers and refunds', () => {
       [dinner, { ...refund, spent_at: '2026-11-05' }],
       [],
       new Map(members.map((m) => [m.id, m])),
+      'UTC',
     ).split('\r\n')
     expect(rows[1]).toContain(
       '"Ava Chen 60.00; Ben Okafor 30.00",60.00,30.00,30.00,30.00,30.00,0.00',

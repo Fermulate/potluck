@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { groupCsv } from '@/features/expenses/expense-math'
 import { categoryLabel } from '@/features/expenses/format'
+import { useTimeZone } from '@/features/expenses/money-data'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 import { fileName, saveFile } from './download'
@@ -32,6 +33,7 @@ function useRunner<K extends string>() {
 /** The group's spreadsheet, from the same data the expenses tab shows. */
 export function useGroupExport(groupId: string) {
   const queryClient = useQueryClient()
+  const timeZone = useTimeZone()
   const { busy, run } = useRunner<'group'>()
   const exportGroup = () =>
     run('group', async () => {
@@ -44,7 +46,7 @@ export function useGroupExport(groupId: string) {
       const file = fileName(group.name, 'csv', 'expenses')
       saveFile(
         file,
-        groupCsv(group, expenses, settlements, new Map(people.map((p) => [p.id, p]))),
+        groupCsv(group, expenses, settlements, new Map(people.map((p) => [p.id, p])), timeZone),
         'csv',
       )
       return file
@@ -53,8 +55,8 @@ export function useGroupExport(groupId: string) {
 }
 
 /** Everyone in a backup as spreadsheet columns: the viewer first, then by name. */
-function everyone(backup: Backup) {
-  const { nameOf } = backupLedger(backup, t('transfer.csv.someoneWhoLeft'))
+function everyone(backup: Backup, timeZone: string) {
+  const { nameOf } = backupLedger(backup, timeZone, t('transfer.csv.someoneWhoLeft'))
   const ids = new Set<string>()
   for (const g of backup.groups) {
     for (const m of g.members) ids.add(m.user_id)
@@ -75,11 +77,11 @@ function everyone(backup: Backup) {
   )
 }
 
-function accountCsv(backup: Backup, friend?: string): string {
-  const { groups, nameOf } = backupLedger(backup, t('transfer.csv.someoneWhoLeft'))
+function accountCsv(backup: Backup, timeZone: string, friend?: string): string {
+  const { groups, nameOf } = backupLedger(backup, timeZone, t('transfer.csv.someoneWhoLeft'))
   return ledgerCsv(groups, {
     labels: ledgerLabels(),
-    people: everyone(backup),
+    people: everyone(backup, timeZone),
     paymentText: (from, to) =>
       t('transfer.import.rowPayment', { from: nameOf(from), to: nameOf(to) }),
     friend: friend ? { me: backup.profile.id, friend } : undefined,
@@ -90,6 +92,7 @@ function accountCsv(backup: Backup, friend?: string): string {
 
 /** The account wide exports on Me: the JSON backup, everything as CSV, one friend as CSV. */
 export function useAccountExports() {
+  const timeZone = useTimeZone()
   const { busy, run } = useRunner<'backup' | 'everything' | 'friend'>()
   return {
     busy,
@@ -104,14 +107,14 @@ export function useAccountExports() {
       run('everything', async () => {
         const backup = await exportMyData(supabase)
         const file = fileName('potluck', 'csv')
-        saveFile(file, accountCsv(backup), 'csv')
+        saveFile(file, accountCsv(backup, timeZone), 'csv')
         return file
       }),
     friend: (friendId: string, friendName: string) =>
       run('friend', async () => {
         const backup = await exportMyData(supabase)
         const file = fileName(friendName, 'csv', 'friend')
-        saveFile(file, accountCsv(backup, friendId), 'csv')
+        saveFile(file, accountCsv(backup, timeZone, friendId), 'csv')
         return file
       }),
   }
