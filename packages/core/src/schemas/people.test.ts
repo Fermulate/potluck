@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { friendInviteSchema, placeholderSchema } from '../index'
+import { asciiLower, friendInviteSchema, isPlainEmail, placeholderSchema } from '../index'
 
 describe('placeholderSchema', () => {
   it('trims the name and lower cases the email, like add_placeholder_member', () => {
@@ -30,5 +30,26 @@ describe('friendInviteSchema', () => {
       email: 'cleo@example.com',
     })
     expect(friendInviteSchema.safeParse({ email: '' }).success).toBe(false)
+  })
+})
+
+describe('plain emails, like private.is_plain_email and private.ascii_lower', () => {
+  it('lower cases only A to Z', () => {
+    expect(asciiLower('Sam.LEE@Example.COM')).toBe('sam.lee@example.com')
+    expect(asciiLower('Émile')).toBe('Émile')
+  })
+
+  it('accepts printable ASCII with one @ and a dot after it', () => {
+    expect(isPlainEmail('sam@example.com')).toBe(true)
+    expect(isPlainEmail('sám@example.com')).toBe(false)
+    expect(isPlainEmail('sam@localhost')).toBe(false)
+    expect(isPlainEmail('sam @example.com')).toBe(false)
+    expect(isPlainEmail(`${'a'.repeat(250)}@b.co`)).toBe(false)
+  })
+
+  it('refuses a non ASCII seat email', () => {
+    expect(
+      placeholderSchema.safeParse({ display_name: 'Sam', email: 'sám@example.com' }).success,
+    ).toBe(false)
   })
 })

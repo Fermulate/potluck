@@ -83,7 +83,7 @@ describe('FriendJoinPage', () => {
     expect(await screen.findByText(t('people.friendJoin.self'))).toBeInTheDocument()
   })
 
-  it('explains a used or blocked link', async () => {
+  it('explains a used or revoked link, and a revoked one names nobody', async () => {
     db().respond('rpc:friend_invite_preview', preview({ status: 'used_up' }))
     const first = renderPage()
     expect(await screen.findByText(t('people.friendJoin.invalidTitle'))).toBeInTheDocument()
@@ -91,9 +91,14 @@ describe('FriendJoinPage', () => {
     first.unmount()
 
     resetDb()
-    db().respond('rpc:friend_invite_preview', preview({ status: 'blocked' }))
+    // A block reads exactly like this (friend_invite_preview).
+    db().respond(
+      'rpc:friend_invite_preview',
+      preview({ status: 'revoked', name: null, avatar_path: null }),
+    )
     renderPage()
-    expect(await screen.findByText(t('errors.codes.blocked'))).toBeInTheDocument()
+    expect(await screen.findByText(t('invites.invalid.revoked'))).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Ava/ })).toBeNull()
   })
 
   it('offers a retry when the link could not be loaded', async () => {

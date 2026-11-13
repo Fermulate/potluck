@@ -57,9 +57,9 @@ function renderPage() {
   )
 }
 
-/** A friend's row: the button whose name starts with what it shows, their name. */
+/** A friend's row: the link to their page, whose name starts with what it shows, their name. */
 const openTab = (name: string) =>
-  screen.findByRole('button', { name: new RegExp(`^(\\S+ )?${name}`) })
+  screen.findByRole('link', { name: new RegExp(`^(\\S+ )?${name}`) })
 
 describe('FriendsPage', () => {
   beforeEach(() => seed())
@@ -70,7 +70,7 @@ describe('FriendsPage', () => {
     expect(ben).toHaveTextContent('owes you$15.00')
     expect(within(await openTab('Cleo Park')).getByText(t('friends.noTab'))).toBeInTheDocument()
     expect(
-      screen.getAllByRole('button', { name: /Ben Ortiz|Cleo Park/ }).map((b) => b.textContent),
+      screen.getAllByRole('link', { name: /Ben Ortiz|Cleo Park/ }).map((b) => b.textContent),
     ).toEqual([expect.stringContaining('Ben'), expect.stringContaining('Cleo')])
     expect(screen.queryByText('Gone Person')).not.toBeInTheDocument()
   })

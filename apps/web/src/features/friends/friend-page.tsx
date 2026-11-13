@@ -4,6 +4,8 @@ import {
   getOrCreateDirectGroup,
   groupKeys,
   moneyKeys,
+  paymentKeys,
+  paymentQueries,
   peopleKeys,
   profilesByIdsQueryOptions,
   removeFriend,
@@ -12,7 +14,7 @@ import {
   type GroupDetail,
   type Settlement,
 } from '@potluck/api'
-import { dayKey, expenseInvolvesBoth, settlementBetween } from '@potluck/core'
+import { dayKey, expenseInvolvesBoth, friendTotals, settlementBetween } from '@potluck/core'
 import { formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Amount,
@@ -47,13 +49,8 @@ import { dayLabel, groupByDay } from '@/features/expenses/format'
 import { useNameOf, useTimeZone } from '@/features/expenses/money-data'
 import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
-import {
-  standingsWith,
-  toBalanceSettlement,
-  totals,
-  useLedgers,
-  type Standing,
-} from './friend-ledger'
+import { toBalanceSettlement, useLedgers } from './friend-ledger'
+import { SettleFriendSheet } from './settle-friend-sheet'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
@@ -63,23 +60,37 @@ type HistoryItem =
   | { kind: 'expense'; day: string; at: string; group: GroupDetail; expense: ExpenseWithSplits }
   | { kind: 'settlement'; day: string; at: string; group: GroupDetail; settlement: Settlement }
 
+interface Standing {
+  group: GroupDetail
+  /** Positive: the friend owes the viewer, in the group currency. */
+  net: number
+}
+
 /**
- * Everything the viewer and a friend share: where they stand in each group (`standingsWith`, the
- * same numbers as the friends list) and every expense and payment between them.
+ * Everything the viewer and a friend share: where they stand in each group, from the same
+ * `friend_balances` rows as the friends list (so the two always agree), and every expense and
+ * payment between them.
  */
 function useSharedLedger(friendId: string) {
   const me = useUserId()
   const timeZone = useTimeZone()
   const { data: groups, isPending: groupsPending } = useMyGroups()
+  const balances = useQuery(paymentQueries.friendBalances(supabase))
   const shared = useMemo(
     () => (groups ?? []).filter((g) => g.members.some((m) => m.id === friendId)),
     [groups, friendId],
   )
   const { pending: ledgersPending, byGroup } = useLedgers(shared)
-  const pending = groupsPending || ledgersPending
+  const pending = groupsPending || ledgersPending || balances.isPending
+  const rows = useMemo(
+    () => (balances.data ?? []).filter((r) => r.friendId === friendId),
+    [balances.data, friendId],
+  )
 
   return useMemo(() => {
-    if (pending) return { pending, shared, standings: [] as Standing[], sections: [] }
+    if (pending) {
+      return { pending, shared, standings: [] as Standing[], total: undefined, sections: [] }
+    }
     const items: HistoryItem[] = []
     for (const group of shared) {
       const ledger = byGroup.get(group.id)!
@@ -101,14 +112,20 @@ function useSharedLedger(friendId: string) {
       }
     }
     items.sort((a, b) => b.day.localeCompare(a.day) || b.at.localeCompare(a.at))
-    const standings = standingsWith(shared, byGroup, me, friendId).sort(
-      (a, b) =>
-        Number(b.group.is_direct) - Number(a.group.is_direct) ||
-        Math.abs(b.net) - Math.abs(a.net) ||
-        a.group.name.localeCompare(b.group.name),
-    )
-    return { pending, shared, standings, sections: groupByDay(items, (item) => item.day) }
-  }, [pending, shared, byGroup, me, friendId, timeZone])
+    const standings: Standing[] = shared
+      .map((group) => ({
+        group,
+        net: rows.find((r) => r.groupId === group.id)?.netCents ?? 0,
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.group.is_direct) - Number(a.group.is_direct) ||
+          Math.abs(b.net) - Math.abs(a.net) ||
+          a.group.name.localeCompare(b.group.name),
+      )
+    const total = friendTotals(rows).get(friendId)
+    return { pending, shared, standings, total, sections: groupByDay(items, (item) => item.day) }
+  }, [pending, shared, byGroup, rows, me, friendId, timeZone])
 }
 
 function StandingLine({ net, currency, name }: { net: number; currency: string; name: string }) {
@@ -253,14 +270,19 @@ export function FriendPage({ friendId }: { friendId: string }) {
   const [pending, setPending] = useState<Pending>(null)
   const [reporting, setReporting] = useState(false)
   const [opening, setOpening] = useState(false)
-  useMyGroupsRealtime('friend-live', FRIEND_TABLES, () => [moneyKeys.all, groupKeys.all])
+  useMyGroupsRealtime('friend-live', FRIEND_TABLES, () => [
+    moneyKeys.all,
+    groupKeys.all,
+    paymentKeys.friendBalances(),
+  ])
 
   const person = profile.data?.[0]
   const isFriend = friends.data?.some((f) => f.id === friendId) ?? false
   const name = person?.display_name ?? ''
   const direct = ledger.shared.find((g) => g.is_direct)
-  const overall = totals(ledger.standings)
-  const directNet = ledger.standings.find((s) => s.group.is_direct)?.net ?? 0
+  const overall = (ledger.total?.byCurrency ?? []).map((c) => [c.currency, c.netCents] as const)
+  const friend = friends.data?.find((f) => f.id === friendId)
+  const [settling, setSettling] = useState(false)
 
   if (profile.isPending || ledger.pending) return <FriendSkeleton />
   if (!person || person.id === me || person.is_placeholder) {
@@ -349,14 +371,13 @@ export function FriendPage({ friendId }: { friendId: string }) {
           <Button leadingIcon={<Plus />} loading={opening} onClick={() => void addExpense()}>
             {t('people.friendPage.addExpense')}
           </Button>
-          {direct && directNet < 0 && (
-            <Button asChild variant="secondary" leadingIcon={<ArrowRightLeft />}>
-              <Link
-                to="/new/settle"
-                search={{ groupId: direct.id, to: friendId, amount: -directNet }}
-              >
-                {t('people.friendPage.settleUp')}
-              </Link>
+          {friend && ledger.total && ledger.total.settleable.length > 0 && (
+            <Button
+              variant="secondary"
+              leadingIcon={<ArrowRightLeft />}
+              onClick={() => setSettling(true)}
+            >
+              {t('people.friendPage.settleUp')}
             </Button>
           )}
           <IconButton
@@ -517,6 +538,15 @@ export function FriendPage({ friendId }: { friendId: string }) {
           closeLabel={t('common.close')}
           tone="danger"
           onConfirm={() => run(pending)}
+        />
+      )}
+
+      {settling && friend && ledger.total && (
+        <SettleFriendSheet
+          friend={friend}
+          total={ledger.total}
+          open
+          onOpenChange={(o) => !o && setSettling(false)}
         />
       )}
 

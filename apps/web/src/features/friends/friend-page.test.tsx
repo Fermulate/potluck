@@ -38,8 +38,14 @@ const direct = group({
   members: [member(VIEWER, 'Ava Chen'), member(BEN, 'Ben Ortiz')],
 })
 
+// What friend_balances answers for these ledgers: Hike crew Ben owes 8, the 1:1 tab Ava owes 5.
+const friendBalances = [
+  { friend_id: BEN, group_id: 'g-hike', currency: 'USD', net_cents: 800, archived: false },
+  { friend_id: BEN, group_id: 'g-ben', currency: 'USD', net_cents: -500, archived: false },
+]
+
 function seed() {
-  resetDb({
+  return resetDb({
     tables: {
       ...groupTables(hike, direct),
       profiles: [
@@ -111,7 +117,9 @@ function renderPage(friendId = BEN) {
 }
 
 describe('FriendPage', () => {
-  beforeEach(() => seed())
+  beforeEach(() => {
+    seed().respond('rpc:friend_balances', { data: friendBalances })
+  })
 
   it('nets where you stand across every shared group', async () => {
     renderPage()
@@ -146,11 +154,12 @@ describe('FriendPage', () => {
     ).toHaveLength(2)
   })
 
-  it('opens settle up in the 1:1 tab when you owe them there', async () => {
+  it('settles across every shared group from the same sheet as the friends list', async () => {
     renderPage()
-    const settle = await screen.findByRole('link', { name: t('people.friendPage.settleUp') })
-    expect(settle.getAttribute('href')).toContain('/new/settle')
-    expect(settle.getAttribute('href')).toContain('amount=500')
+    fireEvent.click(await screen.findByRole('button', { name: t('people.friendPage.settleUp') }))
+    expect(
+      await screen.findByRole('dialog', { name: t('friends.settle.title', { name: 'Ben' }) }),
+    ).toBeInTheDocument()
   })
 
   it('removes a friend', async () => {

@@ -9,4 +9,4 @@ export {
 } from './balances'
 export { pairwiseDebts } from './pairwise'
 export { simplifyDebts, type Transfer } from './simplify'
-export { expenseInvolvesBoth, netBetween, settlementBetween } from './between'
+export { expenseInvolvesBoth, settlementBetween } from './between'

@@ -41,10 +41,20 @@ describe('describeActivity', () => {
     expect(added.text).toBe('Ben added Cleo')
     expect(added.emoji).toBe('🪑')
     const claimed = describeActivity(
-      item({ verb: 'member.claimed', actor_id: 'cleo', data: { user_id: 'cleo', name: 'Cleo' } }),
+      item({ verb: 'member.claimed', actor_id: 'cleo', data: { user_id: 'cleo', name: 'Sam' } }),
       ctx,
     )
-    expect(claimed.text).toBe('Cleo joined and took their saved seat')
+    expect(claimed.text).toBe("Cleo took Sam's seat")
+    // An entry from before the claim keeps the seat's name, even for the account that took it.
+    const before = describeActivity(
+      item({
+        verb: 'member.added',
+        subject_id: 'me',
+        data: { user_id: 'me', seat: { user_id: 'me', name: 'Sam' } },
+      }),
+      ctx,
+    )
+    expect(before.text).toBe('Ben added Sam')
     expect(claimed.emoji).toBe('👋')
   })
 

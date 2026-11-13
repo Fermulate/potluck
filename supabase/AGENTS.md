@@ -74,6 +74,9 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   be cleared there instead.
 - A trigger on a table that holds user ids sees a claim as an update: return early when
   `private.claiming()` is true if it logs, notifies, bumps `updated_at` or guards archived groups.
+- `notifications_skip_placeholders` also mutes blocks: a row whose `data.actor_id` the recipient
+  blocked is dropped. Put `actor_id` in a new notification's data (`private.notify` does) or a
+  blocked person can still reach the blocker.
 - Placeholders get no notifications but `member.added` (their invite email, sent to
   `placeholders.email`); `notifications_skip_placeholders` drops the rest. Leave them out of
   anything that asks someone to act (availability, RSVPs, heirs). Tests: `27_placeholder_members`.

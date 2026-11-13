@@ -1,14 +1,30 @@
 import { z } from 'zod'
 
-/** An optional email: blank means none, anything else is trimmed, lower cased and checked. */
-const optionalEmail = z
+/** Lower cases A to Z only, like `private.ascii_lower`; other letters are left as they are. */
+export function asciiLower(value: string): string {
+  return value.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32))
+}
+
+/**
+ * A plain email address as seats and friend links store it: printable ASCII, one `@`, a dot
+ * after it, at most 254 characters. Same rule as `private.is_plain_email`.
+ */
+export function isPlainEmail(value: string): boolean {
+  return /^[!-~]+$/.test(value) && /^[^@]+@[^@]+\.[^@]+$/.test(value) && value.length <= 254
+}
+
+const plainEmail = z
   .string()
   .trim()
-  .toLowerCase()
-  .transform((value) => (value === '' ? null : value))
-  .pipe(z.email().max(254).nullable())
+  .transform(asciiLower)
+  .refine(isPlainEmail, { message: 'invalid_email' })
+
+/** An optional email: blank means none, anything else must be a plain email. */
+const optionalEmail = z
+  .string()
   .nullish()
-  .transform((value) => value ?? null)
+  .transform((value) => (value ?? '').trim())
+  .pipe(z.union([z.literal('').transform(() => null), plainEmail]))
 
 /**
  * Arguments for `add_placeholder_member(group_id, display_name, email)`: someone added by name
@@ -22,7 +38,7 @@ export const placeholderSchema = z.object({
 
 /** Argument for `create_friend_invite(email)`: the email is required. */
 export const friendInviteSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
+  email: plainEmail,
 })
 
 export type PlaceholderInput = z.input<typeof placeholderSchema>

@@ -56,6 +56,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
       Number(a.from_user === me || a.to_user === me),
   )
   const personOf = (id: string) => people.get(id) ?? group.data!.members.find((m) => m.id === id)
+  const seat = (id: string) => !!group.data!.members.find((m) => m.id === id)?.is_placeholder
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,12 +181,28 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                         />
                       </span>
                       <span className="min-w-0 flex-1 text-[0.9375rem] font-medium">{text}</span>
-                      {open && d.to_user === me && (
+                      {open && d.to_user === me && !seat(d.from_user) && (
                         <RemindButton
                           groupId={groupId}
                           userId={d.from_user}
                           name={nameOf(d.from_user)}
                         />
+                      )}
+                      {open && d.from_user !== me && (seat(d.from_user) || seat(d.to_user)) && (
+                        // Someone not on Potluck yet cannot record what they paid: anyone can.
+                        <Button asChild size="sm" variant="secondary">
+                          <Link
+                            to="/new/settle"
+                            search={{
+                              groupId,
+                              from: d.from_user,
+                              to: d.to_user,
+                              amount: d.amount_cents,
+                            }}
+                          >
+                            {t('settle.recordPayment')}
+                          </Link>
+                        </Button>
                       )}
                       {open && d.from_user === me && (
                         <Button asChild size="sm" variant="ink">
