@@ -316,6 +316,8 @@ export const expenses = {
       date: 'Date: {from} to {to}',
       category: 'Category: {from} to {to}',
       notes: 'Notes: "{from}" to "{to}"',
+      notesAdded: 'Notes added: "{to}"',
+      notesRemoved: 'Notes removed',
       refundOn: 'Marked as a refund',
       refundOff: 'No longer a refund',
       receiptAdded: 'Receipt added',

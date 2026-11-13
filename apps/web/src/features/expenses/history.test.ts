@@ -35,7 +35,7 @@ describe('describeChanges', () => {
       'Split: equally, you $45.00 and Ben $45.00 to exact amounts, you $56.00 and Cleo $40.00',
       'Date: Nov 1, 2026 to Nov 2, 2026',
       'Category: Other to Food',
-      'Notes: "nothing" to "window seat"',
+      'Notes added: "window seat"',
     ])
   })
 

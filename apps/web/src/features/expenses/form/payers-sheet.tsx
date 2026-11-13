@@ -173,7 +173,7 @@ function PayersSheet({
               ) : (
                 <span />
               )}
-              <span className="flex items-center gap-1">
+              <span className="ml-auto flex items-center gap-1">
                 {restTo && (
                   <Button
                     size="sm"

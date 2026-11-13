@@ -174,14 +174,18 @@ export function describeChanges(
           }),
         )
         break
-      case 'notes':
+      case 'notes': {
+        const from = str(change.from)
+        const to = str(change.to)
         lines.push(
-          t('expenses.history.change.notes', {
-            from: clip(str(change.from) ?? none),
-            to: clip(str(change.to) ?? none),
-          }),
+          !from
+            ? t('expenses.history.change.notesAdded', { to: clip(to ?? '') })
+            : !to
+              ? t('expenses.history.change.notesRemoved')
+              : t('expenses.history.change.notes', { from: clip(from), to: clip(to) }),
         )
         break
+      }
       case 'is_refund':
         lines.push(
           change.to === true

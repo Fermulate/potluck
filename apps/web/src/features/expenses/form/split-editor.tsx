@@ -142,12 +142,15 @@ export function SplitEditor({
   let status: ReactNode = null
 
   if (draft.mode === 'equal') {
-    body = participants.map((m) => (
-      <li key={m.id} className="flex items-center gap-3 py-2">
-        {personCell(m)}
-        {shareCell(m.id)}
-      </li>
-    ))
+    // Without amounts the chips already say everything an equal split is.
+    body = !showAmounts
+      ? null
+      : participants.map((m) => (
+          <li key={m.id} className="flex items-center gap-3 py-2">
+            {personCell(m)}
+            {shareCell(m.id)}
+          </li>
+        ))
     if (showAmounts && shares && participants.length > 0) {
       status = (
         <StatusPill tone="ok">
@@ -398,7 +401,7 @@ export function SplitEditor({
                   onChange={(percent) => onChange({ ...draft, percent })}
                 />
               )}
-              <ul className="divide-y divide-line">{body}</ul>
+              {body && <ul className="divide-y divide-line">{body}</ul>}
             </>
           )}
           {status}
