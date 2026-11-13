@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(108);
+select plan(130);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -238,7 +238,7 @@ select throws_ok(
 select tests.login('eve');
 select throws_ok(
   format($$ select public.accept_invite(%L) $$, pg_temp.code(tests.id('evie'))),
-  '42501', 'blocked', 'someone blocked in the group cannot take a seat'
+  '23514', 'invite_revoked', 'someone blocked in the group cannot take a seat, and is told the link is revoked'
 );
 select tests.login('ben');
 select throws_ok(
@@ -559,7 +559,7 @@ select throws_ok(
 select tests.login('eve');
 select throws_ok(
   format($$ select public.accept_friend_invite(%L) $$, current_setting('tests.link')),
-  '42501', 'blocked', 'a blocked person cannot use the link'
+  '23514', 'invite_revoked', 'a blocked person cannot use the link, and is told it is revoked'
 );
 
 select tests.login('ava');
@@ -640,7 +640,7 @@ select set_config('tests.b2_link', (select i.code from public.create_invite(test
 select tests.login('dan');
 select throws_ok(
   format($$ select public.accept_invite(%L) $$, current_setting('tests.b2_link')),
-  '42501', 'blocked', 'Dan cannot join Ben''s groups'
+  '23514', 'invite_revoked', 'Dan cannot join Ben''s groups, and is told the link is revoked'
 );
 select tests.login('ben');
 delete from public.blocks where blocked_id = tests.uid('dan');
@@ -651,6 +651,160 @@ select tests.login('ben');
 select lives_ok(
   format($$ insert into public.reports (subject_user_id, reason) values (%L, 'Spam') $$, tests.uid('dan')),
   'Ben reports Dan'
+);
+
+-- Adding by email when the person is already here ---------------------------------------------
+
+select tests.login('ava');
+select throws_ok(
+  format($$ select public.add_placeholder_member(%L, 'Benjamin', 'BEN@test.local') $$, tests.id('g')),
+  '23514', 'already_member', 'an email already in the group is refused'
+);
+select throws_ok(
+  format($$ select public.add_placeholder_member(%L, 'Sam', 's%sm@test.local') $$, tests.id('g'), chr(225)),
+  '22023', 'invalid_email', 'seat emails are plain ASCII'
+);
+select is(
+  public.add_placeholder_member(tests.id('g'), 'Whoever', 'NORA@test.local'),
+  tests.uid('nora'),
+  'an email that already has an account adds that account'
+);
+reset role;
+select ok(
+  exists (select 1 from public.group_members m where m.group_id = tests.id('g') and m.user_id = tests.uid('nora'))
+  and not exists (select 1 from public.placeholders x where x.group_id = tests.id('g') and x.email = 'nora@test.local'),
+  'Nora is a member under her own account, with no seat'
+);
+select is(
+  (select a.actor_id from public.activity a
+   where a.group_id = tests.id('g') and a.verb = 'member.added' and a.subject_id = tests.uid('nora')),
+  tests.uid('ava'),
+  'the feed says Ava added Nora'
+);
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.uid('nora') and n.type = 'member.added'),
+  1,
+  'Nora hears she was added'
+);
+select is(
+  (select a.data -> 'seat' ->> 'name' from public.activity a
+   where a.group_id = tests.id('g') and a.verb = 'member.added' and a.subject_id = tests.id('real')),
+  'Sam Lee',
+  'an entry from before the claim still knows the seat''s name'
+);
+select ok(
+  not exists (
+    select 1 from public.invite_preview(pg_temp.code(tests.id('danny'))) v where 'Danny' = any (v.first_names)
+  ),
+  'the old preview never names a seat'
+);
+
+-- Who changes where a seat's invite goes ---------------------------------------------------------
+
+select tests.login('ava');
+select tests.remember('lu', public.add_placeholder_member(tests.id('g'), 'Lu', 'lu@test.local'));
+select tests.login('dan');
+select lives_ok(format($$ select public.update_placeholder(%L, 'Lu Chen') $$, tests.id('lu')), 'any member may rename a seat');
+select throws_ok(
+  format($$ select public.update_placeholder(%L, null, 'lu2@test.local') $$, tests.id('lu')),
+  '42501', 'not_allowed', 'only whoever added it or an admin changes its email'
+);
+reset role;
+update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('ben');
+select tests.login('ben');
+select lives_ok(format($$ select public.update_placeholder(%L, null, 'lu2@test.local') $$, tests.id('lu')), 'an admin changes it');
+reset role;
+select is(
+  (select a.actor_id from public.activity a where a.verb = 'member.invite_changed' and a.subject_id = tests.id('lu')),
+  tests.uid('ben'),
+  'the change is in the feed'
+);
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.uid('ava') and n.type = 'member.invite_changed'),
+  1,
+  'and whoever added the seat is told'
+);
+
+-- A removed seat forgets its address
+
+select tests.login('ava');
+select tests.remember('mo', public.add_placeholder_member(tests.id('g'), 'Mo', 'mo@test.local'));
+select public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Tea', 'amount_cents', 100, 'paid_by', tests.id('mo'),
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')))));
+select public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Cake', 'amount_cents', 100, 'paid_by', tests.uid('ava'),
+  'splits', jsonb_build_array(pg_temp.person(tests.id('mo')))));
+select public.remove_placeholder(tests.id('mo'));
+reset role;
+select is(
+  (select x.email from public.placeholders x where x.profile_id = tests.id('mo')),
+  null,
+  'a removed seat the history still names keeps no email'
+);
+
+-- The join page and a claim link for someone else
+
+select tests.login('ava');
+select tests.remember('pia', public.add_placeholder_member(tests.id('g'), 'Pia', 'pia@test.local'));
+reset role;
+select set_config('tests.pia_link', pg_temp.code(tests.id('pia')), true);
+select tests.login('mallory');
+select is(
+  (select v.email_matches from public.invite_preview_v2(current_setting('tests.pia_link')) v),
+  false,
+  'the join page knows the link is for another email'
+);
+reset role;
+update public.group_invites set revoked_at = now() where placeholder_id = tests.id('pia');
+select tests.login_anon();
+select is(
+  (select (v.status, v.placeholder_name, v.email_hint)::text from public.invite_preview_v2(current_setting('tests.pia_link')) v),
+  '(revoked,,)',
+  'a revoked claim link says nothing about the person'
+);
+
+-- Blocking is quiet and mutes ------------------------------------------------------------------
+
+select tests.login('eve');
+select is(
+  (select (p.status, p.name)::text from public.friend_invite_preview(current_setting('tests.link')) p),
+  '(revoked,)',
+  'a blocked person sees a revoked friend link with no name'
+);
+select tests.login('ben');
+select public.block_user(tests.uid('dan'));
+select tests.login('dan');
+select throws_ok(
+  format($$ select public.add_friend(%L) $$, tests.uid('ben')),
+  '42501', 'not_a_friend', 'a blocked person cannot add the blocker back'
+);
+select throws_ok(
+  format($$ select public.get_or_create_direct_group(%L) $$, tests.uid('ben')),
+  '42501', 'not_a_friend', 'nor open a 1:1 tab with them'
+);
+select tests.remember('muted', (select id from public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Pizza', 'amount_cents', 900, 'paid_by', tests.uid('dan'),
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.uid('ben')), pg_temp.person(tests.uid('dan')))))));
+reset role;
+set constraints all immediate;
+set constraints all deferred;
+select is(
+  (select count(*)::int from public.notifications n
+   where n.user_id = tests.uid('ben') and n.data ->> 'expense_id' = tests.id('muted')::text),
+  0,
+  'the blocker hears nothing the blocked person does'
+);
+select is(
+  (select count(*)::int from public.notifications n
+   where n.user_id = tests.uid('ava') and n.data ->> 'expense_id' = tests.id('muted')::text),
+  1,
+  'everyone else still does'
+);
+select is(
+  pg_temp.bal('g', tests.uid('ben')) < 0,
+  true,
+  'and the shared group keeps working: the expense counts for Ben'
 );
 
 select * from finish();

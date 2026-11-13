@@ -1,12 +1,13 @@
 -- Friends without a group (ADR 19): a personal friend link, single-use links bound to an
 -- email, adding someone you share a group with, removing a friend, blocking with the
--- friendship gone in both directions, and the blocked list.
+-- friendship gone in both directions, and the blocked list. A block is never announced:
+-- wherever it stops something, the answer is the one a revoked link or a stranger gets.
 
 create table public.friend_invites (
   id uuid primary key default gen_random_uuid(),
   code text not null unique default private.random_code(9) check (code ~ '^[A-Za-z0-9_-]{10,64}$'),
   created_by uuid not null default auth.uid() references public.profiles (id) on delete cascade,
-  email text check (email is null or (email ~ '^[^@\s]+@[^@\s]+$' and email = lower(email))),
+  email text check (email is null or (private.is_plain_email(email) and email = private.ascii_lower(email))),
   max_uses integer check (max_uses is null or max_uses > 0),
   uses integer not null default 0 check (uses >= 0),
   expires_at timestamptz,
@@ -108,7 +109,7 @@ begin
   if clean is null then
     raise exception using message = 'invalid_email', detail = 'That email address does not look right', errcode = '22023';
   end if;
-  if exists (select 1 from auth.users u where u.id = uid and lower(u.email) = clean) then
+  if exists (select 1 from auth.users u where u.id = uid and private.ascii_lower(u.email) = clean) then
     raise exception using message = 'invalid_friend', detail = 'You cannot add yourself', errcode = '22023';
   end if;
   if (
@@ -147,23 +148,33 @@ begin
   end if;
 
   return query
+  with preview as (
+    select
+      p.id,
+      p.display_name,
+      p.avatar_path,
+      exists (select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id) as friends,
+      case
+        when p.deleted_at is not null or inv.revoked_at is not null then 'revoked'
+        when uid is not null and private.has_block(uid, p.id) then 'revoked'
+        when uid is not null and (uid = p.id or exists (
+          select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id
+        )) then 'valid'
+        when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
+        when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
+        else 'valid'
+      end as status
+    from public.profiles p
+    where p.id = inv.created_by
+  )
+  -- Only a live link says who it is from.
   select
-    split_part(p.display_name, ' ', 1),
-    p.avatar_path,
-    case
-      when p.deleted_at is not null or inv.revoked_at is not null then 'revoked'
-      when uid is not null and (uid = p.id or exists (
-        select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id
-      )) then 'valid'
-      when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
-      when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
-      when uid is not null and private.has_block(uid, p.id) then 'blocked'
-      else 'valid'
-    end,
-    uid is not null and exists (select 1 from public.friendships f where f.user_id = uid and f.friend_id = p.id),
-    uid is not null and uid = p.id
-  from public.profiles p
-  where p.id = inv.created_by;
+    case when pv.status = 'valid' then split_part(pv.display_name, ' ', 1) end,
+    case when pv.status = 'valid' then pv.avatar_path end,
+    pv.status,
+    uid is not null and pv.status = 'valid' and pv.friends,
+    uid is not null and pv.status = 'valid' and uid = pv.id
+  from preview pv;
 end;
 $$;
 
@@ -194,7 +205,8 @@ begin
     return inv.created_by;
   end if;
   if inv.revoked_at is not null
-     or exists (select 1 from public.profiles p where p.id = inv.created_by and p.deleted_at is not null) then
+     or exists (select 1 from public.profiles p where p.id = inv.created_by and p.deleted_at is not null)
+     or private.has_block(uid, inv.created_by) then
     raise exception using message = 'invite_revoked', detail = 'This invite has been revoked', errcode = '23514';
   end if;
   if inv.expires_at is not null and inv.expires_at <= now() then
@@ -204,7 +216,7 @@ begin
     raise exception using message = 'invite_used_up', detail = 'This invite has been used up', errcode = '23514';
   end if;
   if inv.email is not null then
-    select lower(u.email), u.email_confirmed_at is not null into my_email, verified
+    select private.ascii_lower(u.email), u.email_confirmed_at is not null into my_email, verified
     from auth.users u where u.id = uid;
     if my_email is distinct from inv.email then
       raise exception using message = 'invite_wrong_email', detail = 'This invite was sent to a different email address', errcode = '42501';
@@ -240,6 +252,7 @@ begin
     raise exception using message = 'invalid_friend', detail = 'You cannot add yourself', errcode = '22023';
   end if;
   if not private.shares_group_with(add_friend.user_id)
+     or private.has_block(uid, add_friend.user_id)
      or not exists (
        select 1 from public.profiles p
        where p.id = add_friend.user_id and p.deleted_at is null and not p.is_placeholder

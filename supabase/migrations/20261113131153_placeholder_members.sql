@@ -7,7 +7,8 @@
 -- private.expenses_activity, private.expenses_notify_update, private.guard_open_group_write,
 -- private.set_updated_at, private.notification_channels, private.send_email_notifications,
 -- public.accept_invite, public.leave_group, public.delete_my_account,
--- public.request_availability, public.best_slots.
+-- public.request_availability, public.best_slots, public.invite_preview,
+-- public.get_or_create_direct_group.
 
 -- Profiles without an auth user -------------------------------------------------
 
@@ -78,14 +79,36 @@ $$;
 
 revoke execute on function private.claiming() from public, anon, authenticated;
 
+-- Email addresses for seats and friend links are ASCII and compared exactly after lower casing
+-- the ASCII letters only (lower() would also fold other scripts, depending on the locale).
+create or replace function private.ascii_lower(value text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select translate(value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+$$;
+
+create or replace function private.is_plain_email(value text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select value ~ '^[!-~]+$' and value ~ '^[^@]+@[^@]+\.[^@]+$' and char_length(value) <= 254;
+$$;
+
+revoke execute on function private.ascii_lower(text) from public, anon, authenticated;
+revoke execute on function private.is_plain_email(text) from public, anon, authenticated;
+
 -- Placeholder details ------------------------------------------------------------
 
 create table public.placeholders (
   profile_id uuid primary key references public.profiles (id) on delete cascade,
   group_id uuid not null references public.groups (id) on delete cascade,
   email text check (
-    email is null
-    or (email ~ '^[^@\s]+@[^@\s]+$' and char_length(email) <= 254 and email = lower(email))
+    email is null or (private.is_plain_email(email) and email = private.ascii_lower(email))
   ),
   email_hint text generated always as (private.mask_email(email)) stored,
   created_by uuid default auth.uid() references public.profiles (id) on delete set null,
@@ -170,6 +193,8 @@ begin
 
   update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
   where i.placeholder_id = old.user_id;
+  -- The seat stays only for the history that names it: nothing is sent to that address again.
+  update public.placeholders x set email = null where x.profile_id = old.user_id;
 
   if not private.referenced_in_group(old.group_id, old.user_id) then
     delete from public.profiles p where p.id = old.user_id and p.is_placeholder;
@@ -218,8 +243,17 @@ security definer
 set search_path = ''
 as $$
 begin
+  -- A placeholder only ever gets its invite.
   if new.type <> 'member.added'
      and exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
+    return null;
+  end if;
+  -- Blocking mutes: nothing someone did reaches a person who blocked them.
+  if exists (
+    select 1 from public.blocks b
+    where b.blocker_id = new.user_id
+      and b.blocked_id = private.try_uuid(new.data ->> 'actor_id')
+  ) then
     return null;
   end if;
   return new;
@@ -232,8 +266,8 @@ create trigger notifications_skip_placeholders
 before insert on public.notifications
 for each row execute function private.skip_placeholder_notification();
 
--- Body as in schema/current.sql plus: never push to a placeholder, and email a placeholder
--- at the address saved for it.
+-- Body as in 20261113100301_two_factor_storage_and_limits.sql plus: never push to a
+-- placeholder, and email a placeholder at the address saved for it.
 create or replace function private.notification_channels(uid uuid, kind text)
 returns text[]
 language sql
@@ -244,10 +278,15 @@ as $$
   select array_remove(array[
     case
       when not coalesce(me.is_placeholder, false)
-        and (c.category is null or (c.push_allowed and coalesce(p.push, c.push_default))) then 'push'
+        and (
+          c.category is null
+          or (c.push_allowed and coalesce(case when c.required then null else p.push end, c.push_default))
+        )
+      then 'push'
     end,
     case
-      when c.email_allowed and coalesce(p.email, c.email_default)
+      when c.email_allowed
+        and coalesce(case when c.required then null else p.email end, c.email_default)
         and private.email_enabled()
         and (
           exists (
@@ -456,8 +495,8 @@ $$;
 
 -- Membership triggers --------------------------------------------------------------
 
--- Body as in schema/current.sql plus: a placeholder is "added" by whoever added it (not
--- "joined"), and the id rewrite of a claim is not a change.
+-- Body as in schema/current.sql plus: a placeholder, or an account added by email, is "added"
+-- by whoever added it (not "joined"), and the id rewrite of a claim is not a change.
 create or replace function private.group_members_activity()
 returns trigger
 language plpgsql
@@ -472,6 +511,10 @@ begin
     if exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
       perform private.log_activity(new.group_id, auth.uid(), 'member.added', new.user_id,
         jsonb_build_object('user_id', new.user_id, 'role', new.role, 'placeholder', true));
+    elsif current_setting('potluck.adding_member', true) = new.user_id::text then
+      -- Someone added an account by its email (add_placeholder_member).
+      perform private.log_activity(new.group_id, auth.uid(), 'member.added', new.user_id,
+        jsonb_build_object('user_id', new.user_id, 'role', new.role));
     else
       perform private.log_activity(new.group_id, new.user_id, 'member.joined', new.user_id,
         jsonb_build_object('user_id', new.user_id, 'role', new.role));
@@ -797,9 +840,12 @@ begin
   end loop;
 
   -- Ids kept inside jsonb or arrays.
+  -- Old entries keep reading as they did ("Ava added Sam", "Ava paid Sam"): each one remembers
+  -- the seat's name for the account that took it.
   update public.activity a
   set subject_id = case when a.subject_id = ph then acct else a.subject_id end,
       data = replace(a.data::text, needle, acct::text)::jsonb
+        || jsonb_build_object('seat', jsonb_build_object('user_id', acct, 'name', ph_name))
   where a.group_id = gid and (a.subject_id = ph or strpos(a.data::text, needle) > 0);
 
   update public.notifications n
@@ -886,7 +932,7 @@ begin
     select x.profile_id
     from public.placeholders x
     join public.group_members m on m.user_id = x.profile_id and m.group_id = x.group_id
-    where x.email = lower(new.email)
+    where x.email = private.ascii_lower(new.email)
     order by x.created_at, x.profile_id
   loop
     -- Signing up must never fail because of a seat; it stays claimable by link.
@@ -931,9 +977,9 @@ immutable
 set search_path = ''
 as $$
 declare
-  clean text := nullif(lower(btrim(coalesce(raw, ''))), '');
+  clean text := nullif(private.ascii_lower(btrim(coalesce(raw, ''))), '');
 begin
-  if clean is not null and (clean !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' or char_length(clean) > 254) then
+  if clean is not null and not private.is_plain_email(clean) then
     raise exception using message = 'invalid_email', detail = 'That email address does not look right', errcode = '22023';
   end if;
   return clean;
@@ -1003,13 +1049,40 @@ declare
   clean_email text := private.placeholder_email(add_placeholder_member.email);
   ph uuid := gen_random_uuid();
   group_currency char(3);
+  existing uuid;
 begin
   perform private.require_can_add_people(gid);
 
   if clean_email is not null then
+    if exists (
+      select 1 from public.group_members m
+      join auth.users u on u.id = m.user_id
+      where m.group_id = gid and private.ascii_lower(u.email) = clean_email
+    ) then
+      raise exception using message = 'already_member', detail = 'Someone with that email is already in this group', errcode = '23514';
+    end if;
     if exists (select 1 from public.placeholders x where x.group_id = gid and x.email = clean_email) then
       raise exception using message = 'placeholder_exists', detail = 'Someone with that email is already waiting to join', errcode = '23514';
     end if;
+
+    -- Already on Potluck (confirmed address, open account): add the account itself, as
+    -- Splitwise does. They hear about it (member.added) and show under their own name. A block
+    -- between them and the group falls through to a seat, so nobody learns of it here.
+    select u.id into existing
+    from auth.users u
+    join public.profiles p on p.id = u.id and p.deleted_at is null and not p.is_placeholder
+    where private.ascii_lower(u.email) = clean_email
+      and u.email_confirmed_at is not null
+      and u.deleted_at is null
+    order by u.created_at
+    limit 1;
+    if existing is not null and not private.blocked_in_group(gid, existing) then
+      perform set_config('potluck.adding_member', existing::text, true);
+      insert into public.group_members (group_id, user_id, role) values (gid, existing, 'member');
+      perform set_config('potluck.adding_member', '', true);
+      return existing;
+    end if;
+
     perform private.require_invite_budget(uid);
   end if;
 
@@ -1040,7 +1113,11 @@ revoke execute on function public.add_placeholder_member(uuid, text, text) from 
 grant execute on function public.add_placeholder_member(uuid, text, text) to authenticated, service_role;
 
 -- Renames a placeholder or changes where its invite goes. Null leaves a field as it is;
--- an empty email removes the address. A new address gets a fresh claim link and invite.
+-- an empty email removes the address. A new address gets a fresh claim link and invite; only
+-- whoever added the seat or an admin may change it, and the change is logged and told to them.
+insert into private.notification_types (type, category) values ('member.invite_changed', 'groups')
+on conflict (type) do nothing;
+
 create or replace function public.update_placeholder(user_id uuid, display_name text default null, email text default null)
 returns void
 language plpgsql
@@ -1080,6 +1157,10 @@ begin
   if new_email is not distinct from ph.email then
     return;
   end if;
+  -- Where an invite goes is up to whoever added the seat, or an admin.
+  if ph.created_by is distinct from uid and not private.is_group_admin(ph.group_id) then
+    raise exception using message = 'not_allowed', detail = 'Only whoever added them or an admin can change their email', errcode = '42501';
+  end if;
 
   if new_email is not null then
     if exists (
@@ -1111,6 +1192,17 @@ begin
       array[ph.profile_id],
       'member.added',
       jsonb_build_object('group_id', ph.group_id, 'role', 'member'),
+      uid
+    );
+  end if;
+
+  perform private.log_activity(ph.group_id, uid, 'member.invite_changed', ph.profile_id,
+    jsonb_build_object('user_id', ph.profile_id, 'from', ph.email_hint, 'to', private.mask_email(new_email)));
+  if ph.created_by is distinct from uid then
+    perform private.notify(
+      array[ph.created_by],
+      'member.invite_changed',
+      jsonb_build_object('group_id', ph.group_id, 'user_id', ph.profile_id),
       uid
     );
   end if;
@@ -1203,7 +1295,7 @@ revoke execute on function public.remove_placeholder(uuid) from public, anon;
 grant execute on function public.remove_placeholder(uuid) to authenticated, service_role;
 
 -- Body as in schema/current.sql plus: a claim link hands its placeholder over (verified
--- email required, archived groups included).
+-- email required, archived groups included), and a block reads as a revoked link.
 create or replace function public.accept_invite(code text)
 returns uuid
 language plpgsql
@@ -1230,7 +1322,9 @@ begin
     return inv.group_id;
   end if;
 
-  if inv.revoked_at is not null then
+  -- A block between the joiner and anyone in the group reads exactly like a revoked link, so
+  -- nobody learns they were blocked.
+  if inv.revoked_at is not null or private.blocked_in_group(inv.group_id, uid) then
     raise exception using message = 'invite_revoked', detail = 'This invite has been revoked', errcode = '23514';
   end if;
   if inv.expires_at is not null and inv.expires_at <= now() then
@@ -1240,7 +1334,9 @@ begin
     raise exception using message = 'invite_used_up', detail = 'This invite has been used up', errcode = '23514';
   end if;
 
-  select lower(u.email), u.email_confirmed_at is not null into my_email, verified
+  select case when inv.placeholder_id is null then lower(u.email) else private.ascii_lower(u.email) end,
+         u.email_confirmed_at is not null
+  into my_email, verified
   from auth.users u where u.id = uid;
 
   if inv.email is not null and my_email is distinct from inv.email then
@@ -1257,9 +1353,6 @@ begin
 
   if exists (select 1 from public.groups g where g.id = inv.group_id and g.archived_at is not null) then
     raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
-  end if;
-  if private.blocked_in_group(inv.group_id, uid) then
-    raise exception using message = 'blocked', detail = 'You cannot join this group', errcode = '42501';
   end if;
 
   insert into public.group_members (group_id, user_id, role)
@@ -1285,7 +1378,8 @@ returns table (
   status text,
   is_member boolean,
   placeholder_name text,
-  email_hint text
+  email_hint text,
+  email_matches boolean
 )
 language plpgsql
 stable
@@ -1296,8 +1390,104 @@ as $$
 declare
   inv public.group_invites;
   uid uuid := auth.uid();
+  my_email text;
 begin
   select * into inv from public.group_invites i where i.code = invite_preview_v2.code;
+
+  if inv.id is null then
+    raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'PT404';
+  end if;
+
+  if uid is not null then
+    select private.ascii_lower(u.email) into my_email from auth.users u where u.id = uid;
+  end if;
+
+  return query
+  with preview as (
+    select
+      g.id,
+      g.name,
+      g.emoji,
+      g.color,
+      g.cover_path,
+      (
+        select count(*)::int from public.group_members m
+        join public.profiles p on p.id = m.user_id
+        where m.group_id = g.id and not p.is_placeholder
+      ) as member_count,
+      array(
+        select split_part(p.display_name, ' ', 1)
+        from public.group_members m
+        join public.profiles p on p.id = m.user_id
+        where m.group_id = g.id and p.deleted_at is null and not p.is_placeholder
+        order by (m.role = 'owner') desc, m.joined_at, p.id
+        limit 5
+      ) as first_names,
+      case
+        when x.is_member then 'valid'
+        -- A block reads like a revoked link: nobody learns they were blocked.
+        when inv.revoked_at is not null
+          or (uid is not null and private.blocked_in_group(g.id, uid)) then 'revoked'
+        when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
+        when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
+        when inv.placeholder_id is not null and not exists (
+          select 1 from public.group_members m where m.group_id = g.id and m.user_id = inv.placeholder_id
+        ) then 'revoked'
+        when g.archived_at is not null and inv.placeholder_id is null then 'archived'
+        else 'valid'
+      end as status,
+      x.is_member
+    from public.groups g
+    cross join lateral (
+      select exists (
+        select 1 from public.group_members m
+        where m.group_id = g.id and m.user_id = uid
+      ) as is_member
+    ) x
+    where g.id = inv.group_id
+  )
+  select
+    pv.id,
+    pv.name,
+    pv.emoji,
+    pv.color,
+    pv.cover_path,
+    pv.member_count,
+    pv.first_names,
+    pv.status,
+    pv.is_member,
+    -- Only a live claim link says whose seat it is.
+    case when pv.status = 'valid' and not pv.is_member then
+      (select split_part(p.display_name, ' ', 1) from public.profiles p where p.id = inv.placeholder_id)
+    end,
+    case when pv.status = 'valid' and not pv.is_member then
+      (select ph.email_hint from public.placeholders ph where ph.profile_id = inv.placeholder_id)
+    end,
+    case when pv.status = 'valid' and not pv.is_member and inv.email is not null and my_email is not null
+      then my_email = inv.email
+    end
+  from preview pv;
+end;
+$$;
+
+revoke execute on function public.invite_preview_v2(text) from public;
+grant execute on function public.invite_preview_v2(text) to anon, authenticated, service_role;
+
+-- Body as in schema/current.sql plus: seats are not counted or named, and a block reads as a
+-- revoked link.
+create or replace function public.invite_preview(code text)
+returns table (group_id uuid, name text, emoji text, color text, cover_path text, member_count integer, first_names text[], status text, is_member boolean)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  inv public.group_invites;
+  uid uuid := auth.uid();
+begin
+  select * into inv from public.group_invites i where i.code = invite_preview.code;
 
   if inv.id is null then
     raise exception using message = 'invite_not_found', detail = 'This invite link is not valid', errcode = 'PT404';
@@ -1324,20 +1514,14 @@ begin
       limit 5
     ),
     case
-      when x.is_member then 'valid'
       when inv.revoked_at is not null then 'revoked'
+      when uid is not null and not x.is_member and private.blocked_in_group(g.id, uid) then 'revoked'
       when inv.expires_at is not null and inv.expires_at <= now() then 'expired'
       when inv.max_uses is not null and inv.uses >= inv.max_uses then 'used_up'
-      when inv.placeholder_id is not null and not exists (
-        select 1 from public.group_members m where m.group_id = g.id and m.user_id = inv.placeholder_id
-      ) then 'revoked'
-      when g.archived_at is not null and inv.placeholder_id is null then 'archived'
-      when uid is not null and private.blocked_in_group(g.id, uid) then 'blocked'
+      when g.archived_at is not null then 'archived'
       else 'valid'
     end,
-    x.is_member,
-    (select split_part(p.display_name, ' ', 1) from public.profiles p where p.id = inv.placeholder_id),
-    (select ph.email_hint from public.placeholders ph where ph.profile_id = inv.placeholder_id)
+    x.is_member
   from public.groups g
   cross join lateral (
     select exists (
@@ -1349,8 +1533,66 @@ begin
 end;
 $$;
 
-revoke execute on function public.invite_preview_v2(text) from public;
-grant execute on function public.invite_preview_v2(text) to anon, authenticated, service_role;
+-- Body as in schema/current.sql plus: a block, a closed account or a placeholder all read as
+-- "not a friend", so a blocked person cannot tell they were blocked.
+create or replace function public.get_or_create_direct_group(friend_id uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  gid uuid;
+begin
+  if get_or_create_direct_group.friend_id = uid then
+    raise exception using message = 'invalid_friend', detail = 'You cannot split with yourself', errcode = '22023';
+  end if;
+
+  if not exists (
+    select 1 from public.profiles p
+    where p.id = get_or_create_direct_group.friend_id
+      and p.deleted_at is null
+      and not p.is_placeholder
+      and p.id in (select private.my_contact_ids())
+  ) or private.has_block(uid, get_or_create_direct_group.friend_id) then
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
+  end if;
+
+  -- Serialize creation per pair so two taps do not create two groups.
+  perform pg_advisory_xact_lock(hashtextextended(
+    least(uid::text, get_or_create_direct_group.friend_id::text)
+      || greatest(uid::text, get_or_create_direct_group.friend_id::text),
+    0
+  ));
+
+  select g.id into gid
+  from public.groups g
+  where g.is_direct
+    and exists (select 1 from public.group_members m where m.group_id = g.id and m.user_id = uid)
+    and exists (
+      select 1 from public.group_members m
+      where m.group_id = g.id and m.user_id = get_or_create_direct_group.friend_id
+    )
+  order by g.created_at
+  limit 1;
+
+  if gid is not null then
+    return gid;
+  end if;
+
+  insert into public.groups (name, currency, is_direct, members_can_invite, created_by)
+  select 'Direct', p.default_currency, true, false, uid
+  from public.profiles p where p.id = uid
+  returning id into gid;
+
+  insert into public.group_members (group_id, user_id, role)
+  values (gid, uid, 'owner'), (gid, get_or_create_direct_group.friend_id, 'admin');
+
+  return gid;
+end;
+$$;
 
 -- Body as in schema/current.sql plus: placeholders cannot take over, so they do not count
 -- as someone left behind.

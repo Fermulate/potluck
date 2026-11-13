@@ -184,7 +184,7 @@ delete from public.groups where id = tests.id('d');
 select tests.login('owner');
 select throws_ok(
   $$ select get_or_create_direct_group(tests.uid('member')) $$,
-  '42501', 'blocked', 'blocked pairs cannot open a direct group'
+  '42501', 'not_a_friend', 'blocked pairs cannot open a direct group, told only "not a friend"'
 );
 
 select * from finish();
