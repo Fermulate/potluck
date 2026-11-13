@@ -1,3 +1,4 @@
+import { cancelEmailChange, clearRecoveryCodes } from '@potluck/api'
 import type { Factor, User } from '@supabase/supabase-js'
 import { authCallbackUrl } from '@/lib/auth'
 import { isolatedClient, supabase } from '@/lib/supabase'
@@ -58,11 +59,16 @@ export async function verifyTotp(factorId: string, code: string): Promise<void> 
   if (error) throw error
 }
 
-/** Turning it off takes a fresh code, so a borrowed unlocked phone is not enough. */
+/**
+ * Turning it off takes a fresh code, so a borrowed unlocked phone is not enough. The recovery
+ * codes go with it; if that last step fails they are useless anyway (no factor left to remove)
+ * and the next setup replaces them.
+ */
 export async function disableTotp(factorId: string, code: string): Promise<void> {
   await verifyTotp(factorId, code)
   const { error } = await supabase.auth.mfa.unenroll({ factorId })
   if (error) throw error
+  await clearRecoveryCodes(supabase).catch(() => 0)
 }
 
 /**
@@ -96,13 +102,44 @@ export interface PasswordChange {
   /** Leave out when the account has no password yet (Google or Apple sign in). */
   current?: string
   next: string
+  /** The emailed code, when Supabase asked for one (`reauthentication_needed`). */
+  nonce?: string
 }
 
-/** Sets the new password, then signs out every other session of the account. */
-export async function changePassword({ email, current, next }: PasswordChange): Promise<void> {
+/**
+ * Sets the new password, then signs out every other session of the account.
+ *
+ * The server checks too: with `secure_password_change` on, a session older than a day gets
+ * `reauthentication_needed` and must send the code from `requestReauthentication()`; where the
+ * project requires the current password, Supabase checks `current_password` itself.
+ */
+export async function changePassword({
+  email,
+  current,
+  next,
+  nonce,
+}: PasswordChange): Promise<void> {
   if (current !== undefined) await checkPassword(email, current)
-  const { error } = await supabase.auth.updateUser({ password: next, data: { has_password: true } })
+  const { error } = await supabase.auth.updateUser({
+    password: next,
+    data: { has_password: true },
+    ...(current !== undefined ? { current_password: current } : {}),
+    ...(nonce ? { nonce: nonce.trim() } : {}),
+  })
   if (error) throw error
   const others = await supabase.auth.signOut({ scope: 'others' })
   if (others.error) throw others.error
+}
+
+/** Emails a one-time code that proves it is still the account owner changing the password. */
+export async function requestReauthentication(): Promise<void> {
+  const { error } = await supabase.auth.reauthenticate()
+  if (error) throw error
+}
+
+/** Calls off a pending email change, then refreshes the session so it forgets the address. */
+export async function cancelPendingEmail(): Promise<void> {
+  await cancelEmailChange(supabase)
+  const { error } = await supabase.auth.refreshSession()
+  if (error) throw error
 }

@@ -136,11 +136,13 @@ export function TwoFactorRow() {
           }
         }}
       />
-      <Dialog open={codes !== null} onOpenChange={(open) => !open && setCodes(null)}>
+      {/* Shown once: it only closes through "I saved them". */}
+      <Dialog open={codes !== null}>
         <DialogContent
           title={t('security.twoFactor.recovery.title')}
           closeLabel={t('common.close')}
           variant="auto"
+          dismissible={false}
         >
           {codes && <RecoveryCodes codes={codes} onDone={() => setCodes(null)} />}
         </DialogContent>
@@ -203,11 +205,12 @@ function SetupDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next) => !busy && !codes && onOpenChange(next)}>
       <DialogContent
         title={codes ? t('security.twoFactor.recovery.title') : t('security.twoFactor.setup.title')}
         closeLabel={t('common.close')}
         variant="auto"
+        dismissible={!codes}
       >
         {codes ? (
           <RecoveryCodes codes={codes} onDone={() => onOpenChange(false)} />

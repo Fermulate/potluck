@@ -8,7 +8,8 @@ import { MIN_PASSWORD } from '@/features/auth/sign-up-page'
 import { useSession } from '@/lib/auth'
 import { errorCode } from '@/lib/errors'
 import { accountError } from './account-error'
-import { changePassword, hasPassword } from './actions'
+import { changePassword, hasPassword, requestReauthentication } from './actions'
+import { CodeInput } from './code-input'
 import { SettingsRow } from './settings-section'
 
 export function PasswordRow() {
@@ -50,6 +51,8 @@ export function PasswordRow() {
   )
 }
 
+type FieldId = 'current' | 'next' | 'again' | 'nonce'
+
 function PasswordDialog({
   open,
   onOpenChange,
@@ -67,14 +70,15 @@ function PasswordDialog({
   const [next, setNext] = useState('')
   const [again, setAgain] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<{ field: 'current' | 'next' | 'again'; text: string } | null>(
-    null,
-  )
+  // Set once Supabase asks for a fresh proof (a session older than a day): the emailed code.
+  const [nonce, setNonce] = useState<string | null>(null)
+  const [error, setError] = useState<{ field: FieldId; text: string } | null>(null)
 
   function reset() {
     setCurrent('')
     setNext('')
     setAgain('')
+    setNonce(null)
     setError(null)
   }
 
@@ -91,20 +95,39 @@ function PasswordDialog({
     setBusy(true)
     setError(null)
     try {
-      await changePassword({ email, current: existing ? current : undefined, next })
+      await changePassword({
+        email,
+        current: existing ? current : undefined,
+        next,
+        nonce: nonce ?? undefined,
+      })
       toast.success(t('security.password.saved'))
       reset()
       onOpenChange(false)
     } catch (failure) {
-      const wrong = errorCode(failure) === 'wrong_current_password'
-      setError({ field: wrong ? 'current' : 'next', text: accountError(failure) })
+      const code = errorCode(failure)
+      if (code === 'reauthentication_needed' && nonce === null) {
+        try {
+          await requestReauthentication()
+          setNonce('')
+        } catch (sendFailure) {
+          setError({ field: 'next', text: accountError(sendFailure) })
+        }
+      } else {
+        const field: FieldId =
+          code === 'wrong_current_password'
+            ? 'current'
+            : code === 'reauthentication_not_valid'
+              ? 'nonce'
+              : 'next'
+        setError({ field, text: accountError(failure) })
+      }
     } finally {
       setBusy(false)
     }
   }
 
-  const errorFor = (field: 'current' | 'next' | 'again') =>
-    error?.field === field ? error.text : undefined
+  const errorFor = (field: FieldId) => (error?.field === field ? error.text : undefined)
 
   return (
     <Dialog
@@ -171,11 +194,29 @@ function PasswordDialog({
               aria-invalid={!!errorFor('again')}
             />
           </Field>
+          {nonce !== null && (
+            <div className="grid gap-3 rounded-input bg-saffron-soft p-3" role="status">
+              <p className="text-sm text-saffron-ink">
+                <strong className="block">{t('security.password.reauthTitle')}</strong>
+                {t('security.password.reauthBody', { email })}
+              </p>
+              <Field label={t('security.password.reauthCode')} error={errorFor('nonce')}>
+                <CodeInput
+                  autoFocus
+                  value={nonce}
+                  onValueChange={setNonce}
+                  aria-invalid={!!errorFor('nonce')}
+                />
+              </Field>
+            </div>
+          )}
           <Button
             type="submit"
             block
             loading={busy}
-            disabled={(existing && !current) || !next || !again}
+            disabled={
+              (existing && !current) || !next || !again || (nonce !== null && nonce.length !== 6)
+            }
           >
             {t('security.password.submit')}
           </Button>

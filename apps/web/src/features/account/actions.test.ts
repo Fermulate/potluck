@@ -1,13 +1,15 @@
 import { t } from '@potluck/i18n'
 import type { User } from '@supabase/supabase-js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
+import { authCallsTo, db, resetDb, respondAuth } from '@/test/supabase'
 import { accountError } from './account-error'
 import {
+  cancelPendingEmail,
   changeEmail,
   changePassword,
   disableTotp,
   hasPassword,
+  requestReauthentication,
   startTotp,
   verifiedTotp,
 } from './actions'
@@ -72,6 +74,7 @@ describe('authenticator factors', () => {
     await disableTotp('f2', ' 123456 ')
     expect(authCallsTo('mfa.challengeAndVerify')).toEqual([[{ factorId: 'f2', code: '123456' }]])
     expect(authCallsTo('mfa.unenroll')).toEqual([[{ factorId: 'f2' }]])
+    expect(db().rpcArgs('clear_mfa_recovery_codes')).toHaveLength(1)
 
     resetDb()
     const wrong = { code: 'mfa_verification_failed', message: 'Invalid TOTP code entered' }
@@ -97,6 +100,20 @@ describe('changeEmail', () => {
     respondAuth('updateUser', { error: taken })
     await expect(changeEmail('a@b.c')).rejects.toBe(taken)
   })
+
+  it('cancels a pending change and refreshes the session', async () => {
+    await cancelPendingEmail()
+    expect(db().calls).toContainEqual({
+      kind: 'functions',
+      name: 'cancel-email-change',
+      args: [{ method: 'POST', body: {} }],
+    })
+    expect(authCallsTo('refreshSession')).toHaveLength(1)
+
+    resetDb()
+    respondAuth('refreshSession', { error: { code: 'session_not_found' } })
+    await expect(cancelPendingEmail()).rejects.toMatchObject({ code: 'session_not_found' })
+  })
 })
 
 describe('changePassword', () => {
@@ -107,9 +124,21 @@ describe('changePassword', () => {
     ])
     expect(authCallsTo('isolated.signOut')).toEqual([[{ scope: 'local' }]])
     expect(authCallsTo('updateUser')).toEqual([
-      [{ password: 'new-pass-1', data: { has_password: true } }],
+      [{ password: 'new-pass-1', data: { has_password: true }, current_password: 'old-pass' }],
     ])
     expect(authCallsTo('signOut')).toEqual([[{ scope: 'others' }]])
+  })
+
+  it('sends the emailed code when Supabase asked for one', async () => {
+    await requestReauthentication()
+    expect(authCallsTo('reauthenticate')).toHaveLength(1)
+    await changePassword({ email: 'a@b.c', current: 'old', next: 'new-pass-1', nonce: ' 123456 ' })
+    expect(authCallsTo('updateUser')[0]?.[0]).toMatchObject({ nonce: '123456' })
+
+    respondAuth('reauthenticate', { error: { code: 'over_email_send_rate_limit' } })
+    await expect(requestReauthentication()).rejects.toMatchObject({
+      code: 'over_email_send_rate_limit',
+    })
   })
 
   it('refuses a wrong current password without touching the account', async () => {

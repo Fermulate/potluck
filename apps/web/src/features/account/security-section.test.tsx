@@ -81,6 +81,14 @@ describe('email', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       t('security.email.pending', { email: 'ava@new.test' }),
     )
+    fireEvent.click(screen.getByRole('button', { name: t('security.email.cancel') }))
+    expect(
+      await screen.findByText(t('security.email.cancelled', { email: 'ava@example.test' })),
+    ).toBeInTheDocument()
+    expect(db().calls.some((c) => c.kind === 'functions' && c.name === 'cancel-email-change')).toBe(
+      true,
+    )
+    expect(authCallsTo('refreshSession')).toHaveLength(1)
   })
 
   it('explains a refused address in the dialog', async () => {
@@ -145,6 +153,49 @@ describe('password', () => {
     fill('old-pass', 'new-pass-1', 'new-pass-1')
     expect(await screen.findByText(t('security.password.saved'))).toBeInTheDocument()
     expect(authCallsTo('signOut')).toEqual([[{ scope: 'others' }]])
+  })
+
+  it('asks for an emailed code when the session is too old to change it', async () => {
+    let tries = 0
+    respondAuth('updateUser', async () => {
+      tries += 1
+      return tries === 1
+        ? {
+            data: {},
+            error: {
+              code: 'reauthentication_needed',
+              message: 'Password update requires reauthentication',
+            },
+          }
+        : tries === 2
+          ? {
+              data: {},
+              error: {
+                code: 'reauthentication_not_valid',
+                message: 'Verification code is invalid',
+              },
+            }
+          : { data: {}, error: null }
+    })
+    await renderSection()
+    fireEvent.click(screen.getByRole('button', { name: t('security.password.change') }))
+    fill('old-pass', 'new-pass-1', 'new-pass-1')
+
+    const code = await within(dialog()).findByLabelText(t('security.password.reauthCode'))
+    expect(authCallsTo('reauthenticate')).toHaveLength(1)
+    const submit = within(dialog()).getByRole('button', { name: t('security.password.submit') })
+    expect(submit).toBeDisabled()
+    fireEvent.change(code, { target: { value: '111111' } })
+    fireEvent.click(submit)
+    expect(
+      await within(dialog()).findByText(t('security.errors.reauthentication_not_valid')),
+    ).toBeInTheDocument()
+
+    fireEvent.change(code, { target: { value: '222222' } })
+    fireEvent.click(submit)
+    expect(await screen.findByText(t('security.password.saved'))).toBeInTheDocument()
+    expect(authCallsTo('updateUser').at(-1)?.[0]).toMatchObject({ nonce: '222222' })
+    expect(authCallsTo('reauthenticate')).toHaveLength(1)
   })
 
   it('lets a Google only account set a first password', async () => {
@@ -214,6 +265,10 @@ describe('two-step sign in', () => {
     expect(authCallsTo('mfa.challengeAndVerify').at(-1)).toEqual([
       { factorId: 'f9', code: '123456' },
     ])
+    // Shown once, so the only way out is saying they are saved.
+    expect(within(dialog()).queryByRole('button', { name: t('common.close') })).toBeNull()
+    fireEvent.keyDown(dialog(), { key: 'Escape' })
+    expect(within(dialog()).getByRole('list')).toBeInTheDocument()
     fireEvent.click(
       within(dialog()).getByRole('button', { name: t('security.twoFactor.recovery.done') }),
     )
@@ -254,6 +309,7 @@ describe('two-step sign in', () => {
     fireEvent.click(within(dialog()).getByRole('button', { name: t('security.twoFactor.disable') }))
     expect(await screen.findByText(t('security.twoFactor.disabled'))).toBeInTheDocument()
     expect(authCallsTo('mfa.unenroll')).toEqual([[{ factorId: 'f1' }]])
+    expect(db().rpcArgs('clear_mfa_recovery_codes')).toHaveLength(1)
   })
 })
 

@@ -55,7 +55,7 @@ describe('the starting language', () => {
     const language = vi.spyOn(navigator, 'language', 'get')
     language.mockReturnValue('es-MX')
     expect(initialLocale()).toBe('es')
-    language.mockReturnValue('fr-FR')
+    language.mockReturnValue('ja-JP')
     expect(initialLocale()).toBe('en')
     localStorage.setItem('potluck.locale', 'es')
     expect(initialLocale()).toBe('es')
