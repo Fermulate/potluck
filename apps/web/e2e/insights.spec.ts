@@ -83,8 +83,8 @@ test('filtering a group to one person, one month and one category shows a matchi
   const sheet = page.getByRole('dialog', { name: t('filters.title') })
   await sheet.getByRole('button', { name: ben.name }).click()
   await sheet.getByRole('button', { name: t('filters.custom') }).click()
-  await sheet.getByLabel(t('filters.from')).fill('2026-03-01')
-  await sheet.getByLabel(t('filters.to')).fill('2026-03-31')
+  await sheet.getByLabel(t('filters.from'), { exact: true }).fill('2026-03-01')
+  await sheet.getByLabel(t('filters.to'), { exact: true }).fill('2026-03-31')
   await sheet.getByRole('button', { name: t('categories.food') }).click()
   await sheet.getByRole('button', { name: t('filters.done') }).click()
 

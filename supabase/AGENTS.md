@@ -13,9 +13,6 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 - `functions/<name>/index.ts`: Deno edge functions. Logic worth testing lives in a sibling module with
   no Deno imports, tested by `pnpm test:functions` (Node's test runner, `*.test.ts`).
   `verify_jwt` per function is in `config.toml`; auth schemes are in `docs/architecture.md`.
-- Search and totals read the `expense_ledger` view through `search_money` and `spending_summary`
-  ([ADR 17](../docs/adr/0017-search-and-spending-totals-in-sql.md)). A change to how a balance is
-  computed changes `group_balances`, `expense_ledger` and `packages/core/src/insights` together.
 - `seed.sql`: demo data written through the real RPCs. `snippets/`: local perf data only.
 
 ## Writing a migration
