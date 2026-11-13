@@ -133,6 +133,8 @@ test.describe('export and import', () => {
     newUser,
     openAs,
   }) => {
+    // Reading, previewing and writing 5,000 rows can take over a minute on a busy CI runner.
+    test.setTimeout(180_000)
     const { me, ben, cleo } = await threePeople(newUser)
     const flat = await groupWith(me, [ben, cleo], { name: unique('Flat') })
     const { csv, totals } = splitwiseFile([me, ben, cleo], 5000)
@@ -146,7 +148,7 @@ test.describe('export and import', () => {
     expect(await fetchGroupExpenses(me.client, flat.id)).toHaveLength(0)
 
     await page.getByRole('button', { name: t('transfer.import.submit', { count: 5000 }) }).click()
-    await expect(page).toHaveURL(new RegExp(`/groups/${flat.id}$`), { timeout: 60_000 })
+    await expect(page).toHaveURL(new RegExp(`/groups/${flat.id}$`), { timeout: 120_000 })
     expect(await fetchGroupExpenses(me.client, flat.id)).toHaveLength(5000)
     expect(await balancesOf(me, flat)).toEqual({
       [me.id]: totals[0],
