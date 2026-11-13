@@ -12,7 +12,8 @@
 --    get_or_create_direct_group would otherwise keep handing back a group nobody can see. It
 --    now also tells the other members (group.deleted, data keyed deleted_group_id so the
 --    notification is not dropped like other news about a deleted group) and restore_group
---    tells them it is back (group.restored). Bodies as in 20261113213126 plus those.
+--    tells them it is back (group.restored), and only within 30 days of the delete. Bodies as
+--    in 20261113213126 plus those.
 -- 5. Members keep reading the group.deleted line of a deleted group's activity, so the feed
 --    says what happened (private.my_deleted_group_ids, one more select policy).
 -- 6. groups.cover_path is exactly `<group id>/<one file name>`.
@@ -244,6 +245,9 @@ begin
   end if;
   if g.deleted_at is null then
     return g;
+  end if;
+  if g.deleted_at <= now() - interval '30 days' then
+    raise exception using message = 'group_not_found', detail = 'This group is gone for good', errcode = 'PT404';
   end if;
 
   update public.group_invites i set revoked_at = null

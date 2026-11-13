@@ -1,3 +1,5 @@
+import { withSubcategories } from '../categories'
+
 /** Filters shared by a group's expense list and search (`search_money` applies the same ones). */
 export interface ExpenseFilters {
   /** Inclusive calendar days, `YYYY-MM-DD`. */
@@ -5,7 +7,7 @@ export interface ExpenseFilters {
   to?: string | null
   /** Someone who paid or is in the split. */
   person?: string | null
-  /** Category ids; an expense without one counts as `other`. */
+  /** Category ids, each top level one with its subcategories; no category counts as `other`. */
   categories?: readonly string[] | null
 }
 
@@ -29,7 +31,10 @@ export function matchesExpenseFilters(
 ): boolean {
   if (filters.from && expense.spentAt < filters.from) return false
   if (filters.to && expense.spentAt > filters.to) return false
-  if (filters.categories?.length && !filters.categories.includes(expense.category || 'other')) {
+  if (
+    filters.categories?.length &&
+    !withSubcategories(filters.categories).includes(expense.category || 'other')
+  ) {
     return false
   }
   if (

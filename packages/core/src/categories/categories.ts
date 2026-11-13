@@ -172,6 +172,19 @@ export function subcategoriesOf(parent: TopCategoryId): readonly Subcategory[] {
   return SUBCATEGORIES.filter((s) => s.parent === parent)
 }
 
+/**
+ * The stored ids a category filter matches: each picked id, then the subcategories of a picked
+ * top level one, so filtering by Transport finds taxis too.
+ */
+export function withSubcategories(ids: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const id of ids) {
+    out.add(id)
+    for (const sub of SUBCATEGORIES) if (sub.parent === id) out.add(sub.id)
+  }
+  return [...out]
+}
+
 /** Emoji for a stored category, falling back to `other` for unknown or empty values. */
 export function categoryEmoji(category: string | null | undefined): string {
   return EMOJI[isCategory(category) ? category : 'other']

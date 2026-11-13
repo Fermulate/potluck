@@ -546,6 +546,17 @@ describe('matchesExpenseFilters', () => {
     expect(matchesExpenseFilters({ ...e, category: null }, { categories: ['other'] })).toBe(true)
   })
 
+  it('takes subcategories under a top level category, but not the other way round', () => {
+    const taxi = { ...e, category: 'taxi' }
+    expect(matchesExpenseFilters(taxi, { categories: ['transport'] })).toBe(true)
+    expect(matchesExpenseFilters(taxi, { categories: ['taxi'] })).toBe(true)
+    expect(matchesExpenseFilters(taxi, { categories: ['food'] })).toBe(false)
+    expect(matchesExpenseFilters(e, { categories: ['dining_out'] })).toBe(false)
+    expect(matchesExpenseFilters({ ...e, category: 'dining_out' }, { categories: ['food'] })).toBe(
+      true,
+    )
+  })
+
   it('matches a payment on either person and its day, and never under a category', () => {
     const p = { fromUser: ben, toUser: ava, day: '2026-03-05' }
     expect(matchesPaymentFilters(p, {})).toBe(true)

@@ -162,7 +162,8 @@ describe('SearchScreen', () => {
     await screen.findByRole('link', { name: /Taco night/ })
     expect(db().rpcArgs('search_money')[0]).toMatchObject({
       person: BEN,
-      categories: ['food'],
+      // Food takes its subcategories: eating out, takeout, coffee, snacks.
+      categories: ['food', 'dining_out', 'takeout', 'coffee', 'snacks'],
     })
     const chips = screen.getByRole('list', { name: t('filters.title') })
     expect(

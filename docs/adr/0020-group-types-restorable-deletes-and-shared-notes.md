@@ -25,5 +25,5 @@ Splitwise lets a group be a home, a trip, a couple or something else, lets anyon
 - Anything reading `group_members` or `groups` directly, without the helpers, still sees deleted groups. New code must use `my_group_ids` / `require_member`, and any new system job that writes into a group should expect `group_deleted`.
 - The recurring job retries a deleted group's due templates every night until it is restored or purged; after a restore it catches up missed periods (at most 12 per run).
 - Storage files of a purged group (covers, receipts) are not removed, as before for hard deletes.
-- Totals and charts that group by `expenses.category` (search and insights) should roll subcategories up with `parentCategory()`, or show them as their own rows on purpose.
+- Totals and charts that group by `expenses.category` (search and insights) should roll subcategories up with `parentCategory()`, or show them as their own rows on purpose. A category filter takes a picked top level id's subcategories too (`withSubcategories()`); `search_money` itself matches exactly. CSV export and import name subcategories by their own labels.
 - Notes have no per-version history beyond the activity excerpts. Two people typing at once is settled by choice, not merged.

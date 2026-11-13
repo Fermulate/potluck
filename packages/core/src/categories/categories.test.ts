@@ -9,6 +9,7 @@ import {
   parentCategory,
   expenseCreateSchema,
   subcategoriesOf,
+  withSubcategories,
 } from '../index'
 
 describe('categories', () => {
@@ -119,5 +120,29 @@ describe('categories', () => {
       spent_at: '2026-11-13',
     })
     expect(parsed.success && parsed.data.category).toBe('taxi')
+  })
+
+  it('widens a category filter to the subcategories of each top level pick', () => {
+    expect(withSubcategories(['food', 'groceries'])).toEqual([
+      'food',
+      'dining_out',
+      'takeout',
+      'coffee',
+      'snacks',
+      'groceries',
+    ])
+    expect(withSubcategories(['taxi', 'transport'])).toEqual([
+      'taxi',
+      'transport',
+      'public_transit',
+      'flights',
+      'car_rental',
+      'parking',
+      'tolls',
+      'bike',
+      'ferry',
+    ])
+    expect(withSubcategories(['other', 'legacy'])).toEqual(['other', 'legacy'])
+    expect(withSubcategories([])).toEqual([])
   })
 })

@@ -1,7 +1,7 @@
 -- Groups (20261113213126_group_types_restore_and_whiteboard, ADR 20): type and trip dates,
 -- delete that can be undone for 30 days and the purge after it, cover storage, whiteboard.
 begin;
-select plan(94);
+select plan(95);
 
 select tests.create_user('owner');
 select tests.create_user('admin');
@@ -169,6 +169,8 @@ select is(
   array['Recent'],
   'a group past 30 days is no longer offered'
 );
+select throws_ok(format($$ select public.restore_group(%L) $$, tests.id('old')), 'PT404', 'group_not_found',
+  'nor restored, even before the purge runs');
 reset role;
 select is(private.purge_deleted_groups(), 1, 'the purge removes groups deleted more than 30 days ago');
 select is((select count(*)::int from public.groups where id = tests.id('old')), 0, 'for good');

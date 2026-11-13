@@ -9,6 +9,7 @@ export {
   isSubcategory,
   parentCategory,
   subcategoriesOf,
+  withSubcategories,
   type Category,
   type CategoryId,
   type Subcategory,

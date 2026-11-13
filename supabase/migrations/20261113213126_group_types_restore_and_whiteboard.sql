@@ -282,8 +282,11 @@ begin
     order by g.id
   loop
     begin
-      delete from public.groups g where g.id = gid;
-      purged := purged + 1;
+      delete from public.groups g
+      where g.id = gid and g.deleted_at is not null and g.deleted_at <= now() - keep;
+      if found then
+        purged := purged + 1;
+      end if;
     exception
       when others then
         raise warning 'deleted group % kept: %', gid, sqlerrm;

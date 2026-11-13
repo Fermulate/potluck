@@ -4,6 +4,7 @@
  * Reads go through `search_money` and `spending_summary` (security definer RPCs that check
  * membership), so nothing here scans tables on the client.
  */
+import { withSubcategories } from '@potluck/core'
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { Database } from './database.types'
 import type { PotluckClient } from './index'
@@ -141,7 +142,7 @@ export async function searchMoney(
   if (f.person) args.person = f.person
   if (f.from) args.from_day = f.from
   if (f.to) args.to_day = f.to
-  if (f.categories) args.categories = f.categories
+  if (f.categories) args.categories = withSubcategories(f.categories)
   if (f.kinds) args.kinds = f.kinds
   if (before) {
     args.before_day = before.day
