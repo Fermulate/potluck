@@ -56,7 +56,7 @@ function plain(text: string): string {
 }
 
 function tidy(text: string): string {
-  return text.normalize('NFKC').replace(/[\t ]/g, ' ').replace(/\s+/g, ' ').trim()
+  return text.normalize('NFKC').replace(/\s+/g, ' ').trim()
 }
 
 /** "JOE'S DINER" reads better as "Joe's Diner"; mixed case is left as printed. */
@@ -394,10 +394,12 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
           discount = (discount ?? 0) + price.cents
           break
         }
-        let { description, quantity } = itemOf(price.rest)
-        if (!/\p{L}{2}/u.test(description) && pending) {
-          description = itemOf(pending).description
-        }
+        const read = itemOf(price.rest)
+        const description =
+          !/\p{L}{2}/u.test(read.description) && pending
+            ? itemOf(pending).description
+            : read.description
+        const quantity = read.quantity
         if (/\p{L}{2}/u.test(description) && price.cents > 0) {
           items.push({ description, amountCents: price.cents, quantity })
         }
