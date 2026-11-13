@@ -41,6 +41,13 @@ describe('can', () => {
     ])
   })
 
+  it('mirrors update_settlement, restore_settlement and settle_up_v2 for payments', () => {
+    for (const action of ['settlement.edit', 'settlement.restore', 'settlement.record'] as const) {
+      expect(everyone((r) => can(r, action, { isParty: true }))).toEqual([true, true, true])
+      expect(everyone((r) => can(r, action, { isParty: false }))).toEqual([true, true, false])
+    }
+  })
+
   it('lets members lock or cancel only events they created', () => {
     for (const action of ['event.lock', 'event.cancel'] as const) {
       expect(everyone((r) => can(r, action, { isCreator: false }))).toEqual([true, true, false])
