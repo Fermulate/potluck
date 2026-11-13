@@ -15,6 +15,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0009](0009-i18n-strings-split-per-feature.md)             | i18n strings split per feature                              |
 | [0010](0010-custom-domains.md)                             | Custom domains on fermulate.com                             |
 | [0011](0011-notification-prefs-and-email.md)               | Notification settings per category, email from the database |
+| [0012](0012-several-payers-refunds-and-stored-items.md)    | Several payers, refunds and stored line items               |
 
 ## Writing a new one
 

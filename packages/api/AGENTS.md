@@ -13,6 +13,8 @@ Root rules: [../../AGENTS.md](../../AGENTS.md).
   concatenated string turns the result into an error type.
 - Read `fx_rate` and `fx_rates.rate` as `::text`. `Expense` and `Settlement` are the read types with
   `fx_rate: string`; RPC results are `ExpenseRow` / `SettlementRow` (number).
+- Expense writes call `create_expense_v2` / `update_expense_v2` (payers, refunds, stored items); the v1
+  RPCs stay for old clients. `EXPENSE_SELECT` reads `expense_payers` and `expense_items` with the splits.
 - Paged reads use `fetchAllPages` (`src/paging.ts`); PostgREST caps responses at 1000 rows.
 - Throw the PostgREST error as is (`unwrap`); screens translate `error.message` codes.
 - Tests: `src/testing/fake-supabase.ts` is an in-memory recorder (`fakeSupabase({ tables })`,

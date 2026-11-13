@@ -1,4 +1,4 @@
--- Expense entry, Splitwise parity batch 1 (ADR 10):
+-- Expense entry, Splitwise parity batch 1 (ADR 12):
 --   * several payers per expense (`expense_payers`), `expenses.paid_by` kept as whoever paid most;
 --   * refunds (`expenses.is_refund`): the payers received the money, signs flip in balances;
 --   * the adjustment split (`expense_splits.adjustment_cents`);

@@ -127,7 +127,9 @@ sequenceDiagram
 
 ## Add an expense
 
-The client previews the split with `@potluck/core` so people see exact cents while typing. The server does not trust that preview. For `equal`, `percent` and `shares` it recomputes the splits from the people and weights. Only `exact` and `itemized` use the client's `share_cents`, and those must add up to the amount.
+The client previews the split and checks who paid with `@potluck/core` so people see exact cents while typing. The server does not trust that preview. For `equal`, `percent`, `shares` and `adjustment` it recomputes the splits from the people, weights and adjustments; for a by-item bill sent with `items` it works out the shares from the items. Only `exact` (and `itemized` from older clients) use the client's `share_cents`, and those must add up to the amount. The payers must add up to the amount too ([ADR 12](adr/0012-several-payers-refunds-and-stored-items.md)).
+
+The form starts in the currency the viewer last used in the group (`fetchLastCurrency`) and from the group's default split (`groups.default_split`). Ticking "Use this split for new expenses" calls `set_default_split` after the expense saves.
 
 ```mermaid
 sequenceDiagram
@@ -141,28 +143,31 @@ sequenceDiagram
   participant PS as Push service
   actor F as Friend
 
-  P->>W: amount, currency, split type, people
-  W->>C: splitEqual, splitPercent, splitShares or splitItemized
+  P->>W: amount, currency, who paid, split type, people
+  W->>C: splitEqual, splitPercent, splitShares, splitAdjustment or splitItemized
   C-->>W: shares in minor units (largest remainder)
-  W->>C: expenseCreateSchema.parse(payload)
+  W->>C: checkPayers(amount, payers)
+  C-->>W: payers add up, or payers_sum_mismatch (save blocked)
   opt receipt photo
     W->>S: upload receipts/:groupId/:file (policy: member of group)
   end
-  W->>DB: rpc create_expense(payload)
-  DB->>DB: share lock the group row, require_member,<br/>payer and split people in group, receipt_path starts with group_id
+  W->>DB: rpc create_expense_v2(payload with payers, is_refund, items)
+  DB->>DB: share lock the group row, require_member,<br/>payers add up and are in group, split people in group,<br/>receipt_path starts with group_id
   DB->>DB: fx_rate = 1, or private.fx_rate(currency, group currency, spent_at)
   alt no rate yet
     DB-->>W: error fx_rate_unavailable
   end
-  DB->>DB: private.compute_splits(amount, split_type, splits)
+  DB->>DB: private.compute_split_rows(amount, split_type, splits)<br/>or private.itemized_splits(items, tax, tip, discount)
   opt payload.recurrence
-    DB->>DB: insert recurring_expenses (next_run_on = spent_at + 1 period)
+    DB->>DB: insert recurring_expenses (payers kept, next_run_on = spent_at + 1 period)
   end
-  DB->>DB: insert expenses, insert expense_splits
+  DB->>DB: insert expenses (trigger writes paid_by as the one payer)
+  DB->>DB: several payers: replace expense_payers rows
+  DB->>DB: insert expense_splits, and expense_items for a by-item bill
   DB->>DB: trigger: activity expense.created
   Note over DB: at commit (deferred constraint triggers)
-  DB->>DB: check_expense_splits(): sum = amount_cents
-  DB->>DB: expenses_notify(): notifications expense.created<br/>to split people and payer, never the actor
+  DB->>DB: check_expense_splits() and check_expense_payers(): sums = amount_cents
+  DB->>DB: expenses_notify(): notifications expense.created<br/>to split people and every payer, never the actor
   DB->>DB: notifications_route: channels from notification_prefs<br/>(push, and email when the flag is on)
   DB->>E: notifications_push trigger (only when channels has push),<br/>pg_net POST /functions/v1/notify, x-potluck-secret from Vault
   DB-->>W: expenses row
@@ -221,7 +226,7 @@ sequenceDiagram
   W->>DB: rpc simplified_debts(group_id)
   DB->>DB: require_member(group_id)
   DB->>V: select user_id, net_cents for the group
-  Note over V: each expense converted once to group currency,<br/>payer credited, total spread over splits<br/>by largest remainder, settlements applied
+  Note over V: each expense converted once to group currency,<br/>total spread over payers (credit) and splits (debit)<br/>by largest remainder, refunds flipped, settlements applied
   V-->>DB: creditors (net > 0) and debtors (net < 0), by user id
   loop until no creditor or no debtor is left
     DB->>DB: pick largest creditor and largest debtor<br/>(ties: smallest user id)
@@ -371,13 +376,14 @@ sequenceDiagram
           Note over DB: template stays due,<br/>tomorrow's run retries
         end
         DB->>DB: insert expenses (spent_at = due, recurring_id)
-        DB->>DB: insert expense_splits from private.compute_splits()
+        DB->>DB: insert expense_payers from the template's payers (if several)
+        DB->>DB: insert expense_splits from private.compute_split_rows()
         DB->>DB: due = next week, or next month or year<br/>on anchor_day clamped to month end
       end
       DB->>DB: update next_run_on = due
     end
   end
-  Note over DB: at commit: splits sum check,<br/>expense.created notifications
+  Note over DB: at commit: splits and payers sum checks,<br/>expense.created notifications
   DB->>E: notify (push) per notification
 ```
 

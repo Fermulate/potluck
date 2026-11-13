@@ -1,4 +1,4 @@
--- Expense entry (ADR 10): several payers, refunds, the adjustment split, stored line items,
+-- Expense entry (ADR 12): several payers, refunds, the adjustment split, stored line items,
 -- the default split, create_expense_v2 / update_expense_v2 and what v1 keeps doing.
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
