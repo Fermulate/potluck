@@ -52,6 +52,12 @@
       "signedIn": true
     },
     {
+      "id": "/_app/groups/$groupId/deleted",
+      "path": "/groups/$groupId/deleted",
+      "file": "apps/web/src/routes/_app/groups/$groupId/deleted.tsx",
+      "signedIn": true
+    },
+    {
       "id": "/_app/groups/$groupId/members",
       "path": "/groups/$groupId/members",
       "file": "apps/web/src/routes/_app/groups/$groupId/members.tsx",
@@ -70,9 +76,21 @@
       "signedIn": true
     },
     {
+      "id": "/_app/groups/$groupId/totals",
+      "path": "/groups/$groupId/totals",
+      "file": "apps/web/src/routes/_app/groups/$groupId/totals.tsx",
+      "signedIn": true
+    },
+    {
       "id": "/_app/home",
       "path": "/home",
       "file": "apps/web/src/routes/_app/home.tsx",
+      "signedIn": true
+    },
+    {
+      "id": "/_app/insights",
+      "path": "/insights",
+      "file": "apps/web/src/routes/_app/insights.tsx",
       "signedIn": true
     },
     {
@@ -133,6 +151,12 @@
       "id": "/_app/recurring/$recurringId",
       "path": "/recurring/$recurringId",
       "file": "apps/web/src/routes/_app/recurring/$recurringId.tsx",
+      "signedIn": true
+    },
+    {
+      "id": "/_app/search",
+      "path": "/search",
+      "file": "apps/web/src/routes/_app/search.tsx",
       "signedIn": true
     },
     {
