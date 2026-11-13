@@ -74,9 +74,10 @@ export interface SheetContentProps {
   closeLabel: string
   /**
    * `auto` (default) is a bottom sheet on phones and a centered dialog from
-   * md up. Force one with `sheet` or `dialog`.
+   * md up. Force one with `sheet` or `dialog`. `fullscreen` fills the screen on every size (a
+   * photo viewer).
    */
-  variant?: 'auto' | 'sheet' | 'dialog'
+  variant?: 'auto' | 'sheet' | 'dialog' | 'fullscreen'
   /** Sticky footer for the primary action. */
   footer?: ReactNode
   /** Max width on desktop. */
@@ -176,7 +177,11 @@ export function SheetContent({
           <div
             className={cn(
               'pointer-events-none fixed inset-0 z-50 flex',
-              asSheet ? 'items-end' : 'items-center justify-center p-6',
+              asSheet
+                ? 'items-end'
+                : variant === 'fullscreen'
+                  ? 'items-stretch'
+                  : 'items-center justify-center p-6',
             )}
           >
             <DialogPrimitive.Content
@@ -200,7 +205,9 @@ export function SheetContent({
                   'pointer-events-auto relative flex max-h-[92dvh] w-full flex-col overflow-hidden bg-card text-ink shadow-sheet outline-none',
                   asSheet
                     ? 'rounded-t-sheet border-t border-line pb-safe'
-                    : cn('max-h-[85dvh] rounded-sheet border border-line', widths[size]),
+                    : variant === 'fullscreen'
+                      ? 'h-dvh max-h-dvh pb-safe'
+                      : cn('max-h-[85dvh] rounded-sheet border border-line', widths[size]),
                   className,
                 )}
               >

@@ -13,7 +13,7 @@ import {
 } from '@potluck/ui'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowRightLeft, ChevronLeft, FileText, PencilLine, Repeat, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, ChevronLeft, PencilLine, Repeat, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +22,7 @@ import { ExpenseHistory, ItemsCard, PayersLine, SplitCard } from './expense-deta
 import { CategoryTile } from './expense-row'
 import { categoryLabel, groupTitle } from './format'
 import { Money } from './money'
+import { AttachmentGallery } from './receipts/attachment-gallery'
 import {
   invalidateMoney,
   moneyErrorMessage,
@@ -49,10 +50,6 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const groupId = expense.data?.group_id
   const group = useMoneyGroup(groupId ?? '')
   useGroupMoneyRealtime(groupId)
-  const receipt = useQuery({
-    ...moneyQueries.receiptUrl(supabase, expense.data?.receipt_path ?? ''),
-    enabled: !!expense.data?.receipt_path,
-  })
 
   if (expense.isError) {
     return (
@@ -95,7 +92,6 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
     : false
   const groupCurrency = group.data?.currency ?? e.currency
   const foreign = e.currency !== groupCurrency
-  const isPdf = e.receipt_path?.toLowerCase().endsWith('.pdf')
 
   const onDelete = async () => {
     const ok = await deleteExpense(e)
@@ -237,42 +233,11 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
 
         <div className="flex flex-col gap-8">
           <ItemsCard expense={e} me={me} nameOf={nameOf} />
-          {e.receipt_path && (
-            <section aria-labelledby="receipt-title" className="flex flex-col gap-3">
-              <h2 id="receipt-title" className="font-display text-2xl">
-                {t('expenses.detail.receipt')}
-              </h2>
-              {receipt.data ? (
-                isPdf ? (
-                  <a
-                    href={receipt.data}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 rounded-card border border-line bg-card p-4 font-semibold hover:border-line-strong"
-                  >
-                    <FileText aria-hidden className="size-6 text-mute" />
-                    {t('expenses.receiptUpload.pdf')}
-                  </a>
-                ) : (
-                  <a
-                    href={receipt.data}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={t('expenses.receiptUpload.open')}
-                    className="block overflow-hidden rounded-card border border-line bg-sunken"
-                  >
-                    <img
-                      src={receipt.data}
-                      alt={t('expenses.receiptUpload.alt', { description: e.description })}
-                      className="max-h-[28rem] w-full object-contain"
-                    />
-                  </a>
-                )
-              ) : (
-                <Skeleton className="h-56" />
-              )}
-            </section>
-          )}
+          <AttachmentGallery
+            expenseId={e.id}
+            receiptPath={e.receipt_path}
+            description={e.description}
+          />
           {e.notes && (
             <section aria-labelledby="notes-title" className="flex flex-col gap-2">
               <h2 id="notes-title" className="font-display text-2xl">

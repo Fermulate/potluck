@@ -12,6 +12,7 @@
     "src",
     "vite.config.ts",
     "app-version.ts",
+    "ocr-assets.ts",
     "route-preloads.ts",
     "prerender-landing.ts",
     "require-env.ts",

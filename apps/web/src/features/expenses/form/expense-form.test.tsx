@@ -299,7 +299,6 @@ describe('ExpenseForm', () => {
         category: 'lodging',
         notes: null,
         spent_at: saved.spent_at,
-        receipt_path: null,
       })
     })
 

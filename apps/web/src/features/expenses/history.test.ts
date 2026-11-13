@@ -8,6 +8,15 @@ const nameOf = (id: string, o?: { lower?: boolean }) =>
 const describe_ = (data: Record<string, unknown>) => describeChanges(data, { viewerId: ME, nameOf })
 
 describe('describeChanges', () => {
+  it('counts attachments added, removed or swapped', () => {
+    const line = (from: unknown, to: unknown) =>
+      describe_({ changes: { attachments: { from, to } } })
+    expect(line(1, 3)).toEqual(['2 attachments added'])
+    expect(line(2, 1)).toEqual(['1 attachment removed'])
+    expect(line(2, 2)).toEqual(['Attachments changed'])
+    expect(line(null, 1)).toEqual(['1 attachment added'])
+  })
+
   it('lists every changed field with its old and new value', () => {
     expect(
       describe_({

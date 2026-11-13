@@ -1,13 +1,14 @@
 import { avatarSrc } from '@/lib/queries'
 import {
+  attachmentQueries,
   categoryHistoryQueryOptions,
   createExpense,
+  MAX_ATTACHMENTS,
   moneyKeys,
   moneyQueries,
   setDefaultSplit,
   updateExpense,
   updateRecurring,
-  uploadReceipt,
   type ExpensePayload,
   type ExpenseWithSplits,
   type MoneyGroup,
@@ -77,8 +78,16 @@ import {
   type PayersDraft,
 } from './payers-state'
 import { QuickSplit } from './quick-split'
-import { receiptExtension, receiptType } from './receipt'
-import { ReceiptField, type ReceiptValue } from './receipt-field'
+import { AttachmentsField } from '../receipts/attachments-field'
+import {
+  addDrafts,
+  attachmentsChanged,
+  draftsFromStored,
+  saveAttachments,
+  uploadDrafts,
+  type AttachmentDraft,
+} from '../receipts/attachments-state'
+import { ScanReceipt, type ScanResult } from '../receipts/scan-receipt'
 import { SplitEditor } from './split-editor'
 import {
   defaultFromDraft,
@@ -269,10 +278,14 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     if (!dateTouched) setSpentAt(template.next_run_on)
   }
   const [notes, setNotes] = useState(expense?.notes ?? template?.notes ?? '')
-  const [receipt, setReceipt] = useState<ReceiptValue>({
-    file: null,
-    existingPath: expense?.receipt_path ?? null,
+  // Files on the expense. Null while editing until the person changes them, so a save before
+  // the stored list has loaded leaves it alone.
+  const storedFiles = useQuery({
+    ...attachmentQueries.list(supabase, expense?.id ?? ''),
+    enabled: !!expense,
   })
+  const [attachments, setAttachments] = useState<AttachmentDraft[] | null>(expense ? null : [])
+  const fileDrafts = attachments ?? draftsFromStored(storedFiles.data ?? [])
   const [recurrence, setRecurrence] = useState<Recurrence>(
     template?.recurrence ?? (preset ? 'monthly' : 'none'),
   )
@@ -365,16 +378,27 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
 
   const save = useMutation({
     mutationFn: async () => {
-      let receiptPath = receipt.existingPath
-      if (receipt.file) {
+      const stored = expense ? (storedFiles.data ?? []) : []
+      const filesChanged = !!attachments && attachmentsChanged(attachments, stored)
+      let paths: string[] = []
+      if (attachments && filesChanged) {
         try {
-          receiptPath = await uploadReceipt(supabase, group.id, receipt.file, {
-            extension: receiptExtension(receipt.file),
-            contentType: receiptType(receipt.file) ?? receipt.file.type,
-          })
+          paths = await uploadDrafts(supabase, group.id, attachments)
         } catch {
           throw new Error('receipt_upload_failed')
         }
+      }
+      // The first file also rides along as receipt_path on a new expense; the rest are set once
+      // it exists (ADR 21).
+      const withFiles = async (saved: Awaited<ReturnType<typeof createExpense>>) => {
+        if (filesChanged && (expense || paths.length > 1)) {
+          try {
+            await saveAttachments(supabase, saved.id, paths, stored)
+          } catch {
+            toast.error(t('expenses.attachments.partial'))
+          }
+        }
+        return saved
       }
       const payload: ExpensePayload = {
         description: description.trim(),
@@ -388,28 +412,31 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         category,
         notes: notes.trim() || null,
         spent_at: spentAt,
-        receipt_path: receiptPath,
       }
       if (expense && locked) {
-        return updateExpense(supabase, expense.id, {
-          description: payload.description,
-          category: payload.category,
-          notes: payload.notes,
-          spent_at: payload.spent_at,
-          receipt_path: payload.receipt_path,
-        })
+        return withFiles(
+          await updateExpense(supabase, expense.id, {
+            description: payload.description,
+            category: payload.category,
+            notes: payload.notes,
+            spent_at: payload.spent_at,
+          }),
+        )
       }
       if (expense) {
-        if (!keepSplit) return updateExpense(supabase, expense.id, payload)
+        if (!keepSplit) return withFiles(await updateExpense(supabase, expense.id, payload))
         const { splits: _splits, split_type: _type, ...details } = payload
-        return updateExpense(supabase, expense.id, details)
+        return withFiles(await updateExpense(supabase, expense.id, details))
       }
-      return createExpense(supabase, {
-        ...payload,
-        group_id: group.id,
-        ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
-        ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
-      })
+      return withFiles(
+        await createExpense(supabase, {
+          ...payload,
+          receipt_path: paths[0] ?? null,
+          group_id: group.id,
+          ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
+          ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
+        }),
+      )
     },
     onSuccess: async (saved) => {
       invalidateMoney(queryClient, group.id, saved.id)
@@ -458,6 +485,20 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
     onError: (error) => toast.error(moneyErrorMessage(error)),
   })
+
+  // A scan only fills the form; the person still checks it and saves.
+  const applyScan = ({ fill, photo }: ScanResult) => {
+    if (fill.description !== undefined) setDescription(fill.description)
+    if (fill.spentAt) setSpentAt(fill.spentAt)
+    if (fill.currency) {
+      setCurrencyPicked(true)
+      setCurrency(fill.currency)
+    }
+    if (fill.amount !== undefined) setAmount(fill.amount)
+    if (fill.draft) setDraft(fill.draft)
+    if (photo) setAttachments(addDrafts(fileDrafts, [photo]).drafts)
+    if (fill.amount !== undefined || fill.draft) toast.success(t('expenses.scan.applied'))
+  }
 
   const wide = useMediaQuery('(min-width: 64rem)')
   const quickSplit = (
@@ -583,6 +624,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 <Repeat aria-hidden className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
                 {t('expenses.recurring.futureOnly')}
               </p>
+            )}
+            {!locked && !template && (
+              <ScanReceipt
+                currency={currency}
+                description={description}
+                draft={draft}
+                memberIds={memberIds}
+                timeZone={timeZone}
+                canAttach={fileDrafts.length < MAX_ATTACHMENTS}
+                onApply={applyScan}
+              />
             )}
           </div>
 
@@ -789,7 +841,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               {props.mode === 'recurring' && props.actions}
             </>
           ) : (
-            <ReceiptField value={receipt} onChange={setReceipt} />
+            <AttachmentsField value={fileDrafts} onChange={setAttachments} />
           )}
           {!editing && !refund && (
             <Field

@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { appVersion } from './app-version.ts'
+import { ocrAssets } from './ocr-assets.ts'
 import { prerenderLanding } from './prerender-landing.ts'
 import { requireEnv } from './require-env.ts'
 import { routePreloads } from './route-preloads.ts'
@@ -23,6 +24,7 @@ export default defineConfig(({ mode }) => ({
     tailwindcss(),
     routePreloads(loadEnv(mode, envDir, 'VITE_').VITE_SUPABASE_URL),
     prerenderLanding(),
+    ocrAssets(),
     VitePWA({
       registerType: 'autoUpdate',
       // Deferred so the registration script never blocks the first paint.
@@ -39,7 +41,19 @@ export default defineConfig(({ mode }) => ({
           'assets/*-latin-opsz-*.woff2',
           'assets/*-latin-400-*.woff2',
         ],
-        globIgnores: ['**/dev.kit-*.js'],
+        // The receipt reader is megabytes most people never use: it is cached the first time
+        // someone scans (below), not installed with the app.
+        globIgnores: ['**/dev.kit-*.js', 'ocr/**'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/ocr/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'potluck-ocr',
+              expiration: { maxEntries: 12 },
+            },
+          },
+        ],
       },
       manifest: {
         id: '/',
