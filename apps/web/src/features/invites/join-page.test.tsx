@@ -199,4 +199,12 @@ describe('JoinPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: t('people.claim.accept') })).toBeNull()
   })
+
+  it('shows the group cover, with the group named in its alt text', async () => {
+    state.preview = { ...valid, cover_path: 'g-hike/cover.webp' }
+    renderWithProviders(<JoinPage code="hikecrew-demo" />, { path: '/join/hikecrew-demo' })
+    expect(
+      await screen.findByRole('img', { name: t('groups.cover.alt', { group: 'Hike crew' }) }),
+    ).toHaveAttribute('src', expect.stringContaining('group-covers/g-hike/cover.webp'))
+  })
 })

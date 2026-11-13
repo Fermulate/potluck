@@ -29,6 +29,7 @@ Per-feature notes (payers and refunds, repeating expenses, language, two-step si
   (landing only).
 - Money: pass `fx_rate` (decimal text) to `convert()` unchanged. Read who paid with `payersOf()`, never
   `paid_by` alone; the viewer's line comes from core `expenseEffect`.
+- Categories: `CategoryPicker`; new expenses follow core `suggestCategory`; deleted groups and covers: ADR 20.
 
 ## Tests
 

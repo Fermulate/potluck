@@ -20,13 +20,14 @@ import {
   toast,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, Copy, Link2, Share2, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, Link2, QrCode, Share2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Help } from '@/features/help/help'
 import { inviteUrl } from '@/lib/app-url'
 import { errorMessage } from '@/lib/errors'
 import { useViewerTimezone } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
+import { InviteQr } from './invite-qr'
 import { copyText, shareInvite } from './share'
 
 type UsesChoice = '1' | '5' | '25' | 'unlimited'
@@ -346,7 +347,9 @@ function LatestLink({
 }) {
   const timeZone = useViewerTimezone()
   const [copied, setCopied] = useState(false)
+  const [showQr, setShowQr] = useState(false)
   const url = inviteUrl(invite.code)
+  const qrId = `invite-qr-${invite.id}`
   return (
     <section
       aria-label={t('invites.latest')}
@@ -397,6 +400,22 @@ function LatestLink({
           {t('common.share')}
         </Button>
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="justify-self-center"
+        leadingIcon={<QrCode />}
+        aria-expanded={showQr}
+        aria-controls={qrId}
+        onClick={() => setShowQr((v) => !v)}
+      >
+        {showQr ? t('invites.qr.hide') : t('invites.qr.show')}
+      </Button>
+      {showQr && (
+        <div id={qrId} className="pb-1">
+          <InviteQr url={url} groupName={groupName} />
+        </div>
+      )}
     </section>
   )
 }

@@ -1,10 +1,11 @@
-import { categoryEmoji, dayKey, isCategory } from '@potluck/core'
+import { categoryEmoji, dayKey, isCategory, isSubcategory, type TopCategoryId } from '@potluck/core'
 import { formatDate, hasMessage, t } from '@potluck/i18n'
 
-/** Label for a stored category, including legacy values outside the core list. */
+/** Label for a stored category or subcategory, including legacy values outside the core list. */
 export function categoryLabel(category: string | null | undefined): string {
   if (!category) return t('categories.other')
-  if (isCategory(category)) return t(`categories.${category}`)
+  if (isSubcategory(category)) return t(`categories.sub.${category}`)
+  if (isCategory(category)) return t(`categories.${category as TopCategoryId}`)
   const key = `categories.${category}`
   if (hasMessage(key)) return t(key as 'categories.other')
   return category.charAt(0).toUpperCase() + category.slice(1)

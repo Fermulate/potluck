@@ -65,6 +65,34 @@ test.describe('accessibility', () => {
     await audit(page, testInfo)
   })
 
+  test('group notes and the deleted group page', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}/notes`)
+    await expect(page.getByRole('textbox', { name: t('groups.notes.label') })).toBeVisible()
+    await audit(page, testInfo)
+    const landmarks = await new AxeBuilder({ page }).withRules(['landmark-unique']).analyze()
+    expect(landmarks.violations.map((v) => v.id)).toEqual([])
+
+    // An empty group (no open debts) the viewer deletes, opened again from its old address.
+    const gone = await groupWith(me, [], { name: unique('Gone') })
+    await page.goto(`/groups/${gone.id}/settings`)
+    await page.getByRole('button', { name: t('groups.settings.delete') }).click()
+    await page
+      .getByRole('dialog', { name: t('groups.settings.delete') })
+      .getByRole('button', { name: t('groups.settings.delete') })
+      .click()
+    await expect(page).toHaveURL(/\/groups$/)
+    await page.goto(`/groups/${gone.id}`)
+    await expect(
+      page.getByRole('heading', {
+        level: 1,
+        name: t('groups.deleted.pageTitle', { group: gone.name }),
+      }),
+    ).toBeVisible()
+    await audit(page, testInfo)
+  })
+
   test('group expenses', async ({ newUser, openAs }, testInfo) => {
     const { me, group } = await setup(newUser)
     const page = await openAs(me)

@@ -9,8 +9,8 @@ export interface EmptyStateProps {
   illustration?: ReactNode
   /** The one clear next step. */
   action?: ReactNode
-  /** Heading level for the title. */
-  as?: 'h2' | 'h3'
+  /** Heading level for the title; `h1` when the empty state is the whole page. */
+  as?: 'h1' | 'h2' | 'h3'
   align?: 'center' | 'start'
   className?: string
 }

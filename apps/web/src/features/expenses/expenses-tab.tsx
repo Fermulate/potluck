@@ -26,6 +26,7 @@ import { ActivityIconLink } from '@/features/activity/activity-link'
 import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
 import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
 import { useGroupExport } from '@/features/export-import/use-exports'
+import { HomeStarters } from '@/features/groups/home-starters'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
 import { payersOf, settlementText } from './expense-math'
@@ -185,6 +186,7 @@ export function ExpensesTab({
       <div className="flex flex-col gap-4">
         {/* Repeating expenses can exist before the first one is due. */}
         <RecurringSection groupId={groupId} />
+        <HomeStarters groupId={groupId} />
         <EmptyState
           illustration="🧾"
           title={t('empty.expenses.title')}

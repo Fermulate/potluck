@@ -17,7 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
-import { GroupTile } from '@/features/groups/group-bits'
+import { GroupCover, GroupTile } from '@/features/groups/group-bits'
 import { Wordmark } from '@/features/shell/brand'
 import { needsOnboarding, signOut, useSession } from '@/lib/auth'
 import { errorMessage, isNotFoundError } from '@/lib/errors'
@@ -175,14 +175,32 @@ export function JoinPage({ code }: { code: string }) {
         animate={{ opacity: 1, scale: 1, rotate: 0 }}
         transition={reduced ? { duration: 0.2 } : { type: 'spring', stiffness: 260, damping: 16 }}
       >
-        <GroupTile
-          emoji={group.emoji}
-          color={group.color}
-          size="xl"
-          className="shadow-raised sm:size-36 sm:text-[5rem]"
-        />
+        {group.cover_path ? (
+          // The cover as a postcard, the group's tile pinned to its bottom edge.
+          <div className="relative w-[min(22rem,80vw)] rotate-[-2deg]">
+            <GroupCover
+              path={group.cover_path}
+              name={group.name}
+              labelled
+              className="aspect-[4/3] rounded-[1.5rem] border-4 border-card shadow-raised"
+            />
+            <GroupTile
+              emoji={group.emoji}
+              color={group.color}
+              size="lg"
+              className="absolute -bottom-7 left-1/2 -translate-x-1/2 shadow-raised ring-4 ring-[var(--pl-paper)]"
+            />
+          </div>
+        ) : (
+          <GroupTile
+            emoji={group.emoji}
+            color={group.color}
+            size="xl"
+            className="shadow-raised sm:size-36 sm:text-[5rem]"
+          />
+        )}
       </motion.div>
-      <div className="grid gap-3">
+      <div className={group.cover_path ? 'mt-4 grid gap-3' : 'grid gap-3'}>
         <p className="flourish text-2xl text-mute">
           {seat ? t('people.claim.title') : t('invites.join.title')}
         </p>

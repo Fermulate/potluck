@@ -1,11 +1,12 @@
 import {
   deleteGroup,
   groupKeys,
+  restoreGroup,
   updateGroup,
   type GroupDetail,
   type GroupSettingsPatch,
 } from '@potluck/api'
-import { can } from '@potluck/core'
+import { can, checkTripDates, typeHasDates, type GroupType } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import { Button, Card, ConfirmDialog, Field, Input, Skeleton, Switch, toast } from '@potluck/ui'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -18,9 +19,11 @@ import { CurrencyField } from '@/features/me/profile-fields'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
+import { CoverPicker } from './cover-picker'
 import { DefaultSplitSection } from './default-split-section'
 import { GroupTile } from './group-bits'
 import { ColorPicker, EmojiPicker } from './group-form-fields'
+import { GroupTypePicker, TripDatesFields } from './group-type-fields'
 import { useGroup } from './use-groups'
 
 function Section({
@@ -68,20 +71,34 @@ function DetailsForm({ group }: { group: GroupDetail }) {
   const [emoji, setEmoji] = useState(group.emoji ?? '')
   const [color, setColor] = useState(group.color ?? 'saffron')
   const [currency, setCurrency] = useState(group.currency)
+  const [type, setType] = useState<GroupType>(group.type)
+  const [dates, setDates] = useState({
+    startsOn: group.starts_on ?? '',
+    endsOn: group.ends_on ?? '',
+  })
+  const tripDates = typeHasDates(type) ? dates : { startsOn: '', endsOn: '' }
+  const datesProblem = checkTripDates(tripDates.startsOn || null, tripDates.endsOn || null)
   const dirty =
     name.trim() !== group.name ||
     emoji !== (group.emoji ?? '') ||
     color !== (group.color ?? 'saffron') ||
-    currency !== group.currency
+    currency !== group.currency ||
+    type !== group.type ||
+    (tripDates.startsOn || null) !== group.starts_on ||
+    (tripDates.endsOn || null) !== group.ends_on
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || datesProblem) return
     const changes: GroupSettingsPatch = {}
     if (name.trim() !== group.name) changes.name = name.trim()
     if (emoji !== (group.emoji ?? '')) changes.emoji = emoji
     if (color !== (group.color ?? 'saffron')) changes.color = color
     if (currency !== group.currency) changes.currency = currency
+    if (type !== group.type) changes.type = type
+    if ((tripDates.startsOn || null) !== group.starts_on)
+      changes.starts_on = tripDates.startsOn || null
+    if ((tripDates.endsOn || null) !== group.ends_on) changes.ends_on = tripDates.endsOn || null
     patch.mutate(changes, {
       onSuccess: () => toast.success(t('groups.settings.saved')),
       onError: () => setCurrency(group.currency),
@@ -96,6 +113,13 @@ function DetailsForm({ group }: { group: GroupDetail }) {
           <Input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
       </div>
+      <GroupTypePicker value={type} onChange={setType} />
+      <TripDatesFields
+        type={type}
+        startsOn={dates.startsOn}
+        endsOn={dates.endsOn}
+        onChange={setDates}
+      />
       <EmojiPicker value={emoji} onChange={setEmoji} />
       <ColorPicker value={color} onChange={setColor} />
       <CurrencyField
@@ -107,7 +131,7 @@ function DetailsForm({ group }: { group: GroupDetail }) {
       <Button
         type="submit"
         className="justify-self-start"
-        disabled={!dirty || !name.trim()}
+        disabled={!dirty || !name.trim() || !!datesProblem}
         loading={patch.isPending}
       >
         {t('common.save')}
@@ -147,7 +171,20 @@ function SettingsBody({ group }: { group: GroupDetail }) {
       await deleteGroup(supabase, group.id)
       queryClient.removeQueries({ queryKey: groupKeys.detail(group.id) })
       await queryClient.invalidateQueries({ queryKey: groupKeys.all })
-      toast.success(t('groups.settings.deleted', { group: group.name }))
+      toast.success(t('groups.settings.deleted', { group: group.name }), {
+        action: {
+          label: t('common.undo'),
+          onClick: async () => {
+            try {
+              await restoreGroup(supabase, group.id)
+              await queryClient.invalidateQueries({ queryKey: groupKeys.all })
+              toast.success(t('groups.deleted.restored', { group: group.name }))
+            } catch (error) {
+              toast.error(errorMessage(error))
+            }
+          },
+        },
+      })
       await navigate({ to: '/groups', replace: true })
     } catch (error) {
       toast.error(errorMessage(error))
@@ -187,9 +224,17 @@ function SettingsBody({ group }: { group: GroupDetail }) {
       )}
 
       {editable && (
-        <Section title={t('groups.settings.details')}>
+        <Section title={t('groups.settings.details')} help={<Help topic="groupTypes" />}>
           <Card padding="roomy">
             <DetailsForm key={group.updated_at} group={group} />
+          </Card>
+        </Section>
+      )}
+
+      {editable && (
+        <Section title={t('groups.cover.title')}>
+          <Card padding="roomy">
+            <CoverPicker group={group} />
           </Card>
         </Section>
       )}
@@ -217,7 +262,7 @@ function SettingsBody({ group }: { group: GroupDetail }) {
 
       <GroupDataSection groupId={group.id} archived={!!group.archived_at} />
 
-      <Section title={t('groups.settings.danger')}>
+      <Section title={t('groups.settings.danger')} help={<Help topic="restoreGroup" />}>
         <Card padding="roomy" className="grid gap-5">
           {editable && (
             <div className="flex flex-wrap items-center justify-between gap-3">

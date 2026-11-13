@@ -1,5 +1,6 @@
 import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
+import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { group, member, VIEWER } from '@/test/fixtures'
@@ -138,5 +139,32 @@ describe('InvitePanel', () => {
     expect(
       await screen.findByText('Only owners and admins can invite people to this group.'),
     ).toBeInTheDocument()
+  })
+
+  it('shows the newest link as a QR code for someone across the table', async () => {
+    api.open = [
+      {
+        id: 'i-9',
+        code: 'zzzzzzzzzz99',
+        group_id: 'g-hike',
+        role: 'member',
+        max_uses: null,
+        uses: 0,
+        expires_at: null,
+        email: null,
+        created_at: '2026-11-05T00:00:00Z',
+        created_by: VIEWER,
+        revoked_at: null,
+      },
+    ]
+    renderWithProviders(<InvitePanel group={group()} />)
+    const show = await screen.findByRole('button', { name: t('invites.qr.show') })
+    expect(show).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(show)
+    const qr = screen.getByRole('img', { name: t('invites.qr.label', { group: 'Hike crew' }) })
+    expect(qr.querySelector('path')?.getAttribute('d')).toMatch(/^M\d+ \d+h1v1h-1z/)
+    expect(screen.getByText(t('invites.qr.hint'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('invites.qr.hide') }))
+    expect(screen.queryByRole('img', { name: /QR code/ })).not.toBeInTheDocument()
   })
 })

@@ -8,10 +8,18 @@ export function uuidParam(value: unknown): string | undefined {
 export interface NewExpenseSearch {
   groupId?: string
   eventId?: string
+  /** A home group's monthly bill to start from (core `HOME_STARTERS`). */
+  preset?: 'rent' | 'utilities'
 }
 
 export function validateNewExpenseSearch(search: Record<string, unknown>): NewExpenseSearch {
-  return { groupId: uuidParam(search.groupId), eventId: uuidParam(search.eventId) }
+  const preset =
+    search.preset === 'rent' || search.preset === 'utilities' ? search.preset : undefined
+  return {
+    groupId: uuidParam(search.groupId),
+    eventId: uuidParam(search.eventId),
+    ...(preset ? { preset } : {}),
+  }
 }
 
 export interface SettleSearch {

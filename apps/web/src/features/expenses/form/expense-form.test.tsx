@@ -334,4 +334,77 @@ describe('ExpenseForm', () => {
       expect(screen.queryByText(/has left the group/)).not.toBeInTheDocument()
     })
   })
+
+  describe('category', () => {
+    const transport = () => screen.getByRole('radio', { name: /Transport/ })
+    const describeAs = (text: string) =>
+      fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+        target: { value: text },
+      })
+
+    it('follows the description until someone picks one: Uber is a taxi, under Transport', async () => {
+      setup()
+      describeAs('Uber to the airport')
+      expect(transport()).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByText('Suggested')).toBeInTheDocument()
+      expect(screen.getByRole('radio', { name: /Taxi/ })).toHaveAttribute('aria-checked', 'true')
+
+      describeAs('Groceries')
+      expect(transport()).toHaveAttribute('aria-checked', 'false')
+      expect(screen.getByRole('radio', { name: /Groceries/ })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      )
+
+      describeAs('Uber')
+      fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+      expect(create.mock.calls[0]![1]).toMatchObject({ category: 'taxi' })
+    })
+
+    it('stops following once a category is picked, and keeps subcategories in reach', async () => {
+      setup()
+      fireEvent.click(transport())
+      fireEvent.click(screen.getByRole('radio', { name: /Parking/ }))
+      describeAs('Pizza')
+      await waitFor(() => expect(screen.queryByText('Suggested')).not.toBeInTheDocument())
+      expect(screen.getByRole('radio', { name: /Parking/ })).toHaveAttribute('aria-checked', 'true')
+
+      // The parent again goes back from the subcategory to the category, then clears it.
+      fireEvent.click(transport())
+      expect(screen.getByRole('radio', { name: /Parking/ })).toHaveAttribute(
+        'aria-checked',
+        'false',
+      )
+      fireEvent.click(transport())
+      expect(transport()).toHaveAttribute('aria-checked', 'false')
+      await waitFor(() =>
+        expect(screen.queryByRole('radio', { name: /Parking/ })).not.toBeInTheDocument(),
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+      expect(create.mock.calls[0]![1]).toMatchObject({ category: null })
+    })
+
+    it('starts a home bill as a monthly repeating expense', async () => {
+      renderWithClient(
+        <ExpenseForm
+          mode="create"
+          groupId={GROUP_ID}
+          preset="rent"
+          onDone={() => {}}
+          onClose={() => {}}
+        />,
+      )
+      expect(await screen.findByRole('textbox', { name: 'What was it?' })).toHaveValue('Rent')
+      expect(screen.getByRole('radio', { name: /Rent/ })).toHaveAttribute('aria-checked', 'true')
+      fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), {
+        target: { value: '1500' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+      expect(create.mock.calls[0]![1]).toMatchObject({ category: 'rent', recurrence: 'monthly' })
+    })
+  })
 })

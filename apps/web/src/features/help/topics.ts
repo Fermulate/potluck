@@ -47,6 +47,10 @@ export const HELP_TOPICS = {
   friends: '/friends/#add-a-friend',
   yourData: '/account/#export-your-data',
   importExpenses: '/groups/settings/#import-expenses',
+  groupTypes: '/groups/settings/#group-type',
+  restoreGroup: '/groups/settings/#restore-a-deleted-group',
+  notes: '/groups/#group-notes',
+  categories: '/expenses/#categories',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

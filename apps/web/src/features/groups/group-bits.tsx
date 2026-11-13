@@ -2,6 +2,7 @@ import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import { Amount, cn } from '@potluck/ui'
 import type { CSSProperties } from 'react'
 import { DEFAULT_GROUP_EMOJI, groupTone } from '@/lib/group-colors'
+import { coverSrc } from '@/lib/queries'
 
 const tileSizes = {
   sm: 'size-10 rounded-[0.75rem] text-xl',
@@ -40,6 +41,33 @@ export function GroupTile({
     >
       {emoji || DEFAULT_GROUP_EMOJI}
     </span>
+  )
+}
+
+/**
+ * The group's cover photo, or nothing when it has none. Decorative next to the group name, so
+ * it carries an alt text only where it stands alone (`labelled`).
+ */
+export function GroupCover({
+  path,
+  name,
+  labelled = false,
+  className,
+}: {
+  path: string | null | undefined
+  name: string
+  labelled?: boolean
+  className?: string
+}) {
+  const src = coverSrc(path)
+  if (!src) return null
+  return (
+    <img
+      src={src}
+      alt={labelled ? t('groups.cover.alt', { group: name }) : ''}
+      decoding="async"
+      className={cn('block w-full bg-sunken object-cover', className)}
+    />
   )
 }
 

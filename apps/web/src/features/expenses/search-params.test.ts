@@ -19,6 +19,14 @@ describe('search params', () => {
     })
   })
 
+  it('keeps a home bill preset and drops anything else', () => {
+    expect(validateNewExpenseSearch({ groupId: GROUP, preset: 'rent' })).toMatchObject({
+      preset: 'rent',
+    })
+    expect(validateNewExpenseSearch({ preset: 'utilities' }).preset).toBe('utilities')
+    expect(validateNewExpenseSearch({ preset: 'yacht' })).not.toHaveProperty('preset')
+  })
+
   it('accepts a positive whole amount for settling, as a number or a string', () => {
     expect(validateSettleSearch({ groupId: GROUP, to: BEN, amount: '4750' })).toEqual({
       groupId: GROUP,

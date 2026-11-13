@@ -1,4 +1,5 @@
 import { addPlaceholderMember, createGroup, groupKeys } from '@potluck/api'
+import { checkTripDates, groupTypeEmoji, typeHasDates, type GroupType } from '@potluck/core'
 import { intlLocale, t } from '@potluck/i18n'
 import { Button, Chip, Field, Input, Sheet, SheetContent, toast } from '@potluck/ui'
 import { Plus, X } from 'lucide-react'
@@ -13,6 +14,7 @@ import { supabase } from '@/lib/supabase'
 import { GroupTile } from './group-bits'
 import { GROUP_EMOJIS } from './group-emojis'
 import { ColorPicker, EmojiPicker } from './group-form-fields'
+import { GroupTypePicker, TripDatesFields } from './group-type-fields'
 
 interface CreateGroupSheetProps {
   open: boolean
@@ -26,7 +28,11 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
   const queryClient = useQueryClient()
   const { data: profile } = useMyProfile()
   const [name, setName] = useState('')
+  const [type, setType] = useState<GroupType>('other')
+  const [dates, setDates] = useState({ startsOn: '', endsOn: '' })
   const [emoji, setEmoji] = useState<string>(GROUP_EMOJIS[0])
+  // The emoji follows the type until someone picks one.
+  const [emojiPicked, setEmojiPicked] = useState(false)
   const [color, setColor] = useState<GroupColor>('saffron')
   const [currency, setCurrency] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -35,8 +41,20 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
   const [seats, setSeats] = useState<string[]>([])
   const chosenCurrency = currency ?? profile?.default_currency ?? 'USD'
 
+  const datesProblem = typeHasDates(type)
+    ? checkTripDates(dates.startsOn || null, dates.endsOn || null)
+    : null
+
+  function pickType(next: GroupType) {
+    setType(next)
+    if (!emojiPicked) setEmoji(next === 'other' ? GROUP_EMOJIS[0] : groupTypeEmoji(next))
+  }
+
   function reset() {
     setName('')
+    setType('other')
+    setDates({ startsOn: '', endsOn: '' })
+    setEmojiPicked(false)
     setEmoji(GROUP_EMOJIS[0])
     setColor('saffron')
     setCurrency(null)
@@ -53,7 +71,7 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || datesProblem) return
     setBusy(true)
     let group: Awaited<ReturnType<typeof createGroup>>
     try {
@@ -62,6 +80,8 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
         emoji,
         color,
         currency: chosenCurrency,
+        type,
+        ...(typeHasDates(type) ? { startsOn: dates.startsOn, endsOn: dates.endsOn } : {}),
       })
     } catch (error) {
       toast.error(errorMessage(error))
@@ -101,7 +121,7 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
             block
             size="lg"
             loading={busy}
-            disabled={!name.trim()}
+            disabled={!name.trim() || !!datesProblem}
           >
             {t('groups.create.submit')}
           </Button>
@@ -121,7 +141,20 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
               />
             </Field>
           </div>
-          <EmojiPicker value={emoji} onChange={setEmoji} />
+          <GroupTypePicker value={type} onChange={pickType} />
+          <TripDatesFields
+            type={type}
+            startsOn={dates.startsOn}
+            endsOn={dates.endsOn}
+            onChange={setDates}
+          />
+          <EmojiPicker
+            value={emoji}
+            onChange={(next) => {
+              setEmojiPicked(true)
+              setEmoji(next)
+            }}
+          />
           <ColorPicker value={color} onChange={setColor} />
           <CurrencyField
             label={t('groups.create.currencyLabel')}
