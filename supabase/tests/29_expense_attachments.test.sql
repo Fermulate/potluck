@@ -3,7 +3,7 @@
 -- two-step sign in read none of them; set_expense_attachments and the receipt_path mirror for
 -- older clients.
 begin;
-select plan(51);
+select plan(58);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -83,8 +83,14 @@ select is(
 select is(
   (select count(*)::int from public.activity
    where subject_id = tests.id('e') and verb = 'expense.updated'),
-  0,
-  'files sent right after creating the expense are part of creating it: one history entry'
+  1,
+  'changing the files right after creating the expense is an edit, and is logged'
+);
+select is(
+  (select data -> 'changes' -> 'attachments' from public.activity
+   where subject_id = tests.id('e') and verb = 'expense.updated'),
+  '{"from": 1, "to": 3}'::jsonb,
+  'the edit says how many there were and are'
 );
 
 select tests.login('ava');
@@ -96,7 +102,7 @@ select lives_ok(
 reset role;
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('e') and verb = 'expense.updated'),
-  0,
+  1,
   'the same list changes nothing and logs nothing'
 );
 
@@ -334,6 +340,45 @@ select is(
 reset role;
 select tests.login('ava');
 select throws_ok($$ select public.orphan_receipts() $$, '42501', null, 'members cannot list orphans');
+
+-- Creating an expense with its files: one call, one history entry.
+select tests.login('ava');
+select tests.remember('e2', (select id from public.create_expense_with_attachments(
+  jsonb_build_object('group_id', tests.id('g'), 'description', 'Lunch', 'amount_cents', 2000,
+    'paid_by', tests.uid('ava'), 'splits', tests.people('ava', 'ben')),
+  pg_temp.files('five.jpg', 'six.jpg'))));
+reset role;
+select is(pg_temp.paths('e2'), 'five.jpg,six.jpg', 'a new expense takes its files in the same call');
+select is(
+  (select receipt_path from public.expenses where id = tests.id('e2')),
+  pg_temp.file('five.jpg'),
+  'and the first one is its receipt'
+);
+select is(
+  (select array_agg(verb) from public.activity where subject_id = tests.id('e2')),
+  array['expense.created'],
+  'and its history has exactly one entry'
+);
+select tests.login('ava');
+select throws_ok(
+  format($$ select public.create_expense_with_attachments(%L, %L) $$,
+    jsonb_build_object('group_id', tests.id('g'), 'description', 'Never saved', 'amount_cents', 900,
+      'paid_by', tests.uid('ava'), 'splits', tests.people('ava')),
+    pg_temp.files('never-uploaded.jpg')),
+  'PT404', 'attachment_not_found', 'a refused file stops the create'
+);
+reset role;
+select is(
+  (select count(*)::int from public.expenses where description = 'Never saved'),
+  0,
+  'and nothing is created'
+);
+select tests.login_anon();
+select throws_ok(
+  $$ select public.create_expense_with_attachments('{}', '[]') $$,
+  '42501', null, 'anon cannot call it'
+);
+reset role;
 
 select * from finish();
 rollback;

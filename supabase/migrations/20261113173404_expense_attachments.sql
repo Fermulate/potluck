@@ -6,7 +6,7 @@
 -- Members of the group read the rows; only set_expense_attachments and the trigger below write.
 --
 -- expenses.receipt_path stays the first attachment, so older clients keep showing one receipt:
---   * set_expense_attachments writes it along with the list;
+--   * set_expense_attachments and create_expense_with_attachments write it along with the list;
 --   * an older client that sets or clears receipt_path through create_expense_v2 or
 --     update_expense_v2 changes the list the same way: its old file leaves, its new file goes
 --     first, the others stay.
@@ -181,21 +181,21 @@ from public.expenses e
 where e.receipt_path is not null
   and e.receipt_path like e.group_id::text || '/%';
 
--- The RPC ----------------------------------------------------------------------------------------
+-- The RPCs ---------------------------------------------------------------------------------------
 
 -- Sets an expense's attachments, in order: `attachments` is a list of storage paths (or
 -- {path} objects) of files already uploaded under the group's folder. Up to five. Who may edit
 -- the expense may change them (a member their own expenses, admins any); they are details, so
--- an expense that names someone who left still takes them. Logs one `expense.updated` with an
--- `attachments` change (count before and after). Removing a file from the list does not delete
--- it from storage; the client does that with the bucket's own rules.
-create or replace function public.set_expense_attachments(id uuid, attachments jsonb)
-returns setof public.expense_attachments
+-- an expense that names someone who left still takes them. A changed list is logged as one
+-- `expense.updated` with an `attachments` change (count before and after) when `log_edit`; the
+-- create below passes false, since the files are part of creating the expense. Removing a file
+-- from the list does not delete it from storage; the client does that with the bucket's rules.
+create function private.apply_attachments(eid uuid, attachments jsonb, log_edit boolean)
+returns void
 language plpgsql security definer set search_path = '' as $$
 #variable_conflict use_column
 declare
   uid uuid := private.require_user();
-  eid uuid := set_expense_attachments.id;
   my_role public.group_role;
   gid uuid;
   prev public.expenses;
@@ -261,17 +261,7 @@ begin
     -- the same, so realtime tells everyone looking at the expense. This function logs the edit.
     perform set_config('potluck.expense_logged', eid::text, true);
     update public.expenses e set receipt_path = new_list -> 0 ->> 'path' where e.id = eid;
-    -- Files sent right after the caller created the expense are part of creating it: its
-    -- history keeps the one "added it" entry.
-    if exists (
-      select 1 from public.activity a
-      where a.subject_id = eid and a.verb = 'expense.created' and a.actor_id = uid
-        and a.created_at > now() - interval '10 minutes'
-    ) and not exists (
-      select 1 from public.activity a where a.subject_id = eid and a.verb <> 'expense.created'
-    ) then
-      return query
-      select a.* from public.expense_attachments a where a.expense_id = eid order by a.position;
+    if not log_edit then
       return;
     end if;
     perform private.log_activity(gid, uid, 'expense.updated', eid, jsonb_build_object(
@@ -286,14 +276,45 @@ begin
       ))
     ));
   end if;
+end;
+$$;
 
+revoke execute on function private.apply_attachments(uuid, jsonb, boolean) from public;
+
+create or replace function public.set_expense_attachments(id uuid, attachments jsonb)
+returns setof public.expense_attachments
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform private.apply_attachments(set_expense_attachments.id, attachments, true);
   return query
-  select a.* from public.expense_attachments a where a.expense_id = eid order by a.position;
+  select a.* from public.expense_attachments a
+  where a.expense_id = set_expense_attachments.id
+  order by a.position;
 end;
 $$;
 
 revoke execute on function public.set_expense_attachments(uuid, jsonb) from public, anon;
 grant execute on function public.set_expense_attachments(uuid, jsonb) to authenticated, service_role;
+
+-- create_expense_v2 with its files, in one transaction: `payload` as for create_expense_v2 (its
+-- `receipt_path`, if any, is replaced by the first file), `attachments` as for
+-- set_expense_attachments. The files are part of creating the expense, so its history has the
+-- one `expense.created` entry. If any file is refused, nothing is created.
+create or replace function public.create_expense_with_attachments(payload jsonb, attachments jsonb)
+returns public.expenses
+language plpgsql security definer set search_path = '' as $$
+declare
+  created public.expenses;
+begin
+  select * into created from private.save_expense(null, payload);
+  perform private.apply_attachments(created.id, attachments, false);
+  select * into created from public.expenses e where e.id = created.id;
+  return created;
+end;
+$$;
+
+revoke execute on function public.create_expense_with_attachments(jsonb, jsonb) from public, anon;
+grant execute on function public.create_expense_with_attachments(jsonb, jsonb) to authenticated, service_role;
 
 -- Orphan sweep -------------------------------------------------------------------------------------
 

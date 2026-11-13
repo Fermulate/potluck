@@ -3,6 +3,7 @@ import {
   attachmentQueries,
   categoryHistoryQueryOptions,
   createExpense,
+  createExpenseWithAttachments,
   MAX_ATTACHMENTS,
   moneyKeys,
   moneyQueries,
@@ -398,11 +399,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
           throw new Error('receipt_upload_failed')
         }
       }
-      // The first file also rides along as receipt_path on a new expense; the rest are set once
-      // it exists (ADR 21). Uploads the expense does not end up with are deleted.
+      // A new expense takes its files in the same call; an edit sets them once the expense is
+      // saved (ADR 21). Uploads the expense does not end up with are deleted.
       const withFiles = async (saved: Awaited<ReturnType<typeof createExpense>>) => {
-        let kept = expense ? stored.map((a) => a.path) : paths.slice(0, 1)
-        if (filesChanged && (expense || paths.length > 1)) {
+        let kept = expense ? stored.map((a) => a.path) : paths
+        if (filesChanged && expense) {
           try {
             await saveAttachments(supabase, saved.id, paths, stored)
             kept = paths
@@ -443,14 +444,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         const { splits: _splits, split_type: _type, ...details } = payload
         return withFiles(await updateExpense(supabase, expense.id, details))
       }
+      const created: ExpensePayload = {
+        ...payload,
+        group_id: group.id,
+        ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
+        ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
+      }
       return withFiles(
-        await createExpense(supabase, {
-          ...payload,
-          receipt_path: paths[0] ?? null,
-          group_id: group.id,
-          ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
-          ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
-        }),
+        paths.length > 0
+          ? await createExpenseWithAttachments(supabase, created, paths)
+          : await createExpense(supabase, { ...created, receipt_path: null }),
       )
     },
     onSuccess: async (saved) => {

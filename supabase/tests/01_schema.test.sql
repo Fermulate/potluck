@@ -13,6 +13,7 @@ begin;
 select plan(126);
 select plan(98);
 select plan(100);
+select plan(101);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -80,6 +81,7 @@ select has_function('public', 'import_stage', array['uuid', 'uuid', 'jsonb'], 'i
 select has_function('public', 'export_my_data', array[]::text[], 'export_my_data');
 select has_function('public', 'set_expense_attachments', array['uuid', 'jsonb'], 'set_expense_attachments');
 select has_function('public', 'orphan_receipts', array['integer'], 'orphan_receipts');
+select has_function('public', 'create_expense_with_attachments', array['jsonb', 'jsonb'], 'create_expense_with_attachments');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');

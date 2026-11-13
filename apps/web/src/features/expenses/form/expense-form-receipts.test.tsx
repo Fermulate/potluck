@@ -2,6 +2,7 @@ import type * as Api from '@potluck/api'
 import {
   attachmentKeys,
   createExpense,
+  createExpenseWithAttachments,
   removeReceiptFiles,
   setExpenseAttachments,
   updateExpense,
@@ -21,6 +22,7 @@ vi.mock('@potluck/api', async (importOriginal) => {
   return {
     ...(await importOriginal<typeof Api>()),
     createExpense: vi.fn(async () => ({ id: 'new-expense' })),
+    createExpenseWithAttachments: vi.fn(async () => ({ id: 'new-expense' })),
     updateExpense: vi.fn(async (_c: unknown, id: string) => ({ id })),
     uploadReceipt: vi.fn(async (_c: unknown, groupId: string) => `${groupId}/up-${(n += 1)}.jpg`),
     setExpenseAttachments: vi.fn(async () => []),
@@ -53,7 +55,7 @@ beforeEach(() => {
 })
 
 describe('expense form files', () => {
-  it('uploads every file, sends the first as the receipt and then sets the list', async () => {
+  it('uploads every file and creates the expense with them in one call', async () => {
     const onDone = vi.fn()
     renderWithClient(
       <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
@@ -67,15 +69,13 @@ describe('expense form files', () => {
 
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
     expect(vi.mocked(uploadReceipt)).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(createExpense).mock.calls[0]![1].receipt_path).toBe(`${GROUP_ID}/up-1.jpg`)
-    expect(vi.mocked(setExpenseAttachments)).toHaveBeenCalledWith(
-      expect.anything(),
-      'new-expense',
-      [`${GROUP_ID}/up-1.jpg`, `${GROUP_ID}/up-2.jpg`],
-    )
+    const [, , paths] = vi.mocked(createExpenseWithAttachments).mock.calls[0]!
+    expect(paths).toEqual([`${GROUP_ID}/up-1.jpg`, `${GROUP_ID}/up-2.jpg`])
+    expect(vi.mocked(createExpense)).not.toHaveBeenCalled()
+    expect(vi.mocked(setExpenseAttachments)).not.toHaveBeenCalled()
   })
 
-  it('saves one file with the expense alone, and none without a call', async () => {
+  it('creates an expense without files the plain way', async () => {
     const onDone = vi.fn()
     renderWithClient(
       <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
@@ -84,11 +84,11 @@ describe('expense form files', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
       target: { value: 'Lunch' },
     })
-    await addFiles([photo()])
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
-    expect(vi.mocked(createExpense).mock.calls[0]![1].receipt_path).toMatch(/up-\d+\.jpg$/)
-    expect(vi.mocked(setExpenseAttachments)).not.toHaveBeenCalled()
+    expect(vi.mocked(createExpense).mock.calls[0]![1].receipt_path).toBeNull()
+    expect(vi.mocked(createExpenseWithAttachments)).not.toHaveBeenCalled()
+    expect(vi.mocked(uploadReceipt)).not.toHaveBeenCalled()
   })
 
   it('removes a stored file on edit without resending the expense receipt', async () => {
@@ -140,7 +140,9 @@ describe('expense form files', () => {
   })
 
   it('reuses uploads when a failed save is retried, and deletes them if the form closes', async () => {
-    vi.mocked(createExpense).mockRejectedValueOnce({ message: 'fx_rate_unavailable' })
+    vi.mocked(createExpenseWithAttachments).mockRejectedValueOnce({
+      message: 'fx_rate_unavailable',
+    })
     const onDone = vi.fn()
     const view = renderWithClient(
       <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
@@ -151,23 +153,25 @@ describe('expense form files', () => {
     })
     await addFiles([photo('a.jpg'), photo('b.jpg')])
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
-    await waitFor(() => expect(vi.mocked(createExpense)).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(vi.mocked(createExpenseWithAttachments)).toHaveBeenCalledTimes(1))
     expect(vi.mocked(uploadReceipt)).toHaveBeenCalledTimes(2)
 
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
     expect(vi.mocked(uploadReceipt)).toHaveBeenCalledTimes(2)
-    const [first, second] = vi.mocked(createExpense).mock.calls
-    expect(second![1].receipt_path).toBe(first![1].receipt_path)
+    const [first, second] = vi.mocked(createExpenseWithAttachments).mock.calls
+    expect(second![2]).toEqual(first![2])
     view.unmount()
     expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining([first![1].receipt_path]),
+      expect.arrayContaining([first![2][0]]),
     )
   })
 
   it('deletes uploads for a save that never went through when the form closes', async () => {
-    vi.mocked(createExpense).mockRejectedValueOnce({ message: 'fx_rate_unavailable' })
+    vi.mocked(createExpenseWithAttachments).mockRejectedValueOnce({
+      message: 'fx_rate_unavailable',
+    })
     const view = renderWithClient(
       <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
     )
@@ -177,25 +181,29 @@ describe('expense form files', () => {
     })
     await addFiles([photo('a.jpg')])
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
-    await waitFor(() => expect(vi.mocked(createExpense)).toHaveBeenCalledTimes(1))
-    const path = vi.mocked(createExpense).mock.calls[0]![1].receipt_path
+    await waitFor(() => expect(vi.mocked(createExpenseWithAttachments)).toHaveBeenCalledTimes(1))
+    const paths = vi.mocked(createExpenseWithAttachments).mock.calls[0]![2]
     view.unmount()
-    expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), [path])
+    expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), paths)
   })
 
-  it('tells the person when the expense saved but its files did not', async () => {
+  it('tells the person when an edit saved but its files did not, and drops the new upload', async () => {
     vi.mocked(setExpenseAttachments).mockRejectedValueOnce({ message: 'attachment_not_found' })
     const onDone = vi.fn()
     renderWithClient(
-      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
+      <ExpenseForm
+        mode="edit"
+        expense={expense({ id: 'e3' })}
+        onDone={onDone}
+        onClose={() => {}}
+      />,
+      seededClient((c) => c.setQueryData(attachmentKeys.list('e3'), [])),
     )
-    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '20' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
-      target: { value: 'Lunch' },
-    })
-    await addFiles([photo('a.jpg'), photo('b.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
-    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    await addFiles([photo('a.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('e3'))
+    const [path] = vi.mocked(uploadReceipt).mock.results.map((r) => r.value as Promise<string>)
+    expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), [await path])
   })
 
   it('fills the form from a scanned receipt, split by item, and saves only when asked', async () => {
@@ -211,7 +219,7 @@ describe('expense form files', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: t('expenses.scan.apply') }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 
-    expect(vi.mocked(createExpense)).not.toHaveBeenCalled()
+    expect(vi.mocked(createExpenseWithAttachments)).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Taqueria Sol')
     expect(screen.getByDisplayValue('2026-11-08')).toBeInTheDocument()
     expect(
@@ -225,7 +233,7 @@ describe('expense form files', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
-    const payload = vi.mocked(createExpense).mock.calls[0]![1]
+    const payload = vi.mocked(createExpenseWithAttachments).mock.calls[0]![1]
     expect(payload).toMatchObject({
       description: 'Taqueria Sol',
       amount_cents: 1600,

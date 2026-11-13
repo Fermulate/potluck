@@ -3,9 +3,9 @@
  * expense (ADR 21). Platform-neutral: no DOM imports.
  */
 import { queryOptions } from '@tanstack/react-query'
-import type { Database } from './database.types'
+import type { Database, Json } from './database.types'
 import type { PotluckClient } from './index'
-import { moneyKeys } from './money'
+import { moneyKeys, type ExpensePayload, type ExpenseRow } from './money'
 
 /** One file on an expense, in order; the first is also `expenses.receipt_path`. */
 export type ExpenseAttachment = Pick<
@@ -49,6 +49,23 @@ export async function setExpenseAttachments(
   paths: string[],
 ): Promise<ExpenseAttachment[]> {
   return unwrap(await client.rpc('set_expense_attachments', { id: expenseId, attachments: paths }))
+}
+
+/**
+ * Creates an expense with its files in one call (`paths` already uploaded, in order), so its
+ * history has one entry and a refused file means nothing is created.
+ */
+export async function createExpenseWithAttachments(
+  client: PotluckClient,
+  payload: ExpensePayload,
+  paths: string[],
+): Promise<ExpenseRow> {
+  return unwrap(
+    await client.rpc('create_expense_with_attachments', {
+      payload: payload as unknown as Json,
+      attachments: paths,
+    }),
+  )
 }
 
 /**

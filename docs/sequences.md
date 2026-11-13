@@ -359,7 +359,11 @@ sequenceDiagram
   O-->>W: text from a lossless grayscale copy (ocrImage pass 1)
   W->>C: parseReceipt(text): itemsMatch?
   opt items do not come to the total
-    W->>O: read again from an enlarged copy (pass 2), keep the better reading
+    W->>O: read again from an enlarged copy (pass 2)
+    opt still far off
+      W->>O: read the plain colour photo (pass 3)
+    end
+    W->>C: bestScan: the reading that comes closest
   end
   O-->>W: worker terminated
   C-->>W: merchant, date, currency, total, items, tax, tip, discount, itemsMatch
@@ -370,9 +374,13 @@ sequenceDiagram
   par each new file
     W->>S: upload receipts/:groupId/:file (policy: member, two-step done)
   end
-  W->>DB: rpc create_expense_v2(payload, receipt_path = first file)
-  DB->>DB: trigger: expense_attachments row 0 = receipt_path
-  opt more than one file (or an edit changed them)
+  alt a new expense with files
+    W->>DB: rpc create_expense_with_attachments(payload, paths in order)
+    DB->>DB: save_expense, then the same file checks, in one transaction:<br/>one expense.created entry, nothing created if a file is refused
+  else a new expense without files
+    W->>DB: rpc create_expense_v2(payload)
+  end
+  opt an edit changed the files
     W->>DB: rpc set_expense_attachments(id, paths in order)
     DB->>DB: group share lock, member, own expense or admin,<br/>paths in the group folder and uploaded, five at most
     DB->>DB: rewrite expense_attachments, receipt_path = first,<br/>activity expense.updated {attachments: {from, to}}

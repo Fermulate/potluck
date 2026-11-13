@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createExpenseWithAttachments,
   attachmentKeys,
   attachmentQueries,
   fetchExpenseAttachments,
@@ -44,6 +45,28 @@ describe('expense attachments', () => {
     await expect(setExpenseAttachments(failing.client, 'e1', [])).rejects.toEqual({
       message: 'too_many_attachments',
     })
+  })
+
+  it('creates an expense with its files in one call', async () => {
+    const fake = fakeSupabase().respond('rpc:create_expense_with_attachments', {
+      data: { id: 'e1' },
+    })
+    const payload = {
+      group_id: 'g1',
+      description: 'Lunch',
+      amount_cents: 2000,
+      currency: 'USD',
+      paid_by: 'u1',
+      split_type: 'equal' as const,
+      splits: [{ user_id: 'u1' }],
+      spent_at: '2026-11-13',
+    }
+    expect(await createExpenseWithAttachments(fake.client, payload, ['g1/a.jpg'])).toEqual({
+      id: 'e1',
+    })
+    expect(fake.rpcArgs('create_expense_with_attachments')).toEqual([
+      { payload, attachments: ['g1/a.jpg'] },
+    ])
   })
 
   it('removes files quietly, and skips the call when there is nothing to remove', async () => {
