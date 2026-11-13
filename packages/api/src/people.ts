@@ -14,7 +14,9 @@ export const peopleKeys = {
   all: ['potluck', 'people'] as const,
   placeholders: (groupId: string) => ['potluck', 'people', 'placeholders', groupId] as const,
   friendLink: (userId: string) => ['potluck', 'people', 'friend-link', userId] as const,
-  friendInvite: (code: string) => ['potluck', 'people', 'friend-invite', code] as const,
+  /** Per viewer, like the group invite preview. */
+  friendInvite: (code: string, viewerId: string | null = null) =>
+    ['potluck', 'people', 'friend-invite', code, viewerId ?? 'anon'] as const,
   blocks: (userId: string) => ['potluck', 'people', 'blocks', userId] as const,
 }
 
@@ -151,9 +153,13 @@ export async function fetchFriendInvitePreview(
   return { ...row, status: row.status as FriendInvitePreview['status'] }
 }
 
-export const friendInvitePreviewQueryOptions = (client: PotluckClient, code: string) =>
+export const friendInvitePreviewQueryOptions = (
+  client: PotluckClient,
+  code: string,
+  viewerId: string | null = null,
+) =>
   queryOptions({
-    queryKey: peopleKeys.friendInvite(code),
+    queryKey: peopleKeys.friendInvite(code, viewerId),
     queryFn: () => fetchFriendInvitePreview(client, code),
     retry: false,
   })

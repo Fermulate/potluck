@@ -374,7 +374,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
                       : t('people.friendPage.youOwe', { name, amount })}
                   </span>
                   <span aria-hidden className="text-mute">
-                    {t('people.friendPage.overall')}{' '}
+                    {net > 0 ? t('balances.youAreOwedTotal') : t('balances.youOweTotal')}{' '}
                   </span>
                   <Amount
                     cents={Math.abs(net)}
@@ -413,7 +413,10 @@ export function FriendPage({ friendId }: { friendId: string }) {
       </header>
 
       {ledger.standings.length > 0 && (
-        <section aria-labelledby="friend-standing" className="mt-8 grid gap-2">
+        <section
+          aria-labelledby="friend-standing"
+          className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-2"
+        >
           <h2 id="friend-standing" className="px-1 text-sm font-bold tracking-tight text-mute">
             {t('people.friendPage.sharedGroups')}
           </h2>
@@ -446,7 +449,10 @@ export function FriendPage({ friendId }: { friendId: string }) {
         </section>
       )}
 
-      <section aria-labelledby="friend-history" className="mt-8 grid gap-4">
+      <section
+        aria-labelledby="friend-history"
+        className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-4"
+      >
         <h2 id="friend-history" className="px-1 text-sm font-bold tracking-tight text-mute">
           {t('people.friendPage.history')}
         </h2>

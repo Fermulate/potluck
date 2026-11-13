@@ -172,7 +172,13 @@ export function FriendEmailInvite() {
             }}
             placeholder={t('people.friendEmail.placeholder')}
           />
-          <Button type="submit" variant="secondary" loading={busy} disabled={!email.trim()}>
+          <Button
+            type="submit"
+            size="lg"
+            variant="secondary"
+            loading={busy}
+            disabled={!email.trim()}
+          >
             {t('people.friendEmail.send')}
           </Button>
         </div>

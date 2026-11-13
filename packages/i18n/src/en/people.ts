@@ -91,7 +91,6 @@ export const people = {
   friendPage: {
     back: 'Friends',
     notFound: 'We could not find this friend.',
-    overall: 'Overall',
     allSettled: 'All settled up',
     owesYou: '{name} owes you {amount}',
     youOwe: 'You owe {name} {amount}',

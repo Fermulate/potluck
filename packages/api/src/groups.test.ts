@@ -404,7 +404,8 @@ describe('query options', () => {
     expect(list.queryKey).toEqual(groupKeys.list('u1'))
     expect(detail.queryKey).toEqual(['potluck', 'groups', 'detail', 'g1'])
     expect(invites.queryKey).toEqual(groupKeys.invites('g1'))
-    expect(preview.queryKey).toEqual(['potluck', 'groups', 'invite-preview', 'abc'])
+    expect(preview.queryKey).toEqual(['potluck', 'groups', 'invite-preview', 'abc', 'anon'])
+    expect(invitePreviewQueryOptions(client, 'abc', 'u1').queryKey).toContain('u1')
     expect(preview.retry).toBe(false)
     expect(friends.queryKey).toEqual(groupKeys.friends('u1'))
 

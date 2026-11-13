@@ -101,7 +101,6 @@ export const people = {
   friendPage: {
     back: 'Amigos',
     notFound: 'No encontramos a este amigo.',
-    overall: 'En total',
     allSettled: 'Todo saldado',
     owesYou: '{name} te debe {amount}',
     youOwe: 'Le debes {amount} a {name}',

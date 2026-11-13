@@ -83,7 +83,7 @@ export function JoinPage({ code }: { code: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reduced = usePrefersReducedMotion()
-  const preview = useQuery(invitePreviewQueryOptions(supabase, code))
+  const preview = useQuery(invitePreviewQueryOptions(supabase, code, session?.user.id ?? null))
   const [joining, setJoining] = useState(false)
   const [burst, setBurst] = useState(0)
   const here = `/join/${code}`

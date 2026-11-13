@@ -59,7 +59,9 @@ export function FriendJoinPage({ code }: { code: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const reduced = usePrefersReducedMotion()
-  const preview = useQuery(friendInvitePreviewQueryOptions(supabase, code))
+  const preview = useQuery(
+    friendInvitePreviewQueryOptions(supabase, code, session?.user.id ?? null),
+  )
   const [joining, setJoining] = useState(false)
   const [burst, setBurst] = useState(0)
   const here = `/friend/${code}`

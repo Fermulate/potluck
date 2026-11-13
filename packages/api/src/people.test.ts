@@ -177,6 +177,7 @@ describe('friend links', () => {
     })
     const options = friendInvitePreviewQueryOptions(fake.client, 'c')
     expect(options.queryKey).toEqual(peopleKeys.friendInvite('c'))
+    expect(friendInvitePreviewQueryOptions(fake.client, 'c', 'u1').queryKey).toContain('u1')
     expect(options.retry).toBe(false)
   })
 

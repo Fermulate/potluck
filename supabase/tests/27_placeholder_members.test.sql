@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(104);
+select plan(108);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -478,6 +478,7 @@ select is(
 );
 update public.app_config set value = 'false' where key = 'email_notifications';
 
+
 select tests.login_anon();
 select is(
   (select (v.placeholder_name, v.email_hint, v.status, v.member_count)::text
@@ -493,6 +494,33 @@ select is(
   (select v.status from public.invite_preview_v2(current_setting('tests.sam_link')) v),
   'valid',
   'a member opening their used link is offered the group'
+);
+
+-- A new address gets a fresh link and invite; an empty one removes it.
+select tests.login('ava');
+select lives_ok(
+  format($$ select public.update_placeholder(%L, null, 'Kim2@Test.Local') $$, tests.id('kim')),
+  'whoever may invite changes where the invite goes'
+);
+reset role;
+select is(
+  (select array_agg(i.email order by i.created_at) filter (where i.revoked_at is null)
+   from public.group_invites i where i.placeholder_id = tests.id('kim')),
+  array['kim2@test.local'],
+  'only the link for the new address is open'
+);
+select is(
+  (select count(*)::int from public.notifications n where n.user_id = tests.id('kim') and n.type = 'member.added'),
+  2,
+  'and a fresh invite goes out'
+);
+select tests.login('ava');
+select public.update_placeholder(tests.id('kim'), null, '');
+reset role;
+select is(
+  (select (x.email is null and x.email_hint is null) from public.placeholders x where x.profile_id = tests.id('kim')),
+  true,
+  'an empty email removes the address'
 );
 
 -- Friends ------------------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { createPlanEvent } from '@potluck/api'
+import { addPlaceholderMember, createPlanEvent, fetchMyFriendLink } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import type { Page, TestInfo } from '@playwright/test'
 import { addEqualExpense, groupWith, guestLinkFor, pollIn } from './support/api'
@@ -210,6 +210,36 @@ test.describe('accessibility', () => {
     await page.goto('/me')
     await expect(page.getByRole('textbox', { name: t('settings.calendar.feed') })).toBeVisible()
     await expect(page.getByRole('switch').nth(1)).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('members with someone not on Potluck yet', async ({ newUser, openAs }, testInfo) => {
+    const { me, group } = await setup(newUser)
+    const sam = unique('Sam')
+    await addPlaceholderMember(me.client, {
+      groupId: group.id,
+      displayName: sam,
+      email: `${sam.toLowerCase()}@potluck.test`,
+    })
+    const page = await openAs(me)
+    await page.goto(`/groups/${group.id}/members`)
+    await expect(page.getByText(t('people.placeholder.badge')).first()).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('friend page', async ({ newUser, openAs }, testInfo) => {
+    const { me, ben } = await setup(newUser)
+    const page = await openAs(me)
+    await page.goto(`/friends/${ben.id}`)
+    await expect(page.getByRole('heading', { level: 1, name: ben.name })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Snacks/ })).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('friend link, signed out', async ({ newUser, page }, testInfo) => {
+    const code = await fetchMyFriendLink((await newUser()).client)
+    await page.goto(`/friend/${code}`)
+    await expect(page.getByRole('link', { name: t('people.friendJoin.signUp') })).toBeVisible()
     await audit(page, testInfo)
   })
 

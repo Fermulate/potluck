@@ -67,7 +67,9 @@ export const groupKeys = {
   list: (userId: string) => ['potluck', 'groups', 'list', userId] as const,
   detail: (groupId: string) => ['potluck', 'groups', 'detail', groupId] as const,
   invites: (groupId: string) => ['potluck', 'groups', 'invites', groupId] as const,
-  invitePreview: (code: string) => ['potluck', 'groups', 'invite-preview', code] as const,
+  /** Per viewer: whether you are in, blocked or holding the seat depends on who asks. */
+  invitePreview: (code: string, viewerId: string | null = null) =>
+    ['potluck', 'groups', 'invite-preview', code, viewerId ?? 'anon'] as const,
   friends: (userId: string) => ['potluck', 'groups', 'friends', userId] as const,
 }
 
@@ -325,9 +327,13 @@ export async function fetchInvitePreview(
   }
 }
 
-export const invitePreviewQueryOptions = (client: PotluckClient, code: string) =>
+export const invitePreviewQueryOptions = (
+  client: PotluckClient,
+  code: string,
+  viewerId: string | null = null,
+) =>
   queryOptions({
-    queryKey: groupKeys.invitePreview(code),
+    queryKey: groupKeys.invitePreview(code, viewerId),
     queryFn: () => fetchInvitePreview(client, code),
     retry: false,
   })
