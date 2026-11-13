@@ -42,9 +42,10 @@ Auth email uses Supabase's built-in sender, which is rate limited and meant for 
 
 1. Create a Resend account and verify the domain.
 2. Supabase dashboard, Authentication, SMTP settings: enter Resend's SMTP details (auth email).
-3. Optionally raise `[auth.rate_limit] email_sent` for production.
-4. Notification email: set the function secrets `RESEND_API_KEY` and `EMAIL_FROM` (for example `Potluck <notifications@fermulate.com>`, optionally `EMAIL_REPLY_TO`), and deploy the `unsubscribe` function with the others.
-5. Flip it on: `update public.app_config set value = 'true' where key = 'email_notifications';`. The Me page then shows the Email column, and the `email-notifications` job starts sending within a minute. Setting it back to `false` stops new email right away.
+3. In `supabase/config.toml`, delete the four `[remotes.production.auth.email.notification.*]` blocks so production sends the Potluck security notice subjects. The built-in sender refuses custom subjects, so do this only after step 2.
+4. Optionally raise `[auth.rate_limit] email_sent` for production.
+5. Notification email: set the function secrets `RESEND_API_KEY` and `EMAIL_FROM` (for example `Potluck <notifications@fermulate.com>`, optionally `EMAIL_REPLY_TO`), and deploy the `unsubscribe` function with the others.
+6. Flip it on: `update public.app_config set value = 'true' where key = 'email_notifications';`. The Me page then shows the Email column, and the `email-notifications` job starts sending within a minute. Setting it back to `false` stops new email right away.
 
 Nothing else changes: the sender, the outbox, the monthly summary job and the unsubscribe links are already deployed ([ADR 11](adr/0011-notification-prefs-and-email.md)).
 
