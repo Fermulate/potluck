@@ -36,13 +36,13 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 | -------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`                 | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account        |
 | `SUPABASE_ACCESS_TOKEN`                | Supabase CLI (personal access token from the dashboard)                                  |
-| `SUPABASE_DB_PASSWORD`                 | `supabase db push` to the remote database                                                |
+| `SUPABASE_DB_PASSWORD`                 | Optional. The pinned CLI signs in with a temporary role made from the access token       |
 | `SUPABASE_URL`                         | `keepalive.yml` daily ping                                                               |
 | `SUPABASE_PUBLISHABLE_KEY`             | `keepalive.yml` daily ping                                                               |
 | `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push`, once Google sign in is enabled (`production` environment secret) |
 | `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`  | `supabase config push`, once Apple sign in is enabled (`production` environment secret)  |
 
-Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without both Supabase secrets the `migrate` job logs a notice and skips. That keeps forks green.
+Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without `SUPABASE_ACCESS_TOKEN` the `migrate` job logs a notice and skips. That keeps forks green.
 
 ## What a production deploy does
 
@@ -53,7 +53,7 @@ A push to `main` runs `ci.yml` first. When that run finishes, `deploy.yml` start
    supabase link --project-ref $SUPABASE_PROJECT_REF
    supabase db push --remote --yes      # new migrations only
    supabase config push --yes           # auth, storage and pooler settings
-   supabase functions deploy            # every function in supabase/functions
+   supabase functions deploy --use-api  # every function in supabase/functions
    ```
 2. **web**, only if `migrate` succeeded or was skipped: `pnpm turbo run build --filter=@potluck/web`, then `wrangler deploy` from `apps/web`. `wrangler.jsonc` lists `potluck.fermulate.com` as a custom domain route, so a deploy keeps it attached, and sets `workers_dev` and `preview_urls` so the workers.dev URL and PR previews stay up.
 3. **smoke test**: `GET $VITE_APP_URL/groups` up to six times, 10 seconds apart. Anything other than a 200 fails the run. `/groups` is a client route, so a 200 proves the SPA fallback works too.

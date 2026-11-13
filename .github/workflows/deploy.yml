@@ -22,7 +22,9 @@ permissions:
 
 env:
   HAS_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-  HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != '' }}
+  # The pinned CLI signs in to the database with a temporary role made from the access token,
+  # so the database password is optional.
+  HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' }}
 
 jobs:
   migrate:
@@ -54,10 +56,10 @@ jobs:
           supabase link --project-ref ${{ vars.SUPABASE_PROJECT_REF || 'mzotlkpghnrwbezcazld' }}
           supabase db push --remote --yes
           supabase config push --yes
-          supabase functions deploy
+          supabase functions deploy --use-api
       - name: Skip (no Supabase credentials)
         if: env.HAS_SUPABASE != 'true'
-        run: echo "::notice::SUPABASE_ACCESS_TOKEN or SUPABASE_DB_PASSWORD not set, skipping migrations."
+        run: echo "::notice::SUPABASE_ACCESS_TOKEN not set, skipping migrations."
 
   web:
     name: Deploy web to Cloudflare
