@@ -114,6 +114,7 @@ export const transfer = {
       '{count} payment is between two other people, and only owners and admins can bring those in. Leave one of them out, or ask an admin to import the file.',
     notAParty_other:
       '{count} payments are between two other people, and only owners and admins can bring those in. Leave one of them out, or ask an admin to import the file.',
+    seatOption: '{name} (not on Potluck yet)',
     leftOption: '{name} (left the group)',
     skipPerson: 'Leave out their rows',
     rates: {

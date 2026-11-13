@@ -40,11 +40,11 @@ export {
   ledgerPeople,
   looksLikeLedger,
   parseLedger,
-  type LedgerExpense,
+  type CsvExpense,
   type LedgerGroup,
   type LedgerLabels,
   type LedgerOptions,
-  type LedgerPayment,
+  type CsvPayment,
 } from './ledger'
 export { readImportFile } from './read'
 export {

@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(84);
+select plan(88);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -495,6 +495,36 @@ select throws_ok(
 reset role;
 select is(pg_temp.bal('left', 'dan'), 0::bigint, 'their balance did not move');
 
+-- Seats and 1:1 tabs (ADR 19) ----------------------------------------------------------------
+
+select tests.login('ava');
+select tests.remember('sam', public.add_placeholder_member(tests.id('g'), 'Sam Seat'));
+select is(
+  public.import_expenses(tests.id('g'), jsonb_build_array(
+    pg_temp.expense('Seat lunch', 2000, jsonb_build_array(pg_temp.cents('ava', 2000, 'paid_cents')),
+      jsonb_build_array(jsonb_build_object('user_id', tests.id('sam'), 'share_cents', 2000))))),
+  '{"expenses": 1, "payments": 0}'::jsonb,
+  'a seat (someone not on Potluck yet) can be in an imported row like any member'
+);
+
+select tests.login('ben');
+select tests.remember('dm', public.get_or_create_direct_group(tests.uid('cleo')));
+select tests.login('cleo');
+select public.block_user(tests.uid('ben'));
+select tests.login('ben');
+select throws_ok(
+  format($$ select public.import_expenses(%L, jsonb_build_array(pg_temp.payment('ben', 'cleo', 100))) $$,
+    tests.id('dm')),
+  '42501', 'not_a_friend', 'the blocked side of a 1:1 tab cannot import into it'
+);
+select tests.login('cleo');
+select is(
+  public.import_expenses(tests.id('dm'), jsonb_build_array(pg_temp.payment('cleo', 'ben', 100))),
+  '{"expenses": 0, "payments": 1}'::jsonb,
+  'the person who blocked still can, as with every money write there'
+);
+reset role;
+
 -- Backup -------------------------------------------------------------------------------------
 
 insert into public.comments (expense_id, author_id, body)
@@ -593,6 +623,12 @@ select ok(
 select ok(
   (select bool_or(p ->> 'id' = tests.uid('eve')::text) from backup, jsonb_array_elements(doc -> 'people') p),
   'so is whoever added an expense and left, though they are in no split'
+);
+select is(
+  (select p ->> 'placeholder' || ' ' || (p ->> 'display_name') from backup, jsonb_array_elements(doc -> 'people') p
+   where p ->> 'id' = tests.id('sam')::text),
+  'true Sam Seat',
+  'seats are people in the backup, marked as seats'
 );
 select ok(
   not exists (select 1 from backup, jsonb_array_elements(doc -> 'people') p

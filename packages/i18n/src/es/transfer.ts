@@ -117,6 +117,7 @@ export const transfer = {
       '{count} pago es entre otras dos personas, y solo propietarios y admins pueden traer esos. Deja fuera a una de ellas, o pide a un admin que importe el archivo.',
     notAParty_other:
       '{count} pagos son entre otras dos personas, y solo propietarios y admins pueden traer esos. Deja fuera a una de ellas, o pide a un admin que importe el archivo.',
+    seatOption: '{name} (aún no está en Potluck)',
     leftOption: '{name} (dejó el grupo)',
     skipPerson: 'Dejar fuera sus filas',
     rates: {

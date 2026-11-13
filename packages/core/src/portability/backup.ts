@@ -161,7 +161,15 @@ export const backupSchema = z.object({
   }),
   /** The account's own ways to be paid (ADR 15); other people's are never in a backup. */
   payment_methods: z.array(z.object({ kind: z.string(), handle: z.string(), updated_at: time })),
-  people: z.array(z.object({ id: uuid, display_name: z.string(), deleted: z.boolean() })),
+  people: z.array(
+    z.object({
+      id: uuid,
+      display_name: z.string(),
+      deleted: z.boolean(),
+      /** A seat: someone added by name who is not on Potluck yet (ADR 19). */
+      placeholder: z.boolean(),
+    }),
+  ),
   friends: z.array(uuid),
   groups: z.array(group),
 })

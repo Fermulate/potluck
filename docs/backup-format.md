@@ -14,16 +14,16 @@ One file, written by `export_my_data()`. Conventions:
 
 Top level:
 
-| Field             | What                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `format`          | always `"potluck-backup"`                                                                                                                         |
-| `version`         | `1`                                                                                                                                               |
-| `exported_at`     | when the file was made                                                                                                                            |
-| `profile`         | `id`, `display_name`, `email` (sign in address), `avatar_path`, `timezone`, `default_currency`, `locale`, `created_at`                            |
-| `payment_methods` | your own ways to be paid: `kind` (`paypal`, `venmo`, ...), `handle`, `updated_at`. Other people's are never in your file.                         |
-| `people`          | everyone the file mentions: `id`, `display_name`, `deleted` (closed account). People who left a group stay here so old expenses keep their names. |
-| `friends`         | ids of everyone you share or shared a group with                                                                                                  |
-| `groups`          | every group you are in, archived ones too, oldest first                                                                                           |
+| Field             | What                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format`          | always `"potluck-backup"`                                                                                                                                                                                                          |
+| `version`         | `1`                                                                                                                                                                                                                                |
+| `exported_at`     | when the file was made                                                                                                                                                                                                             |
+| `profile`         | `id`, `display_name`, `email` (sign in address), `avatar_path`, `timezone`, `default_currency`, `locale`, `created_at`                                                                                                             |
+| `payment_methods` | your own ways to be paid: `kind` (`paypal`, `venmo`, ...), `handle`, `updated_at`. Other people's are never in your file.                                                                                                          |
+| `people`          | everyone the file mentions: `id`, `display_name`, `deleted` (closed account), `placeholder` (a seat: someone added by name who is not on Potluck yet, ADR 19). People who left a group stay here so old expenses keep their names. |
+| `friends`         | ids of everyone you share or shared a group with                                                                                                                                                                                   |
+| `groups`          | every group you are in, archived ones too, oldest first                                                                                                                                                                            |
 
 Each group: `id`, `name`, `emoji`, `color`, `currency`, `is_direct` (a 1:1 tab), `simplify_debts`, `members_can_invite`, `default_split` (as stored, see [architecture](architecture.md)), `created_by`, `created_at`, `archived_at`, and:
 

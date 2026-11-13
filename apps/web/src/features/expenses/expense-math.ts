@@ -5,8 +5,8 @@ import {
   ledgerCsv,
   ledgerPeople,
   type BalanceExpense,
-  type LedgerExpense,
-  type LedgerPayment,
+  type CsvExpense,
+  type CsvPayment,
 } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { ledgerLabels } from '@/features/export-import/labels'
@@ -131,7 +131,7 @@ export function departedMembers(
 }
 
 /** An expense as the spreadsheet export takes it. */
-export function toLedgerExpense(e: ExpenseWithSplits): LedgerExpense {
+export function toLedgerExpense(e: ExpenseWithSplits): CsvExpense {
   return {
     description: e.description,
     category: e.category,
@@ -161,7 +161,7 @@ export function toLedgerExpense(e: ExpenseWithSplits): LedgerExpense {
  * A payment as the spreadsheet export takes it, dated in the viewer's zone: the day it was
  * recorded for, whose rate it took (`settle_up_v2` and `import_expenses` store noon that day).
  */
-export function toLedgerPayment(s: Settlement, timeZone: string): LedgerPayment {
+export function toLedgerPayment(s: Settlement, timeZone: string): CsvPayment {
   return {
     fromUser: s.from_user,
     toUser: s.to_user,

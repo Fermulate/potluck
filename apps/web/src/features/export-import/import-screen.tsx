@@ -631,7 +631,13 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   })
 
   const options_ = [
-    ...group.members.map((m) => ({ value: m.id, label: m.display_name })),
+    // Seats (people not on Potluck yet) are members: a file's name can go to one.
+    ...group.members.map((m) => ({
+      value: m.id,
+      label: m.is_placeholder
+        ? t('transfer.import.seatOption', { name: m.display_name })
+        : m.display_name,
+    })),
     ...former.map((f) => ({
       value: f.id,
       label: t('transfer.import.leftOption', { name: f.name }),

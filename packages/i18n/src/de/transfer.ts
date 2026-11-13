@@ -118,6 +118,7 @@ export const transfer = {
       '{count} Zahlung ist zwischen zwei anderen Personen, und nur Eigentümer und Admins können solche importieren. Lass eine der beiden weg oder bitte einen Admin, die Datei zu importieren.',
     notAParty_other:
       '{count} Zahlungen sind zwischen zwei anderen Personen, und nur Eigentümer und Admins können solche importieren. Lass eine der beiden weg oder bitte einen Admin, die Datei zu importieren.',
+    seatOption: '{name} (noch nicht bei Potluck)',
     leftOption: '{name} (hat die Gruppe verlassen)',
     skipPerson: 'Zeilen dieser Person weglassen',
     rates: {

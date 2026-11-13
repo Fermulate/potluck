@@ -118,6 +118,7 @@ export const transfer = {
       '{count} paiement est entre deux autres personnes, et seuls les propriétaires et admins peuvent les importer. Écarte l’une d’elles, ou demande à un admin d’importer le fichier.',
     notAParty_other:
       '{count} paiements sont entre deux autres personnes, et seuls les propriétaires et admins peuvent les importer. Écarte l’une d’elles, ou demande à un admin d’importer le fichier.',
+    seatOption: '{name} (pas encore sur Potluck)',
     leftOption: '{name} (a quitté le groupe)',
     skipPerson: 'Écarter ses lignes',
     rates: {

@@ -458,6 +458,34 @@ describe('ImportScreen', () => {
     expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
   })
 
+  it('matches a name in the file to a seat for someone not on Potluck yet', async () => {
+    const SEAT = 'eeeeeeee-0000-4000-8000-000000000005'
+    renderScreen({
+      group: {
+        members: [
+          ...members,
+          {
+            id: SEAT,
+            display_name: 'Sam Seat',
+            avatar_path: null,
+            deleted_at: null,
+            role: 'member',
+            is_placeholder: true,
+          },
+        ],
+      },
+    })
+    await upload(SPLITWISE.replace('Cleo Park', 'Sam Seat'))
+    expect(screen.getByRole('combobox', { name: 'Sam Seat' })).toHaveTextContent(
+      t('transfer.import.seatOption', { name: 'Sam Seat' }),
+    )
+    fireEvent.click(await submitButton(4))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save.mock.calls[0]![2][0]).toMatchObject({
+      splits: expect.arrayContaining([{ user_id: SEAT, share_cents: 3000 }]),
+    })
+  })
+
   it('lets an admin import payments between two other people', async () => {
     const between = `${HEADER}\n2026-03-03,Cleo P. paid Ben J.,Payment,30.00,USD,0.00,-30.00,30.00`
     renderScreen({

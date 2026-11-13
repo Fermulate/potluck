@@ -19,7 +19,10 @@ const sample = {
     created_at: at,
   },
   payment_methods: [],
-  people: [{ id: id(1), display_name: 'Ava', deleted: false }],
+  people: [
+    { id: id(1), display_name: 'Ava', deleted: false, placeholder: false },
+    { id: id(3), display_name: 'Sam', deleted: false, placeholder: true },
+  ],
   friends: [id(2)],
   groups: [
     {
@@ -127,6 +130,10 @@ describe('backupSchema', () => {
     expect(parsed.payment_methods[0]!.handle).toBe('avachen')
     expect(parsed.groups[0]!.payments[0]!.comments[0]!.body).toBe('Thanks!')
     expect(parsed.groups[0]!.recurring[0]!.anchor_day).toBe(31)
+  })
+
+  it('lists seats as people, marked as seats', () => {
+    expect(backupSchema.parse(sample).people.find((p) => p.placeholder)?.display_name).toBe('Sam')
   })
 
   it('wants every field export_my_data writes', () => {

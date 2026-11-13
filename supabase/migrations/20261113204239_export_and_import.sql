@@ -32,7 +32,11 @@
 -- version 1, documented in docs/backup-format.md). Rates are decimal text, like every read.
 -- It carries payment comments, repeating expense templates and the caller's own payment methods
 -- (other people's methods stay out of it). `people` names every person id the groups mention,
--- read back from the id fields of the groups document itself, plus the caller's friends.
+-- read back from the id fields of the groups document itself, plus the caller's friends; seats
+-- (placeholders, ADR 19) are people like anyone, marked `placeholder`.
+--
+-- Seats are members, so an import maps a name to a seat like to anyone. In a 1:1 tab across a
+-- block the blocked side cannot import (not_a_friend, as every money write there, ADR 19).
 
 -- Holding back per row side effects -----------------------------------------------------------
 
@@ -346,6 +350,16 @@ begin
   my_role := private.require_member(gid);
   perform private.require_unarchived(gid);
   select * into g from public.groups x where x.id = gid;
+
+  -- A 1:1 tab across a block is frozen for the blocked side (ADR 19): said once here, before any
+  -- row is read, with the answer private.freeze_blocked_direct_money gives every row it stops.
+  if g.is_direct and exists (
+    select 1 from public.blocks b
+    join public.group_members m on m.group_id = gid and m.user_id = b.blocker_id
+    where b.blocked_id = uid
+  ) then
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
+  end if;
 
   -- Every row read once.
   insert into private.import_input (
@@ -810,7 +824,8 @@ begin
     -- Everyone the file mentions, so names survive people leaving or closing their account.
     'people', coalesce((
       select jsonb_agg(jsonb_build_object('id', p.id, 'display_name', p.display_name,
-                         'deleted', p.deleted_at is not null) order by p.id)
+                         'deleted', p.deleted_at is not null,
+                         'placeholder', p.is_placeholder) order by p.id)
       from public.profiles p
       where p.id in (
         select (v #>> '{}')::uuid

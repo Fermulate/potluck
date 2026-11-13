@@ -43,9 +43,9 @@ const backup: Backup = {
     created_at: at,
   },
   people: [
-    { id: ME, display_name: 'Ava Chen', deleted: false },
-    { id: BEN, display_name: 'Ben Okafor', deleted: false },
-    { id: CLEO, display_name: 'Cleo Park', deleted: false },
+    { id: ME, display_name: 'Ava Chen', deleted: false, placeholder: false },
+    { id: BEN, display_name: 'Ben Okafor', deleted: false, placeholder: false },
+    { id: CLEO, display_name: 'Cleo Park', deleted: false, placeholder: false },
   ],
   payment_methods: [],
   friends: [BEN, CLEO],

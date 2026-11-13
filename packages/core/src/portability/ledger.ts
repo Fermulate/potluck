@@ -59,7 +59,7 @@ export interface LedgerLabels {
   categories: Readonly<Record<string, string>>
 }
 
-export interface LedgerExpense {
+export interface CsvExpense {
   description: string
   category: string | null
   notes: string | null
@@ -78,7 +78,7 @@ export interface LedgerExpense {
   discountCents?: number | null
 }
 
-export interface LedgerPayment {
+export interface CsvPayment {
   fromUser: string
   toUser: string
   amountCents: number
@@ -93,8 +93,8 @@ export interface LedgerPayment {
 export interface LedgerGroup {
   name: string
   currency: string
-  expenses: readonly LedgerExpense[]
-  payments: readonly LedgerPayment[]
+  expenses: readonly CsvExpense[]
+  payments: readonly CsvPayment[]
 }
 
 export interface LedgerOptions {
@@ -123,7 +123,7 @@ function uniqueNames(names: readonly string[]): string[] {
   })
 }
 
-function itemsText(expense: LedgerExpense, labels: LedgerLabels, nameOf: (id: string) => string) {
+function itemsText(expense: CsvExpense, labels: LedgerLabels, nameOf: (id: string) => string) {
   const money = (cents: number) => formatMinor(cents, expense.currency)
   const parts = (expense.items ?? []).map(
     (item) =>
@@ -136,7 +136,7 @@ function itemsText(expense: LedgerExpense, labels: LedgerLabels, nameOf: (id: st
 }
 
 /** The effect of one expense on everyone, in the group currency (positive = is owed). */
-function effectOf(expense: LedgerExpense, groupCurrency: string): Record<string, number> {
+function effectOf(expense: CsvExpense, groupCurrency: string): Record<string, number> {
   return (
     expenseEffect(
       {
