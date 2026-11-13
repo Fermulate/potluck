@@ -15,6 +15,12 @@ export const notifications = {
   earlier: 'Earlier',
   new: 'New',
   types: {
+    account: {
+      mfaRemoved: {
+        title: 'Two-step sign in is off',
+        body: 'A recovery code was used to sign in. If that was not you, change your password now.',
+      },
+    },
     summary: {
       monthly: { title: 'Your month in Potluck', settled: 'All settled up. Nice work.' },
       owed: '{group}: you are owed {amount}',
@@ -240,6 +246,124 @@ export const unsubscribe = {
     'It may have been cut off when it was copied. Try the link in your latest Potluck email, or change your settings on the Me page.',
   failed: 'Your settings did not update. Check your connection and try again.',
   retry: 'Try again',
+} as const
+
+/** Me page: email, password, devices, two-step sign in, language and about. */
+export const security = {
+  title: 'Sign in and security',
+  email: {
+    label: 'Email',
+    change: 'Change email',
+    newEmail: 'New email',
+    hint: 'We send a link to your old and your new address. The switch happens once both are confirmed.',
+    submit: 'Send confirmation links',
+    same: 'That is already your email.',
+    sent: 'Links sent. Open both inboxes to finish.',
+    pending: 'Waiting for you to confirm {email} from both inboxes.',
+    changed: 'Your email is now {email}.',
+    halfConfirmed: 'One down. Now open the link we sent to your other address.',
+    cancel: 'Cancel the change',
+    cancelled: 'Change cancelled. Your email stays {email}.',
+  },
+  password: {
+    label: 'Password',
+    change: 'Change password',
+    set: 'Set a password',
+    setHint:
+      'You sign in with Google or Apple today. Add a password to sign in with your email too.',
+    current: 'Current password',
+    next: 'New password',
+    confirm: 'New password again',
+    mismatch: 'The new passwords do not match.',
+    wrongCurrent: 'That is not your current password.',
+    submit: 'Save password',
+    saved: 'Password saved. Your other devices are signed out.',
+    forgot: 'Forgot it?',
+    reauthTitle: 'Check your email',
+    reauthBody:
+      'You signed in a while ago, so we sent a code to {email}. Enter it to save the new password.',
+    reauthCode: 'Code from the email',
+  },
+  sessions: {
+    label: 'Devices',
+    hint: 'Lost a phone or used a shared computer? This signs out every device, this one too.',
+    signOutAll: 'Sign out everywhere',
+    confirmTitle: 'Sign out on every device?',
+    confirmBody:
+      'Every phone, tablet and browser on your account will need to sign in again, including this one.',
+    done: 'Signed out on every device.',
+  },
+  twoFactor: {
+    title: 'Two-step sign in',
+    hint: 'After your password or sign-in link, Potluck asks for a code from an authenticator app.',
+    on: 'On',
+    off: 'Off',
+    enable: 'Set up',
+    disable: 'Turn off',
+    since: 'On since {date}',
+    enabled: 'Two-step sign in is on.',
+    disabled: 'Two-step sign in is off.',
+    wrongCode: 'That code did not work. Check the app and try again.',
+    code: '6‑digit code',
+    setup: {
+      title: 'Set up two-step sign in',
+      scan: 'Scan this with an authenticator app like 1Password, Google Authenticator or Authy.',
+      qr: 'QR code for your authenticator app',
+      manual: 'Cannot scan it? Type this key into the app instead.',
+      copyKey: 'Copy key',
+      enter: 'Then enter the code the app shows.',
+      submit: 'Turn on',
+    },
+    recovery: {
+      title: 'Save your recovery codes',
+      body: 'Lost your phone? Each code gets you in once and turns two-step sign in off, so you can set it up again. Keep them somewhere safe, like a password manager.',
+      copy: 'Copy codes',
+      download: 'Download',
+      fileName: 'potluck-recovery-codes.txt',
+      done: 'I saved them',
+      left_zero: 'No recovery codes left',
+      left_one: '{count} recovery code left',
+      left_other: '{count} recovery codes left',
+      regenerate: 'New recovery codes',
+      regenerateBody: 'Your old codes stop working right away.',
+    },
+    disableTitle: 'Turn off two-step sign in?',
+    disableBody: 'Enter a code from your authenticator app to confirm it is you.',
+  },
+  challenge: {
+    title: 'One more step',
+    body: 'Open your authenticator app and enter the 6‑digit code for Potluck.',
+    submit: 'Verify',
+    useRecovery: 'Use a recovery code',
+    useApp: 'Use my authenticator app',
+    recoveryCode: 'Recovery code',
+    recoveryPlaceholder: 'XXXXX-XXXXX',
+    recoveryBody:
+      'Enter one of the codes you saved. Two-step sign in turns off so you can set it up on your new phone.',
+    recovered: 'You are in. Two-step sign in is off for now, so set it up again from Me.',
+    wrongRecovery: 'That recovery code did not work.',
+    signOut: 'Use another account',
+  },
+  language: {
+    label: 'Language',
+    hint: 'Anything not translated yet shows in English.',
+    saved: 'Language saved.',
+  },
+  about: {
+    title: 'About Potluck',
+    version: 'Version {version}',
+    feedback: 'Send feedback',
+  },
+  errors: {
+    same_password: 'That is your current password. Pick a new one.',
+    email_address_invalid: 'That email does not look right.',
+    mfa_verification_failed: 'That code did not work. Check the app and try again.',
+    insufficient_aal: 'Finish two-step sign in first.',
+    reauthentication_needed: 'For safety, sign out and back in before changing this.',
+    invalid_recovery_code: 'That recovery code did not work.',
+    too_many_attempts: 'Too many tries. Wait 15 minutes, then try again.',
+    reauthentication_not_valid: 'That code did not work. Check the email and try again.',
+  },
 } as const
 
 /** Empty states: serif italic headline, one line, one clear action. */

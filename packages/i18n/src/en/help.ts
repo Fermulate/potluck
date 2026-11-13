@@ -27,6 +27,7 @@ export const help = {
     calendarFeed: 'How the calendar feed works',
     push: 'Setting up push',
     deleteAccount: 'What happens to your groups',
+    twoFactor: 'How two-step sign in works',
     recurringEdit: 'Changing a repeating expense',
     splitAdjustment: 'How adjustments work',
     payers: 'When several people paid',

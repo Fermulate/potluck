@@ -25,6 +25,7 @@ Participants used throughout:
 - [Daily FX sync](#daily-fx-sync)
 - [Notification settings, email and the monthly summary](#notification-settings-email-and-the-monthly-summary)
 - [Delete an account](#delete-an-account)
+- [Two-step sign in](#two-step-sign-in)
 - [Deploy pipeline](#deploy-pipeline)
 
 ## Sign up and profile creation
@@ -499,6 +500,49 @@ sequenceDiagram
 ```
 
 After this every RPC answers `account_deleted` for that id, and closed accounts never receive notifications. The edge function also deletes the avatar files, and a trigger drops the calendar feed token.
+
+## Two-step sign in
+
+Set up from Me (Supabase Auth TOTP), enforced by the database ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)). Any first step (password, magic link, Google or Apple) ends in an `aal1` session; only a code makes it `aal2`.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Web
+  participant A as Auth
+  participant DB as DB
+  participant E as Edge mfa-recover
+
+  Note over U,DB: Setup, on Me
+  W->>A: mfa.enroll(totp), after dropping any unfinished one
+  A-->>W: QR code and secret
+  U->>W: first code from the app
+  W->>A: mfa.challengeAndVerify(code)
+  A-->>W: session upgraded to aal2
+  W->>DB: rpc create_mfa_recovery_codes() (aal2 only)
+  DB-->>W: ten codes, stored as SHA-256
+  Note over U,DB: Signing in later
+  U->>W: password (or link, or OAuth)
+  A-->>W: aal1 session
+  W->>W: _app beforeLoad: needsSecondFactor, go to /two-factor
+  W->>DB: any REST or RPC call meanwhile
+  DB-->>W: mfa_required (pre-request check)
+  alt code from the app
+    U->>W: 6-digit code
+    W->>A: mfa.challengeAndVerify
+    A-->>W: aal2 session, continue to the redirect
+  else phone lost
+    U->>W: recovery code
+    W->>E: POST mfa-recover (aal1 JWT, code)
+    E->>DB: mfa_recovery_code_matches (service role)
+    E->>A: admin: delete every factor
+    E->>DB: forget_mfa_recovery_codes
+    W->>A: refreshSession, no factor left, continue
+  end
+```
+
+Turning it off asks for a fresh code first (`challengeAndVerify`, then `unenroll`); Supabase refuses to remove a verified factor from an `aal1` session anyway.
 
 ## Deploy pipeline
 

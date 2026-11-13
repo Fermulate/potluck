@@ -115,6 +115,13 @@ describe('describeNotification', () => {
     expect(view.kind).toBe('other')
     expect(view.target).toEqual({ to: '/notifications' })
   })
+
+  it('warns that a recovery code turned two-step sign in off and opens Me', () => {
+    const view = describeNotification(row('account.mfa_removed', {}), ctx)
+    expect(view.title).toBe('Two-step sign in is off')
+    expect(view.body).toMatch(/change your password/)
+    expect(view.target).toEqual({ to: '/me' })
+  })
 })
 
 describe('deletions, being added, and the monthly summary', () => {

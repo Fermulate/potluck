@@ -204,8 +204,11 @@ export const errors = {
     settlement_not_found: 'That payment is gone.',
     event_not_in_group: 'That plan is not in this group.',
     invalid_notification_category: 'That notification setting does not exist.',
+    notification_setting_required:
+      'Security notices always come through, so they cannot be turned off.',
     invalid_unsubscribe_link:
       'This unsubscribe link does not work. Change email settings on the Me page instead.',
+    mfa_required: 'Finish two-step sign in first.',
   },
   auth: {
     invalidCredentials: 'That email and password do not match.',

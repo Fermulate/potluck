@@ -266,10 +266,12 @@ export function ExpenseHistory({
   if (entries.length === 0) {
     return e.created_by ? (
       <p className="text-sm text-mute">
-        {t('expenses.createdBy', {
-          name: nameOf(e.created_by),
-          when: formatRelative(e.created_at, { timeZone }),
-        })}
+        {e.created_by === me
+          ? t('expenses.createdByYou', { when: formatRelative(e.created_at, { timeZone }) })
+          : t('expenses.createdBy', {
+              name: nameOf(e.created_by),
+              when: formatRelative(e.created_at, { timeZone }),
+            })}
       </p>
     ) : null
   }
@@ -307,7 +309,9 @@ export function ExpenseHistory({
                 )}
               />
               <span className="font-semibold text-ink">
-                {t(`expenses.history.${verb}`, { name: nameOf(entry.actor_id ?? '') })}
+                {entry.actor_id === me
+                  ? t(`expenses.history.self.${verb}`)
+                  : t(`expenses.history.${verb}`, { name: nameOf(entry.actor_id ?? '') })}
               </span>
               {legacyAmount && (
                 <span className="text-mute">

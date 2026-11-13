@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { OnboardingPage } from '@/features/onboarding/onboarding-page'
-import { getSession, safeRedirect } from '@/lib/auth'
+import { getSession, needsSecondFactor, safeRedirect } from '@/lib/auth'
 import { redirectSearch } from '@/lib/search'
 
 export const Route = createFileRoute('/welcome')({
@@ -8,6 +8,9 @@ export const Route = createFileRoute('/welcome')({
   beforeLoad: async ({ location }) => {
     const session = await getSession()
     if (!session) throw redirect({ to: '/sign-in', search: { redirect: location.href } })
+    if (needsSecondFactor(session)) {
+      throw redirect({ to: '/two-factor', search: { redirect: location.href } })
+    }
     return { userId: session.user.id }
   },
   component: WelcomeRoute,

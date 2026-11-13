@@ -1,5 +1,5 @@
 import { dayKey } from '@potluck/core'
-import { DEFAULT_LOCALE, formatDate, formatTime, t } from '@potluck/i18n'
+import { formatDate, formatTime, localDateFormat, t } from '@potluck/i18n'
 import { Button, Card, Stamp, StampAnimation, cn } from '@potluck/ui'
 import { CalendarPlus, MapPin } from 'lucide-react'
 import { downloadIcs, googleCalendarUrl, type CalendarEvent } from './calendar'
@@ -12,12 +12,9 @@ export interface ScheduledHeroProps {
   justLocked: boolean
 }
 
-const weekdayFmt = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
-  weekday: 'narrow',
-  timeZone: 'UTC',
-})
-const dayFmt = new Intl.DateTimeFormat(DEFAULT_LOCALE, { day: 'numeric', timeZone: 'UTC' })
-const stampCaption = new Intl.DateTimeFormat(DEFAULT_LOCALE, {
+const weekdayFmt = localDateFormat({ weekday: 'narrow', timeZone: 'UTC' })
+const dayFmt = localDateFormat({ day: 'numeric', timeZone: 'UTC' })
+const stampCaption = localDateFormat({
   weekday: 'short',
   month: 'short',
   day: 'numeric',

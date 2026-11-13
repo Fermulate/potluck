@@ -41,6 +41,28 @@ describe('Sheet', () => {
     expect(trigger).toHaveFocus()
   })
 
+  it('stays open until answered when it is not dismissible', async () => {
+    function Must() {
+      const [open, setOpen] = useState(true)
+      return (
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetContent title="Save these" closeLabel="Close" dismissible={false}>
+            <button type="button" onClick={() => setOpen(false)}>
+              I saved them
+            </button>
+          </SheetContent>
+        </Sheet>
+      )
+    }
+    render(<Must />)
+    await screen.findByRole('dialog', { name: 'Save these' })
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'I saved them' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
   it('closes on Escape', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByRole('button', { name: 'Add expense' }))

@@ -14,6 +14,7 @@ export type NotificationTarget =
   | { to: '/groups/$groupId/members'; params: { groupId: string } }
   | { to: '/notifications'; params?: undefined }
   | { to: '/home'; params?: undefined }
+  | { to: '/me'; params?: undefined }
 
 export interface NotificationView {
   title: string
@@ -221,6 +222,13 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         body: t('notifications.types.member.added.body', { actor }),
         kind: 'people',
         target: toGroup(),
+      }
+    case 'account.mfa_removed':
+      return {
+        title: t('notifications.types.account.mfaRemoved.title'),
+        body: t('notifications.types.account.mfaRemoved.body'),
+        kind: 'other',
+        target: { to: '/me' },
       }
     case 'summary.monthly':
       return {

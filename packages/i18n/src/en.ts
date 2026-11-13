@@ -3,7 +3,7 @@ import { auth, onboarding } from './en/auth'
 import { groups, members, roles, invites, friends } from './en/groups'
 import { expenses, categories, splitTypes, balances, settle, activity } from './en/money'
 import { events, availability, bestTime, rsvp, timeline, home } from './en/plans'
-import { notifications, settings, account, unsubscribe } from './en/me'
+import { notifications, settings, account, unsubscribe, security } from './en/me'
 import { help } from './en/help'
 
 /**
@@ -45,6 +45,7 @@ export const en = {
   settings,
   account,
   unsubscribe,
+  security,
   help,
   empty,
   errors,

@@ -1,7 +1,14 @@
 import type * as ApiModule from '@potluck/api'
 import type { Session } from '@supabase/supabase-js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSession, needsOnboarding, safeRedirect, signOut } from './auth'
+import {
+  assuranceLevel,
+  getSession,
+  needsOnboarding,
+  needsSecondFactor,
+  safeRedirect,
+  signOut,
+} from './auth'
 
 const fake = vi.hoisted(() => ({
   session: null as null | { user: { id: string } },
@@ -112,5 +119,44 @@ describe('signOut', () => {
     await signOut()
     expect(fake.deletePushToken).not.toHaveBeenCalled()
     expect(fake.authSignOut).toHaveBeenCalled()
+  })
+
+  it('revokes every session of the account when asked to', async () => {
+    fake.subscription = null
+    await signOut('global')
+    expect(fake.authSignOut).toHaveBeenCalledWith({ scope: 'global' })
+  })
+
+  it('reports a failed global sign out instead of pretending it worked', async () => {
+    fake.subscription = null
+    const failure = { code: 'unexpected_failure', message: 'down' }
+    fake.authSignOut.mockResolvedValueOnce({ error: failure } as never)
+    await expect(signOut('global')).rejects.toBe(failure)
+  })
+})
+
+describe('needsSecondFactor', () => {
+  const token = (claims: object) =>
+    `h.${btoa(JSON.stringify(claims)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}.s`
+  const session = (claims: object, factors: { status: string }[] = []) =>
+    ({ access_token: token(claims), user: { id: 'u-1', factors } }) as unknown as Session
+
+  it('asks for the code while a verified factor meets an aal1 token', () => {
+    const verified = [{ status: 'verified' }]
+    expect(needsSecondFactor(session({ aal: 'aal1' }, verified))).toBe(true)
+    expect(needsSecondFactor(session({}, verified))).toBe(true)
+    expect(assuranceLevel(session({ aal: 'aal2' }))).toBe('aal2')
+  })
+
+  it('lets everyone else through', () => {
+    expect(needsSecondFactor(null)).toBe(false)
+    expect(needsSecondFactor(session({ aal: 'aal2' }, [{ status: 'verified' }]))).toBe(false)
+    expect(needsSecondFactor(session({ aal: 'aal1' }, [{ status: 'unverified' }]))).toBe(false)
+    expect(needsSecondFactor(session({ aal: 'aal1' }))).toBe(false)
+  })
+
+  it('treats an unreadable token as aal1', () => {
+    expect(assuranceLevel({ access_token: 'nope' } as Session)).toBe('aal1')
+    expect(assuranceLevel(session({ aal: 2 }))).toBe('aal1')
   })
 })

@@ -119,6 +119,31 @@ test('deleted and restored expenses, payments and being added to a group read na
   )
 })
 
+test('a recovery code sign in is reported and links to Me', () => {
+  const e = renderEmail(job('account.mfa_removed', {}, { category: 'security' }), links)
+  assert.equal(e.subject, 'Two-step sign in was turned off')
+  assert.match(e.text, /Not you\? Change your password now/)
+  assert.match(e.text, /Open Me: https:\/\/potluck\.example\/me/)
+})
+
+test('security emails cannot be unsubscribed from: no links, no headers, a word on why', () => {
+  const e = renderEmail(
+    job('account.mfa_removed', {}, { category: 'security', unsubscribe: 'u1.security.sig' }),
+    links,
+  )
+  assert.deepEqual(e.headers, {})
+  for (const body of [e.text, e.html]) {
+    assert.doesNotMatch(body, /unsubscribe/i)
+    assert.doesNotMatch(body, /Stop (all Potluck )?email/)
+    assert.match(body, /We always send this: it is about the security of your Potluck account\./)
+    assert.match(body, /https:\/\/potluck\.example\/me/)
+  }
+  // Every other category keeps its links and one-click header.
+  const other = renderEmail(job('expense.created', { expense_id: 'x1' }), links)
+  assert.match(other.headers['List-Unsubscribe'] ?? '', /u1\.expense_added\.sig/)
+  assert.match(other.text, /Stop all Potluck email/)
+})
+
 test("plan times are shown in the reader's time zone", () => {
   const e = renderEmail(
     job(

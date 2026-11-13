@@ -53,6 +53,8 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
     subject: '',
   }
 
+  // The person `{name}` points at, when there is one: the payee or the member acted on.
+  let named: string | undefined
   let emoji = '✨'
   let tone: ActivityView['tone'] = 'neutral'
   let link: ActivityLink | null = { to: '/groups/$groupId', params: { groupId: item.group_id } }
@@ -69,15 +71,16 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
     case 'settlement': {
       emoji = '🤝'
       tone = 'olive'
-      const to = str(d.to_user)
-      params.name = ctx.nameOf(to, { lower: true })
+      named = str(d.to_user)
+      params.name = ctx.nameOf(named, { lower: true })
       link = { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
       break
     }
     case 'member':
       emoji = item.verb === 'member.joined' ? '👋' : item.verb === 'member.left' ? '🚪' : '🪪'
       tone = 'plum'
-      params.name = ctx.nameOf(str(d.user_id), { lower: true })
+      named = str(d.user_id)
+      params.name = ctx.nameOf(named, { lower: true })
       break
     case 'event':
     case 'availability':
@@ -105,7 +108,13 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       break
   }
 
-  const own = item.actor_id === ctx.viewerId ? `activity.self.${item.verb}` : null
+  // Other languages conjugate for "you", so the viewer as subject or object gets its own line.
+  const own =
+    item.actor_id === ctx.viewerId
+      ? `activity.self.${item.verb}`
+      : named === ctx.viewerId
+        ? `activity.toYou.${item.verb}`
+        : null
   const key = own && hasMessage(own) ? own : `activity.${item.verb}`
   const template = hasMessage(key) ? (key as 'activity.fallback') : null
   const text = template ? fill(t(template, { actor }), params) : t('activity.fallback', { actor })

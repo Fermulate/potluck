@@ -11,6 +11,7 @@ import {
 import { Link, Outlet, useParams, useRouterState } from '@tanstack/react-router'
 import { Bell, BookOpen, CalendarHeart, House, Plus, User, Users } from 'lucide-react'
 import { useState } from 'react'
+import { useProfileLanguage } from '@/features/account/use-profile-language'
 import {
   useNotificationsRealtime,
   useUnreadCount,
@@ -73,6 +74,7 @@ export function AppLayout() {
   const { groupId } = useParams({ strict: false }) as { groupId?: string }
   const { data: unread = 0 } = useUnreadCount()
   useNotificationsRealtime()
+  useProfileLanguage()
 
   const home: NavItem = { id: 'home', label: t('nav.home'), icon: <House />, href: '/home' }
   const groups: NavItem = { id: 'groups', label: t('nav.groups'), icon: <Users />, href: '/groups' }

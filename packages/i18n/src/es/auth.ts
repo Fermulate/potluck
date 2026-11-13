@@ -1,0 +1,95 @@
+import type { Translation } from '../locales'
+import type * as en from '../en/auth'
+
+export const auth = {
+  signIn: {
+    title: 'Hola de nuevo',
+    subtitle: 'Acerca una silla.',
+    submit: 'Iniciar sesión',
+    magicLink: 'Mándame un enlace para entrar',
+    noAccount: '¿Eres nuevo?',
+    createAccount: 'Crea una cuenta',
+    usePassword: 'Usar una contraseña',
+  },
+  signUp: {
+    title: 'Únete a la mesa',
+    subtitle: 'Cuentas y planes compartidos, sin las matemáticas incómodas.',
+    submit: 'Crear cuenta',
+    haveAccount: '¿Ya tienes una cuenta?',
+    signInLink: 'Iniciar sesión',
+    terms: 'Al continuar aceptas los términos y la política de privacidad.',
+  },
+  fields: {
+    email: 'Correo',
+    emailPlaceholder: 'tu@ejemplo.com',
+    password: 'Contraseña',
+    passwordHint: 'Al menos 8 caracteres.',
+    name: 'Tu nombre',
+    namePlaceholder: '¿Cómo te llaman tus amigos?',
+    newPassword: 'Nueva contraseña',
+    showPassword: 'Mostrar contraseña',
+    hidePassword: 'Ocultar contraseña',
+  },
+  checkEmail: {
+    title: 'Revisa tu bandeja de entrada',
+    body: 'Enviamos un enlace a {email}. Tócalo y estás dentro.',
+    resend: 'Enviarlo otra vez',
+    resent: 'Enviado. Dale un minuto.',
+    back: 'Usar otro correo',
+  },
+  forgotPassword: {
+    link: '¿Olvidaste la contraseña?',
+    title: 'Restablece tu contraseña',
+    body: 'Dinos tu correo y te enviaremos un enlace para restablecerla.',
+    submit: 'Enviar enlace',
+    sent: 'Si ese correo tiene una cuenta, el enlace va en camino.',
+    back: 'Volver a iniciar sesión',
+  },
+  resetPassword: {
+    title: 'Elige una nueva contraseña',
+    submit: 'Actualizar contraseña',
+    done: 'Contraseña actualizada. Adelante.',
+    expired: 'Ese enlace caducó. Pide uno nuevo.',
+  },
+  callback: {
+    working: 'Preparando tu sitio...',
+    failed: 'Ese enlace caducó o ya se usó.',
+    tryAgain: 'Volver a iniciar sesión',
+  },
+  side: {
+    quote: 'Cada uno trae algo. Nosotros llevamos la cuenta de quién.',
+    caption: 'Dividir, planear y saldar cuentas entre amigos.',
+  },
+  joinNotice: 'Inicia sesión o crea una cuenta para unirte a {group}.',
+  signOut: 'Cerrar sesión',
+  signedOut: 'Sesión cerrada. Hasta pronto.',
+  continueWithGoogle: 'Continuar con Google',
+  continueWithApple: 'Continuar con Apple',
+  or: 'o',
+} satisfies Translation<typeof en.auth>
+
+export const onboarding = {
+  step: 'Paso {step} de {total}',
+  profile: {
+    title: 'Primero, lo básico',
+    body: 'Así te verán tus amigos en las cuentas y planes compartidos.',
+    uploading: 'Subiendo...',
+    photoTooBig: 'Esa foto pesa más de 5 MB. Prueba con una más pequeña.',
+    photoType: 'Usa un PNG, JPG, WebP o GIF.',
+    photoFailed: 'La foto no se subió. ¿Lo intentas de nuevo?',
+    timezoneHint: 'Lo adivinamos por tu dispositivo.',
+    currencyHint: 'Los grupos nuevos empiezan con esta moneda.',
+    save: 'Se ve bien',
+    nameLabel: 'Nombre visible',
+    avatarLabel: 'Añade una foto',
+    timezoneLabel: 'Zona horaria',
+    currencyLabel: 'Moneda predeterminada',
+  },
+  firstGroup: {
+    title: 'Crea un grupo',
+    body: 'Compañeros de casa, un viaje, la cena de los jueves. Cualquiera con quien dividas gastos.',
+    create: 'Crear un grupo',
+    join: 'Tengo un enlace de invitación',
+    skip: 'Quizá luego',
+  },
+} satisfies Translation<typeof en.onboarding>

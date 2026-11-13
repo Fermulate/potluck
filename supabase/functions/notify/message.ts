@@ -1,4 +1,5 @@
 // Push notification copy. No Deno APIs, so the tests run under Node too.
+import { copyFor } from './copy.ts'
 
 export interface NotificationRow {
   id: string
@@ -7,8 +8,15 @@ export interface NotificationRow {
   data: Record<string, string | number | null | undefined>
 }
 
-/** Push copy and the in-app path it opens, per notification type. */
-export function message(n: NotificationRow): { title: string; body: string; url: string } {
+/**
+ * Push copy and the in-app path it opens, per notification type, in the recipient's language
+ * (`profiles.locale`; English when missing or unknown).
+ */
+export function message(
+  n: NotificationRow,
+  locale?: string | null,
+): { title: string; body: string; url: string } {
+  const c = copyFor(locale)
   const d = n.data
   const group = d.group_id ? `/groups/${d.group_id}` : '/home'
   const expense = d.expense_id ? `/expenses/${d.expense_id}` : group
@@ -17,65 +25,59 @@ export function message(n: NotificationRow): { title: string; body: string; url:
   switch (n.type) {
     case 'expense.created':
       return {
-        title: 'New expense',
-        body: String(d.description ?? 'Someone added an expense'),
+        title: c.expenseNew,
+        body: String(d.description ?? c.expenseNewBody),
         url: expense,
       }
     case 'expense.updated':
       return {
-        title: 'Expense updated',
-        body: String(d.description ?? 'An expense changed'),
+        title: c.expenseUpdated,
+        body: String(d.description ?? c.expenseUpdatedBody),
         url: expense,
       }
     case 'expense.deleted':
       return {
-        title: 'Expense deleted',
-        body: String(d.description ?? 'An expense was deleted'),
+        title: c.expenseDeleted,
+        body: String(d.description ?? c.expenseDeletedBody),
         url: expense,
       }
     case 'expense.restored':
       return {
-        title: 'Expense restored',
-        body: String(d.description ?? 'An expense is back'),
+        title: c.expenseRestored,
+        body: String(d.description ?? c.expenseRestoredBody),
         url: expense,
       }
     case 'member.added':
       return {
-        title: 'You were added to a group',
-        body: 'Pull up a chair.',
+        title: c.memberAdded,
+        body: c.memberAddedBody,
         url: group,
       }
     case 'settlement.created':
-      return {
-        title: 'Payment recorded',
-        body: 'Someone settled up with you.',
-        url: `${group}/balances`,
-      }
+      return { title: c.payment, body: c.paymentBody, url: `${group}/balances` }
     case 'comment.created':
       return {
-        title: 'New comment',
-        body: String(d.excerpt ?? 'Someone replied'),
+        title: c.comment,
+        body: String(d.excerpt ?? c.commentBody),
         url: d.event_id ? event : expense,
       }
     case 'member.joined':
-      return { title: 'New member', body: 'Someone joined your group.', url: `${group}/members` }
+      return { title: c.member, body: c.memberBody, url: `${group}/members` }
     case 'availability.requested':
-      return { title: 'When are you free?', body: title('Paint your availability'), url: event }
+      return { title: c.availability, body: title(c.availabilityBody), url: event }
     case 'event.created':
-      return { title: 'New plan', body: title('A new plan is brewing'), url: event }
+      return { title: c.planNew, body: title(c.planNewBody), url: event }
     case 'event.scheduled':
-      return { title: 'It is on', body: title('A plan was locked in'), url: event }
+      return { title: c.planOn, body: title(c.planOnBody), url: event }
     case 'event.cancelled':
-      return { title: 'Plan cancelled', body: title('A plan was called off'), url: event }
+      return { title: c.planCancelled, body: title(c.planCancelledBody), url: event }
     case 'event.reminder':
-      return { title: 'Coming up soon', body: title('A plan is coming up'), url: event }
+      return { title: c.reminder, body: title(c.reminderBody), url: event }
     case 'rsvp.reminder':
-      return {
-        title: 'Are you in?',
-        body: title('Let the group know if you are coming'),
-        url: event,
-      }
+      return { title: c.rsvp, body: title(c.rsvpBody), url: event }
+    case 'account.mfa_removed':
+      return { title: c.mfaRemoved, body: c.mfaRemovedBody, url: '/me' }
     default:
-      return { title: 'Potluck', body: 'Something new is waiting for you.', url: '/notifications' }
+      return { title: 'Potluck', body: c.other, url: '/notifications' }
   }
 }

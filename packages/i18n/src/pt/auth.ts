@@ -1,0 +1,95 @@
+import type { Translation } from '../locales'
+import type * as en from '../en/auth'
+
+export const auth = {
+  signIn: {
+    title: 'Que bom ver você de novo',
+    subtitle: 'Puxe uma cadeira.',
+    submit: 'Entrar',
+    magicLink: 'Enviar um link de acesso por e-mail',
+    noAccount: 'É novo por aqui?',
+    createAccount: 'Criar uma conta',
+    usePassword: 'Usar uma senha',
+  },
+  signUp: {
+    title: 'Sente-se à mesa',
+    subtitle: 'Contas e planos em conjunto, sem a matemática constrangedora.',
+    submit: 'Criar conta',
+    haveAccount: 'Já tem uma conta?',
+    signInLink: 'Entrar',
+    terms: 'Ao continuar, você aceita os termos e a política de privacidade.',
+  },
+  fields: {
+    email: 'E-mail',
+    emailPlaceholder: 'voce@exemplo.com',
+    password: 'Senha',
+    passwordHint: 'Pelo menos 8 caracteres.',
+    name: 'Seu nome',
+    namePlaceholder: 'Como os amigos chamam você?',
+    newPassword: 'Nova senha',
+    showPassword: 'Mostrar senha',
+    hidePassword: 'Ocultar senha',
+  },
+  checkEmail: {
+    title: 'Confira sua caixa de entrada',
+    body: 'Enviamos um link para {email}. Toque nele e pronto, você entrou.',
+    resend: 'Enviar de novo',
+    resent: 'Enviado. Aguarde um minutinho.',
+    back: 'Usar outro e-mail',
+  },
+  forgotPassword: {
+    link: 'Esqueceu a senha?',
+    title: 'Redefinir sua senha',
+    body: 'Informe seu e-mail e enviaremos um link para redefinir.',
+    submit: 'Enviar link de redefinição',
+    sent: 'Se esse e-mail tiver uma conta, um link está a caminho.',
+    back: 'Voltar para entrar',
+  },
+  resetPassword: {
+    title: 'Escolha uma nova senha',
+    submit: 'Atualizar senha',
+    done: 'Senha atualizada. Pode seguir.',
+    expired: 'Esse link de redefinição expirou. Peça um novo.',
+  },
+  callback: {
+    working: 'Arrumando o seu lugar...',
+    failed: 'Esse link expirou ou já foi usado.',
+    tryAgain: 'Voltar para entrar',
+  },
+  side: {
+    quote: 'Cada um traz alguma coisa. Nós anotamos quem.',
+    caption: 'Dividir, planejar e acertar as contas entre amigos.',
+  },
+  joinNotice: 'Entre ou crie uma conta para participar de {group}.',
+  signOut: 'Sair',
+  signedOut: 'Você saiu. Até breve.',
+  continueWithGoogle: 'Continuar com Google',
+  continueWithApple: 'Continuar com Apple',
+  or: 'ou',
+} satisfies Translation<typeof en.auth>
+
+export const onboarding = {
+  step: 'Etapa {step} de {total}',
+  profile: {
+    title: 'Primeiro, o básico',
+    body: 'É assim que seus amigos vão ver você nas contas e planos em conjunto.',
+    uploading: 'Enviando...',
+    photoTooBig: 'Essa foto tem mais de 5 MB. Tente uma menor.',
+    photoType: 'Use PNG, JPG, WebP ou GIF.',
+    photoFailed: 'A foto não foi enviada. Tentar de novo?',
+    timezoneHint: 'Deduzimos isto a partir do seu dispositivo.',
+    currencyHint: 'Novos grupos começam nesta moeda.',
+    save: 'Está ótimo',
+    nameLabel: 'Nome de exibição',
+    avatarLabel: 'Adicionar uma foto',
+    timezoneLabel: 'Fuso horário',
+    currencyLabel: 'Moeda padrão',
+  },
+  firstGroup: {
+    title: 'Crie um grupo',
+    body: 'Colegas de casa, uma viagem, a turma do jantar de quinta. Qualquer pessoa com quem você divide as coisas.',
+    create: 'Criar um grupo',
+    join: 'Tenho um link de convite',
+    skip: 'Talvez depois',
+  },
+} satisfies Translation<typeof en.onboarding>

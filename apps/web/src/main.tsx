@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { startLanguage } from '@/lib/language'
 import { queryClient } from '@/lib/query-client'
 import { initTheme } from '@/styles/theme-preference'
 import { installTokens } from '@/styles/tokens'
@@ -29,11 +30,14 @@ if (document.getElementById('prerender') && document.documentElement.dataset.boo
   // only the animated demo needs React. Its links are plain links into the app.
   void import('@/features/shell/hero-island').then((m) => m.mountHeroDemo())
 } else {
-  createRoot(rootElement).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </StrictMode>,
+  // A language other than English downloads its strings before the first paint.
+  void startLanguage().then(() =>
+    createRoot(rootElement).render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </StrictMode>,
+    ),
   )
 }

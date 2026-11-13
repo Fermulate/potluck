@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE } from './money'
+import { intlLocale } from './translate'
 
 /** A Date, epoch ms, ISO timestamp, or a `YYYY-MM-DD` calendar date. */
 export type DateInput = Date | number | string
@@ -6,6 +6,7 @@ export type DateInput = Date | number | string
 export interface DateFormatOptions {
   /** IANA zone to render in, usually `profiles.timezone`. Required: never rely on the host zone. */
   timeZone: string
+  /** Intl tag; defaults to the active language (`setLocale`). */
   locale?: string
 }
 
@@ -46,6 +47,16 @@ function dateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions) {
   return format
 }
 
+/**
+ * An `Intl.DateTimeFormat` in the active language, for formats kept in module scope: each
+ * `format` call picks up a language switch. Pass `timeZone` in `options`.
+ */
+export function localDateFormat(options: Intl.DateTimeFormatOptions): {
+  format: (date: Date) => string
+} {
+  return { format: (date) => dateTimeFormat(intlLocale(), options).format(date) }
+}
+
 const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   short: { dateStyle: 'short' },
   medium: { dateStyle: 'medium' },
@@ -60,7 +71,7 @@ export function formatDate(
   value: DateInput,
   options: DateFormatOptions & { style?: DateStyle },
 ): string {
-  const format = dateTimeFormat(options.locale ?? DEFAULT_LOCALE, {
+  const format = dateTimeFormat(options.locale ?? intlLocale(), {
     ...STYLES[options.style ?? 'medium'],
     timeZone: zoneFor(value, options.timeZone),
   })
@@ -69,7 +80,7 @@ export function formatDate(
 
 /** "7:30 PM" (or "19:30" where the locale uses a 24 hour clock). */
 export function formatTime(value: DateInput, options: DateFormatOptions): string {
-  const format = dateTimeFormat(options.locale ?? DEFAULT_LOCALE, {
+  const format = dateTimeFormat(options.locale ?? intlLocale(), {
     hour: 'numeric',
     minute: '2-digit',
     timeZone: options.timeZone,
@@ -101,7 +112,7 @@ export function formatRelative(
   value: DateInput,
   options: DateFormatOptions & { now?: DateInput },
 ): string {
-  const rtf = new Intl.RelativeTimeFormat(options.locale ?? DEFAULT_LOCALE, { numeric: 'auto' })
+  const rtf = new Intl.RelativeTimeFormat(options.locale ?? intlLocale(), { numeric: 'auto' })
   const nowInput = options.now ?? Date.now()
   const date = toDate(value)
   const now = toDate(nowInput)
@@ -137,7 +148,7 @@ export function formatDateRange(
   options: DateFormatOptions & { withTime?: boolean },
 ): string {
   const withTime = options.withTime ?? !(isDateOnly(start) && isDateOnly(end))
-  const format = dateTimeFormat(options.locale ?? DEFAULT_LOCALE, {
+  const format = dateTimeFormat(options.locale ?? intlLocale(), {
     ...(withTime
       ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
       : { month: 'short', day: 'numeric', year: 'numeric' }),

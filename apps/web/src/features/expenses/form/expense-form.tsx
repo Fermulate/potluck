@@ -13,7 +13,7 @@ import {
   type RecurrenceValue,
 } from '@potluck/api'
 import { CATEGORIES, firstName, type CategoryId } from '@potluck/core'
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
   Button,
@@ -429,7 +429,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 className="w-full items-center"
               >
                 <MoneyInput
-                  locale={DEFAULT_LOCALE}
+                  locale={intlLocale()}
                   value={amount}
                   onValueChange={setAmount}
                   currency={currency}
@@ -507,7 +507,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 onChange={setPayers}
                 totalCents={total}
                 currency={currency}
-                locale={DEFAULT_LOCALE}
+                locale={intlLocale()}
                 refund={refund}
                 disabled={locked}
               />
@@ -598,7 +598,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 onChange={setDraft}
                 amountCents={total}
                 currency={currency}
-                locale={DEFAULT_LOCALE}
+                locale={intlLocale()}
               />
               {group.default_split && isDefault ? (
                 <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">

@@ -1,16 +1,19 @@
 import { moneyQueries } from '@potluck/api'
-import { t } from '@potluck/i18n'
+import { intlLocale, t } from '@potluck/i18n'
 import { Sheet, SheetContent, Skeleton, cn } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { Help } from '@/features/help/help'
 import { supabase } from '@/lib/supabase'
 
-let names: Intl.DisplayNames | null = null
+const names = new Map<string, Intl.DisplayNames>()
 function currencyName(code: string): string {
   try {
-    names ??= new Intl.DisplayNames(['en'], { type: 'currency' })
-    return names.of(code) ?? code
+    const locale = intlLocale()
+    let display = names.get(locale)
+    if (!display)
+      names.set(locale, (display = new Intl.DisplayNames([locale], { type: 'currency' })))
+    return display.of(code) ?? code
   } catch {
     return code
   }
@@ -18,7 +21,7 @@ function currencyName(code: string): string {
 
 function symbol(code: string): string {
   return (
-    new Intl.NumberFormat('en', {
+    new Intl.NumberFormat(intlLocale(), {
       style: 'currency',
       currency: code,
       currencyDisplay: 'narrowSymbol',

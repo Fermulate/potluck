@@ -1,0 +1,380 @@
+import type { Translation } from '../locales'
+import type * as en from '../en/me'
+
+export const notifications = {
+  title: 'Notificações',
+  markAllRead: 'Marcar todas como lidas',
+  allCaughtUp: 'Tudo em dia.',
+  unread_one: '{count} não lida',
+  unread_other: '{count} não lidas',
+  enablePush: 'Ativar notificações push',
+  pushBlocked: 'As notificações estão bloqueadas nas configurações do navegador.',
+  someone: 'Alguém',
+  aGroup: 'seu grupo',
+  anEvent: 'um plano',
+  anExpense: 'uma despesa',
+  generic: { title: 'Aconteceu alguma coisa', body: 'Toque para dar uma olhada.' },
+  unreadLabel: 'Não lidas',
+  earlier: 'Antes',
+  new: 'Novas',
+  types: {
+    account: {
+      mfaRemoved: {
+        title: 'O login em duas etapas está desligado',
+        body: 'Alguém entrou com um código de recuperação. Se não foi você, troque sua senha agora.',
+      },
+    },
+    summary: {
+      monthly: { title: 'Seu mês no Potluck', settled: 'Tudo acertado. Mandou bem.' },
+      owed: '{group}: devem {amount} a você',
+      owe: '{group}: você deve {amount}',
+      more_one: 'e mais {count} grupo',
+      more_other: 'e mais {count} grupos',
+    },
+    expense: {
+      created: {
+        title: 'Nova despesa em {group}',
+        body: '{actor} adicionou {description}: {amount}',
+      },
+      updated: { title: 'Despesa atualizada', body: '{actor} alterou {description} em {group}' },
+      deleted: { title: 'Despesa excluída', body: '{actor} excluiu {description} em {group}' },
+      restored: {
+        title: 'Despesa restaurada',
+        body: '{actor} trouxe de volta {description} em {group}',
+      },
+    },
+    settlement: {
+      created: { title: 'Você recebeu um pagamento', body: '{payer} pagou {amount} a você' },
+      sent: {
+        title: 'Pagamento registrado',
+        body: '{payee} marcou seu pagamento de {amount} como recebido',
+      },
+      recorded: {
+        title: 'Pagamento registrado',
+        body: '{actor} registrou seu pagamento de {amount} para {payee}',
+      },
+    },
+    member: {
+      joined: { title: 'Rosto novo em {group}', body: '{actor} acabou de entrar. Diga oi.' },
+      added: { title: 'Boas-vindas a {group}', body: '{actor} adicionou você. Puxe uma cadeira.' },
+    },
+    event: {
+      created: { title: 'Tem algo no forno', body: '{actor} está planejando {event}' },
+      scheduled: { title: 'Está marcado', body: '{event} está marcado para {date}' },
+      cancelled: { title: 'Os planos mudaram', body: '{event} foi cancelado' },
+      reminder: { title: 'Em breve', body: '{event} começa {when}' },
+    },
+    availability: {
+      requested: {
+        title: 'Quando você está livre?',
+        body: '{actor} precisa da sua disponibilidade para {event}',
+      },
+    },
+    rsvp: {
+      reminder: { title: 'Você vai?', body: 'Avise {group} se você vai a {event}' },
+    },
+    comment: {
+      created: { title: 'Novo comentário', body: '{actor}: {preview}' },
+    },
+  },
+} satisfies Translation<typeof en.notifications>
+
+export const settings = {
+  title: 'Eu',
+  subtitle: 'Seu perfil, suas preferências, sua saída.',
+  profile: {
+    title: 'Perfil',
+    nameRequired: 'Seu nome não pode ficar vazio.',
+    name: 'Nome de exibição',
+    photo: 'Foto',
+    changePhoto: 'Trocar foto',
+    removePhoto: 'Remover foto',
+    email: 'E-mail',
+    saved: 'Perfil salvo.',
+  },
+  preferences: {
+    title: 'Preferências',
+    timezone: 'Fuso horário',
+    timezoneHint: 'Os horários aparecem neste fuso.',
+    detectTimezone: 'Usar meu fuso horário atual',
+    currency: 'Moeda padrão',
+    currencyHint: 'Usada nos novos grupos.',
+    language: 'Idioma',
+    theme: 'Aparência',
+    themeSystem: 'Sistema',
+    themeLight: 'Claro',
+    themeDark: 'Escuro',
+    saved: 'Preferências salvas.',
+  },
+  notifications: {
+    title: 'Notificações',
+    inbox: 'Abrir caixa de entrada',
+    push: 'Notificações push',
+    pushHint: 'Um aviso neste dispositivo quando algo precisar de você.',
+    pushOn: 'O push está ativado neste dispositivo.',
+    pushUnsupported:
+      'Este navegador não suporta notificações push. No iPhone, adicione o Potluck à tela de início primeiro.',
+    pushNotConfigured: 'O push ainda não está configurado neste servidor.',
+    pushFailed: 'Não foi possível ativar o push. Tentar de novo?',
+    inApp: 'Você sempre verá as novidades na sua caixa de entrada.',
+    email: 'Notificações por e-mail',
+    expenses: 'Novas despesas',
+    payments: 'Pagamentos',
+    plans: 'Planos e pedidos de disponibilidade',
+    reminders: 'Lembretes de eventos',
+  },
+  calendar: {
+    title: 'Agenda',
+    feed: 'Feed da agenda',
+    feedHint: 'Assine seus planos do Potluck em qualquer app de agenda.',
+    copyFeed: 'Copiar link do feed',
+    subscribe: 'Assinar',
+    resetFeed: 'Redefinir link',
+    resetFeedHint: 'O link antigo para de funcionar.',
+    connect: 'Conectar uma agenda',
+    connectHint: 'Só vemos quando você está ocupado, nunca o que você está fazendo.',
+    connected: 'Conectada',
+    disconnect: 'Desconectar',
+    comingSoon: 'Em breve',
+  },
+  privacy: {
+    title: 'Privacidade',
+    blocked: 'Pessoas bloqueadas',
+    noneBlocked: 'Ninguém bloqueado. Que beleza.',
+    unblock: 'Desbloquear',
+  },
+  about: {
+    title: 'Sobre',
+    version: 'Versão {version}',
+    source: 'Código-fonte',
+    license: 'Software livre sob a AGPL-3.0',
+    feedback: 'Enviar comentários',
+  },
+  notificationPrefs: {
+    title: 'Sobre o que avisar',
+    hint: 'Sua caixa de entrada recebe tudo. Escolha o que também chega aos seus dispositivos ou ao seu e-mail.',
+    push: 'Push',
+    email: 'E-mail',
+    channel: '{category}: {channel}',
+    emailSoon: 'As notificações por e-mail estão chegando. Até lá, sua caixa de entrada tem tudo.',
+    failed: 'Essa configuração não foi salva. Tentar de novo?',
+    offline: 'Você está sem conexão. Sua alteração será salva quando você voltar.',
+    summaryEmail: 'Por e-mail',
+    pushOffHere:
+      'O push está desativado neste dispositivo, então estes avisos só chegam aos seus outros dispositivos.',
+    turnOnPush: 'Ativar push aqui',
+    categories: {
+      expense_added: {
+        label: 'Novas despesas',
+        hint: 'Alguém adiciona uma despesa da qual você participa.',
+        about: 'novas despesas',
+      },
+      expense_changed: {
+        label: 'Edições e exclusões',
+        hint: 'Uma despesa da qual você participa é alterada, excluída ou restaurada.',
+        about: 'edições e exclusões de despesas',
+      },
+      payments: {
+        label: 'Pagamentos',
+        hint: 'Alguém paga você ou registra um pagamento com você.',
+        about: 'pagamentos',
+      },
+      comments: {
+        label: 'Comentários',
+        hint: 'Novos comentários em despesas e planos dos quais você participa.',
+        about: 'comentários',
+      },
+      groups: {
+        label: 'Grupos',
+        hint: 'Alguém entra em um grupo que você administra.',
+        about: 'novidades dos grupos',
+      },
+      plans: {
+        label: 'Planos',
+        hint: 'Novos planos, horários fechados, cancelamentos e pedidos de disponibilidade.',
+        about: 'planos',
+      },
+      reminders: {
+        label: 'Lembretes',
+        hint: 'Planos chegando e confirmações de presença que você ainda deve.',
+        about: 'lembretes',
+      },
+      monthly_summary: {
+        label: 'Resumo mensal',
+        hint: 'Seus saldos no primeiro dia de cada mês, como um cartão na sua caixa de entrada.',
+        hintEmail: 'Seus saldos no primeiro dia de cada mês, na sua caixa de entrada e por e-mail.',
+        about: 'o resumo mensal',
+      },
+    },
+  },
+} satisfies Translation<typeof en.settings>
+
+export const account = {
+  delete: {
+    title: 'Excluir conta',
+    warning:
+      'Isto remove seu perfil, sua foto e seu e-mail. As despesas de que você participou continuam, para que os totais do grupo ainda batam, mas vão mostrar "Ex-membro" em vez do seu nome.',
+    blocked: 'Você ainda tem saldos em aberto em {groups}. Acerte as contas primeiro.',
+    ownerBlocked: 'Você é dono de {groups}. Passe esses grupos para outra pessoa primeiro.',
+    confirmPhrase: 'Digite EXCLUIR para confirmar',
+    confirmWord: 'EXCLUIR',
+    submit: 'Excluir minha conta',
+    deleting: 'Liberando o seu lugar à mesa...',
+    done: 'Sua conta foi excluída. Obrigado por cada jantar.',
+    formerMember: 'Ex-membro',
+  },
+  export: {
+    title: 'Baixar meus dados',
+    hint: 'Uma cópia das suas despesas, pagamentos e planos.',
+    ready: 'Sua exportação está pronta.',
+  },
+} satisfies Translation<typeof en.account>
+
+/** A página que o link de cancelamento de um e-mail abre. Funciona sem estar conectado. */
+export const unsubscribe = {
+  title: 'Configurações de e-mail',
+  working: 'Conferindo seu link...',
+  askTitle: 'Parar de receber estes e-mails?',
+  askOne:
+    'Você vai parar de receber e-mails sobre {what}. Sua caixa de entrada do Potluck não muda.',
+  askAll:
+    'Você vai parar de receber qualquer e-mail do Potluck. Sua caixa de entrada do Potluck não muda.',
+  account: 'Para {email}',
+  confirm: 'Cancelar inscrição',
+  alreadyTitle: 'Você já saiu da lista',
+  resubscribe: 'Voltar a receber',
+  done: 'Você saiu da lista',
+  doneOne: 'Chega de e-mails sobre {what}. Sua caixa de entrada do Potluck não muda.',
+  doneAll: 'Chega de e-mails do Potluck. Sua caixa de entrada do Potluck não muda.',
+  nothingToUndo:
+    'Nada a desfazer com este link: suas configurações de e-mail estão como você deixou. Altere-as na página Eu.',
+  offline: 'Você está sem conexão. Isto vai ser concluído quando você voltar.',
+  undo: 'Continuar recebendo',
+  undone: 'Você voltou para a lista',
+  undoneBody: 'Estes e-mails vão continuar chegando. Mude de ideia quando quiser na página Eu.',
+  manage: 'Todas as configurações de notificação',
+  invalidTitle: 'Este link não funciona',
+  invalidBody:
+    'Ele pode ter sido cortado ao ser copiado. Tente o link do seu e-mail mais recente do Potluck ou altere suas configurações na página Eu.',
+  failed: 'Suas configurações não foram atualizadas. Confira sua conexão e tente de novo.',
+  retry: 'Tentar de novo',
+} satisfies Translation<typeof en.unsubscribe>
+
+/** Página Eu: e-mail, senha, dispositivos, entrada em duas etapas, idioma e sobre. */
+export const security = {
+  title: 'Acesso e segurança',
+  email: {
+    label: 'E-mail',
+    change: 'Alterar e-mail',
+    newEmail: 'Novo e-mail',
+    hint: 'Enviamos um link para o endereço antigo e para o novo. A troca acontece quando os dois forem confirmados.',
+    submit: 'Enviar links de confirmação',
+    same: 'Esse já é o seu e-mail.',
+    sent: 'Links enviados. Abra as duas caixas de entrada para concluir.',
+    pending: 'Esperando você confirmar {email} nas duas caixas de entrada.',
+    changed: 'Seu e-mail agora é {email}.',
+    halfConfirmed: 'Um já foi. Agora abra o link que enviamos para o seu outro endereço.',
+    cancel: 'Cancelar a alteração',
+    cancelled: 'Alteração cancelada. Seu e-mail continua sendo {email}.',
+  },
+  password: {
+    label: 'Senha',
+    change: 'Alterar senha',
+    set: 'Definir uma senha',
+    setHint:
+      'Hoje você entra com Google ou Apple. Adicione uma senha para entrar também com seu e-mail.',
+    current: 'Senha atual',
+    next: 'Nova senha',
+    confirm: 'Nova senha outra vez',
+    mismatch: 'As novas senhas não coincidem.',
+    wrongCurrent: 'Essa não é a sua senha atual.',
+    submit: 'Salvar senha',
+    saved: 'Senha salva. Seus outros dispositivos foram desconectados.',
+    forgot: 'Esqueceu?',
+    reauthTitle: 'Confira seu e-mail',
+    reauthBody:
+      'Você entrou há algum tempo, então enviamos um código para {email}. Insira-o para salvar a nova senha.',
+    reauthCode: 'Código do e-mail',
+  },
+  sessions: {
+    label: 'Dispositivos',
+    hint: 'Perdeu o celular ou usou um computador compartilhado? Isto desconecta todos os dispositivos, inclusive este.',
+    signOutAll: 'Sair em todos os lugares',
+    confirmTitle: 'Sair em todos os dispositivos?',
+    confirmBody:
+      'Todos os celulares, tablets e navegadores da sua conta vão precisar entrar de novo, inclusive este.',
+    done: 'Você saiu em todos os dispositivos.',
+  },
+  twoFactor: {
+    title: 'Entrada em duas etapas',
+    hint: 'Depois da senha ou do link de acesso, o Potluck pede um código de um app autenticador.',
+    on: 'Ativada',
+    off: 'Desativada',
+    enable: 'Configurar',
+    disable: 'Desativar',
+    since: 'Ativada desde {date}',
+    enabled: 'A entrada em duas etapas está ativada.',
+    disabled: 'A entrada em duas etapas está desativada.',
+    wrongCode: 'Esse código não funcionou. Confira o app e tente de novo.',
+    code: 'Código de 6 dígitos',
+    setup: {
+      title: 'Configurar a entrada em duas etapas',
+      scan: 'Leia isto com um app autenticador como 1Password, Google Authenticator ou Authy.',
+      qr: 'Código QR para o seu app autenticador',
+      manual: 'Não consegue ler? Digite esta chave no app.',
+      copyKey: 'Copiar chave',
+      enter: 'Depois insira o código que o app mostrar.',
+      submit: 'Ativar',
+    },
+    recovery: {
+      title: 'Guarde seus códigos de recuperação',
+      body: 'Perdeu o celular? Cada código deixa você entrar uma vez e desativa a entrada em duas etapas, para você configurá-la de novo. Guarde-os num lugar seguro, como um gerenciador de senhas.',
+      copy: 'Copiar códigos',
+      download: 'Baixar',
+      fileName: 'potluck-codigos-de-recuperacao.txt',
+      done: 'Já guardei',
+      left_zero: 'Nenhum código de recuperação restante',
+      left_one: '{count} código de recuperação restante',
+      left_other: '{count} códigos de recuperação restantes',
+      regenerate: 'Novos códigos de recuperação',
+      regenerateBody: 'Os códigos antigos param de funcionar na hora.',
+    },
+    disableTitle: 'Desativar a entrada em duas etapas?',
+    disableBody: 'Insira um código do seu app autenticador para confirmar que é você.',
+  },
+  challenge: {
+    title: 'Só mais um passo',
+    body: 'Abra seu app autenticador e insira o código de 6 dígitos do Potluck.',
+    submit: 'Verificar',
+    useRecovery: 'Usar um código de recuperação',
+    useApp: 'Usar meu app autenticador',
+    recoveryCode: 'Código de recuperação',
+    recoveryPlaceholder: 'XXXXX-XXXXX',
+    recoveryBody:
+      'Insira um dos códigos que você guardou. A entrada em duas etapas é desativada para você configurá-la no seu novo celular.',
+    recovered:
+      'Você entrou. A entrada em duas etapas está desativada por enquanto, então configure de novo em Eu.',
+    wrongRecovery: 'Esse código de recuperação não funcionou.',
+    signOut: 'Usar outra conta',
+  },
+  language: {
+    label: 'Idioma',
+    hint: 'O que ainda não foi traduzido aparece em inglês.',
+    saved: 'Idioma salvo.',
+  },
+  about: {
+    title: 'Sobre o Potluck',
+    version: 'Versão {version}',
+    feedback: 'Enviar comentários',
+  },
+  errors: {
+    same_password: 'Essa é a sua senha atual. Escolha uma nova.',
+    email_address_invalid: 'Esse e-mail não parece certo.',
+    mfa_verification_failed: 'Esse código não funcionou. Confira o app e tente de novo.',
+    insufficient_aal: 'Conclua primeiro a entrada em duas etapas.',
+    reauthentication_needed: 'Por segurança, saia e entre de novo antes de alterar isto.',
+    invalid_recovery_code: 'Esse código de recuperação não funcionou.',
+    too_many_attempts: 'Tentativas demais. Espere 15 minutos e tente de novo.',
+    reauthentication_not_valid: 'Esse código não funcionou. Confira o e-mail e tente de novo.',
+  },
+} satisfies Translation<typeof en.security>

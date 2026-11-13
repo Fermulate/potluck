@@ -1341,6 +1341,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      clear_mfa_recovery_codes: { Args: Record<PropertyKey, never>; Returns: number }
       create_expense: {
         Args: { payload: Json }
         Returns: {
@@ -1460,6 +1461,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_mfa_recovery_codes: { Args: Record<PropertyKey, never>; Returns: string[] }
       delete_expense: {
         Args: { id: string }
         Returns: {
@@ -1523,6 +1525,7 @@ export type Database = {
         Returns: number
       }
       email_unsubscribe: { Args: { action?: string; token: string }; Returns: Json }
+      forget_mfa_recovery_codes: { Args: { target: string }; Returns: undefined }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
       invite_preview: {
         Args: { code: string }
@@ -1539,6 +1542,8 @@ export type Database = {
         }[]
       }
       leave_group: { Args: { group_id: string }; Returns: undefined }
+      mfa_recovery_code_matches: { Args: { code: string; target: string }; Returns: boolean }
+      mfa_recovery_codes_left: { Args: Record<PropertyKey, never>; Returns: number }
       my_notification_prefs: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1573,6 +1578,8 @@ export type Database = {
           window_start: string
         }[]
       }
+      notify_mfa_recovered: { Args: { target: string }; Returns: undefined }
+      record_mfa_recover_attempt: { Args: { target: string }; Returns: boolean }
       remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
       request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
       restore_expense: {

@@ -47,3 +47,24 @@ test('deleted and restored expenses and being added to a group', () => {
   assert.equal(message(row('expense.restored', { expense_id: 'x1' })).body, 'An expense is back')
   assert.equal(message(row('member.added', { group_id: 'g1' })).url, '/groups/g1')
 })
+
+test('a recovery that turned two-step sign in off links to Me', () => {
+  const removed = row('account.mfa_removed', {})
+  assert.equal(message(removed).title, 'Two-step sign in is off')
+  assert.equal(message(removed).url, '/me')
+  assert.equal(message(removed, 'de').title, 'Die Anmeldung in zwei Schritten ist aus')
+})
+
+test('copy follows the recipient language, English when it is missing or unknown', () => {
+  const joined = row('member.joined', { group_id: 'g1' })
+  assert.equal(message(joined, 'es').title, 'Nuevo miembro')
+  assert.equal(message(joined, 'de').body, 'Jemand ist deiner Gruppe beigetreten.')
+  assert.equal(message(joined, 'pt-BR').title, 'Novo membro')
+  assert.equal(message(row('event.created', { event_id: 'e1' }), 'fr').body, 'Un plan se prépare')
+  assert.equal(message(joined, 'xx').title, 'New member')
+  assert.equal(message(joined, null).title, 'New member')
+  // What people typed stays as they typed it.
+  const tacos = row('expense.created', { expense_id: 'x1', description: 'Tacos' })
+  assert.equal(message(tacos, 'fr').body, 'Tacos')
+  assert.equal(message(tacos, 'fr').title, 'Nouvelle dépense')
+})

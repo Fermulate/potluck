@@ -195,7 +195,7 @@ describe('ExpenseDetail', () => {
     const history = await screen.findByRole('region', { name: t('expenses.history.title') })
     expect(within(history).getAllByRole('listitem')).toHaveLength(2)
     expect(within(history).getByText(t('expenses.history.created', { name: 'Ben' }))).toBeVisible()
-    expect(within(history).getByText(t('expenses.history.updated', { name: 'You' }))).toBeVisible()
+    expect(within(history).getByText(t('expenses.history.self.updated'))).toBeVisible()
     expect(within(history).getByText(/\$20\.00 to \$30\.00/)).toBeVisible()
   })
 

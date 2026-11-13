@@ -2,7 +2,7 @@ import { avatarSrc } from '@/lib/queries'
 import { settleUp, type MoneyGroup, type MoneyMember } from '@potluck/api'
 import { firstName } from '@potluck/core'
 import { springs } from '@potluck/tokens'
-import { DEFAULT_LOCALE, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import {
   Avatar,
   Button,
@@ -291,7 +291,7 @@ function PaymentForm({
               value={amount}
               onValueChange={setAmount}
               currency={group.currency}
-              locale={DEFAULT_LOCALE}
+              locale={intlLocale()}
               autoFocus={!initialAmount}
             />
           </div>
@@ -368,7 +368,7 @@ export function SettledMoment({
             (shown === 0 ? 'text-olive-ink' : 'text-tomato-ink')
           }
         >
-          {formatMoney(shown, currency, { locale: DEFAULT_LOCALE })}
+          {formatMoney(shown, currency, { locale: intlLocale() })}
         </p>
         <h2 className="font-display text-3xl leading-tight">
           {settled ? t('settle.settledTitle', { name }) : t('settle.partialTitle')}

@@ -81,6 +81,11 @@ export interface SheetContentProps {
   footer?: ReactNode
   /** Max width on desktop. */
   size?: 'sm' | 'md' | 'lg'
+  /**
+   * False when the person must answer inside (e.g. confirm they saved something): no close
+   * button, no drag to dismiss, and Escape or a tap outside do nothing.
+   */
+  dismissible?: boolean
   className?: string
   children?: ReactNode
 }
@@ -95,6 +100,7 @@ export function SheetContent({
   variant = 'auto',
   footer,
   size = 'md',
+  dismissible = true,
   className,
   children,
 }: SheetContentProps) {
@@ -118,9 +124,13 @@ export function SheetContent({
       target.focus()
     }
   }
+  const draggable = asSheet && !reduced && dismissible
 
   const startDrag = (event: ReactPointerEvent) => {
-    if (asSheet && !reduced) dragControls.start(event)
+    if (draggable) dragControls.start(event)
+  }
+  const keepOpen = (event: Event) => {
+    if (!dismissible) event.preventDefault()
   }
 
   const onDragEnd = (_: unknown, info: PanInfo) => {
@@ -173,12 +183,14 @@ export function SheetContent({
               asChild
               forceMount
               onCloseAutoFocus={onCloseAutoFocus}
+              onEscapeKeyDown={keepOpen}
+              onInteractOutside={keepOpen}
               // Opt out of Radix's missing-description warning when there is none.
               {...(description ? {} : { 'aria-describedby': undefined })}
             >
               <motion.div
                 {...motionProps}
-                drag={asSheet && !reduced ? 'y' : false}
+                drag={draggable ? 'y' : false}
                 dragControls={dragControls}
                 dragListener={false}
                 dragConstraints={{ top: 0, bottom: 0 }}
@@ -196,10 +208,10 @@ export function SheetContent({
                   onPointerDown={startDrag}
                   className={cn(
                     'relative shrink-0 px-5 pt-3 pb-2',
-                    asSheet && !reduced && 'cursor-grab touch-none active:cursor-grabbing',
+                    draggable && 'cursor-grab touch-none active:cursor-grabbing',
                   )}
                 >
-                  {asSheet && (
+                  {asSheet && dismissible && (
                     <div
                       aria-hidden
                       className="mx-auto mb-3 h-1.5 w-10 rounded-pill bg-line-strong"
@@ -221,15 +233,17 @@ export function SheetContent({
                         </DialogPrimitive.Description>
                       )}
                     </div>
-                    <DialogPrimitive.Close asChild>
-                      <IconButton
-                        label={closeLabel}
-                        icon={<X />}
-                        size="sm"
-                        variant="ghost"
-                        className="-mt-1 -mr-2 bg-sunken"
-                      />
-                    </DialogPrimitive.Close>
+                    {dismissible && (
+                      <DialogPrimitive.Close asChild>
+                        <IconButton
+                          label={closeLabel}
+                          icon={<X />}
+                          size="sm"
+                          variant="ghost"
+                          className="-mt-1 -mr-2 bg-sunken"
+                        />
+                      </DialogPrimitive.Close>
+                    )}
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5">

@@ -44,6 +44,11 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
   `private.save_expense`. Balances and departed checks read payers, not `paid_by` (ADR 12).
 - Helpers clients must not call go in `private` (default privileges revoke execute there); grant only
   what a policy needs.
+- Two-step sign in ([ADR 13](../docs/adr/0013-two-step-sign-in-enforced-in-the-database.md)):
+  `private.check_request()` is PostgREST's pre-request hook and refuses an unfinished two-step
+  session. Add any other per-request rule there (PostgREST runs one function). A table added to the
+  `supabase_realtime` publication also needs the restrictive "two-step sign in done" `select` policy;
+  Storage already has one for every bucket.
 - Small immutable SQL helpers used per row (`private.minor_units`, `private.convert_minor`) use a
   SQL-standard body and no `set` clause so they inline; the `function_search_path_mutable` advisor
   warning on them is expected.
@@ -52,6 +57,10 @@ Root rules: [../AGENTS.md](../AGENTS.md). Recipes: the `add-migration-and-rpc` a
 
 ## Notifications
 
+- A category with `notification_categories.required` (today `security`: `account.mfa_removed`) cannot be
+  switched off: `my_notification_prefs` leaves it out, `set_notification_pref` raises
+  `notification_setting_required`, unsubscribe links skip it, stored settings are ignored, and its
+  emails carry no unsubscribe links (`REQUIRED_CATEGORIES` in `functions/notify/email.ts`).
 - Settings are per category ([ADR 11](../docs/adr/0011-notification-prefs-and-email.md)). A new
   notification type is ONE row in your migration:
   `insert into private.notification_types (type, category) values ('<type>', '<category>') on conflict (type) do nothing;`

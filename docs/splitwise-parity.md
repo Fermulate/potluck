@@ -134,26 +134,26 @@ What Splitwise Free holds back today: 4 new expenses per day, ads, and the Pro f
 
 ### Account and settings
 
-| Splitwise feature                                                 | Tier                                             | Potluck | Notes                                                                          |
-| ----------------------------------------------------------------- | ------------------------------------------------ | ------- | ------------------------------------------------------------------------------ |
-| Name, photo                                                       | Free                                             | exists  |                                                                                |
-| Change email                                                      | Free                                             | missing | email is shown read-only                                                       |
-| Change password from settings                                     | Free                                             | partial | forgot and reset password flow exists; no change-password form while signed in |
-| Default currency                                                  | Free                                             | exists  | used for new groups                                                            |
-| Time zone                                                         | Free                                             | exists  | with detect                                                                    |
-| Language (7+ in Splitwise)                                        | Free                                             | missing | English only; no switcher (the string `settings.preferences.language` exists)  |
-| Dark mode                                                         | Free (apps, May 2026)                            | exists  | system, light, dark                                                            |
-| App passcode lock                                                 | Free (apps)                                      | skip    | the PWA uses the device lock; revisit for the native app                       |
-| Two-factor authentication                                         | not in Splitwise                                 | missing | Supabase Auth supports TOTP MFA; a cheap Potluck extra                         |
-| Log out on all devices                                            | Free                                             | missing |                                                                                |
-| Sign in with Google (Splitwise also has Facebook)                 | Free                                             | partial | Google and Apple built, flagged off until OAuth clients exist                  |
-| Merge two accounts                                                | Free (support)                                   | skip    | rare; handle by hand if it comes up                                            |
-| Delete account                                                    | Free                                             | exists  | tombstones the profile, shared history kept                                    |
-| Download my data                                                  | Free by emailing support; JSON self-serve is Pro | missing | see Batch 5                                                                    |
-| Ads, daily expense limit (4 per day), Pro subscription, Trip Pass | Free / Pro                                       | skip    | Potluck is free; nothing to gate                                               |
-| Splitwise Card, card transaction import                           | Free card (US), import Pro                       | skip    | needs a card issuer or bank aggregator                                         |
-| Public API                                                        | Free                                             | skip    | not planned; data export covers the main need                                  |
-| Apple Watch                                                       | Free (some locales)                              | skip    | PWA only for now                                                               |
+| Splitwise feature                                                 | Tier                                             | Potluck | Notes                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------ | ------- | ---------------------------------------------------------------------------------- |
+| Name, photo                                                       | Free                                             | exists  |                                                                                    |
+| Change email                                                      | Free                                             | exists  | confirmed from the old and the new inbox                                           |
+| Change password from settings                                     | Free                                             | exists  | asks the current one; Google or Apple accounts can set a first one                 |
+| Default currency                                                  | Free                                             | exists  | used for new groups                                                                |
+| Time zone                                                         | Free                                             | exists  | with detect                                                                        |
+| Language (7+ in Splitwise)                                        | Free                                             | partial | English, Spanish, French, German, Portuguese; live, saved on the profile, push too |
+| Dark mode                                                         | Free (apps, May 2026)                            | exists  | system, light, dark                                                                |
+| App passcode lock                                                 | Free (apps)                                      | skip    | the PWA uses the device lock; revisit for the native app                           |
+| Two-factor authentication                                         | not in Splitwise                                 | exists  | authenticator app, recovery codes, enforced in the database (ADR 13)               |
+| Log out on all devices                                            | Free                                             | exists  | also after a password change, for every other device                               |
+| Sign in with Google (Splitwise also has Facebook)                 | Free                                             | partial | Google and Apple built, flagged off until OAuth clients exist                      |
+| Merge two accounts                                                | Free (support)                                   | skip    | rare; handle by hand if it comes up                                                |
+| Delete account                                                    | Free                                             | exists  | tombstones the profile, shared history kept                                        |
+| Download my data                                                  | Free by emailing support; JSON self-serve is Pro | missing | see Batch 5                                                                        |
+| Ads, daily expense limit (4 per day), Pro subscription, Trip Pass | Free / Pro                                       | skip    | Potluck is free; nothing to gate                                                   |
+| Splitwise Card, card transaction import                           | Free card (US), import Pro                       | skip    | needs a card issuer or bank aggregator                                             |
+| Public API                                                        | Free                                             | skip    | not planned; data export covers the main need                                      |
+| Apple Watch                                                       | Free (some locales)                              | skip    | PWA only for now                                                                   |
 
 ## Payment links without a processor
 

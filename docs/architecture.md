@@ -48,7 +48,7 @@ flowchart TB
     rest["PostgREST<br/>tables + RPCs in public"]
     rt["Realtime<br/>postgres_changes"]
     storage["Storage<br/>avatars, group-covers, receipts"]
-    edge["Edge Functions (Deno)<br/>notify, fx-sync, ics-feed, delete-account"]
+    edge["Edge Functions (Deno)<br/>notify, fx-sync, ics-feed, delete-account,<br/>mfa-recover, cancel-email-change"]
     subgraph pg["Postgres 17"]
       public["public schema<br/>tables, RLS, definer RPCs"]
       private["private schema<br/>policy helpers, triggers, jobs"]
@@ -63,7 +63,7 @@ flowchart TB
   user -->|supabase-js| rest
   user -->|websocket| rt
   user -->|upload, signed URL| storage
-  user -->|"POST delete-account (JWT)"| edge
+  user -->|"POST delete-account, mfa-recover (JWT)"| edge
   rest --> public
   public --> private
   rt --> public
@@ -530,6 +530,12 @@ A member cannot leave or be removed while their `net_cents` in that group is non
 | `set_notification_pref(category, push?, email?)`                                                                  | changes one setting; a null channel is left as it is                                                                                                                            |
 | `email_unsubscribe(token, action default 'unsubscribe')` → `{ category, email, subscribed, restored }`            | callable by `anon`: the signed token from an email is the credential. `preview` changes nothing, `unsubscribe`, `undo` restores what the unsubscribe changed; `email` is masked |
 | `email_outbox_report(batch, delivered, error?, rejected?)`                                                        | service role only: `notify` reports each email batch (sent, or back to pending with backoff, failed after 5 attempts)                                                           |
+| `create_mfa_recovery_codes()` → setof text                                                                        | aal2 only: replaces the caller's two-step recovery codes with ten new ones (`ABCDE-23456`), stored as SHA-256 in `private.mfa_recovery_codes`                                   |
+| `mfa_recovery_codes_left()` → int                                                                                 | how many of the caller's recovery codes are unused                                                                                                                              |
+| `mfa_recovery_code_matches(target, code)` → bool / `forget_mfa_recovery_codes(target)`                            | service role only, for the `mfa-recover` edge function                                                                                                                          |
+| `record_mfa_recover_attempt(target)` → bool                                                                       | service role only: records a recovery try, false after five in fifteen minutes per account                                                                                      |
+| `clear_mfa_recovery_codes()` → int                                                                                | drops the caller's recovery codes once no verified factor is left (after turning two-step sign in off)                                                                          |
+| `notify_mfa_recovered(target)`                                                                                    | service role only: files an `account.mfa_removed` notice (category `security`: inbox, push, email) after a recovery                                                             |
 
 ## Database implementation notes
 
@@ -552,14 +558,14 @@ Where the wording lives (`errorMessage` in `apps/web/src/lib/errors.ts`): the sc
 
 Codes:
 
-- Session and membership: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `blocked` (joining a group, or opening a 1:1 tab, across a block in either direction).
+- Session and membership: `not_authenticated`, `account_deleted`, `not_a_member`, `not_allowed`, `blocked` (joining a group, or opening a 1:1 tab, across a block in either direction), `mfa_required` (any request from a session that has not finished two-step sign in, see [Two-step sign in](#two-step-sign-in)).
 - Groups and roles: `group_name_required`, `invalid_currency`, `group_currency_locked`, `group_owner_required`, `group_archived` (any write into an archived group: expenses, recurring expenses, payments, plans, availability, comments, RSVPs), `group_has_balances` (deleting a group while anyone, former members included, has a non-zero balance), `member_not_found`, `member_has_balance`, `owner_must_transfer`, `already_owner`, `cannot_change_owner`, `cannot_remove_owner`, `use_transfer_ownership`, `use_leave_group`.
 - 1:1 tabs: `invalid_friend`, `not_a_friend`.
 - Invites: `direct_group`, `invalid_role`, `invalid_max_uses`, `invalid_expiry`, `invite_not_found`, `invite_expired`, `invite_used_up`, `invite_revoked`, `invite_wrong_email`.
 - Expenses: `invalid_payload`, `group_required`, `description_required`, `invalid_amount`, `invalid_receipt_path`, `payer_not_in_group`, `fx_rate_unavailable`, `expense_not_found`, `expense_deleted`, `event_not_in_group` (linking an expense to a plan in another group), `split_member_not_in_group` (moving money of someone who left), `invalid_payers`, `payers_sum_mismatch` (what each person paid does not add up to the amount, also from the deferred check).
 - Splits: `invalid_splits`, `splits_required`, `splits_sum_mismatch`, `split_amount_required`, `percent_sum`, `invalid_weight`, `zero_shares`, `duplicate_user`, `adjustments_exceed_total`, `negative_share`, `items_required`, `invalid_items`.
 - Payments: `invalid_recipient`, `settlement_not_found`, `member_not_in_group` (removing a payment with someone who has left).
-- Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`.
+- Notifications: `invalid_notification_category`, `invalid_unsubscribe_link`, `notification_setting_required` (changing a required category, i.e. security notices).
 - Plans: `event_not_found`, `event_not_polling`, `event_not_schedulable`, `event_done`, `starts_at_required`, `invalid_slot`, `invalid_slots`, `duplicate_slot`, `rsvp_closed` (RSVP after the event's `rsvp_deadline`).
 
 ### RPC details and deviations
@@ -690,7 +696,19 @@ The browser is untrusted. It holds the publishable key and, once signed in, a sh
 
 `private` is not in `[api].schemas`, so PostgREST never exposes it. `revoke all on schema private from public` plus `alter default privileges ... revoke execute on functions from public` means a new function is callable by nobody until a migration grants it. API roles get `usage` on the schema and `execute` only on the policy helpers (`is_group_member`, `group_role`, `is_group_admin`, `my_group_ids`, `my_event_ids`, `shares_group_with`, `my_contact_ids`, `can_manage_event`) and a few pure functions (`try_uuid`, `minor_units`, `convert_minor`, `is_time_zone`). The helpers are `security definer` so they can read `group_members` without recursing into its own policy, and they only ever answer questions about `auth.uid()`.
 
-Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function`, `notify`, `notification_channels` and `unsubscribe_token` are not executable by `anon` or `authenticated`. Private tables (`former_members`, `notification_categories`, `notification_types`, `email_outbox`, `signing_keys`) are not readable by them either.
+Trigger functions, cron jobs, `require_user`, `require_member`, `member_balance`, `compute_splits`, `invoke_edge_function`, `notify`, `notification_channels` and `unsubscribe_token` are not executable by `anon` or `authenticated`. Private tables (`former_members`, `notification_categories`, `notification_types`, `email_outbox`, `signing_keys`) are not readable by them either. `mfa_satisfied` and `check_request` are executable by every API role because PostgREST and the realtime policies call them as the caller. `private.mfa_recovery_codes` and `private.mfa_recover_attempts` are readable by nobody but their owner.
+
+### Two-step sign in
+
+Accounts can add an authenticator app (Supabase Auth TOTP). Supabase hands out an `aal1` token after the password, magic link or OAuth step and an `aal2` token once a code is verified; the database decides what an `aal1` token of such an account may do ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)).
+
+- `private.mfa_satisfied()` is true unless the caller has a verified factor and an `aal1` token.
+- PostgREST runs `private.check_request()` before every request (`pgrst.db_pre_request` on the `authenticator` role, set in `20261113100257_two_factor_enforcement.sql`). It raises `mfa_required` (42501), so tables and RPCs alike are closed to a half finished sign in.
+- Realtime does not go through PostgREST, so each published table has a restrictive `select` policy, "two-step sign in done", on the same check.
+- The app sends such a session to `/two-factor` (`needsSecondFactor()` in `apps/web/src/lib/auth.ts`, checked by the `_app` and `/welcome` routes). Turning two-step sign in off takes a fresh code; Supabase refuses to remove a verified factor from an `aal1` session.
+- Storage: a restrictive policy on `storage.objects` ("two-step sign in done", every command, every bucket) applies the same check.
+- Recovery: the caller's `aal1` token plus one recovery code, posted to the `mfa-recover` edge function, removes every factor (admin API) and then every code. Five tries per account per fifteen minutes (`record_mfa_recover_attempt`). The app refreshes the session, which no longer needs a second step. Turning two-step sign in off from Me clears the codes (`clear_mfa_recovery_codes`).
+- Auth settings that back this up: TOTP on, `secure_password_change` (an emailed code for password changes from sessions older than a day), and security emails for password, email and authenticator changes (`supabase/config.toml`).
 
 ### Storage
 
@@ -708,19 +726,21 @@ Paths start with an owning id, and policies parse it with `storage.foldername(na
 
 Each function uses one of three schemes. `verify_jwt` is set per function in `supabase/config.toml`.
 
-| Function         | `verify_jwt` | Credential                                       | Checked by                                                                                                                                                                                                              |
-| ---------------- | ------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `delete-account` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                                                                                                                                  |
-| `notify`         | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)                                                                                                             |
-| `fx-sync`        | false        | same shared secret                               | same                                                                                                                                                                                                                    |
-| `ics-feed`       | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string                                                                                        |
-| `unsubscribe`    | false        | `?token=` signed unsubscribe token               | no privilege of its own: a POST (RFC 8058 one-click) calls the anon `email_unsubscribe` RPC with the publishable key; Postgres checks the HMAC. GET only redirects to the web page, which asks before changing anything |
+| Function              | `verify_jwt` | Credential                                       | Checked by                                                                                                                                                                                                              |
+| --------------------- | ------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `delete-account`      | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; the RPC runs as the caller so its own checks apply                                                                                                                                  |
+| `notify`              | false        | `x-potluck-secret` header equal to `EDGE_SECRET` | `hasEdgeSecret()`, constant-time compare; only `private.invoke_edge_function` knows the secret (from Vault)                                                                                                             |
+| `fx-sync`             | false        | same shared secret                               | same                                                                                                                                                                                                                    |
+| `ics-feed`            | false        | `?token=` from `calendar_feed_tokens`            | lookup with the service role; unknown or short tokens get a plain 404. Calendar apps cannot send headers, hence the query string                                                                                        |
+| `unsubscribe`         | false        | `?token=` signed unsubscribe token               | no privilege of its own: a POST (RFC 8058 one-click) calls the anon `email_unsubscribe` RPC with the publishable key; Postgres checks the HMAC. GET only redirects to the web page, which asks before changing anything |
+| `mfa-recover`         | true         | the user's JWT (`aal1` is enough) and a code     | the gateway, then `auth.getUser()`; the code is checked by `mfa_recovery_code_matches` with the service role                                                                                                            |
+| `cancel-email-change` | true         | the user's JWT                                   | the gateway, then `auth.getUser()`; refuses an unfinished two-step sign in by its `aal` claim                                                                                                                           |
 
 The service-role client (`_shared/admin.ts`) bypasses RLS, so each function authorizes the caller before touching it.
 
 ## Realtime
 
-The `supabase_realtime` publication carries `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway.
+The `supabase_realtime` publication carries `availability`, `expenses`, `expense_splits`, `settlements`, `activity`, `notifications`, `event_rsvps`, `events` and `group_members`. Realtime applies the subscriber's RLS `select` policies before it delivers a change, so a client only hears about rows it could read anyway. Each of these tables also has a restrictive policy that sends nothing to a session that still owes its two-step code.
 
 Clients do not patch their cache from the payload. A change invalidates the matching TanStack Query keys and the query refetches through the normal RLS path. Each screen owns one channel, mounted while it is open; `notifications-<userId>` lives in the app layout and is the only one open on every screen. Channels opened through `useRealtime` (`apps/web/src/lib/realtime.ts`) get a `:<n>` mount counter suffix so a remount never joins the topic the previous mount is still leaving.
 
@@ -777,6 +797,9 @@ Each recurring template runs inside its own `begin ... exception` block, so one 
 - `ics-feed`: per-user `.ics` subscription URL (token in query string).
 - `fx-sync`: daily FX rates from Frankfurter.
 - `delete-account`: runs `delete_my_account()` as the caller, then soft deletes the auth user with the service role.
+- `mfa-recover`: trades a two-step recovery code for removing the caller's authenticator factors (logic in `recover.ts`, tested under Node).
+- `cancel-email-change`: calls off a pending email change by setting the address back to the current one with the admin API.
+- `notify` writes push copy in the recipient's `profiles.locale` (`notify/copy.ts`, English fallback).
 
 There is no `og-invite` function yet. Invite links render the SPA, so link previews show the generic app title.
 

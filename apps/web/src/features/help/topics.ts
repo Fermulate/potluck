@@ -33,6 +33,7 @@ export const HELP_TOPICS = {
   calendarFeed: '/account/#calendar-feed',
   push: '/notifications/#turn-on-push-notifications',
   deleteAccount: '/account/#what-happens-to-shared-tabs',
+  twoFactor: '/account/#two-step-sign-in',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

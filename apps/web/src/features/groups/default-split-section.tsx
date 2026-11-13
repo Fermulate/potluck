@@ -1,5 +1,5 @@
 import { moneyKeys, setDefaultSplit, type DefaultSplit, type MoneyGroup } from '@potluck/api'
-import { DEFAULT_LOCALE, t } from '@potluck/i18n'
+import { intlLocale, t } from '@potluck/i18n'
 import { Button, Card, Sheet, SheetContent, toast } from '@potluck/ui'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -144,7 +144,7 @@ export function DefaultSplitSection({ groupId }: { groupId: string }) {
             onChange={setDraft}
             amountCents={0}
             currency={data.currency}
-            locale={DEFAULT_LOCALE}
+            locale={intlLocale()}
             modes={MODES}
             showAmounts={false}
           />

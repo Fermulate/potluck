@@ -50,6 +50,31 @@ describe('describeActivity', () => {
     expect(view.link).toEqual({ to: '/groups/$groupId/balances', params: { groupId: 'g1' } })
   })
 
+  it('phrases every verb in the second person when the viewer did it', () => {
+    const mine = (verb: string, data: Record<string, unknown> = {}) =>
+      describeActivity(item({ actor_id: ME, verb, data }), ctx).text
+    expect(mine('member.joined')).toBe('You joined the group')
+    expect(
+      mine('expense.created', { description: 'Tacos', amount_cents: 4500, currency: 'USD' }),
+    ).toBe('You added "Tacos" ($45.00)')
+    expect(
+      mine('settlement.created', { to_user: 'ben', amount_cents: 2000, currency: 'EUR' }),
+    ).toBe('You paid Ben €20.00')
+    expect(mine('comment.created', { expense_id: 'x1' })).toBe('You commented on an expense')
+  })
+
+  it('has its own line when someone else acted on the viewer', () => {
+    const view = describeActivity(
+      item({ verb: 'member.role_changed', data: { user_id: ME, to: 'admin' } }),
+      ctx,
+    )
+    expect(view.text).toBe('Ben made you admin')
+    const removed = describeActivity(item({ verb: 'member.removed', data: { user_id: ME } }), ctx)
+    expect(removed.text).toBe('Ben removed you')
+    const other = describeActivity(item({ verb: 'member.removed', data: { user_id: 'cleo' } }), ctx)
+    expect(other.text).toBe('Ben removed Cleo')
+  })
+
   it('uses own-action phrasing for the viewer', () => {
     const view = describeActivity(
       item({ actor_id: ME, verb: 'event.created', data: { title: 'Taco night', emoji: '🌮' } }),

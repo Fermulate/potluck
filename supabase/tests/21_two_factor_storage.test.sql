@@ -1,0 +1,188 @@
+-- Two-step sign in, continued (20261113100301_two_factor_storage_and_limits): storage refuses an
+-- unfinished sign in, recovery tries are limited, and codes go when two-step sign in goes.
+begin;
+select plan(28);
+
+select tests.create_user('alice');
+select tests.create_user('bob');
+select tests.remember('g', tests.group_with('alice', array['bob'], '{}', 'Storage crew'));
+
+insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at, secret)
+values ('00000000-0000-4000-8000-0000000000f1', tests.uid('alice'), 'phone', 'totp', 'verified', now(), now(), 'secret');
+
+-- A receipt in the group, put there before anyone signs in.
+insert into storage.objects (bucket_id, name, owner_id)
+values ('receipts', tests.id('g') || '/dinner.png', tests.uid('bob'));
+
+create function pg_temp.aal(level text) returns void language sql as $$
+  select set_config(
+    'request.jwt.claims',
+    (current_setting('request.jwt.claims')::jsonb || jsonb_build_object('aal', level))::text,
+    true
+  );
+$$;
+create function pg_temp.put(bucket text, path text) returns void language sql as $$
+  insert into storage.objects (bucket_id, name, owner_id) values (bucket, path, auth.uid()::text)
+$$;
+grant execute on function pg_temp.aal(text) to authenticated;
+grant execute on function pg_temp.put(text, text) to authenticated;
+
+-- Storage at aal1, with a verified factor: nothing.
+select tests.login('alice');
+select pg_temp.aal('aal1');
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'receipts'),
+  0,
+  'aal1 cannot list or download receipts'
+);
+select throws_ok(
+  format($$ select pg_temp.put('receipts', '%s/evil.png') $$, tests.id('g')),
+  '42501', null, 'aal1 cannot upload a receipt'
+);
+select throws_ok(
+  format($$ select pg_temp.put('avatars', '%s/evil.png') $$, tests.uid('alice')),
+  '42501', null, 'aal1 cannot upload an avatar'
+);
+select throws_ok(
+  format($$ select pg_temp.put('group-covers', '%s/evil.jpg') $$, tests.id('g')),
+  '42501', null, 'aal1 cannot upload a group cover'
+);
+update storage.objects set name = name || '.bak' where bucket_id = 'receipts';
+reset role;
+select is(
+  (select name from storage.objects where bucket_id = 'receipts'),
+  tests.id('g') || '/dinner.png',
+  'aal1 cannot replace a receipt'
+);
+
+-- The same person at aal2: as before.
+select tests.login('alice');
+select pg_temp.aal('aal2');
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'receipts'),
+  1,
+  'aal2 reads receipts'
+);
+select lives_ok(
+  format($$ select pg_temp.put('receipts', '%s/lunch.png') $$, tests.id('g')),
+  'aal2 uploads a receipt'
+);
+select lives_ok(
+  format($$ select pg_temp.put('avatars', '%s/me.png') $$, tests.uid('alice')),
+  'aal2 uploads an avatar'
+);
+
+-- Without a factor, aal1 is a full sign in.
+select tests.login('bob');
+select pg_temp.aal('aal1');
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'receipts'),
+  2,
+  'no factor: aal1 reads receipts'
+);
+select lives_ok(
+  format($$ select pg_temp.put('avatars', '%s/me.png') $$, tests.uid('bob')),
+  'no factor: aal1 uploads an avatar'
+);
+
+-- Recovery tries: five per fifteen minutes, service role only.
+select ok(
+  not has_function_privilege('authenticated', 'public.record_mfa_recover_attempt(uuid)', 'execute'),
+  'clients cannot record tries'
+);
+reset role;
+select is(
+  (select array_agg(public.record_mfa_recover_attempt(tests.uid('alice'))) from generate_series(1, 6)),
+  array[true, true, true, true, true, false],
+  'the sixth try in fifteen minutes is refused'
+);
+select ok(public.record_mfa_recover_attempt(tests.uid('bob')), 'the limit is per account');
+update private.mfa_recover_attempts set attempted_at = now() - interval '16 minutes'
+where user_id = tests.uid('alice');
+select ok(public.record_mfa_recover_attempt(tests.uid('alice')), 'tries older than the window do not count');
+
+-- Clearing codes.
+select tests.login('alice');
+select pg_temp.aal('aal2');
+select public.create_mfa_recovery_codes();
+select is(public.clear_mfa_recovery_codes(), 0, 'codes stay while two-step sign in is on');
+reset role;
+delete from auth.mfa_factors where user_id = tests.uid('alice');
+select tests.login('alice');
+select is(public.clear_mfa_recovery_codes(), 10, 'turning it off clears the codes');
+select is(public.mfa_recovery_codes_left(), 0, 'nothing left after clearing');
+
+-- Telling the account after a recovery (mfa-recover).
+reset role;
+select ok(
+  not has_function_privilege('authenticated', 'public.notify_mfa_recovered(uuid)', 'execute'),
+  'only the service role files the recovery notice'
+);
+select public.notify_mfa_recovered(tests.uid('bob'));
+select is(
+  (select array_agg(n.type) from public.notifications n where n.user_id = tests.uid('bob') and n.type like 'account.%'),
+  array['account.mfa_removed'],
+  'the account gets a notice in its inbox'
+);
+select ok(
+  (select 'push' = any (n.channels) from public.notifications n
+   where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed'),
+  'security notices push by default'
+);
+
+-- Security notices cannot be turned off.
+select ok(
+  (select c.required from private.notification_categories c where c.category = 'security'),
+  'the security category is required'
+);
+update public.app_config set value = 'true' where key = 'email_notifications';
+
+select tests.login('bob');
+select throws_ok(
+  $$ select public.set_notification_pref('security', email => false) $$,
+  '23514', 'notification_setting_required', 'nobody can switch security email off'
+);
+select throws_ok(
+  $$ select public.set_notification_pref('security', push => false) $$,
+  '23514', 'notification_setting_required', 'nor its push'
+);
+select is(
+  (select count(*)::int from public.my_notification_prefs() p where p.category = 'security'),
+  0,
+  'it is not listed with the settings'
+);
+
+reset role;
+select set_config('tests.tok_sec', private.unsubscribe_token(tests.uid('bob'), 'security'), true);
+select set_config('tests.tok_all', private.unsubscribe_token(tests.uid('bob'), 'all'), true);
+select tests.login_anon();
+select throws_ok(
+  $$ select public.email_unsubscribe(current_setting('tests.tok_sec')) $$,
+  '22023', 'invalid_unsubscribe_link', 'a security unsubscribe link is not valid'
+);
+select is(
+  public.email_unsubscribe(current_setting('tests.tok_all')) ->> 'subscribed',
+  'false',
+  'an all link turns every other email off'
+);
+reset role;
+select is(
+  (select count(*)::int from public.notification_prefs p
+   where p.user_id = tests.uid('bob') and p.category = 'security'),
+  0,
+  'the all link leaves security alone'
+);
+-- Even a setting stored behind the API's back is ignored.
+insert into public.notification_prefs (user_id, category, push, email)
+values (tests.uid('bob'), 'security', false, false);
+delete from public.notifications n where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed';
+select public.notify_mfa_recovered(tests.uid('bob'));
+select is(
+  (select n.channels from public.notifications n
+   where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed'),
+  array['push', 'email'],
+  'security notices still push and email after unsubscribing from everything'
+);
+
+select * from finish();
+rollback;

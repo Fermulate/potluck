@@ -9,7 +9,7 @@ import {
   type GroupRole,
 } from '@potluck/api'
 import { can } from '@potluck/core'
-import { DEFAULT_LOCALE, formatDate, formatMoney, t } from '@potluck/i18n'
+import { intlLocale, formatDate, formatMoney, t } from '@potluck/i18n'
 import {
   Amount,
   Avatar,
@@ -67,7 +67,7 @@ function MemberBalance({ member, currency }: { member: GroupMember; currency: st
       <Amount
         cents={Math.abs(member.net_cents)}
         currency={currency}
-        locale={DEFAULT_LOCALE}
+        locale={intlLocale()}
         tone={member.net_cents > 0 ? 'owed' : 'owe'}
         className="text-[0.9375rem] font-bold"
         srLabel=""

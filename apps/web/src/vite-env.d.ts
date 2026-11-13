@@ -9,3 +9,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Build day and short commit, e.g. "2026.11.13 (3305a99)". Defined in vite.config.ts. */
+declare const __APP_VERSION__: string
