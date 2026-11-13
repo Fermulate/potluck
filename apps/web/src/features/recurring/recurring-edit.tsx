@@ -75,10 +75,7 @@ export function RecurringEditScreen({ recurringId }: { recurringId: string }) {
   if (!allowed) {
     return <TemplateSummary template={template.data} group={group.data} onClose={close} />
   }
-  const departed = templateDeparted(
-    template.data,
-    group.data.members.map((m) => m.id),
-  )
+  const departed = templateDeparted(template.data, group.data.members)
   const departedNames = departed.length
     ? joinNames(
         departed.map((id) =>

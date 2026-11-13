@@ -42,7 +42,7 @@ import { CalendarHeart, Repeat } from 'lucide-react'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
-import { templateAsExpense } from '@/features/recurring/template'
+import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
 import { categoryLabel, todayIn } from '../format'
 import { groupTitle } from '../format'
@@ -253,7 +253,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const amountError = submitted && total <= 0 ? t('expenses.form.amountRequired') : undefined
   // An unchanged split is not resent, so the stored shares (former members' too) stay as they are.
   const keepSplit = !!editing && total === editing.amount_cents && sameSplit(draft, savedDraft)
-  const formerInDraft = formerParticipants(draft, memberIds)
+  const formerInDraft = formerParticipants(
+    draft,
+    template ? openMemberIds(group.members) : memberIds,
+  )
   const formerNames = joinNames(
     formerInDraft.map((id) => firstName(formerMember(id).display_name)),
     3,

@@ -3,6 +3,7 @@ import type {
   ExpensePayer,
   ExpenseSplit,
   ExpenseWithSplits,
+  MoneyMember,
   RecurringExpense,
 } from '@potluck/api'
 import { can, firstOccurrenceFrom, nextOccurrence, type Recurrence } from '@potluck/core'
@@ -85,10 +86,21 @@ export function templatePeople(template: RecurringExpense): string[] {
   ]
 }
 
-/** People it names who are no longer in the group, in the order it names them. */
-export function templateDeparted(template: RecurringExpense, memberIds: readonly string[]) {
-  const members = new Set(memberIds)
-  return templatePeople(template).filter((id) => !members.has(id))
+/**
+ * Members a repeating expense may name: a closed account that keeps its membership because of a
+ * balance counts as gone, as on the server (`private.recurring_departed`).
+ */
+export function openMemberIds(members: readonly Pick<MoneyMember, 'id' | 'deleted_at'>[]) {
+  return members.filter((m) => !m.deleted_at).map((m) => m.id)
+}
+
+/** People it names who left the group or closed their account, in the order it names them. */
+export function templateDeparted(
+  template: RecurringExpense,
+  members: readonly Pick<MoneyMember, 'id' | 'deleted_at'>[],
+) {
+  const open = new Set(openMemberIds(members))
+  return templatePeople(template).filter((id) => !open.has(id))
 }
 
 /**

@@ -160,9 +160,17 @@ describe('canManageTemplate', () => {
 })
 
 describe('templateDeparted', () => {
+  const member = (id: string, deleted_at: string | null = null) => ({ id, deleted_at })
+
   it('lists the people it names who are not in the group any more', () => {
-    expect(templateDeparted(template(), [ME, BEN])).toEqual([CLEO])
-    expect(templateDeparted(template(), [ME, BEN, CLEO])).toEqual([])
+    expect(templateDeparted(template(), [member(ME), member(BEN)])).toEqual([CLEO])
+    expect(templateDeparted(template(), [member(ME), member(BEN), member(CLEO)])).toEqual([])
+  })
+
+  it('counts a closed account that kept its membership as gone, as the server does', () => {
+    expect(
+      templateDeparted(template(), [member(ME), member(BEN), member(CLEO, '2026-11-13T00:00:00Z')]),
+    ).toEqual([CLEO])
   })
 })
 describe('schedule previews', () => {

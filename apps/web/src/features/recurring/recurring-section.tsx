@@ -83,12 +83,7 @@ function RecurringRow({ item, groupId }: { item: RecurringExpense; groupId: stri
   const role = group.data?.members.find((m) => m.id === me)?.role
   const allowed = canManageTemplate(item, role, me, !!group.data?.archived_at)
   // Someone it names left: it cannot post (and the job pauses it) until they are taken out.
-  const departed = group.data
-    ? templateDeparted(
-        item,
-        group.data.members.map((m) => m.id),
-      )
-    : []
+  const departed = group.data ? templateDeparted(item, group.data.members) : []
   const departedNames = departed.length
     ? joinNames(
         departed.map((id) => nameOf(id)),
