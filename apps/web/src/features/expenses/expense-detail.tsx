@@ -33,6 +33,8 @@ import {
 } from './money-data'
 import { departedMembers } from './expense-math'
 import { useDeleteExpense } from './use-delete-expense'
+import { RepeatCard } from '@/features/recurring/repeat-card'
+import { canManageTemplate } from '@/features/recurring/template'
 
 export function ExpenseDetail({ expenseId }: { expenseId: string }) {
   const me = useUserId()
@@ -217,6 +219,14 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
             </div>
           </header>
 
+          {!deleted && group.data && (
+            <RepeatCard
+              expense={e}
+              timeZone={timeZone}
+              canManage={(template) => canManageTemplate(template, role, me, archived)}
+              canMakeRepeat={mayEdit && !e.is_refund && !departed}
+            />
+          )}
           <SplitCard expense={e} me={me} people={people} nameOf={nameOf} />
           <ExpenseHistory expense={e} me={me} timeZone={timeZone} nameOf={nameOf} />
         </div>

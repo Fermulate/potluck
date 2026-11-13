@@ -32,6 +32,10 @@ Vite + React 19 PWA, TanStack Router (file routes) and Query, Tailwind v4. Root 
   read who paid with `payersOf()` and feed core with `toBalanceExpense()` (`features/expenses/expense-math.ts`),
   never `paid_by` alone. What an expense means for the viewer (`viewerLine`) comes from core `expenseEffect`
   in the group currency, so a row can never disagree with the balance.
+- Repeating expenses (`features/recurring/`, [ADR 14](../../docs/adr/0014-editable-recurring-templates.md)):
+  a template opens in the expense form (`ExpenseForm mode="recurring"`, route `/recurring/$recurringId`)
+  through `templateAsExpense()`, so payers, adjustments and items work as for an expense. Skip, pause and
+  stop live in `useTemplateActions`; the expense page shows `RepeatCard`.
 - UI copy: `t()` keys only. Visual rules: [docs/design.md](../../docs/design.md).
 - Language: `src/lib/language.ts` starts the app in the remembered (or browser) language before the
   first render; the root keys its outlet by language, so a switch redraws every screen. The profile's
