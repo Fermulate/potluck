@@ -302,10 +302,10 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 # Control how many MFA factors can be enrolled at once per user.
 max_enrolled_factors = 10
 
-# Control MFA via App Authenticator (TOTP)
+# Control MFA via App Authenticator (TOTP). Two-step sign in on the Me page (ADR 11).
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]
@@ -438,6 +438,10 @@ verify_jwt = true
 # Mail clients POST here with only the signed token in the query string (RFC 8058).
 [functions.unsubscribe]
 verify_jwt = false
+
+# Accepts the aal1 token of someone stuck at two-step sign in (ADR 11).
+[functions.mfa-recover]
+verify_jwt = true
 
 # Hosted project overrides, applied with `supabase config push`.
 [remotes.production]
