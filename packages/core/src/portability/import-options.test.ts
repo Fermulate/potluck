@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { computeBalances } from '../balances'
 import { TEST_LABELS } from './fixtures'
 import {
+  RATE_BAND,
   SKIP_PERSON,
   alreadyThere,
   isRate,
   peopleInScope,
   planImport,
+  rateIsOutlier,
   rateOnDay,
   rowEffectIn,
 } from './import-plan'
@@ -96,7 +98,14 @@ describe('rates', () => {
       rateOn: () => null,
     })
     expect(missing.missingRates).toEqual([
-      { currency: 'EUR', from: '2024-01-05', to: '2024-02-01', rows: 2 },
+      {
+        currency: 'EUR',
+        from: '2024-01-05',
+        to: '2024-02-01',
+        rows: 2,
+        typed: null,
+        skipped: false,
+      },
     ])
     expect(missing.balances).toEqual({})
   })
@@ -108,7 +117,18 @@ describe('rates', () => {
       typedRates: { EUR: ' 1.2 ' },
     })
     expect(typed.rows[0]).toMatchObject({ fx_rate: '1.2' })
-    expect(typed.missingRates).toEqual([])
+    expect(typed.rows[0]).not.toHaveProperty('fx_rate_confirmed')
+    // The currency stays listed, now with its rate, so the screen does not jump while typing.
+    expect(typed.missingRates).toEqual([
+      {
+        currency: 'EUR',
+        from: '2024-01-05',
+        to: '2024-01-05',
+        rows: 1,
+        typed: '1.2',
+        skipped: false,
+      },
+    ])
     const skipped = planImport(file(eur('2024-01-05')), {
       ...base,
       rateOn: () => null,
@@ -117,6 +137,29 @@ describe('rates', () => {
     })
     expect(skipped.rows).toEqual([])
     expect(skipped.skipped).toEqual([{ line: 2, reason: 'rate' }])
+    expect(skipped.missingRates[0]).toMatchObject({ typed: null, skipped: true })
+  })
+
+  it('keeps every digit of a typed rate, and marks a confirmed far one', () => {
+    const plan = planImport(file(eur('2024-01-05')), {
+      ...base,
+      rateOn: () => null,
+      typedRates: { EUR: '0.0091' },
+      confirmedRates: new Set(['EUR']),
+    })
+    expect(plan.rows[0]).toMatchObject({ fx_rate: '0.0091', fx_rate_confirmed: true })
+    // Ava paid 10 EUR for Ben and Cleo: 9.1 US cents at 0.0091, spread 5 and 4 (largest remainder).
+    expect(plan.balances).toEqual({ a: 9, b: -5, c: -4 })
+  })
+
+  it('calls a typed rate far off outside a fifth to five times the stored one', () => {
+    expect(rateIsOutlier('1.1', '1.08')).toBe(false)
+    expect(rateIsOutlier('5.4', '1.08')).toBe(false)
+    expect(rateIsOutlier('5.41', '1.08')).toBe(true)
+    expect(rateIsOutlier('0.2', '1.08')).toBe(true)
+    expect(rateIsOutlier('999999999999', '1.08')).toBe(true)
+    expect(rateIsOutlier('1.1', null)).toBe(true)
+    expect(RATE_BAND).toEqual({ low: 0.2, high: 5 })
   })
 
   it('keeps the rate a Potluck file was written with, and counts where it differs', () => {

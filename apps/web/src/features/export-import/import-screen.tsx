@@ -12,9 +12,9 @@ import {
   alreadyThere,
   failedLine,
   guessMapping,
-  isRate,
   peopleInScope,
   planImport,
+  rateIsOutlier,
   rateOnDay,
   utcDay,
   type DateFormat,
@@ -33,7 +33,6 @@ import {
   Card,
   Checkbox,
   Field,
-  Input,
   LoadingDots,
   Select,
   Skeleton,
@@ -69,6 +68,7 @@ import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 import { importLabelSets } from './labels'
+import { RateCard } from './rate-card'
 import { fingerprint, readFile } from './read-file'
 
 /** How many rows of the file the preview lists before "and N more". */
@@ -94,6 +94,8 @@ function failureText(error: unknown, plan: ImportPlan): string {
   const line = failedLine(plan, e.hint)
   let text: string
   if (e.code === '57014') text = t('transfer.import.errors.timeout')
+  else if (line && e.message === 'fx_rate_out_of_range')
+    text = t('transfer.import.errors.rate', { line })
   else if (line && e.message && LEFT_CODES.has(e.message))
     text = t('transfer.import.errors.left', { line })
   else {
@@ -366,6 +368,8 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const [typedRates, setTypedRates] = useState<Record<string, string>>({})
   const [skipCurrencies, setSkipCurrencies] = useState<ReadonlySet<string>>(new Set())
   const [leaveOutDuplicates, setLeaveOutDuplicates] = useState(false)
+  const [confirmedRates, setConfirmedRates] = useState<ReadonlySet<string>>(new Set())
+  const [partlyImported, setPartlyImported] = useState(false)
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const previewHeading = useRef<HTMLHeadingElement>(null)
@@ -448,8 +452,9 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       rateOn,
       typedRates,
       skipCurrencies,
+      confirmedRates,
     }),
-    [mapping, fromGroup, group.currency, rateOn, typedRates, skipCurrencies],
+    [mapping, fromGroup, group.currency, rateOn, typedRates, skipCurrencies, confirmedRates],
   )
   const basePlan = useMemo(() => (source ? planImport(source, options) : null), [source, options])
   const duplicates = useMemo(
@@ -477,8 +482,35 @@ function ImportBody({ group }: { group: MoneyGroup }) {
     .map((i) => t('transfer.import.left', { name: source!.people[i]!, group: group.name }))
   const issues = [...leftIssues, ...(plan?.issues ?? []).map(issueText)]
   const total = plan?.rows.length ?? 0
-  const blocked =
-    !plan || issues.length > 0 || plan.missingRates.length > 0 || plan.ratesPending || total === 0
+  const missingCurrencies = (plan?.missingRates ?? []).map((m) => m.currency).join(',')
+  const references = useQueries({
+    queries: missingCurrencies
+      .split(',')
+      .filter(Boolean)
+      .map((currency) =>
+        moneyQueries.fxRate(
+          supabase,
+          currency,
+          group.currency,
+          new Date().toISOString().slice(0, 10),
+        ),
+      ),
+    combine: (results) => results.map((r) => (r.isPending ? undefined : (r.data?.rate ?? null))),
+  })
+  const referenceOf = (currency: string) =>
+    references[missingCurrencies.split(',').indexOf(currency)]
+  const ratesOpen = (plan?.missingRates ?? []).some(
+    (m) =>
+      !m.skipped &&
+      (!m.typed ||
+        (!confirmedRates.has(m.currency) &&
+          (referenceOf(m.currency) === undefined ||
+            rateIsOutlier(m.typed, referenceOf(m.currency))))),
+  )
+  const blocked = !plan || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
+  const leftOut = (['person', 'rate', 'duplicate'] as const).some((r) =>
+    plan?.skipped.some((s) => s.reason === r),
+  )
   const sameFile = fileId ? pastImports.data?.find((p) => p.fingerprint === fileId) : undefined
   const parts = Math.ceil(total / MAX_IMPORT_ROWS)
 
@@ -501,8 +533,11 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       if (LEFT_CODES.has((error as { message?: string }).message ?? '')) {
         invalidateMoney(queryClient, group.id)
       }
-      if (((error as Partial<ImportFailure>).imported?.expenses ?? 0) > 0) {
+      const imported = (error as Partial<ImportFailure>).imported
+      if ((imported?.expenses ?? 0) + (imported?.payments ?? 0) > 0) {
         invalidateMoney(queryClient, group.id)
+        setPartlyImported(true)
+        setLeaveOutDuplicates(true)
       }
     },
     onSettled: () => setProgress(null),
@@ -602,7 +637,10 @@ function ImportBody({ group }: { group: MoneyGroup }) {
               <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
               {t('transfer.import.duplicates.sameFile', {
                 group: group.name,
-                when: formatRelative(sameFile.at, { timeZone }),
+                when:
+                  Date.now() - new Date(sameFile.at).getTime() < 60_000
+                    ? t('transfer.import.justNow')
+                    : formatRelative(sameFile.at, { timeZone }),
               })}
             </p>
           )}
@@ -654,70 +692,38 @@ function ImportBody({ group }: { group: MoneyGroup }) {
           {plan && (plan.missingRates.length > 0 || plan.fileRates.rows > 0) && (
             <Step title={t('transfer.import.rates.title')}>
               {plan.missingRates.map((m) => (
-                <Card key={m.currency} padding="default" className="grid gap-3">
-                  <p className="text-sm">
-                    {t('transfer.import.rates.missing', {
-                      currency: m.currency,
-                      group: group.currency,
-                      count: m.rows,
-                      from: formatDate(m.from, { timeZone: 'UTC' }),
-                      to: formatDate(m.to, { timeZone: 'UTC' }),
-                    })}
-                  </p>
-                  <Field
-                    label={t('transfer.import.rates.typed', {
-                      currency: m.currency,
-                      group: group.currency,
-                    })}
-                    className="max-w-60"
-                  >
-                    <Input
-                      inputMode="decimal"
-                      value={typedRates[m.currency] ?? ''}
-                      onChange={(e) =>
-                        setTypedRates((r) => ({
-                          ...r,
-                          [m.currency]: e.target.value.replace(',', '.'),
-                        }))
-                      }
-                    />
-                  </Field>
-                  <Checkbox
-                    label={t('transfer.import.rates.skip')}
-                    checked={skipCurrencies.has(m.currency)}
-                    onCheckedChange={(checked) =>
-                      setSkipCurrencies((s) => {
-                        const next = new Set(s)
-                        if (checked === true) next.add(m.currency)
-                        else next.delete(m.currency)
-                        return next
-                      })
-                    }
-                  />
-                </Card>
+                <RateCard
+                  key={m.currency}
+                  missing={m}
+                  groupCurrency={group.currency}
+                  reference={referenceOf(m.currency)}
+                  confirmed={confirmedRates.has(m.currency)}
+                  onApply={(rate) =>
+                    setTypedRates((r) => {
+                      const next = { ...r }
+                      if (rate) next[m.currency] = rate
+                      else delete next[m.currency]
+                      return next
+                    })
+                  }
+                  onSkip={(skip) =>
+                    setSkipCurrencies((set) => {
+                      const next = new Set(set)
+                      if (skip) next.add(m.currency)
+                      else next.delete(m.currency)
+                      return next
+                    })
+                  }
+                  onConfirm={(yes) =>
+                    setConfirmedRates((set) => {
+                      const next = new Set(set)
+                      if (yes) next.add(m.currency)
+                      else next.delete(m.currency)
+                      return next
+                    })
+                  }
+                />
               ))}
-              {/* Typed rates and skipped currencies stay listed once they are dealt with. */}
-              {Object.entries(typedRates)
-                .filter(([c, r]) => isRate(r) && !plan.missingRates.some((m) => m.currency === c))
-                .map(([currency, rate]) => (
-                  <Card key={currency} padding="default" className="grid gap-3">
-                    <Field
-                      label={t('transfer.import.rates.typed', { currency, group: group.currency })}
-                      className="max-w-60"
-                    >
-                      <Input
-                        inputMode="decimal"
-                        value={rate}
-                        onChange={(e) =>
-                          setTypedRates((r) => ({
-                            ...r,
-                            [currency]: e.target.value.replace(',', '.'),
-                          }))
-                        }
-                      />
-                    </Field>
-                  </Card>
-                ))}
               {plan.fileRates.rows > 0 && (
                 <p className="text-sm text-mute">
                   {t('transfer.import.rates.file', { count: plan.fileRates.rows })}
@@ -732,10 +738,15 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             <Card padding="default" className="grid gap-3 bg-saffron-soft text-saffron-ink">
               <p className="flex items-start gap-2 text-sm">
                 <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                {t('transfer.import.duplicates.rows', {
-                  count: duplicates.length,
-                  group: group.name,
-                })}
+                {partlyImported
+                  ? t('transfer.import.duplicates.fromThisFile', {
+                      count: duplicates.length,
+                      group: group.name,
+                    })
+                  : t('transfer.import.duplicates.rows', {
+                      count: duplicates.length,
+                      group: group.name,
+                    })}
               </p>
               <Checkbox
                 label={t('transfer.import.duplicates.leaveOut')}
@@ -782,16 +793,18 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                 <p
                   className={cn(
                     'flex items-center gap-2 text-sm font-semibold',
-                    plan.totals === 'match' ? 'text-olive-ink' : 'text-saffron-ink',
+                    plan.totals === 'match' && !leftOut ? 'text-olive-ink' : 'text-saffron-ink',
                   )}
                 >
-                  {plan.totals === 'match' ? (
+                  {plan.totals === 'match' && !leftOut ? (
                     <Check aria-hidden className="size-4" />
                   ) : (
                     <AlertTriangle aria-hidden className="size-4" />
                   )}
                   {plan.totals === 'match'
-                    ? t('transfer.import.totalsMatch')
+                    ? leftOut
+                      ? t('transfer.import.totalsLeftOut')
+                      : t('transfer.import.totalsMatch')
                     : t('transfer.import.totalsMismatch')}
                 </p>
               )}
@@ -801,7 +814,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                 <p className="flex items-center gap-2 text-sm text-mute">
                   <LoadingDots /> {t('transfer.import.rates.pending')}
                 </p>
-              ) : plan.missingRates.length > 0 ? (
+              ) : plan.missingRates.some((m) => !m.typed && !m.skipped) ? (
                 <p className="text-sm text-mute">{t('transfer.import.rates.waiting')}</p>
               ) : (
                 <BalancesAfter plan={plan} group={group} />

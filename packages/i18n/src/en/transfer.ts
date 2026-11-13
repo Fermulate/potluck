@@ -99,6 +99,8 @@ export const transfer = {
     balances: 'Balances after the import',
     now: 'now {amount}',
     totalsMatch: 'Adds up to the total balance in the file.',
+    totalsLeftOut:
+      'The file adds up to its total balance, but some of its rows stay out, so the balances below will not match that total.',
     totalsMismatch:
       'Does not add up to the total balance line in the file. Check nobody edited it.',
     dates: {
@@ -119,6 +121,12 @@ export const transfer = {
       typed: 'Rate: 1 {currency} in {group}',
       skip: 'Leave these rows out',
       pending: 'Getting exchange rates',
+      apply: 'Use this rate',
+      invalid: 'Use a positive number, like 0.0091.',
+      using: 'Using 1 {currency} = {rate} {group}.',
+      far: '1 {currency} = {rate} {group} is far from {reference}, the latest rate Potluck has. Check it.',
+      noReference: 'Potluck has no {currency} to {group} rate to compare this with. Check it.',
+      confirm: 'This rate is right',
       file_one: '{count} row keeps the rate it was exported with, so it comes back exactly.',
       file_other: '{count} rows keep the rate they were exported with, so they come back exactly.',
       differ_one: '{count} of them differs from the rate Potluck has for that day.',
@@ -129,14 +137,20 @@ export const transfer = {
       rows_one: '{count} row looks like an expense or payment already in {group}.',
       rows_other: '{count} rows look like expenses or payments already in {group}.',
       leaveOut: 'Leave those rows out',
+      fromThisFile_one:
+        '{count} row of this file is already in {group}: it went in before the import stopped.',
+      fromThisFile_other:
+        '{count} rows of this file are already in {group}: they went in before the import stopped.',
     },
     parts:
       'This file has {count} rows, so it goes in as {parts} imports of up to 5,000. If one fails, the ones before it stay in.',
     progress: 'Importing {sent} of {total} rows',
+    justNow: 'just now',
     submitBlocked: 'Import',
     errors: {
       left: 'Row {line}: someone in it has left the group. Leave their rows out, or invite them back, then import again.',
       timeout: 'That took too long, so this import was not saved. Try again in a moment.',
+      rate: 'Row {line}: its exchange rate is far from the one Potluck has. Check the rate, then tick "This rate is right".',
       partly_one: '{count} row from earlier in the file went in.',
       partly_other: '{count} rows from earlier in the file went in.',
     },

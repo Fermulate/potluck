@@ -12,6 +12,7 @@ export {
 export { csvCell, isBlankRow, parseCsv, toCsv, unguardCell, type CsvValue } from './csv'
 export { formatMinor, parseMinor, trimRate } from './decimal'
 export {
+  RATE_BAND,
   SKIP_PERSON,
   alreadyThere,
   failedLine,
@@ -20,6 +21,7 @@ export {
   isRate,
   peopleInScope,
   planImport,
+  rateIsOutlier,
   rateOnDay,
   rowEffect,
   rowEffectIn,

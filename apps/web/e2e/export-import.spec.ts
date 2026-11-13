@@ -155,6 +155,41 @@ test.describe('export and import', () => {
     })
   })
 
+  test('a typed exchange rate keeps every digit it was given', async ({ newUser, openAs }) => {
+    const { me, ben, cleo } = await threePeople(newUser)
+    const trip = await groupWith(me, [ben, cleo], { name: unique('Trip') })
+    // A day long before Potluck's first stored rate, and a name nobody in the group has.
+    const csv = [
+      `Date,Description,Category,Cost,Currency,${me.name},${ben.name},Zed Quinn`,
+      '2020-01-05,Museum,General,30.00,EUR,20.00,-10.00,-10.00',
+    ].join('\n')
+    const page = await openAs(me)
+    await importFile(page, trip, 'old.csv', csv)
+
+    // Picking someone keeps the keyboard on the picker.
+    const zed = page.getByRole('combobox', { name: 'Zed Quinn' })
+    await zed.click()
+    await page.getByRole('option', { name: cleo.name }).click()
+    await expect(zed).toBeFocused()
+
+    const label = t('transfer.import.rates.typed', { currency: 'EUR', group: 'USD' })
+    const rate = page.getByRole('textbox', { name: label })
+    await rate.pressSequentially('0.9091')
+    // Nothing is applied mid-typing, so the field stays and keeps focus.
+    await expect(rate).toBeFocused()
+    await expect(rate).toHaveValue('0.9091')
+    await rate.press('Enter')
+    await expect(
+      page.getByText(
+        t('transfer.import.rates.using', { currency: 'EUR', rate: '0.9091', group: 'USD' }),
+      ),
+    ).toBeVisible()
+    await page.getByRole('button', { name: t('transfer.import.submit', { count: 1 }) }).click()
+    await expect(page).toHaveURL(new RegExp(`/groups/${trip.id}$`))
+    const [museum] = await fetchGroupExpenses(me.client, trip.id)
+    expect(museum!.fx_rate).toBe('0.909100000000')
+  })
+
   test('when someone leaves before the import, nothing is written and the row is named', async ({
     newUser,
     openAs,

@@ -295,6 +295,8 @@ export const expenses = {
     already_recurring: 'This expense already repeats.',
     invalid_next_run: 'Pick today or a later date for the next one.',
     invalid_import: 'This file could not be imported. Check it and try again.',
+    fx_rate_out_of_range:
+      'That exchange rate is far from the one Potluck has. Check it, then confirm it.',
     import_too_large: 'One import takes at most 5000 rows. Split the file and import it in parts.',
   },
   /** Several people paid (or, for a refund, got the money). */

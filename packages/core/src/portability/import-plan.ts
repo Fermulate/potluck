@@ -18,6 +18,8 @@ export interface ImportExpenseRow {
   splits: { user_id: string; share_cents: number }[]
   /** Rate into the group currency (decimal text); only for rows in another currency. */
   fx_rate?: string
+  /** The person confirmed a typed rate far from Potluck's own (the server refuses it otherwise). */
+  fx_rate_confirmed?: boolean
 }
 
 /** A payment as `import_expenses` takes it. */
@@ -30,6 +32,7 @@ export interface ImportPaymentRow {
   paid_on: string
   note: string | null
   fx_rate?: string
+  fx_rate_confirmed?: boolean
 }
 
 export type ImportRow = ImportExpenseRow | ImportPaymentRow
@@ -58,6 +61,8 @@ export interface ImportOptions {
   typedRates?: Readonly<Record<string, string>>
   /** Currencies whose rows without any rate are left out. */
   skipCurrencies?: ReadonlySet<string>
+  /** Currencies whose typed rate the person confirmed although it is far from the stored one. */
+  confirmedRates?: ReadonlySet<string>
   /** File lines to leave out (rows already in the group). */
   skipLines?: ReadonlySet<number>
 }
@@ -69,6 +74,10 @@ export interface MissingRate {
   from: string
   to: string
   rows: number
+  /** The rate typed for them, once it is a valid one. */
+  typed: string | null
+  /** Left out instead. */
+  skipped: boolean
 }
 
 export interface ImportPlan {
@@ -84,7 +93,8 @@ export interface ImportPlan {
   balances: Shares
   /** Stored rates still loading: the balances are not final yet. */
   ratesPending: boolean
-  /** Currencies with rows that have no rate yet (neither stored, typed nor skipped). */
+  /** Currencies with rows on days Potluck has no rate for, and what is done about them; the
+   * import waits while any has neither a typed rate nor `skipped`. */
   missingRates: MissingRate[]
   /** Rows that keep the rate their Potluck file was written with, and how many of those differ
    * from the rate Potluck has stored for that day. */
@@ -95,6 +105,19 @@ export interface ImportPlan {
 }
 
 const RATE = /^\d{1,12}(\.\d{1,12})?$/
+
+/** A typed rate counts as far off outside this band around Potluck's nearest one (as the server). */
+export const RATE_BAND = { low: 0.2, high: 5 } as const
+
+/**
+ * Whether a typed rate is far from Potluck's own for the pair (or there is none to compare with):
+ * the server then wants `fx_rate_confirmed`. Only a warning test, so plain numbers are fine.
+ */
+export function rateIsOutlier(rate: string, reference: string | null | undefined): boolean {
+  if (!reference || !(Number(reference) > 0)) return true
+  const ratio = Number(rate) / Number(reference)
+  return ratio < RATE_BAND.low || ratio > RATE_BAND.high
+}
 
 /** A rate someone typed or a file carries: positive decimal text that fits numeric(24,12). */
 export function isRate(text: string | null | undefined): text is string {
@@ -337,20 +360,26 @@ export function planImport(file: SourceFile, options: ImportOptions): ImportPlan
           ratesPending = true
         } else if (stored !== null) {
           rate = stored
-        } else if (isRate(typed)) {
-          rate = typed.trim()
-        } else if (options.skipCurrencies?.has(row.currency)) {
-          skipped.push({ line: entry.line, reason: 'rate' })
-          continue
         } else {
-          rate = null
+          // No stored rate: the currency stays listed whether a rate is typed, it is left out, or
+          // neither yet, so the screen keeps its place while someone types.
+          const usable = isRate(typed) ? typed.trim() : null
+          const leftOut = !usable && !!options.skipCurrencies?.has(row.currency)
           const seen = missing.get(row.currency)
           missing.set(row.currency, {
             currency: row.currency,
             from: !seen || day < seen.from ? day : seen.from,
             to: !seen || day > seen.to ? day : seen.to,
             rows: (seen?.rows ?? 0) + 1,
+            typed: usable,
+            skipped: leftOut,
           })
+          if (leftOut) {
+            skipped.push({ line: entry.line, reason: 'rate' })
+            continue
+          }
+          rate = usable
+          if (usable && options.confirmedRates?.has(row.currency)) row.fx_rate_confirmed = true
         }
         if (rate) row.fx_rate = rate
       }

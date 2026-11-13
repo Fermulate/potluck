@@ -45,6 +45,8 @@ interface Seed {
   imports?: Api.PastImport[]
   people?: Api.MoneyPerson[]
   rates?: Record<string, Api.FxHistory>
+  /** Potluck's latest rate per currency into USD, for the far-off warning (null: none). */
+  latest?: Record<string, string | null>
 }
 
 function renderScreen(seed: Seed = {}) {
@@ -63,6 +65,12 @@ function renderScreen(seed: Seed = {}) {
       for (const [key, history] of Object.entries(seed.rates ?? {})) {
         const [from, until] = key.split('|') as [string, string]
         c.setQueryData(transferKeys.fx(from, 'USD', until), history)
+      }
+      for (const [currency, rate] of Object.entries(seed.latest ?? {})) {
+        c.setQueryData(
+          moneyKeys.fxRate(currency, 'USD', new Date().toISOString().slice(0, 10)),
+          rate ? { rate, day: '2026-11-01' } : null,
+        )
       }
     }),
   )
@@ -192,7 +200,10 @@ describe('ImportScreen', () => {
   })
 
   it('asks for a rate Potluck does not have, or leaves those rows out', async () => {
-    renderScreen({ rates: { 'EUR|2024-01-05': { direct: [], inverse: [] } } })
+    renderScreen({
+      rates: { 'EUR|2024-01-05': { direct: [], inverse: [] } },
+      latest: { EUR: '1.08' },
+    })
     await upload(`${HEADER}\n2024-01-05,Museum,General,10.00,EUR,10.00,-5.00,-5.00`)
     expect(
       await screen.findByText(
@@ -209,11 +220,68 @@ describe('ImportScreen', () => {
       name: t('transfer.import.rates.typed', { currency: 'EUR', group: 'USD' }),
     })
     fireEvent.change(rate, { target: { value: '1,1' } })
+    fireEvent.blur(rate)
+    expect(
+      await screen.findByText(
+        t('transfer.import.rates.using', { currency: 'EUR', rate: '1.1', group: 'USD' }),
+      ),
+    ).toBeVisible()
     // Ava paid 10 EUR, 11 USD at 1.1, for Ben and Cleo: owed 10 before, 21 after.
     expect(await screen.findByText('$21.00')).toBeInTheDocument()
     fireEvent.click(await submitButton(1))
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     expect(save.mock.calls[0]![2][0]).toMatchObject({ fx_rate: '1.1' })
+  })
+
+  it('keeps the rate field while typing, applies it on Enter with every digit, and asks to confirm a far one', async () => {
+    renderScreen({
+      rates: { 'JPY|2024-01-05': { direct: [], inverse: [] } },
+      latest: { JPY: '0.0067' },
+    })
+    await upload(`${HEADER}\n2024-01-05,Sushi,General,9000,JPY,6000,-3000,-3000`)
+    const label = t('transfer.import.rates.typed', { currency: 'JPY', group: 'USD' })
+    const rate = await screen.findByRole('textbox', { name: label })
+    rate.focus()
+    for (const text of ['0', '0.', '0.0', '0.00', '0.009', '0.0091']) {
+      fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: text } })
+    }
+    // Nothing is applied while typing: the field stays put and keeps focus.
+    expect(screen.getByRole('textbox', { name: label })).toBe(rate)
+    expect(rate).toHaveFocus()
+    expect(rate).toHaveValue('0.0091')
+    fireEvent.keyDown(rate, { key: 'Enter' })
+    expect(
+      await screen.findByText(
+        t('transfer.import.rates.using', { currency: 'JPY', rate: '0.0091', group: 'USD' }),
+      ),
+    ).toBeVisible()
+    fireEvent.click(await submitButton(1))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save.mock.calls[0]![2][0]).toMatchObject({ fx_rate: '0.0091' })
+    expect(save.mock.calls[0]![2][0]).not.toHaveProperty('fx_rate_confirmed')
+
+    // Ten times Potluck's rate: warned, and blocked until confirmed.
+    fireEvent.change(rate, { target: { value: '0.067' } })
+    fireEvent.click(screen.getByRole('button', { name: t('transfer.import.rates.apply') }))
+    expect(
+      await screen.findByText(
+        t('transfer.import.rates.far', {
+          currency: 'JPY',
+          rate: '0.067',
+          reference: '0.0067',
+          group: 'USD',
+        }),
+      ),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: t('transfer.import.rates.confirm') }))
+    fireEvent.click(await submitButton(1))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+    expect(save.mock.calls[1]![2][0]).toMatchObject({ fx_rate: '0.067', fx_rate_confirmed: true })
+
+    fireEvent.change(rate, { target: { value: 'abc' } })
+    fireEvent.blur(rate)
+    expect(await screen.findByText(t('transfer.import.rates.invalid'))).toBeVisible()
   })
 
   it('uses stored rates for every currency, so the balances are the real ones', async () => {
@@ -227,13 +295,18 @@ describe('ImportScreen', () => {
   })
 
   it('leaves rows out when there is no rate and the person says so', async () => {
-    renderScreen({ rates: { 'EUR|2024-01-05': { direct: [], inverse: [] } } })
+    renderScreen({
+      rates: { 'EUR|2024-01-05': { direct: [], inverse: [] } },
+      latest: { EUR: null },
+    })
     await upload(
       `${HEADER}\n2024-01-05,Museum,General,10.00,EUR,10.00,-5.00,-5.00\n2024-01-06,Lunch,General,10.00,USD,10.00,-5.00,-5.00`,
     )
     fireEvent.click(await screen.findByRole('checkbox', { name: t('transfer.import.rates.skip') }))
     expect(screen.getByText(t('transfer.import.skippedRate', { count: 1 }))).toBeVisible()
     expect(await submitButton(1)).toBeEnabled()
+    // Leaving rows out means the file's own total will not match.
+    expect(screen.queryByText(t('transfer.import.totalsMatch'))).not.toBeInTheDocument()
   })
 
   it('warns about rows and files already imported', async () => {
