@@ -295,7 +295,7 @@ describe('spendingRate', () => {
 
   it('goes through a common base when two currencies have no rate between them', () => {
     expect(spendingRate('EUR', 'GBP', rateOf)).toBe('0.880000000000')
-    expect(spendingRate('GBP', 'EUR', rateOf)).toBe(crossRate('1.25', invertRate('1.1')))
+    expect(spendingRate('GBP', 'EUR', rateOf)).toBe('1.136363636364')
   })
 
   it('uses the direct rate, or the inverse, when there is one', () => {
