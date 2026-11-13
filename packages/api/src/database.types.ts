@@ -1183,56 +1183,77 @@ export type Database = {
         Row: {
           active: boolean
           amount_cents: number
+          anchor_day: number | null
           category: string | null
           created_at: string
           created_by: string | null
           currency: string
           description: string
+          discount_cents: number | null
           group_id: string
           id: string
+          items: Json | null
           next_run_on: string
+          notes: string | null
           paid_by: string
           payers: Json | null
           recurrence: Database['public']['Enums']['recurrence']
+          remind: boolean
           split_type: Database['public']['Enums']['split_type']
           splits: NonNullable<Json>
+          tax_cents: number | null
+          tip_cents: number | null
           updated_at: string
         }
         ComputedFields: never
         Insert: {
           active?: boolean
           amount_cents: number
+          anchor_day?: number | null
           category?: string | null
           created_at?: string
           created_by?: string | null
           currency: string
           description: string
+          discount_cents?: number | null
           group_id: string
           id?: string
+          items?: Json | null
           next_run_on: string
+          notes?: string | null
           paid_by: string
           payers?: Json | null
           recurrence: Database['public']['Enums']['recurrence']
+          remind?: boolean
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
+          tax_cents?: number | null
+          tip_cents?: number | null
           updated_at?: string
         }
         Update: {
           active?: boolean
           amount_cents?: number
+          anchor_day?: number | null
           category?: string | null
           created_at?: string
           created_by?: string | null
           currency?: string
           description?: string
+          discount_cents?: number | null
           group_id?: string
           id?: string
+          items?: Json | null
           next_run_on?: string
+          notes?: string | null
           paid_by?: string
           payers?: Json | null
           recurrence?: Database['public']['Enums']['recurrence']
+          remind?: boolean
           split_type?: Database['public']['Enums']['split_type']
           splits?: NonNullable<Json>
+          tax_cents?: number | null
+          tip_cents?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -1654,6 +1675,40 @@ export type Database = {
         }[]
       }
       leave_group: { Args: { group_id: string }; Returns: undefined }
+      make_expense_recurring: {
+        Args: { expense_id: string; recurrence: Database['public']['Enums']['recurrence'] }
+        Returns: {
+          active: boolean
+          amount_cents: number
+          anchor_day: number | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          discount_cents: number | null
+          group_id: string
+          id: string
+          items: Json | null
+          next_run_on: string
+          notes: string | null
+          paid_by: string
+          payers: Json | null
+          recurrence: Database['public']['Enums']['recurrence']
+          remind: boolean
+          split_type: Database['public']['Enums']['split_type']
+          splits: NonNullable<Json>
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'recurring_expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       mfa_recovery_code_matches: { Args: { code: string; target: string }; Returns: boolean }
       mfa_recovery_codes_left: { Args: Record<PropertyKey, never>; Returns: number }
       my_notification_prefs: {
@@ -1927,6 +1982,40 @@ export type Database = {
           to_user: string
         }[]
       }
+      skip_recurring_expense: {
+        Args: { id: string }
+        Returns: {
+          active: boolean
+          amount_cents: number
+          anchor_day: number | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          discount_cents: number | null
+          group_id: string
+          id: string
+          items: Json | null
+          next_run_on: string
+          notes: string | null
+          paid_by: string
+          payers: Json | null
+          recurrence: Database['public']['Enums']['recurrence']
+          remind: boolean
+          split_type: Database['public']['Enums']['split_type']
+          splits: NonNullable<Json>
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'recurring_expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       transfer_ownership: { Args: { group_id: string; user_id: string }; Returns: undefined }
       update_expense: {
         Args: { id: string; payload: Json }
@@ -1994,6 +2083,40 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_recurring_expense: {
+        Args: { id: string; payload: Json }
+        Returns: {
+          active: boolean
+          amount_cents: number
+          anchor_day: number | null
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string
+          discount_cents: number | null
+          group_id: string
+          id: string
+          items: Json | null
+          next_run_on: string
+          notes: string | null
+          paid_by: string
+          payers: Json | null
+          recurrence: Database['public']['Enums']['recurrence']
+          remind: boolean
+          split_type: Database['public']['Enums']['split_type']
+          splits: NonNullable<Json>
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'recurring_expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_settlement: {
         Args: { id: string; payload: Json }
         Returns: {
@@ -2023,7 +2146,7 @@ export type Database = {
       event_status: 'polling' | 'scheduled' | 'cancelled' | 'done'
       group_role: 'owner' | 'admin' | 'member'
       push_platform: 'web' | 'ios' | 'android'
-      recurrence: 'weekly' | 'monthly' | 'yearly'
+      recurrence: 'weekly' | 'biweekly' | 'monthly' | 'yearly'
       rsvp_status: 'going' | 'maybe' | 'declined'
       split_type: 'equal' | 'exact' | 'percent' | 'shares' | 'adjustment' | 'itemized'
     }
@@ -2144,7 +2267,7 @@ export const Constants = {
       event_status: ['polling', 'scheduled', 'cancelled', 'done'],
       group_role: ['owner', 'admin', 'member'],
       push_platform: ['web', 'ios', 'android'],
-      recurrence: ['weekly', 'monthly', 'yearly'],
+      recurrence: ['weekly', 'biweekly', 'monthly', 'yearly'],
       rsvp_status: ['going', 'maybe', 'declined'],
       split_type: ['equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized'],
     },

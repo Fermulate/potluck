@@ -225,10 +225,10 @@ select is((select count(*)::int from public.busy_blocks), 0, 'busy time is priva
 select tests.login('m1');
 select tests.remember('r', (select recurring_id from create_expense(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Internet', 'amount_cents', 5000, 'recurrence', 'monthly',
-  'splits', tests.people('m1', 'm2')))));
+  'splits', tests.people('m1')))));
 select tests.login('m2');
 update public.recurring_expenses set active = false where id = tests.id('r');
-select is((select active from public.recurring_expenses where id = tests.id('r')), true, 'members cannot pause others'' templates');
+select is((select active from public.recurring_expenses where id = tests.id('r')), true, 'members who are not in a template cannot pause it');
 select throws_ok($$ update public.recurring_expenses set amount_cents = 1 where id = tests.id('r') $$, '42501', null, 'amounts are not editable directly');
 select tests.login('m1');
 update public.recurring_expenses set active = false where id = tests.id('r');
