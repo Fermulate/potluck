@@ -16,6 +16,11 @@ export interface RankOptions {
   minAttendees: number
   /** Current group members. Rows from anyone else are ignored. */
   members: readonly string[]
+  /**
+   * Guests who answered through a guest link (their guest ids). They count exactly like
+   * members, as `best_slots` does since guest links (ADR 10).
+   */
+  guests?: readonly string[]
   /** Maximum number of suggestions. Defaults to 5, like `best_slots`. */
   limit?: number
 }
@@ -28,7 +33,7 @@ export interface RankedSlot {
   maybeCount: number
   /** yes + 0.5 * maybe */
   score: number
-  /** Members who cannot make the whole duration, sorted by id. */
+  /** Members and guests who cannot make the whole duration, sorted by id. */
   missing: string[]
 }
 
@@ -56,7 +61,7 @@ function toEpoch(value: string | Date): number {
  */
 export function rankSlots(rows: readonly AvailabilityRow[], options: RankOptions): RankedSlot[] {
   if (!(options.slotMinutes > 0)) throw new RangeError('slotMinutes must be positive')
-  const members = [...new Set(options.members)].sort(compareIds)
+  const members = [...new Set([...options.members, ...(options.guests ?? [])])].sort(compareIds)
   const memberSet = new Set(members)
   const slotsNeeded = Math.max(1, Math.ceil(options.durationMinutes / options.slotMinutes))
   const step = options.slotMinutes * MINUTE
