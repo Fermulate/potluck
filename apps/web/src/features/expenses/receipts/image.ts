@@ -16,15 +16,14 @@ const RESIZABLE = new Set(['image/jpeg', 'image/png', 'image/webp'])
 /**
  * Shrinks a photo before it is uploaded or read: at most MAX_EDGE on its longest side, as JPEG
  * on white (a phone photo of a receipt goes from about 4 MB to about 400 KB). The camera's
- * orientation is applied. Anything the browser cannot decode (HEIC outside Safari, PDFs) and
- * any photo that would not get smaller is returned as it was.
+ * orientation is applied, and re-encoding drops the photo's metadata (location included).
+ * Anything the browser cannot decode (HEIC outside Safari, PDFs) is returned as it was.
  */
 export async function prepareImage(file: File): Promise<File> {
   if (!RESIZABLE.has(file.type) && !(file.type === 'image/heic' && canDecodeHeic())) return file
   try {
     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
     const size = fitWithin(bitmap.width, bitmap.height)
-    const resized = size.width !== bitmap.width || size.height !== bitmap.height
     const canvas = document.createElement('canvas')
     canvas.width = size.width
     canvas.height = size.height
@@ -37,7 +36,7 @@ export async function prepareImage(file: File): Promise<File> {
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/jpeg', QUALITY),
     )
-    if (!blob || (!resized && blob.size >= file.size)) return file
+    if (!blob) return file
     const name = `${file.name.replace(/\.[^.]*$/, '') || 'photo'}.jpg`
     return new File([blob], name, { type: 'image/jpeg', lastModified: file.lastModified })
   } catch {

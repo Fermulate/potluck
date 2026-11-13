@@ -3,7 +3,7 @@
 -- two-step sign in read none of them; set_expense_attachments and the receipt_path mirror for
 -- older clients.
 begin;
-select plan(46);
+select plan(49);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
