@@ -38,18 +38,15 @@ create table private.notification_categories (
   push_default boolean not null,
   email_default boolean not null,
   push_allowed boolean not null default true,
-  email_allowed boolean not null default true,
-  -- Most notifications always reach the inbox. A category with this set has its own
-  -- inbox switch (the monthly summary card).
-  inbox_optional boolean not null default false
+  email_allowed boolean not null default true
 );
 
 comment on table private.notification_categories is
   'One row per notification setting people see, with its defaults. Labels live in packages/i18n (settings.notificationPrefs.categories).';
 
 -- Defaults follow Splitwise: money, comments, groups and reminders push and email;
--- plans push only (they are chatty); the monthly summary never pushes, and its inbox
--- card and its email are switched separately.
+-- plans push only (they are chatty); the monthly summary never pushes, and its email
+-- has a switch (its inbox card, like everything else, always arrives).
 insert into private.notification_categories
   (category, position, push_default, email_default, push_allowed, email_allowed)
 values
@@ -63,8 +60,6 @@ values
   ('monthly_summary', 80, false, true, false, true)
 on conflict (category) do nothing;
 
-update private.notification_categories set inbox_optional = true where category = 'monthly_summary';
-
 create table private.notification_types (
   type text primary key,
   category text not null references private.notification_categories (category)
@@ -75,9 +70,9 @@ create index notification_types_category_idx on private.notification_types (cate
 comment on table private.notification_types is
   'Which setting governs each notification type. Add one row per new type.';
 
--- Includes types other work adds (payment edits, deletes and restores from settle
--- up, debt.reminder, recurring.upcoming) so they follow the right setting as soon
--- as they exist. member.added has no sender yet: nobody can put someone else in a
+-- Includes types other work adds (settlement edits, deletes and restores,
+-- debt.reminder, recurring.upcoming) so they follow the right setting as soon as
+-- they exist. member.added has no sender yet: nobody can put someone else in a
 -- group today except 1:1 tabs, which are skipped. It is ready for placeholder
 -- members.
 insert into private.notification_types (type, category) values
@@ -89,10 +84,6 @@ insert into private.notification_types (type, category) values
   ('settlement.updated', 'payments'),
   ('settlement.deleted', 'payments'),
   ('settlement.restored', 'payments'),
-  ('payment.created', 'payments'),
-  ('payment.updated', 'payments'),
-  ('payment.deleted', 'payments'),
-  ('payment.restored', 'payments'),
   ('comment.created', 'comments'),
   ('member.added', 'groups'),
   ('member.joined', 'groups'),
@@ -119,8 +110,6 @@ create table public.notification_prefs (
   category text not null references private.notification_categories (category),
   push boolean,
   email boolean,
-  -- Only for categories with inbox_optional; null = on.
-  inbox boolean,
   updated_at timestamptz not null default now(),
   primary key (user_id, category)
 );
@@ -172,10 +161,8 @@ returns table (
   category text,
   push boolean,
   email boolean,
-  inbox boolean,
   push_allowed boolean,
-  email_allowed boolean,
-  inbox_allowed boolean
+  email_allowed boolean
 )
 language plpgsql
 security definer
@@ -190,10 +177,8 @@ begin
     c.category,
     c.push_allowed and coalesce(p.push, c.push_default),
     c.email_allowed and coalesce(p.email, c.email_default),
-    not c.inbox_optional or coalesce(p.inbox, true),
     c.push_allowed,
-    c.email_allowed,
-    c.inbox_optional
+    c.email_allowed
   from private.notification_categories c
   left join public.notification_prefs p on p.user_id = uid and p.category = c.category
   order by c.position;
@@ -207,8 +192,7 @@ grant execute on function public.my_notification_prefs() to authenticated, servi
 create or replace function public.set_notification_pref(
   category text,
   push boolean default null,
-  email boolean default null,
-  inbox boolean default null
+  email boolean default null
 )
 returns void
 language plpgsql
@@ -225,21 +209,21 @@ begin
     raise exception using message = 'invalid_notification_category', detail = 'Unknown notification setting', errcode = '22023';
   end if;
 
-  insert into public.notification_prefs as p (user_id, category, push, email, inbox)
-  values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email,
-          set_notification_pref.inbox)
+  insert into public.notification_prefs as p (user_id, category, push, email)
+  values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email)
   on conflict (user_id, category) do update
     set push = coalesce(excluded.push, p.push),
-        email = coalesce(excluded.email, p.email),
-        inbox = coalesce(excluded.inbox, p.inbox);
+        email = coalesce(excluded.email, p.email);
 
-  -- A setting changed by hand makes any unsubscribe snapshot stale.
-  delete from private.email_unsubscribe_undo u where u.user_id = uid;
+  -- An email setting changed by hand makes any unsubscribe snapshot stale.
+  if set_notification_pref.email is not null then
+    delete from private.email_unsubscribe_undo u where u.user_id = uid;
+  end if;
 end;
 $$;
 
-revoke execute on function public.set_notification_pref(text, boolean, boolean, boolean) from public, anon;
-grant execute on function public.set_notification_pref(text, boolean, boolean, boolean) to authenticated, service_role;
+revoke execute on function public.set_notification_pref(text, boolean, boolean) from public, anon;
+grant execute on function public.set_notification_pref(text, boolean, boolean) to authenticated, service_role;
 
 -- Routing --------------------------------------------------------------------------
 
@@ -419,8 +403,9 @@ $$;
 
 -- What an unsubscribe link changed, so "keep sending them" puts back exactly that.
 -- prior maps each category the link covered to its email setting before (true,
--- false or null for the default). Dropped when the person changes a setting
--- themselves, since the snapshot is stale by then.
+-- false or null for the default). Only taken when some email in scope was on, and
+-- dropped when the person changes an email setting themselves, since the snapshot
+-- is stale by then.
 create table private.email_unsubscribe_undo (
   user_id uuid not null references public.profiles (id) on delete cascade,
   scope text not null,
@@ -498,7 +483,9 @@ begin
     insert into private.email_unsubscribe_undo (user_id, scope, prior)
     select uid, cat, jsonb_object_agg(s.c, p.email)
     from unnest(cats) as s (c)
+    join private.notification_categories c on c.category = s.c
     left join public.notification_prefs p on p.user_id = uid and p.category = s.c
+    having bool_or(coalesce(p.email, c.email_default))
     on conflict (user_id, scope) do nothing;
 
     insert into public.notification_prefs as p (user_id, category, email)
@@ -653,10 +640,11 @@ begin
         || case when ex.id is not null and ex.deleted_at is null then jsonb_strip_nulls(jsonb_build_object(
           'description', ex.description,
           'amount_cents', ex.amount_cents,
-          'currency', ex.currency,
-          'share_cents', (select s.share_cents from public.expense_splits s
-                          where s.expense_id = ex.id and s.user_id = n.user_id)
-        )) else '{}'::jsonb end
+          'currency', ex.currency
+        )) || jsonb_build_object(
+          'share_cents', coalesce((select s.share_cents from public.expense_splits s
+                                   where s.expense_id = ex.id and s.user_id = n.user_id), 0)
+        ) else '{}'::jsonb end
     )
     into item
     from public.notifications n
@@ -843,11 +831,10 @@ as $$
 $$;
 
 -- On the first of the month: one summary.monthly notification (an inbox card,
--- and an email when email is on) for everyone with a non-zero balance whose
--- monthly summary inbox switch is on. The email follows the summary's email
--- setting through the usual routing, so unsubscribing from the email keeps the
--- card. Run twice for the same month, it skips people who already have theirs.
--- Returns how many were written.
+-- and an email when email is on) for everyone with a non-zero balance. The email
+-- follows the summary's email setting through the usual routing, so unsubscribing
+-- from the email keeps the card. Run twice for the same month, it skips people who
+-- already have theirs. Returns how many were written.
 create or replace function private.send_monthly_summaries(
   month date default (date_trunc('month', now()) - interval '1 month')::date
 )
@@ -867,11 +854,6 @@ begin
     join public.group_members m on m.group_id = b.group_id and m.user_id = b.user_id
     join public.profiles p on p.id = b.user_id and p.deleted_at is null
     where b.net_cents <> 0
-      and coalesce(
-        (select np.inbox from public.notification_prefs np
-         where np.user_id = b.user_id and np.category = 'monthly_summary'),
-        true
-      )
       and not exists (
         select 1 from public.notifications n
         where n.user_id = b.user_id and n.type = 'summary.monthly'

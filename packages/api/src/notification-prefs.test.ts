@@ -15,10 +15,8 @@ const pref = (category: string, push = true, email = true) => ({
   category,
   push,
   email,
-  inbox: true,
   push_allowed: true,
   email_allowed: true,
-  inbox_allowed: false,
 })
 
 describe('notification settings', () => {

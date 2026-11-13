@@ -1,6 +1,6 @@
 -- private.monthly_summary and the monthly-summary job.
 begin;
-select plan(17);
+select plan(14);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -101,34 +101,9 @@ select results_eq(
   $$ values ('ava', '{email}'::text[]), ('ben', '{}'::text[]) $$,
   'it is emailed; turning the summary email off keeps the inbox card'
 );
-select results_eq(
-  $$ select inbox, email, inbox_allowed from my_notification_prefs() where category = 'monthly_summary' $$,
-  $$ values (true, false, true) $$,
-  'ben''s summary: its own inbox switch, on by default, apart from the email'
-);
-
--- The card has its own switch.
-delete from public.notifications where type = 'summary.monthly';
-select tests.login('ben');
-select set_notification_pref('monthly_summary', inbox => false);
-select results_eq(
-  $$ select category from my_notification_prefs() where inbox_allowed $$,
-  $$ values ('monthly_summary') $$,
-  'only the summary can leave the inbox'
-);
-reset role;
-select private.send_monthly_summaries(current_setting('tests.month')::date);
-select results_eq(
-  $$ select handle from pg_temp.summaries() $$,
-  $$ values ('ava') $$,
-  'turning the card off stops the summary altogether'
-);
 
 -- Closed accounts get nothing.
 delete from public.notifications where type = 'summary.monthly';
-select tests.login('ben');
-select set_notification_pref('monthly_summary', inbox => true);
-reset role;
 update public.profiles set deleted_at = now() where id = tests.uid('ben');
 select private.send_monthly_summaries(current_setting('tests.month')::date);
 select results_eq(

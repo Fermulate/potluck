@@ -144,7 +144,6 @@ export const settings = {
     emailSoon: 'Email notifications are on their way. Until then, your inbox has it all.',
     failed: 'That setting did not save. Try again?',
     offline: 'You are offline. Your change will save when you are back.',
-    summaryInbox: 'In your inbox',
     summaryEmail: 'By email',
     pushOffHere: 'Push is off on this device, so these only reach your other devices.',
     turnOnPush: 'Turn on push here',

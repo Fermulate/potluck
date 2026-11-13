@@ -2301,10 +2301,11 @@ begin
         || case when ex.id is not null and ex.deleted_at is null then jsonb_strip_nulls(jsonb_build_object(
           'description', ex.description,
           'amount_cents', ex.amount_cents,
-          'currency', ex.currency,
-          'share_cents', (select s.share_cents from public.expense_splits s
-                          where s.expense_id = ex.id and s.user_id = n.user_id)
-        )) else '{}'::jsonb end
+          'currency', ex.currency
+        )) || jsonb_build_object(
+          'share_cents', coalesce((select s.share_cents from public.expense_splits s
+                                   where s.expense_id = ex.id and s.user_id = n.user_id), 0)
+        ) else '{}'::jsonb end
     )
     into item
     from public.notifications n
@@ -2450,11 +2451,6 @@ begin
     join public.group_members m on m.group_id = b.group_id and m.user_id = b.user_id
     join public.profiles p on p.id = b.user_id and p.deleted_at is null
     where b.net_cents <> 0
-      and coalesce(
-        (select np.inbox from public.notification_prefs np
-         where np.user_id = b.user_id and np.category = 'monthly_summary'),
-        true
-      )
       and not exists (
         select 1 from public.notifications n
         where n.user_id = b.user_id and n.type = 'summary.monthly'
@@ -3244,7 +3240,9 @@ begin
     insert into private.email_unsubscribe_undo (user_id, scope, prior)
     select uid, cat, jsonb_object_agg(s.c, p.email)
     from unnest(cats) as s (c)
+    join private.notification_categories c on c.category = s.c
     left join public.notification_prefs p on p.user_id = uid and p.category = s.c
+    having bool_or(coalesce(p.email, c.email_default))
     on conflict (user_id, scope) do nothing;
 
     insert into public.notification_prefs as p (user_id, category, email)
@@ -3462,7 +3460,7 @@ $$;
 ALTER FUNCTION "public"."leave_group"("group_id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."my_notification_prefs"() RETURNS TABLE("category" "text", "push" boolean, "email" boolean, "inbox" boolean, "push_allowed" boolean, "email_allowed" boolean, "inbox_allowed" boolean)
+CREATE OR REPLACE FUNCTION "public"."my_notification_prefs"() RETURNS TABLE("category" "text", "push" boolean, "email" boolean, "push_allowed" boolean, "email_allowed" boolean)
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
@@ -3475,10 +3473,8 @@ begin
     c.category,
     c.push_allowed and coalesce(p.push, c.push_default),
     c.email_allowed and coalesce(p.email, c.email_default),
-    not c.inbox_optional or coalesce(p.inbox, true),
     c.push_allowed,
-    c.email_allowed,
-    c.inbox_optional
+    c.email_allowed
   from private.notification_categories c
   left join public.notification_prefs p on p.user_id = uid and p.category = c.category
   order by c.position;
@@ -3856,7 +3852,7 @@ $$;
 ALTER FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean DEFAULT NULL::boolean, "email" boolean DEFAULT NULL::boolean, "inbox" boolean DEFAULT NULL::boolean) RETURNS "void"
+CREATE OR REPLACE FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean DEFAULT NULL::boolean, "email" boolean DEFAULT NULL::boolean) RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
@@ -3870,21 +3866,21 @@ begin
     raise exception using message = 'invalid_notification_category', detail = 'Unknown notification setting', errcode = '22023';
   end if;
 
-  insert into public.notification_prefs as p (user_id, category, push, email, inbox)
-  values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email,
-          set_notification_pref.inbox)
+  insert into public.notification_prefs as p (user_id, category, push, email)
+  values (uid, set_notification_pref.category, set_notification_pref.push, set_notification_pref.email)
   on conflict (user_id, category) do update
     set push = coalesce(excluded.push, p.push),
-        email = coalesce(excluded.email, p.email),
-        inbox = coalesce(excluded.inbox, p.inbox);
+        email = coalesce(excluded.email, p.email);
 
-  -- A setting changed by hand makes any unsubscribe snapshot stale.
-  delete from private.email_unsubscribe_undo u where u.user_id = uid;
+  -- An email setting changed by hand makes any unsubscribe snapshot stale.
+  if set_notification_pref.email is not null then
+    delete from private.email_unsubscribe_undo u where u.user_id = uid;
+  end if;
 end;
 $$;
 
 
-ALTER FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean, "inbox" boolean) OWNER TO "postgres";
+ALTER FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."settle_up"("group_id" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text" DEFAULT NULL::"text", "note" "text" DEFAULT NULL::"text") RETURNS "public"."settlements"
@@ -4106,7 +4102,6 @@ CREATE TABLE IF NOT EXISTS "private"."notification_categories" (
     "email_default" boolean NOT NULL,
     "push_allowed" boolean DEFAULT true NOT NULL,
     "email_allowed" boolean DEFAULT true NOT NULL,
-    "inbox_optional" boolean DEFAULT false NOT NULL,
     CONSTRAINT "notification_categories_category_check" CHECK (("category" ~ '^[a-z_]+$'::"text"))
 );
 
@@ -4442,7 +4437,6 @@ CREATE TABLE IF NOT EXISTS "public"."notification_prefs" (
     "category" "text" NOT NULL,
     "push" boolean,
     "email" boolean,
-    "inbox" boolean,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
@@ -6159,9 +6153,9 @@ GRANT ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "u
 
 
 
-REVOKE ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean, "inbox" boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean, "inbox" boolean) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean, "inbox" boolean) TO "service_role";
+REVOKE ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "service_role";
 
 
 

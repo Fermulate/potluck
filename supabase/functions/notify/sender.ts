@@ -5,7 +5,6 @@
 //      optionally EMAIL_REPLY_TO;
 //   2. update public.app_config set value = 'true' where key = 'email_notifications'.
 // Without a key there is no sender and notify reports the batch as failed.
-// Another provider is one more branch in senderFromEnv returning an EmailSender.
 
 export interface OutgoingEmail {
   to: string
@@ -17,8 +16,6 @@ export interface OutgoingEmail {
 
 export interface EmailSender {
   provider: string
-  /** Most emails one call takes. */
-  maxBatch: number
   /**
    * Sends every email in one call, all or nothing. Same key, same batch: the provider drops a
    * repeat of a batch it already accepted.
@@ -75,7 +72,6 @@ export function resendSender(
 ): EmailSender {
   return {
     provider: 'resend',
-    maxBatch: 100,
     async sendBatch(emails, idempotencyKey) {
       const res = await fetchFn('https://api.resend.com/emails/batch', {
         method: 'POST',
@@ -119,11 +115,7 @@ export function resendSender(
 
 /** The configured sender, or null when email is not set up. */
 export function senderFromEnv(env: Env, fetchFn: Fetch = fetch): EmailSender | null {
-  const provider = (env.EMAIL_PROVIDER ?? 'resend').toLowerCase()
   const from = env.EMAIL_FROM?.trim()
-  if (!from) return null
-  if (provider === 'resend' && env.RESEND_API_KEY) {
-    return resendSender(env.RESEND_API_KEY, from, env.EMAIL_REPLY_TO?.trim() || undefined, fetchFn)
-  }
-  return null
+  if (!from || !env.RESEND_API_KEY) return null
+  return resendSender(env.RESEND_API_KEY, from, env.EMAIL_REPLY_TO?.trim() || undefined, fetchFn)
 }

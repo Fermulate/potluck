@@ -851,7 +851,6 @@ export type Database = {
         Row: {
           category: string
           email: boolean | null
-          inbox: boolean | null
           push: boolean | null
           updated_at: string
           user_id: string
@@ -860,7 +859,6 @@ export type Database = {
         Insert: {
           category: string
           email?: boolean | null
-          inbox?: boolean | null
           push?: boolean | null
           updated_at?: string
           user_id: string
@@ -868,7 +866,6 @@ export type Database = {
         Update: {
           category?: string
           email?: boolean | null
-          inbox?: boolean | null
           push?: boolean | null
           updated_at?: string
           user_id?: string
@@ -1418,8 +1415,6 @@ export type Database = {
           category: string
           email: boolean
           email_allowed: boolean
-          inbox: boolean
-          inbox_allowed: boolean
           push: boolean
           push_allowed: boolean
         }[]
@@ -1518,7 +1513,7 @@ export type Database = {
         Returns: undefined
       }
       set_notification_pref: {
-        Args: { category: string; email?: boolean; inbox?: boolean; push?: boolean }
+        Args: { category: string; email?: boolean; push?: boolean }
         Returns: undefined
       }
       settle_up: {

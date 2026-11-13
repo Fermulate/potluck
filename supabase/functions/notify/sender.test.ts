@@ -47,11 +47,10 @@ const job = (id: string, to = `${id}@example.com`) => ({
   data: { expense_id: 'x1', description: 'Pizza', actor_name: 'Ava' },
 })
 
-function recordingSender(failures: unknown[] = [], maxBatch = 100) {
+function recordingSender(failures: unknown[] = []) {
   const calls: { emails: OutgoingEmail[]; key: string }[] = []
   const sender: EmailSender = {
     provider: 'test',
-    maxBatch,
     async sendBatch(emails, key) {
       calls.push({ emails, key })
       const failure = failures.shift()
@@ -84,13 +83,6 @@ test('no sender until a key and a from address are configured', () => {
   assert.equal(senderFromEnv({}, fetchFn), null)
   assert.equal(senderFromEnv({ RESEND_API_KEY: 're_x' }, fetchFn), null)
   assert.equal(senderFromEnv({ EMAIL_FROM: 'Potluck <a@b.c>' }, fetchFn), null)
-  assert.equal(
-    senderFromEnv(
-      { EMAIL_PROVIDER: 'carrier-pigeon', RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c' },
-      fetchFn,
-    ),
-    null,
-  )
   assert.equal(
     senderFromEnv({ RESEND_API_KEY: 're_x', EMAIL_FROM: 'a@b.c' }, fetchFn)?.provider,
     'resend',
@@ -192,19 +184,6 @@ test('a permanent error is not retried', async () => {
   await deliverBatch('b4', [job('n1')], sender, h.options)
   assert.equal(calls.length, 1)
   assert.equal(h.reports[0]!.delivered, false)
-})
-
-test('a provider that takes fewer emails per call gets several keyed calls', async () => {
-  const { calls, sender } = recordingSender([], 2)
-  const h = harness()
-  await deliverBatch('b5', [job('n1'), job('n2'), job('n3')], sender, h.options)
-  assert.deepEqual(
-    calls.map((c) => [c.key, c.emails.length]),
-    [
-      ['batch-b5-0', 2],
-      ['batch-b5-1', 1],
-    ],
-  )
 })
 
 test('a batch with nothing sendable is still reported, so its rows do not hang', async () => {

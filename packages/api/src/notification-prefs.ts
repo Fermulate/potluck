@@ -24,12 +24,8 @@ export interface NotificationPref {
   category: NotificationCategory
   push: boolean
   email: boolean
-  /** Whether it reaches the inbox. Always true unless `inbox_allowed` (the monthly summary). */
-  inbox: boolean
   push_allowed: boolean
   email_allowed: boolean
-  /** This setting has its own inbox switch. */
-  inbox_allowed: boolean
 }
 
 export const isNotificationCategory = (value: string): value is NotificationCategory =>
@@ -58,7 +54,7 @@ export const notificationPrefsQueryOptions = (client: PotluckClient, userId: str
 export async function setNotificationPref(
   client: PotluckClient,
   category: NotificationCategory,
-  change: { push?: boolean; email?: boolean; inbox?: boolean },
+  change: { push?: boolean; email?: boolean },
 ) {
   const { error } = await client.rpc('set_notification_pref', { category, ...change })
   if (error) throw error

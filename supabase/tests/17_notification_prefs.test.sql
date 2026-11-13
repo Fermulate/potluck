@@ -1,7 +1,7 @@
 -- Notification settings, routing to push and email, the email outbox, unsubscribe
 -- links, and the expense.deleted / expense.restored / member.added types.
 begin;
-select plan(72);
+select plan(76);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -293,6 +293,32 @@ update private.email_outbox set state = 'pending', handled_at = null, queued_at 
 where state in ('sent', 'sending');
 select is(private.send_email_notifications(), 0, 'rows older than a day are not sent');
 
+-- The email shows each person's share as it is now: taken out of the split, none.
+select vault.create_secret('http://edge.test', 'project_url');
+select vault.create_secret('test-secret', 'edge_secret');
+select tests.login('ben');
+select tests.remember('e4', (select id from create_expense(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Dinner', 'amount_cents', 3000,
+  'splits', tests.people('ava', 'ben', 'cleo')))));
+set constraints all immediate;
+set constraints all deferred;
+select update_expense(tests.id('e4'), jsonb_build_object('splits', tests.people('ava', 'ben')));
+set constraints all immediate;
+set constraints all deferred;
+reset role;
+update private.email_outbox set queued_at = now() - interval '2 minutes' where state = 'pending';
+select private.send_email_notifications();
+select results_eq(
+  $$ select n.user_id, (e -> 'data' ->> 'share_cents')::bigint
+     from net.http_request_queue q
+     cross join lateral jsonb_array_elements(convert_from(q.body, 'UTF8')::jsonb -> 'emails') e
+     join public.notifications n on n.id = (e ->> 'id')::uuid
+     where n.data ->> 'expense_id' = tests.id('e4')::text
+     order by n.user_id = tests.uid('cleo') $$,
+  $$ values (tests.uid('ava'), 1500::bigint), (tests.uid('cleo'), 0::bigint) $$,
+  'the new expense email carries the current share, none for someone edited out'
+);
+
 update public.app_config set value = 'false' where key = 'email_notifications';
 update private.email_outbox set state = 'pending', handled_at = null, queued_at = now() - interval '2 minutes';
 select is(private.send_email_notifications(), 0, 'turning the flag off stops sending');
@@ -364,6 +390,35 @@ select is(
   (select count(*)::int from my_notification_prefs() where email),
   7,
   'someone else''s link touches nobody else'
+);
+
+-- Changing a push setting leaves the email undo in place.
+select tests.login('ava');
+select set_notification_pref('plans', push => false);
+select tests.login_anon();
+select is(
+  email_unsubscribe(current_setting('tests.tok_all'), 'undo') ->> 'restored',
+  'true',
+  'an all link can still be undone after a push change'
+);
+select tests.login('ava');
+select is(
+  (select count(*)::int from my_notification_prefs() where email),
+  5,
+  'every email ava had on is back'
+);
+
+-- A link for an email that was already off saves nothing, so undo turns it on.
+select tests.login('ben');
+select set_notification_pref('payments', email => false);
+reset role;
+select set_config('tests.ben_pay', private.unsubscribe_token(tests.uid('ben'), 'payments'), true);
+select tests.login_anon();
+select email_unsubscribe(current_setting('tests.ben_pay'));
+select is(
+  email_unsubscribe(current_setting('tests.ben_pay'), 'undo') ->> 'subscribed',
+  'true',
+  '"send them again" on an email that was already off turns it on'
 );
 
 -- Undo puts back exactly what the link changed, not the defaults.

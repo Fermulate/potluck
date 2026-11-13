@@ -88,33 +88,23 @@ export async function deliverBatch(
     }
   })
 
-  // The database cuts batches small enough for one call; split anyway if a provider takes fewer.
-  const chunks: OutgoingEmail[][] = []
-  for (let i = 0; i < emails.length; i += sender.maxBatch) {
-    chunks.push(emails.slice(i, i + sender.maxBatch))
-  }
-
   let lastError: unknown
-  for (const [index, chunk] of chunks.entries()) {
-    const key = chunks.length === 1 ? `batch-${batch}` : `batch-${batch}-${index}`
-    for (let attempt = 0; attempt < tries; attempt++) {
-      try {
-        await sender.sendBatch(chunk, key)
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      await sender.sendBatch(emails, `batch-${batch}`)
+      lastError = undefined
+      break
+    } catch (err) {
+      if (alreadySent(err)) {
+        log(`batch ${batch}: key already used, the provider has this batch`)
         lastError = undefined
         break
-      } catch (err) {
-        if (alreadySent(err)) {
-          log(`batch ${batch}: key already used, the provider has this batch`)
-          lastError = undefined
-          break
-        }
-        lastError = err
-        log(`batch ${batch} try ${attempt + 1} failed: ${(err as Error).message}`)
-        if (!isRetryable(err) || attempt === tries - 1) break
-        await sleep(backoffMs(attempt, (err as { retryAfter?: number }).retryAfter))
       }
+      lastError = err
+      log(`batch ${batch} try ${attempt + 1} failed: ${(err as Error).message}`)
+      if (!isRetryable(err) || attempt === tries - 1) break
+      await sleep(backoffMs(attempt, (err as { retryAfter?: number }).retryAfter))
     }
-    if (lastError) break
   }
 
   if (lastError) {

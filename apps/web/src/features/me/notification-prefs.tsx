@@ -39,7 +39,7 @@ const LOOK: Record<NotificationCategory, { icon: ReactNode; tile: string }> = {
   monthly_summary: { icon: <ScrollText />, tile: 'bg-olive-soft text-olive-ink' },
 }
 
-type Channel = 'push' | 'email' | 'inbox'
+type Channel = 'push' | 'email'
 interface Change {
   category: NotificationCategory
   channel: Channel
@@ -139,8 +139,7 @@ function PushHere({ push }: { push: DevicePush }) {
 
 /**
  * Per type push and email settings, for the whole account (every device). The inbox always gets
- * everything except the monthly summary, which has its own inbox switch. The email column shows
- * once `app_config.email_notifications` is on. With `push`, the push column dims while this
+ * everything. The email column shows once `app_config.email_notifications` is on. With `push`, the push column dims while this
  * device is not subscribed and says how to fix that.
  */
 export function NotificationPrefs({ push }: { push?: DevicePush }) {
@@ -148,9 +147,9 @@ export function NotificationPrefs({ push }: { push?: DevicePush }) {
   const emailOn = useFlag('email_notifications')
   const prefs = useQuery(notificationPrefsQueryOptions(supabase, userId))
   const save = useSavePref(userId)
-  const channels: ('push' | 'email')[] = emailOn ? ['push', 'email'] : ['push']
+  const channels: Channel[] = emailOn ? ['push', 'email'] : ['push']
   const pushQuiet = !!push && push.state !== 'on' && push.state !== 'loading'
-  // The monthly summary has its own row below, with an inbox switch and an email switch.
+  // The monthly summary has its own row below: an inbox card, and an email switch once email is on.
   const rows = (prefs.data ?? []).filter(
     (p) => p.category !== 'monthly_summary' && channels.some((c) => p[`${c}_allowed`]),
   )
@@ -242,16 +241,7 @@ export function NotificationPrefs({ push }: { push?: DevicePush }) {
                         : t('settings.notificationPrefs.categories.monthly_summary.hint')}
                     </span>
                   </span>
-                  {/* Two labelled switches, not the columns: the card is not a push. */}
-                  <Switch
-                    label={t('settings.notificationPrefs.summaryInbox')}
-                    aria-label={t('settings.notificationPrefs.channel', {
-                      category: t('settings.notificationPrefs.categories.monthly_summary.label'),
-                      channel: t('settings.notificationPrefs.summaryInbox'),
-                    })}
-                    checked={summary.inbox}
-                    onCheckedChange={(on) => change('monthly_summary', 'inbox', on)}
-                  />
+                  {/* A labelled switch, not the columns: the summary is never a push. */}
                   {emailOn && (
                     <Switch
                       label={t('settings.notificationPrefs.summaryEmail')}

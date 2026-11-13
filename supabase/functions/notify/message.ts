@@ -45,8 +45,6 @@ export function message(n: NotificationRow): { title: string; body: string; url:
         body: 'Pull up a chair.',
         url: group,
       }
-    case 'summary.monthly':
-      return { title: 'Your month in Potluck', body: 'Here is where things stand.', url: '/home' }
     case 'settlement.created':
       return {
         title: 'Payment recorded',

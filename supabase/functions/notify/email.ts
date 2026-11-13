@@ -184,7 +184,6 @@ function copyFor(job: EmailJob): Copy {
         cta: 'See balances',
       }
     case 'settlement.updated':
-    case 'payment.updated':
       return {
         subject: `${actor} changed a payment${inGroup}`,
         heading: `${actor} changed a payment${amount ? ` (now ${amount})` : ''}${inGroup}.`,
@@ -192,7 +191,6 @@ function copyFor(job: EmailJob): Copy {
         cta: 'See the payment',
       }
     case 'settlement.deleted':
-    case 'payment.deleted':
       return {
         subject: `${actor} deleted a payment${inGroup}`,
         heading: `${actor} deleted a payment${amount ? ` of ${amount}` : ''}${inGroup}.`,
@@ -200,7 +198,6 @@ function copyFor(job: EmailJob): Copy {
         cta: 'See balances',
       }
     case 'settlement.restored':
-    case 'payment.restored':
       return {
         subject: `${actor} restored a payment${inGroup}`,
         heading: `${actor} restored a payment${amount ? ` of ${amount}` : ''}${inGroup}.`,

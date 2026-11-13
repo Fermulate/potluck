@@ -18,10 +18,8 @@ const row = (category: string, push: boolean, email: boolean, pushAllowed = true
   category,
   push,
   email,
-  inbox: true,
   push_allowed: pushAllowed,
   email_allowed: true,
-  inbox_allowed: category === 'monthly_summary',
 })
 
 const PREFS = [
@@ -50,13 +48,10 @@ const label = (category: string, channel: 'push' | 'email') =>
     channel: t(`settings.notificationPrefs.${channel}`),
   })
 
-const summarySwitch = (part: 'summaryInbox' | 'summaryEmail' = 'summaryInbox') =>
-  screen.findByRole('switch', {
-    name: t('settings.notificationPrefs.channel', {
-      category: t('settings.notificationPrefs.categories.monthly_summary.label'),
-      channel: t(`settings.notificationPrefs.${part}`),
-    }),
-  })
+const summaryEmailName = t('settings.notificationPrefs.channel', {
+  category: t('settings.notificationPrefs.categories.monthly_summary.label'),
+  channel: t('settings.notificationPrefs.summaryEmail'),
+})
 
 function renderPrefs(push?: DevicePush) {
   return renderWithProviders(
@@ -86,22 +81,13 @@ describe('NotificationPrefs', () => {
     expect(screen.queryByText(t('settings.notificationPrefs.pushOffHere'))).toBeNull()
   })
 
-  it('keeps the monthly summary card switch with email off', async () => {
+  it('shows the monthly summary as an inbox card with no switch while email is off', async () => {
     renderPrefs()
-    const summary = await summarySwitch()
-    expect(summary).toBeChecked()
     expect(
-      screen.getByText(t('settings.notificationPrefs.categories.monthly_summary.hint')),
+      await screen.findByText(t('settings.notificationPrefs.categories.monthly_summary.hint')),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('switch', { name: /By email/ })).toBeNull()
-    fireEvent.click(summary)
-    await waitFor(() =>
-      expect(db().calls).toContainEqual({
-        kind: 'rpc',
-        name: 'set_notification_pref',
-        args: { category: 'monthly_summary', inbox: false },
-      }),
-    )
+    expect(screen.queryByRole('switch', { name: summaryEmailName })).toBeNull()
+    expect(screen.queryByRole('switch', { name: /monthly summary/i })).toBeNull()
   })
 
   it('dims push while this device is off and offers to turn it on', async () => {
@@ -168,8 +154,8 @@ describe('NotificationPrefs', () => {
   it('shows an email column, the summary row and no "soon" note once email is on', async () => {
     seed({ email: true })
     renderPrefs()
-    expect(await summarySwitch()).toBeChecked()
-    expect(await summarySwitch('summaryEmail')).toBeChecked()
+    const summaryEmail = await screen.findByRole('switch', { name: summaryEmailName })
+    expect(summaryEmail).toBeChecked()
     expect(
       screen.getByText(t('settings.notificationPrefs.categories.monthly_summary.hintEmail')),
     ).toBeInTheDocument()
@@ -183,6 +169,14 @@ describe('NotificationPrefs', () => {
         kind: 'rpc',
         name: 'set_notification_pref',
         args: { category: 'plans', email: true },
+      }),
+    )
+    fireEvent.click(summaryEmail)
+    await waitFor(() =>
+      expect(db().calls).toContainEqual({
+        kind: 'rpc',
+        name: 'set_notification_pref',
+        args: { category: 'monthly_summary', email: false },
       }),
     )
   })

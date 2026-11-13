@@ -456,10 +456,10 @@ sequenceDiagram
     U->>W: tap Unsubscribe
     W->>DB: rpc email_unsubscribe(token, 'unsubscribe')<br/>("Keep sending them" calls 'undo')
   end
-  DB->>DB: check HMAC, snapshot the settings it changes,<br/>set notification_prefs.email = false
+  DB->>DB: check HMAC, snapshot the settings it changes<br/>(only if one was on),<br/>set notification_prefs.email = false
 ```
 
-On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in, whose summary card switch is on, gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
+On the first of the month at 15:00 UTC the `monthly-summary` job runs `private.send_monthly_summaries()`: everyone with a non-zero balance in a group they are in gets one `summary.monthly` notification whose data is `private.monthly_summary(uid, month)` (each group with a balance or activity that month, balance in group currency). It is an inbox card and never a push; with email on it goes through the same outbox. Running it twice for a month skips people who already have theirs.
 
 ## Delete an account
 
