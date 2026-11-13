@@ -241,7 +241,6 @@ export const friends = {
   youOwe: 'du schuldest {amount}',
   settled: 'beglichen',
   noTab: 'noch keine Rechnung',
-  open: 'Rechnung mit {name} öffnen',
   add: 'Freund hinzufügen',
   addTitle: 'Freund hinzufügen',
   addBody:
@@ -252,5 +251,32 @@ export const friends = {
     title: 'Noch niemand hier',
     body: 'Teil einen Gruppenlink und deine Freunde landen hier, sobald sie beitreten.',
     action: 'Freund hinzufügen',
+  },
+  and: '{first} und {second}',
+  acrossGroups_one: 'in {count} Gruppe',
+  acrossGroups_other: 'in {count} Gruppen',
+  settle: {
+    action: 'Ausgleichen',
+    actionLabel: 'Mit {name} ausgleichen',
+    title: 'Mit {name} ausgleichen',
+    body: 'Eine Zahlung in jeder Gruppe, die du auswählst. Lass alles, wie es ist, und ihr seid quitt.',
+    youOwe: 'Du schuldest {amount}',
+    owesYou: 'Schuldet dir {amount}',
+    archived_one:
+      '{count} archivierte Gruppe bleibt, wie sie ist. Hol sie aus dem Archiv, um dort auszugleichen.',
+    archived_other:
+      '{count} archivierte Gruppen bleiben, wie sie sind. Hol sie aus dem Archiv, um dort auszugleichen.',
+    date: 'Bezahlt am',
+    record_one: '{count} Zahlung erfassen',
+    record_other: '{count} Zahlungen erfassen',
+    done: 'Quitt mit {name}.',
+    partDone_one: '{count} Zahlung erfasst.',
+    partDone_other: '{count} Zahlungen erfasst.',
+    include: '{group} einbeziehen',
+    amountFor: 'Betrag für {group}, in {currency}',
+    upTo: 'Gib einen Betrag bis {amount} ein.',
+    pickHint:
+      'Nimm den Haken weg, um eine Gruppe auszulassen, oder senk einen Betrag, um einen Teil zu zahlen.',
+    nothing: 'Nichts auszugleichen mit {name}. Gönnt euch was.',
   },
 } satisfies Translation<typeof en.friends>

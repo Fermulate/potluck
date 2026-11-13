@@ -570,6 +570,8 @@ export const activity = {
     settlement: {
       created: 'You paid {name} {amount}',
       deleted: 'You deleted a payment to {name}',
+      updated: 'You changed a payment to {name}',
+      restored: 'You restored a payment to {name}',
     },
     event: {
       created: 'You are planning {event}',
@@ -592,6 +594,8 @@ export const activity = {
     settlement: {
       created: '{actor} paid you {amount}',
       deleted: '{actor} deleted a payment to you',
+      updated: '{actor} changed a payment to you',
+      restored: '{actor} restored a payment to you',
     },
   },
   group: {

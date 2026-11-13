@@ -211,6 +211,7 @@ export const errors = {
     invalid_unsubscribe_link:
       'Este enlace para darte de baja no funciona. Cambia los ajustes de correo en la página Yo.',
     mfa_required: 'Termina primero el inicio de sesión en dos pasos.',
+    invalid_payment_handle: 'Eso no parece un usuario para esta app.',
   },
   auth: {
     invalidCredentials: 'Ese correo y esa contraseña no coinciden.',

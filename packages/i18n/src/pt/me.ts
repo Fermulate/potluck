@@ -53,6 +53,18 @@ export const notifications = {
         title: 'Pagamento registrado',
         body: '{actor} registrou seu pagamento de {amount} para {payee}',
       },
+      updated: {
+        title: 'Pagamento alterado',
+        body: '{actor} alterou um pagamento de {amount} em {group}',
+      },
+      deleted: {
+        title: 'Pagamento excluído',
+        body: '{actor} excluiu um pagamento de {amount} em {group}',
+      },
+      restored: {
+        title: 'Pagamento restaurado',
+        body: '{actor} restaurou um pagamento de {amount} em {group}',
+      },
     },
     member: {
       joined: { title: 'Rosto novo em {group}', body: '{actor} acabou de entrar. Diga oi.' },
@@ -75,6 +87,13 @@ export const notifications = {
     },
     comment: {
       created: { title: 'Novo comentário', body: '{actor}: {preview}' },
+    },
+    debt: {
+      reminder: {
+        title: 'Um lembrete amigável',
+        body: '{actor} diz que você deve {amount} em {group}',
+        bodyWithNote: '{actor} diz que você deve {amount} em {group}: "{note}"',
+      },
     },
   },
 } satisfies Translation<typeof en.notifications>
@@ -206,6 +225,40 @@ export const settings = {
         about: 'o resumo mensal',
       },
     },
+  },
+  paymentMethods: {
+    title: 'Formas de receber',
+    hint: 'O pessoal dos seus grupos vê isto quando acerta com você, para te pagar com um toque. O Potluck nunca movimenta dinheiro.',
+    empty: 'Nada salvo ainda.',
+    add: 'Adicionar forma de receber',
+    edit: 'Alterar {app}',
+    remove: 'Remover {app}',
+    removed: '{app} removido.',
+    saved: '{app} salvo.',
+    pickApp: 'Qual app?',
+    save: 'Salvar',
+    invalid: 'Isso não parece um usuário do {app}.',
+    handle: {
+      paypal: 'Usuário do PayPal.me',
+      venmo: 'Usuário do Venmo',
+      cashapp: 'Cashtag',
+      revolut: 'Usuário do Revolut',
+      monzo: 'Usuário do Monzo.me',
+      upi: 'ID UPI',
+      interac: 'E-mail ou telefone para e-Transfers',
+      bank: 'Dados bancários',
+    },
+    placeholder: {
+      paypal: 'seunome',
+      venmo: 'seu-nome',
+      cashapp: 'seunome',
+      revolut: 'seunome',
+      monzo: 'seunome',
+      upi: 'nome@banco',
+      interac: 'voce@exemplo.com',
+      bank: 'IBAN, ou agência e número da conta',
+    },
+    pasteHint: 'Também dá para colar o link do seu perfil.',
   },
 } satisfies Translation<typeof en.settings>
 
