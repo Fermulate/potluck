@@ -756,6 +756,22 @@ People not on Potluck yet. Notes for changing anything that touches seats, claim
 - Web: a member or person with `is_placeholder` is a saved seat (dashed row, "Not on Potluck yet" badge), split with like anyone, never offered roles, friendship, blocking or a 1:1 tab (`features/groups/placeholders.tsx`, rules in `placeholder-helpers.ts`). The friend page reads the same `friend_balances` as the Friends list. API: `packages/api/src/people.ts`.
 - Tests: `27_placeholder_members`, e2e `people.spec.ts`.
 
+### Migration notes by feature
+
+Read before a migration that touches one of these. The general rules and the RPC skeleton are in `supabase/AGENTS.md`; seats are [above](#seats).
+
+- Payers: expense payers live in `expense_payers` (deferred sum check). A trigger keeps a lone payer in step with `expenses.paid_by`, so an insert that only sets `paid_by` is still right; several payers are written by `private.save_expense`. Balances and departed checks read payers, not `paid_by` ([ADR 12](adr/0012-several-payers-refunds-and-stored-items.md)).
+- Repeating expenses ([ADR 14](adr/0014-editable-recurring-templates.md)): a template keeps the `create_expense_v2` payload shape (`splits`, `payers`, `items` with tax, tip, discount) and only shapes future copies. Dates step through `private.recurring_step` (core `nextOccurrence`); "who it names and whether they all still belong" is `private.recurring_departed` / `recurring_blocked`, shared by the job, the heads-up and the resume trigger; who may change one is `private.recurring_involves` (RPCs and policies alike). The heads-up job runs at :05 and :35, per person (`profiles.timezone`), deduplicated by `private.recurring_heads_ups`. Edits go through `update_recurring_expense`, never new direct grants.
+- Guests ([ADR 16](adr/0016-guest-availability-links.md)) are rows, not users: availability reads (`best_slots`, heat) count `event_guest_availability` too.
+- Two-step sign in ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)): `private.check_request()` is PostgREST's pre-request hook and refuses an unfinished two-step session. Add any other per-request rule there (PostgREST runs one function). A table added to the `supabase_realtime` publication also needs the restrictive "two-step sign in done" `select` policy; Storage already has one for every bucket.
+- Payments beyond v1 (`settle_up_v2`, edit, restore, bulk settle, reminders, payment methods, `private.pairwise_debts` with the core cases) are tested in `23_payments.test.sql`. Debts for bulk writes come from `private.group_debts`, never from the client ([ADR 15](adr/0015-payment-links-and-cross-group-settle.md)).
+- Notifications ([ADR 11](adr/0011-notification-prefs-and-email.md)), settings are per category:
+  - A category with `notification_categories.required` (today `security`: `account.mfa_removed`) cannot be switched off: `my_notification_prefs` leaves it out, `set_notification_pref` raises `notification_setting_required`, unsubscribe links skip it, stored settings are ignored, and its emails carry no unsubscribe links (`REQUIRED_CATEGORIES` in `supabase/functions/notify/email.ts`).
+  - A new notification type is ONE row in your migration: `insert into private.notification_types (type, category) values ('<type>', '<category>') on conflict (type) do nothing;` Without it the type still reaches the inbox and push, but ignores the person's settings and is never emailed. Then add copy: `apps/web/src/features/notifications/describe.ts` (inbox), `supabase/functions/notify/message.ts` (push), and optionally `supabase/functions/notify/email.ts` (otherwise a generic email).
+  - A new category is a row in `private.notification_categories` (defaults, allowed channels), its labels under `settings.notificationPrefs.categories` in `packages/i18n/src/en/me.ts`, and an entry in `NOTIFICATION_CATEGORIES` (`packages/api/src/notification-prefs.ts`) and `LOOK` (`apps/web/src/features/me/notification-prefs.tsx`).
+  - Routing is a before insert trigger on `public.notifications`, so any insert (through `private.notify` or not) gets its `channels`; push and the email outbox follow from them. Email only flows while `app_config.email_notifications` is true. A payload with `"quiet": true` gets no channels at all (inbox only); the repeating expense heads-up uses it at night (ADR 14). Tests: `17_notification_prefs`, `18_monthly_summary`.
+  - Email delivery is a state machine on `private.email_outbox` (`pending`, `sending`, `sent`, ...): `private.send_email_notifications` hands batches to `notify`, which must always answer with `public.email_outbox_report` (service role only). Never mark a row sent anywhere else.
+
 ### Schema additions
 
 - `events.timezone` (IANA zone the window is expressed in, default `UTC`) and `events.reminder_sent_at` (set by the reminder job).
@@ -774,6 +790,30 @@ People not on Potluck yet. Notes for changing anything that touches seats, claim
 - The converted total is spread over the payers in proportion to `paid_cents`, and over the splits in proportion to `share_cents`, both by largest remainder (ties by user id), so every expense nets to exactly zero. Payers are credited, the split debited; a refund flips both (`expenseEffect` in core).
 - Settlements are converted the same way.
 - `fx_rate` is snapshotted on write from the latest `fx_rates` row on or before the expense date (inverse pair as fallback, `round(1 / rate, 12)`); clients cannot supply their own rate.
+
+### Core and SQL twins
+
+These rules exist in `packages/core` and in SQL. Change both sides in the same PR and give both the same test cases. Read the SQL side's live body in `supabase/schema/current.sql`.
+
+| core (`packages/core/src`)                     | SQL                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `money/` splits, `allocate()`                  | `private.compute_splits`                                          |
+| `money/splitAdjustment`                        | `private.compute_split_rows`                                      |
+| `money/splitItemized` (tax, tip, discount)     | `private.itemized_splits`                                         |
+| `money/checkPayers`, `primaryPayer`            | payers checks in `private.save_expense`                           |
+| `balances/expenseEffect`, `computeBalances`    | view `public.group_balances` (payers credited, refunds flipped)   |
+| `balances/pairwiseDebts`                       | `private.pairwise_debts` (settle all, friend balances)            |
+| `payments/paymentProblem`, `settleAllPayments` | `private.check_payment`, `public.settle_all`                      |
+| `payments/isValidHandle`                       | `private.valid_payment_handle` (table `payment_methods`)          |
+| `balances/simplifyDebts`                       | `public.simplified_debts`                                         |
+| `currency/convert`, `minorUnits`, `invertRate` | `private.convert_minor`, `private.minor_units`, `private.fx_rate` |
+| `availability/` slots, `rankSlots`, heat       | `public.set_availability` grid check, `public.best_slots`         |
+| `people/cleanGuestName`                        | `private.clean_guest_name`                                        |
+| `recurrence/nextOccurrence` (biweekly too)     | `private.recurring_step` (used by the materialize job)            |
+| `recurrence/firstOccurrenceFrom`               | `private.recurring_next_from` (`make_expense_recurring`)          |
+| `roles/can()`                                  | role checks inside each RPC                                       |
+
+Seats, search and spending totals have their own twins (see [Seats](#seats) and [Money conventions](#money-conventions)).
 
 ### Access
 
@@ -810,7 +850,7 @@ Activity verbs: `group.created`, `group.updated`, `group.default_split`, `member
 
 Notification types: `expense.created` (split members, with their `share_cents`), `expense.updated`, `expense.deleted`, `expense.restored` (everyone in the expense), `settlement.created` (both people in the payment), `settlement.updated`, `settlement.deleted`, `settlement.restored` (both people in the payment, old and new; an edit counts when it changes people, amount, currency or day), `debt.reminder` (the person reminded, with the note), `member.added` (someone else put you in a group, not 1:1 tabs: a placeholder's invite email and its one reminder (`reminder: true`), an account added by its email, and the inbox note an account gets when signing up claims a seat), `member.invite_changed` (whoever added a seat, when someone else changes its email), `friend.added` (someone accepted your friend link), `summary.monthly` (monthly job, everyone with a non-zero balance), `member.joined` (owner and admins, not for direct groups), `event.created`, `event.scheduled`, `event.cancelled`, `availability.requested`, `comment.created`, `event.reminder` (going or maybe), `rsvp.reminder` (no answer yet), `recurring.upcoming` (at 09:00 on each person's local day before a repeating expense posts, or as soon as possible if that passed, never after it posts, inbox only when that is late and at night (`data.quiet`); to its payers and everyone with a share, each with their own `share_cents`, `paid_cents`, the `posts_on` date, the `deadline` (00:10 UTC that day) and their `timezone`; Reminders setting), `recurring.paused` (one was paused because someone in it left; to whoever set it up, else the owner and admins; edits and deletions setting). The actor and closed accounts are never notified. `data` carries `group_id`, the subject id and `actor_id`.
 
-Every notification lands in the inbox. `notifications_route` (before insert) fills `channels` from `private.notification_channels(user, type)`: the type's category in `private.notification_types`, the person's `notification_prefs` row or the category default, and for email also `app_config.email_notifications` and a confirmed address. A type with no category row is pushed and never emailed. New type: one insert into `private.notification_types` (see `supabase/AGENTS.md`). Categories and defaults: new expenses, edits and deletions, payments, comments, groups, reminders push and email; plans push only; the monthly summary emails only.
+Every notification lands in the inbox. `notifications_route` (before insert) fills `channels` from `private.notification_channels(user, type)`: the type's category in `private.notification_types`, the person's `notification_prefs` row or the category default, and for email also `app_config.email_notifications` and a confirmed address. A type with no category row is pushed and never emailed. New type: one insert into `private.notification_types` (see [migration notes](#migration-notes-by-feature)). Categories and defaults: new expenses, edits and deletions, payments, comments, groups, reminders push and email; plans push only; the monthly summary emails only.
 
 ### Storage, realtime, cron
 
