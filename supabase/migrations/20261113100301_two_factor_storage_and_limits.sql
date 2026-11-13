@@ -1,4 +1,4 @@
--- Two-step sign in, continued (ADR 11):
+-- Two-step sign in, continued (ADR 13):
 --
 -- 1. Storage: a session that still owes its two-step code reads, uploads, replaces and deletes
 --    nothing in any bucket. One restrictive policy on storage.objects sits on top of every

@@ -1,4 +1,4 @@
-# 11. Two-step sign in is enforced in the database
+# 13. Two-step sign in is enforced in the database
 
 - Status: accepted
 - Date: 2026-11-13
@@ -17,7 +17,7 @@ Options considered:
 
 - `private.check_request()` is PostgREST's `db_pre_request` (set on the `authenticator` role in a migration). It raises `mfa_required` (42501) when `private.mfa_satisfied()` is false: the caller has a verified factor and the token says `aal1`. Callers without a factor, `anon` and the service role pass untouched.
 - Realtime does not pass through PostgREST, so every table in the `supabase_realtime` publication gets a restrictive `select` policy on `private.mfa_satisfied()`. A table added to the publication needs the same policy.
-- Storage does not pass through PostgREST either. One restrictive policy on `storage.objects`, "two-step sign in done", for every command and every bucket, sits on top of the buckets' own policies (`20261113090527_two_factor_storage_and_limits.sql`).
+- Storage does not pass through PostgREST either. One restrictive policy on `storage.objects`, "two-step sign in done", for every command and every bucket, sits on top of the buckets' own policies (`20261113100301_two_factor_storage_and_limits.sql`).
 - Supabase Auth itself refuses an `aal1` session of such an account when it tries to change the email or password, enroll another factor or remove one (`insufficient_aal`). It does let that session edit its own user metadata; nothing that grants access is kept there (only `onboarded`, `has_password` and sign-up hints), and Auth writes it over its own connection, where the database cannot see the token, so there is no hook to refuse it.
 - Recovery codes are ours, not Supabase's: ten random codes, stored as SHA-256 in `private.mfa_recovery_codes`, created by `create_mfa_recovery_codes()` (aal2 only). The `mfa-recover` edge function checks one with the service role, then removes every factor with the Auth admin API and forgets the codes. It allows five tries per account per fifteen minutes (`record_mfa_recover_attempt`, logged in `private.mfa_recover_attempts`). Recovery turns two-step sign in off rather than signing in "around" it, so the person sets it up again on their new phone. Turning it off from Me clears the codes too (`clear_mfa_recovery_codes`).
 - The app routes an `aal1` session of such an account to `/two-factor` before any signed-in screen loads. That is only for the person's sake; the database is what refuses.

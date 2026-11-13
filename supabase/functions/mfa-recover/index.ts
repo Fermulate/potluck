@@ -1,7 +1,7 @@
 // Signs someone in with a two-step recovery code when their authenticator is gone. The caller
 // has already proved their password (or email link): their aal1 token gets them here. A
 // matching code removes every second factor and every recovery code; the app then refreshes
-// the session, which is complete without a factor. See ADR 11.
+// the session, which is complete without a factor. See ADR 13.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { adminClient } from '../_shared/admin.ts'
 import { corsHeaders, json } from '../_shared/http.ts'

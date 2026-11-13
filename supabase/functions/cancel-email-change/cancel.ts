@@ -25,7 +25,7 @@ export function tokenAal(authorization: string): string {
 
 /**
  * Cancelling resets the address to the current one. A half finished two-step sign in may not do
- * it (the same rule the database applies, ADR 11), and there must be a change to cancel.
+ * it (the same rule the database applies, ADR 13), and there must be a change to cancel.
  */
 export function decide(user: Caller, aal: string): CancelDecision {
   const twoStep = (user.factors ?? []).some((f) => f.status === 'verified')

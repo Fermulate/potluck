@@ -1,5 +1,5 @@
 -- Two-step sign in (TOTP through Supabase Auth) is enforced by the database, not only by the
--- app (ADR 11). Someone who knows a password but not the code gets an aal1 session; with it:
+-- app (ADR 13). Someone who knows a password but not the code gets an aal1 session; with it:
 --
 -- 1. every REST and RPC call fails with mfa_required (42501), through a PostgREST pre-request
 --    hook, private.check_request();

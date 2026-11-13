@@ -503,7 +503,7 @@ After this every RPC answers `account_deleted` for that id, and closed accounts 
 
 ## Two-step sign in
 
-Set up from Me (Supabase Auth TOTP), enforced by the database ([ADR 11](adr/0011-two-step-sign-in-enforced-in-the-database.md)). Any first step (password, magic link, Google or Apple) ends in an `aal1` session; only a code makes it `aal2`.
+Set up from Me (Supabase Auth TOTP), enforced by the database ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)). Any first step (password, magic link, Google or Apple) ends in an `aal1` session; only a code makes it `aal2`.
 
 ```mermaid
 sequenceDiagram

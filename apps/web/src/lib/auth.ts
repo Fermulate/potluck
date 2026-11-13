@@ -165,7 +165,7 @@ export function assuranceLevel(session: Session): string {
 
 /**
  * Whether the person still owes the two-step code: they have a verified authenticator and this
- * session has not been stepped up yet. The database refuses such a session anyway (ADR 11);
+ * session has not been stepped up yet. The database refuses such a session anyway (ADR 13);
  * this only decides where to send them.
  */
 export function needsSecondFactor(session: Session | null): boolean {

@@ -156,6 +156,7 @@ Every test creates its own users and groups with unique names, so tests run in p
 | `me.spec.ts`             | theme choice survives a reload, calendar feed link shown, deleting the account signs out and the password stops working                                                                                                          |
 | `notifications.spec.ts`  | turning Payments push off on the Me page survives a reload; a payment then still lands in the inbox but is not routed to push, while a new expense is                                                                            |
 | `a11y.spec.ts`           | axe (WCAG 2.1 A and AA) on landing, home, group expenses, add expense, balances, event page, Me and the unsubscribe page: fails on serious or critical violations and on any sideways page scroll                                |
+| `account.spec.ts`        | change password (wrong current refused, other devices signed out, a security email sent), sign out everywhere, two-step setup (codes only close with "I saved them") and sign in with a code (wrong code refused, API and Storage refused at aal1), turning it off clears the codes, a recovery code, five wrong recovery tries then a pause, email change through Mailpit links and calling one off, the language switching live (text and amounts) and following the account to a new device |
 
 The landing audit emulates reduced motion: the hero demo is decorative and loops fade-ins, so the audit checks its settled state.
 

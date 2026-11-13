@@ -26,6 +26,7 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 | Someone calling edge functions directly | trigger push or FX sync                                     | `x-potluck-secret` shared secret, constant-time compare                                                                                               |
 | Someone guessing unsubscribe links      | turn off another person's emails                            | each link carries an HMAC of user id and category; the key stays in `private.signing_keys`. A preview shows the address masked                        |
 | Someone calling `email_outbox_report`   | mark emails sent or failed                                  | executable by the service role only                                                                                                                   |
+| Someone who learned a password          | sign in as that person                                      | two-step sign in when it is on: the database refuses the half signed in session ([below](#sign-in))    |
 
 Out of scope: a compromised Supabase or Cloudflare account, a malicious maintainer, and a stolen unlocked phone with an active session.
 
@@ -39,6 +40,19 @@ These are real today. Each should become an issue.
 - **Previews use production data.** PR preview builds point at the production Supabase project. Anyone who can open a PR that gets a preview deploy can ship code that runs against real accounts. Today previews only build for branches in this repository, because fork PRs do not get the Cloudflare secret.
 - **Edge function CORS is `*`.** Harmless for the secret- and token-protected functions, and `delete-account` requires a JWT, but it is wider than the app needs.
 - **Invite previews show first names** to anyone with the code. That is the point of the join page, but it means an invite link is a small leak of who is in the group.
+- **Signing out elsewhere is not instant.** "Sign out everywhere" and a password change revoke every other refresh token, but an access token already handed out keeps working until it expires (up to an hour, `jwt_expiry`).
+- **A fresh stolen session can change the password without the old one.** Within a day of signing in, Supabase sets a new password for the session alone; the Me page asks for the current password first, but the API does not unless the project turns on "require current password" (a dashboard setting, not in `config.toml`; the app already sends `current_password`). Older sessions need an emailed code (`secure_password_change`). Either way the account gets a "password changed" email.
+- **A half signed in session can edit its own user metadata.** Supabase Auth allows it at `aal1` and the database never sees that write. Nothing there grants access (see ADR 13).
+
+## Sign in
+
+- **Methods.** Email and password, a magic link, and Google or Apple once their flags are on. Production requires a confirmed email before the first sign in.
+- **Two-step sign in.** An authenticator app (TOTP) from the Me page. Signing in with any method then asks for a code. The database enforces it ([ADR 13](adr/0013-two-step-sign-in-enforced-in-the-database.md)): until the code is in, every REST and RPC call fails with `mfa_required`, Storage reads and writes nothing in any bucket, and Realtime sends nothing. Supabase Auth refuses that session's email, password and factor changes. Turning it off needs a fresh code.
+- **Recovery codes.** Ten one-time codes are shown once at setup (and again whenever they are replaced); the dialog only closes once the person says they saved them. They are stored as SHA-256 hashes, which is enough because they are random. One code, together with the first sign in step, removes the authenticator so the person can set it up again. Five tries per account per fifteen minutes, then `too_many_attempts`. Turning two-step sign in off clears them. Without the codes, an operator has to remove the factor by hand after checking who is asking.
+- **Changing the email** sends a link to the old and to the new address (`double_confirm_changes`); in production the switch happens only when both are opened, so a stolen session cannot quietly move the account to another inbox. (The local stack auto-confirms email, and Supabase then takes either link as enough.) A pending change can be called off from Me (`cancel-email-change`), which voids its links.
+- **Changing the password** asks for the current one (accounts that only ever used Google or Apple set a first password without it), and for an emailed code when the session is more than a day old (`secure_password_change`). Then every other session is signed out.
+- **Security emails.** Supabase emails the account when its password or email changes and when an authenticator is added or removed (`[auth.email.notification.*]`).
+- **Sign out everywhere** revokes every session of the account, this one included.
 
 ## Data handling
 
@@ -56,6 +70,7 @@ These are real today. Each should become an issue.
 | Notification settings                                     | `notification_prefs`                       | only you                                                                   |
 | Receipts                                                  | private `receipts` bucket                  | members of the group (authenticated download or signed URL)                |
 | Avatars, group covers                                     | public buckets                             | anyone with the URL                                                        |
+| Authenticator secrets, recovery code hashes               | `auth.mfa_factors`, `private.mfa_recovery_codes` | nobody through the API. Supabase operators                                 |
 
 There is no analytics or tracking code in the app.
 
