@@ -374,6 +374,27 @@ $$;
 ALTER FUNCTION "private"."check_request"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."clean_guest_name"("name" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select btrim(regexp_replace(
+    regexp_replace(
+      coalesce(name, ''),
+      '[\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\U0001D173-\U0001D17A\U000E0000-\U000E007F]',
+      '',
+      'g'
+    ),
+    '[\s\u0001-\u001F\u007F-\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+',
+    ' ',
+    'g'
+  ));
+$$;
+
+
+ALTER FUNCTION "private"."clean_guest_name"("name" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."comments_activity"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -792,6 +813,139 @@ $$;
 
 
 ALTER FUNCTION "private"."email_enabled"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."is_time_zone"("tz" "text") RETURNS boolean
+    LANGUAGE "plpgsql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform timestamptz '2000-01-01 00:00:00+00' at time zone tz;
+  return true;
+exception
+  when invalid_parameter_value then
+    return false;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."is_time_zone"("tz" "text") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "title" "text" NOT NULL,
+    "description" "text",
+    "location" "text",
+    "emoji" "text",
+    "status" "public"."event_status" DEFAULT 'polling'::"public"."event_status" NOT NULL,
+    "timezone" "text" DEFAULT 'UTC'::"text" NOT NULL,
+    "window_start" "date" DEFAULT CURRENT_DATE NOT NULL,
+    "window_end" "date" DEFAULT (CURRENT_DATE + 6) NOT NULL,
+    "day_start_minute" integer DEFAULT 480 NOT NULL,
+    "day_end_minute" integer DEFAULT 1320 NOT NULL,
+    "slot_minutes" integer DEFAULT 30 NOT NULL,
+    "duration_minutes" integer DEFAULT 120 NOT NULL,
+    "min_attendees" integer DEFAULT 2 NOT NULL,
+    "starts_at" timestamp with time zone,
+    "ends_at" timestamp with time zone,
+    "rsvp_deadline" timestamp with time zone,
+    "reminder_sent_at" timestamp with time zone,
+    "created_by" "uuid" DEFAULT "auth"."uid"(),
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "events_check" CHECK ((("window_end" >= "window_start") AND (("window_end" - "window_start") <= 62))),
+    CONSTRAINT "events_check1" CHECK (((("day_end_minute" >= 1) AND ("day_end_minute" <= 1440)) AND ("day_end_minute" > "day_start_minute"))),
+    CONSTRAINT "events_check2" CHECK ((("ends_at" IS NULL) OR (("starts_at" IS NOT NULL) AND ("ends_at" > "starts_at")))),
+    CONSTRAINT "events_check3" CHECK ((("status" <> 'scheduled'::"public"."event_status") OR ("starts_at" IS NOT NULL))),
+    CONSTRAINT "events_day_start_minute_check" CHECK ((("day_start_minute" >= 0) AND ("day_start_minute" <= 1439))),
+    CONSTRAINT "events_description_check" CHECK (("char_length"("description") <= 4000)),
+    CONSTRAINT "events_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 1440))),
+    CONSTRAINT "events_emoji_check" CHECK (("char_length"("emoji") <= 16)),
+    CONSTRAINT "events_location_check" CHECK (("char_length"("location") <= 300)),
+    CONSTRAINT "events_min_attendees_check" CHECK (("min_attendees" >= 1)),
+    CONSTRAINT "events_slot_minutes_check" CHECK (("slot_minutes" = ANY (ARRAY[15, 30, 60]))),
+    CONSTRAINT "events_timezone_check" CHECK ("private"."is_time_zone"("timezone")),
+    CONSTRAINT "events_title_check" CHECK ((("char_length"("btrim"("title")) >= 1) AND ("char_length"("btrim"("title")) <= 120)))
+);
+
+
+ALTER TABLE "public"."events" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."events"."timezone" IS 'IANA zone the availability window (days, day_start/day_end) is expressed in.';
+
+
+
+COMMENT ON COLUMN "public"."events"."reminder_sent_at" IS 'Set by the hourly reminder job so each event is reminded once.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."event_slots"("ev" "public"."events", "slots" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  parsed jsonb;
+begin
+  if slots is null or jsonb_typeof(slots) <> 'array' then
+    raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end if;
+  if jsonb_array_length(slots) > 5000 then
+    raise exception using message = 'invalid_slots', detail = 'Too many slots', errcode = '22023';
+  end if;
+
+  begin
+    select coalesce(jsonb_agg(jsonb_build_object('slot_start', x.slot_start, 'level', x.level)), '[]'::jsonb)
+    into parsed
+    from (
+      select
+        (e.elem ->> 'slot_start')::timestamptz as slot_start,
+        coalesce((e.elem ->> 'level')::public.availability_level, 'yes') as level
+      from jsonb_array_elements(slots) as e (elem)
+    ) x;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+    cross join lateral (
+      select (s.slot_start at time zone ev.timezone) as local_ts
+    ) l
+    cross join lateral (
+      select
+        l.local_ts::date as day,
+        (extract(hour from l.local_ts) * 60 + extract(minute from l.local_ts))::int as minute,
+        extract(second from l.local_ts) as sec
+    ) t
+    where s.slot_start is null
+       or t.day < ev.window_start
+       or t.day > ev.window_end
+       or t.sec <> 0
+       or t.minute < ev.day_start_minute
+       or t.minute + ev.slot_minutes > ev.day_end_minute
+       or (t.minute - ev.day_start_minute) % ev.slot_minutes <> 0
+  ) then
+    raise exception using message = 'invalid_slot', detail = 'Some times are outside this event''s grid', errcode = '22023';
+  end if;
+
+  if (select count(*) from jsonb_array_elements(parsed)) <> (
+    select count(distinct (s.slot_start))
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+  ) then
+    raise exception using message = 'duplicate_slot', detail = 'A time appears twice', errcode = '22023';
+  end if;
+
+  return parsed;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."event_slots"("ev" "public"."events", "slots" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."events_activity"() RETURNS "trigger"
@@ -1437,6 +1591,53 @@ $$;
 ALTER FUNCTION "private"."guard_open_group_write"() OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."event_guests" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "link_id" "uuid" NOT NULL,
+    "event_id" "uuid" NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "display_name" "text" NOT NULL,
+    "token_hash" "bytea" NOT NULL,
+    "saves" integer DEFAULT 1 NOT NULL,
+    "saves_window_start" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "removed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "event_guests_display_name_check" CHECK ((("char_length"("display_name") >= 1) AND ("char_length"("display_name") <= 40)))
+);
+
+
+ALTER TABLE "public"."event_guests" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."event_guests" IS 'People who answered a plan through a guest link. token_hash is sha256 of the token their browser keeps; it is never readable by clients.';
+
+
+
+COMMENT ON COLUMN "public"."event_guests"."saves" IS 'Saves since saves_window_start: the per guest rate limit in set_guest_availability.';
+
+
+
+COMMENT ON COLUMN "public"."event_guests"."removed_at" IS 'Set when the organizer removes the answer: the slots are deleted, the seat frees up, and the token can no longer answer.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."guest_for_token"("lid" "uuid", "token" "text") RETURNS "public"."event_guests"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select g.*
+  from public.event_guests g
+  where g.link_id = lid
+    and token is not null
+    and char_length(token) between 16 and 200
+    and g.token_hash = sha256(convert_to(token, 'UTF8'));
+$$;
+
+
+ALTER FUNCTION "private"."guest_for_token"("lid" "uuid", "token" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -1536,23 +1737,6 @@ $$;
 
 
 ALTER FUNCTION "private"."is_group_member"("gid" "uuid") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "private"."is_time_zone"("tz" "text") RETURNS boolean
-    LANGUAGE "plpgsql" IMMUTABLE
-    SET "search_path" TO ''
-    AS $$
-begin
-  perform timestamptz '2000-01-01 00:00:00+00' at time zone tz;
-  return true;
-exception
-  when invalid_parameter_value then
-    return false;
-end;
-$$;
-
-
-ALTER FUNCTION "private"."is_time_zone"("tz" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."itemized_splits"("items" "jsonb", "tax" bigint, "tip" bigint, "discount" bigint) RETURNS TABLE("user_id" "uuid", "share_cents" bigint)
@@ -1680,56 +1864,6 @@ $$;
 
 
 ALTER FUNCTION "private"."log_activity"("gid" "uuid", "actor" "uuid", "verb" "text", "subject" "uuid", "data" "jsonb") OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."events" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "group_id" "uuid" NOT NULL,
-    "title" "text" NOT NULL,
-    "description" "text",
-    "location" "text",
-    "emoji" "text",
-    "status" "public"."event_status" DEFAULT 'polling'::"public"."event_status" NOT NULL,
-    "timezone" "text" DEFAULT 'UTC'::"text" NOT NULL,
-    "window_start" "date" DEFAULT CURRENT_DATE NOT NULL,
-    "window_end" "date" DEFAULT (CURRENT_DATE + 6) NOT NULL,
-    "day_start_minute" integer DEFAULT 480 NOT NULL,
-    "day_end_minute" integer DEFAULT 1320 NOT NULL,
-    "slot_minutes" integer DEFAULT 30 NOT NULL,
-    "duration_minutes" integer DEFAULT 120 NOT NULL,
-    "min_attendees" integer DEFAULT 2 NOT NULL,
-    "starts_at" timestamp with time zone,
-    "ends_at" timestamp with time zone,
-    "rsvp_deadline" timestamp with time zone,
-    "reminder_sent_at" timestamp with time zone,
-    "created_by" "uuid" DEFAULT "auth"."uid"(),
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "events_check" CHECK ((("window_end" >= "window_start") AND (("window_end" - "window_start") <= 62))),
-    CONSTRAINT "events_check1" CHECK (((("day_end_minute" >= 1) AND ("day_end_minute" <= 1440)) AND ("day_end_minute" > "day_start_minute"))),
-    CONSTRAINT "events_check2" CHECK ((("ends_at" IS NULL) OR (("starts_at" IS NOT NULL) AND ("ends_at" > "starts_at")))),
-    CONSTRAINT "events_check3" CHECK ((("status" <> 'scheduled'::"public"."event_status") OR ("starts_at" IS NOT NULL))),
-    CONSTRAINT "events_day_start_minute_check" CHECK ((("day_start_minute" >= 0) AND ("day_start_minute" <= 1439))),
-    CONSTRAINT "events_description_check" CHECK (("char_length"("description") <= 4000)),
-    CONSTRAINT "events_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 1440))),
-    CONSTRAINT "events_emoji_check" CHECK (("char_length"("emoji") <= 16)),
-    CONSTRAINT "events_location_check" CHECK (("char_length"("location") <= 300)),
-    CONSTRAINT "events_min_attendees_check" CHECK (("min_attendees" >= 1)),
-    CONSTRAINT "events_slot_minutes_check" CHECK (("slot_minutes" = ANY (ARRAY[15, 30, 60]))),
-    CONSTRAINT "events_timezone_check" CHECK ("private"."is_time_zone"("timezone")),
-    CONSTRAINT "events_title_check" CHECK ((("char_length"("btrim"("title")) >= 1) AND ("char_length"("btrim"("title")) <= 120)))
-);
-
-
-ALTER TABLE "public"."events" OWNER TO "postgres";
-
-
-COMMENT ON COLUMN "public"."events"."timezone" IS 'IANA zone the availability window (days, day_start/day_end) is expressed in.';
-
-
-
-COMMENT ON COLUMN "public"."events"."reminder_sent_at" IS 'Set by the hourly reminder job so each event is reminded once.';
-
 
 
 CREATE OR REPLACE FUNCTION "private"."manageable_event"("eid" "uuid") RETURNS "public"."events"
@@ -4060,12 +4194,18 @@ begin
   return query
   with members as (
     select m.user_id from public.group_members m where m.group_id = ev.group_id
+    union all
+    select g.id from public.event_guests g where g.event_id = ev.id and g.removed_at is null
+  ),
+  answers as (
+    select a.user_id, a.slot_start, a.level from public.availability a where a.event_id = ev.id
+    union all
+    select ga.guest_id, ga.slot_start, ga.level from public.event_guest_availability ga where ga.event_id = ev.id
   ),
   candidates as (
     select distinct a.slot_start as slot
-    from public.availability a
+    from answers a
     join members mb on mb.user_id = a.user_id
-    where a.event_id = ev.id
   ),
   per_person as (
     select
@@ -4076,9 +4216,8 @@ begin
     from candidates c
     cross join members mb
     cross join generate_series(0, cells - 1) as k (i)
-    left join public.availability a
-      on a.event_id = ev.id
-     and a.user_id = mb.user_id
+    left join answers a
+      on a.user_id = mb.user_id
      and a.slot_start = c.slot + make_interval(mins => k.i * ev.slot_minutes)
     group by c.slot, mb.user_id
   ),
@@ -4283,6 +4422,74 @@ $_$;
 
 
 ALTER FUNCTION "public"."create_group"("name" "text", "emoji" "text", "color" "text", "currency" "text") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."event_guest_links" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "event_id" "uuid" NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "code" "text" DEFAULT "private"."random_code"(12) NOT NULL,
+    "created_by" "uuid",
+    "max_guests" integer NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "revoked_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "event_guest_links_max_guests_check" CHECK ((("max_guests" >= 1) AND ("max_guests" <= 100)))
+);
+
+
+ALTER TABLE "public"."event_guest_links" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."event_guest_links" IS 'Shareable links that let people without an account add availability to one plan.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."create_guest_link"("event_id" "uuid", "ttl" "text", "max_guests" integer DEFAULT 10) RETURNS "public"."event_guest_links"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  ev public.events := private.member_event(create_guest_link.event_id);
+  link public.event_guest_links;
+begin
+  perform private.require_group_open(ev.group_id);
+  -- Serializes with schedule_event and cancel_event, and with other links for this plan.
+  select * into ev from public.events e where e.id = ev.id for no key update;
+  if ev.status <> 'polling' then
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
+  end if;
+  if ttl is null or ttl not in ('24h', '7d', '30d') then
+    raise exception using message = 'invalid_guest_link_ttl', detail = 'Links last 24 hours, 7 days or 30 days', errcode = '22023';
+  end if;
+  if create_guest_link.max_guests is null or create_guest_link.max_guests not between 1 and 100 then
+    raise exception using message = 'invalid_guest_limit', detail = 'A link takes 1 to 100 guests', errcode = '22023';
+  end if;
+  if (
+    select count(*) from public.event_guest_links l
+    where l.event_id = ev.id and l.revoked_at is null and l.expires_at > now()
+  ) >= 20 then
+    raise exception using message = 'guest_link_limit', detail = 'This plan already has 20 open guest links', errcode = '23514';
+  end if;
+
+  insert into public.event_guest_links (event_id, group_id, created_by, max_guests, expires_at)
+  values (
+    ev.id,
+    ev.group_id,
+    uid,
+    create_guest_link.max_guests,
+    now() + case ttl when '24h' then interval '24 hours' when '7d' then interval '7 days' else interval '30 days' end
+  )
+  returning * into link;
+
+  return link;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_guest_link"("event_id" "uuid", "ttl" "text", "max_guests" integer) OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."group_invites" (
@@ -4849,6 +5056,116 @@ $$;
 ALTER FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."guest_link_preview"("code" "text", "token" "text" DEFAULT NULL::"text") RETURNS TABLE("status" "text", "title" "text", "emoji" "text", "group_emoji" "text", "host_name" "text", "timezone" "text", "window_start" "date", "window_end" "date", "day_start_minute" integer, "day_end_minute" integer, "slot_minutes" integer, "duration_minutes" integer, "expires_at" timestamp with time zone, "max_guests" integer, "guest_count" integer, "respondents" integer, "my_name" "text", "my_slots" "jsonb", "heat" "jsonb", "starts_at" timestamp with time zone, "ends_at" timestamp with time zone)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  link public.event_guest_links;
+  ev public.events;
+  grp public.groups;
+  me public.event_guests;
+  answered boolean;
+  guests int;
+  host text;
+  st text;
+begin
+  select * into link from public.event_guest_links l where l.code = guest_link_preview.code;
+  if link.id is null then
+    raise exception using message = 'guest_link_not_found', detail = 'This guest link is not valid', errcode = 'PT404';
+  end if;
+  select * into ev from public.events e where e.id = link.event_id;
+  select * into grp from public.groups g where g.id = link.group_id;
+  me := private.guest_for_token(link.id, guest_link_preview.token);
+  answered := me.id is not null and me.removed_at is null;
+  select count(*)::int into guests from public.event_guests g
+  where g.link_id = link.id and g.removed_at is null;
+  select nullif(split_part(p.display_name, ' ', 1), '') into host
+  from public.profiles p where p.id = link.created_by and p.deleted_at is null;
+
+  st := case
+    when link.revoked_at is not null then 'revoked'
+    when grp.archived_at is not null then 'archived'
+    when me.removed_at is not null then 'removed'
+    when ev.status in ('scheduled', 'done') and answered then 'scheduled'
+    when link.expires_at <= now() then 'expired'
+    when ev.status <> 'polling' then 'closed'
+    when not answered and guests >= link.max_guests then 'full'
+    else 'open'
+  end;
+
+  if st = 'scheduled' then
+    return query select st, ev.title, ev.emoji, grp.emoji, host, ev.timezone,
+      null::date, null::date, null::int, null::int, null::int, null::int,
+      null::timestamptz, null::int, null::int, null::int,
+      me.display_name, null::jsonb, null::jsonb,
+      ev.starts_at, ev.ends_at;
+    return;
+  end if;
+
+  if st not in ('open', 'full') then
+    return query select st, null::text, null::text, null::text, null::text, null::text,
+      null::date, null::date, null::int, null::int, null::int, null::int,
+      null::timestamptz, null::int, null::int, null::int, null::text, null::jsonb, null::jsonb,
+      null::timestamptz, null::timestamptz;
+    return;
+  end if;
+
+  return query
+  with answers as (
+    select a.user_id as who, a.slot_start, a.level
+    from public.availability a
+    join public.group_members m on m.group_id = ev.group_id and m.user_id = a.user_id
+    where a.event_id = ev.id
+    union all
+    select ga.guest_id, ga.slot_start, ga.level
+    from public.event_guest_availability ga
+    join public.event_guests g on g.id = ga.guest_id and g.removed_at is null
+    where ga.event_id = ev.id
+  )
+  select
+    st,
+    ev.title,
+    ev.emoji,
+    grp.emoji,
+    host,
+    ev.timezone,
+    ev.window_start,
+    ev.window_end,
+    ev.day_start_minute,
+    ev.day_end_minute,
+    ev.slot_minutes,
+    ev.duration_minutes,
+    link.expires_at,
+    link.max_guests,
+    guests,
+    case when st = 'open' then (select count(distinct x.who)::int from answers x) end,
+    case when answered then me.display_name end,
+    case when answered then (
+      select coalesce(jsonb_agg(jsonb_build_object('slot_start', ga.slot_start, 'level', ga.level) order by ga.slot_start), '[]'::jsonb)
+      from public.event_guest_availability ga where ga.guest_id = me.id
+    ) end,
+    case when st = 'open' then (
+      select coalesce(jsonb_agg(jsonb_build_object('slot_start', h.slot_start, 'yes', h.yes, 'maybe', h.maybe) order by h.slot_start), '[]'::jsonb)
+      from (
+        select
+          x.slot_start,
+          (count(*) filter (where x.level = 'yes'))::int as yes,
+          (count(*) filter (where x.level = 'maybe'))::int as maybe
+        from answers x
+        group by x.slot_start
+      ) h
+    ) end,
+    null::timestamptz,
+    null::timestamptz;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."guest_link_preview"("code" "text", "token" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."invite_preview"("code" "text") RETURNS TABLE("group_id" "uuid", "name" "text", "emoji" "text", "color" "text", "cover_path" "text", "member_count" integer, "first_names" "text"[], "status" "text", "is_member" boolean)
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -5303,6 +5620,38 @@ $$;
 ALTER FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid", "note" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  guest public.event_guests;
+begin
+  perform private.require_user();
+  select * into guest from public.event_guests g where g.id = remove_guest_answer.guest_id;
+  if guest.id is null then
+    raise exception using message = 'guest_not_found', detail = 'That guest answer is already gone', errcode = 'PT404';
+  end if;
+  -- The link row lock serializes with set_guest_availability, so no save lands after the removal.
+  -- Link before event, the order set_guest_availability takes them in.
+  perform 1 from public.event_guest_links l where l.id = guest.link_id for update;
+  -- Organizer or group admin, group not archived.
+  perform private.manageable_event(guest.event_id);
+  select * into guest from public.event_guests g where g.id = guest.id;
+  if guest.removed_at is not null then
+    raise exception using message = 'guest_not_found', detail = 'That guest answer is already gone', errcode = 'PT404';
+  end if;
+  -- Keep the row so the guest's token cannot answer again; the slots go and the seat frees up.
+  delete from public.event_guest_availability ga where ga.guest_id = guest.id;
+  update public.event_guests g set removed_at = now(), updated_at = now() where g.id = guest.id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5501,6 +5850,39 @@ $$;
 ALTER FUNCTION "public"."restore_settlement"("id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."revoke_guest_link"("link_id" "uuid") RETURNS "public"."event_guest_links"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  link public.event_guest_links;
+  my_role public.group_role;
+begin
+  select * into link from public.event_guest_links l where l.id = revoke_guest_link.link_id for update;
+  if link.id is null then
+    raise exception using message = 'guest_link_not_found', detail = 'This guest link is not valid', errcode = 'PT404';
+  end if;
+  my_role := private.require_member(link.group_id);
+  if my_role = 'member'
+     and link.created_by is distinct from uid
+     and (select e.created_by from public.events e where e.id = link.event_id) is distinct from uid then
+    raise exception using message = 'not_allowed', detail = 'Only whoever made the link, the organizer or a group admin can do that', errcode = '42501';
+  end if;
+  perform private.require_group_open(link.group_id);
+
+  update public.event_guest_links l set revoked_at = coalesce(l.revoked_at, now())
+  where l.id = link.id
+  returning * into link;
+  return link;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."revoke_guest_link"("link_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) RETURNS "public"."events"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5683,6 +6065,96 @@ $$;
 
 
 ALTER FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") RETURNS TABLE("guest_token" "text", "saved" integer)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  link public.event_guest_links;
+  ev public.events;
+  grp public.groups;
+  me public.event_guests;
+  clean_name text := private.clean_guest_name(set_guest_availability.name);
+  parsed jsonb;
+  fresh_token text;
+  n int;
+begin
+  select * into link from public.event_guest_links l where l.code = set_guest_availability.code for update;
+  if link.id is null then
+    raise exception using message = 'guest_link_not_found', detail = 'This guest link is not valid', errcode = 'PT404';
+  end if;
+  select * into ev from public.events e where e.id = link.event_id;
+  select * into grp from public.groups g where g.id = link.group_id;
+
+  if link.revoked_at is not null then
+    raise exception using message = 'guest_link_revoked', detail = 'This guest link was turned off', errcode = '23514';
+  end if;
+  if link.expires_at <= now() then
+    raise exception using message = 'guest_link_expired', detail = 'This guest link has expired', errcode = '23514';
+  end if;
+  if grp.archived_at is not null then
+    raise exception using message = 'group_archived', detail = 'This group is archived', errcode = '23514';
+  end if;
+  if ev.status <> 'polling' then
+    raise exception using message = 'event_not_polling', detail = 'This event is no longer collecting availability', errcode = '23514';
+  end if;
+  if char_length(clean_name) not between 1 and 40 then
+    raise exception using message = 'invalid_guest_name', detail = 'Names are 1 to 40 characters', errcode = '22023';
+  end if;
+
+  parsed := private.event_slots(ev, slots);
+  me := private.guest_for_token(link.id, set_guest_availability.token);
+  if me.removed_at is not null then
+    raise exception using message = 'guest_removed', detail = 'The organizer removed this answer', errcode = '42501';
+  end if;
+
+  if me.id is null then
+    if jsonb_array_length(parsed) = 0 then
+      raise exception using message = 'guest_slots_required', detail = 'Pick at least one time', errcode = '22023';
+    end if;
+    select count(*)::int into n from public.event_guests g
+    where g.link_id = link.id and g.removed_at is null;
+    if n >= link.max_guests then
+      raise exception using message = 'guest_link_full', detail = 'This guest link is full', errcode = '23514';
+    end if;
+    if (
+      select count(*) from public.event_guests g
+      where g.link_id = link.id and g.created_at > now() - interval '10 minutes'
+    ) >= 20 then
+      raise exception using message = 'guest_rate_limited', detail = 'Too many answers at once, try again in a few minutes', errcode = '23514';
+    end if;
+    fresh_token := private.random_code(24);
+    insert into public.event_guests (link_id, event_id, group_id, display_name, token_hash)
+    values (link.id, ev.id, ev.group_id, clean_name, sha256(convert_to(fresh_token, 'UTF8')))
+    returning * into me;
+  elsif me.saves_window_start > now() - interval '1 hour' then
+    if me.saves >= 60 then
+      raise exception using message = 'guest_rate_limited', detail = 'Too many saves, try again later', errcode = '23514';
+    end if;
+    update public.event_guests g
+    set saves = g.saves + 1, display_name = clean_name, updated_at = now()
+    where g.id = me.id;
+  else
+    update public.event_guests g
+    set saves = 1, saves_window_start = now(), display_name = clean_name, updated_at = now()
+    where g.id = me.id;
+  end if;
+
+  delete from public.event_guest_availability ga where ga.guest_id = me.id;
+  insert into public.event_guest_availability (guest_id, event_id, slot_start, level)
+  select me.id, ev.id, s.slot_start, s.level
+  from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level);
+  get diagnostics n = row_count;
+
+  return query select coalesce(fresh_token, set_guest_availability.token), n;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "uuid", "role" "public"."group_role") RETURNS "void"
@@ -6795,6 +7267,17 @@ COMMENT ON COLUMN "public"."comments"."group_id" IS 'Copied from the expense or 
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."event_guest_availability" (
+    "guest_id" "uuid" NOT NULL,
+    "event_id" "uuid" NOT NULL,
+    "slot_start" timestamp with time zone NOT NULL,
+    "level" "public"."availability_level" DEFAULT 'yes'::"public"."availability_level" NOT NULL
+);
+
+
+ALTER TABLE "public"."event_guest_availability" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."event_rsvps" (
     "event_id" "uuid" NOT NULL,
     "user_id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
@@ -7219,6 +7702,31 @@ ALTER TABLE ONLY "public"."debt_reminders"
 
 
 
+ALTER TABLE ONLY "public"."event_guest_availability"
+    ADD CONSTRAINT "event_guest_availability_pkey" PRIMARY KEY ("guest_id", "slot_start");
+
+
+
+ALTER TABLE ONLY "public"."event_guest_links"
+    ADD CONSTRAINT "event_guest_links_code_key" UNIQUE ("code");
+
+
+
+ALTER TABLE ONLY "public"."event_guest_links"
+    ADD CONSTRAINT "event_guest_links_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."event_guests"
+    ADD CONSTRAINT "event_guests_link_id_token_hash_key" UNIQUE ("link_id", "token_hash");
+
+
+
+ALTER TABLE ONLY "public"."event_guests"
+    ADD CONSTRAINT "event_guests_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."event_rsvps"
     ADD CONSTRAINT "event_rsvps_pkey" PRIMARY KEY ("event_id", "user_id");
 
@@ -7400,6 +7908,34 @@ CREATE INDEX "debt_reminders_group_id_idx" ON "public"."debt_reminders" USING "b
 
 
 CREATE INDEX "debt_reminders_to_user_idx" ON "public"."debt_reminders" USING "btree" ("to_user");
+
+
+
+CREATE INDEX "event_guest_availability_event_slot_idx" ON "public"."event_guest_availability" USING "btree" ("event_id", "slot_start");
+
+
+
+CREATE INDEX "event_guest_links_created_by_idx" ON "public"."event_guest_links" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "event_guest_links_event_id_idx" ON "public"."event_guest_links" USING "btree" ("event_id");
+
+
+
+CREATE INDEX "event_guest_links_group_id_idx" ON "public"."event_guest_links" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "event_guests_event_id_idx" ON "public"."event_guests" USING "btree" ("event_id");
+
+
+
+CREATE INDEX "event_guests_group_id_idx" ON "public"."event_guests" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "event_guests_link_id_idx" ON "public"."event_guests" USING "btree" ("link_id", "created_at");
 
 
 
@@ -7881,6 +8417,46 @@ ALTER TABLE ONLY "public"."debt_reminders"
 
 
 
+ALTER TABLE ONLY "public"."event_guest_availability"
+    ADD CONSTRAINT "event_guest_availability_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guest_availability"
+    ADD CONSTRAINT "event_guest_availability_guest_id_fkey" FOREIGN KEY ("guest_id") REFERENCES "public"."event_guests"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guest_links"
+    ADD CONSTRAINT "event_guest_links_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."event_guest_links"
+    ADD CONSTRAINT "event_guest_links_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guest_links"
+    ADD CONSTRAINT "event_guest_links_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guests"
+    ADD CONSTRAINT "event_guests_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guests"
+    ADD CONSTRAINT "event_guests_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."event_guests"
+    ADD CONSTRAINT "event_guests_link_id_fkey" FOREIGN KEY ("link_id") REFERENCES "public"."event_guest_links"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."event_rsvps"
     ADD CONSTRAINT "event_rsvps_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE CASCADE;
 
@@ -8189,6 +8765,39 @@ CREATE POLICY "debt_reminders: the pair reads" ON "public"."debt_reminders" FOR 
 
 
 
+ALTER TABLE "public"."event_guest_availability" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "event_guest_availability: members read" ON "public"."event_guest_availability" FOR SELECT TO "authenticated" USING (("event_id" = ANY (ARRAY( SELECT "private"."my_event_ids"() AS "my_event_ids"))));
+
+
+
+CREATE POLICY "event_guest_availability: two-step sign in done" ON "public"."event_guest_availability" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
+ALTER TABLE "public"."event_guest_links" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "event_guest_links: members read" ON "public"."event_guest_links" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
+CREATE POLICY "event_guest_links: two-step sign in done" ON "public"."event_guest_links" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
+ALTER TABLE "public"."event_guests" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "event_guests: members read" ON "public"."event_guests" FOR SELECT TO "authenticated" USING ((("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))) AND ("removed_at" IS NULL)));
+
+
+
+CREATE POLICY "event_guests: two-step sign in done" ON "public"."event_guests" AS RESTRICTIVE FOR SELECT TO "authenticated" USING (( SELECT "private"."mfa_satisfied"() AS "mfa_satisfied"));
+
+
+
 ALTER TABLE "public"."event_rsvps" ENABLE ROW LEVEL SECURITY;
 
 
@@ -8487,6 +9096,10 @@ GRANT ALL ON FUNCTION "private"."check_request"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."clean_guest_name"("name" "text") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."compute_splits"("amount" bigint, "kind" "public"."split_type", "splits" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."compute_splits"("amount" bigint, "kind" "public"."split_type", "splits" "jsonb") TO "service_role";
 
@@ -8515,77 +9128,8 @@ REVOKE ALL ON FUNCTION "private"."email_enabled"() FROM PUBLIC;
 
 
 
-REVOKE ALL ON FUNCTION "private"."expenses_notify_removal"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."finish_past_events"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."forget_closed_account"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."forget_notification_prefs"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."group_debts"("gid" "uuid") FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") FROM PUBLIC;
-GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "private"."group_members_notify_added"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."group_members_pause_recurring"() FROM PUBLIC;
-
-
-
-GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "private"."guard_group_delete"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."guard_open_group_write"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."has_block"("a" "uuid", "b" "uuid") FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."invoke_edge_function"("fn" "text", "body" "jsonb") FROM PUBLIC;
-
-
-
-GRANT ALL ON FUNCTION "private"."is_group_admin"("gid" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."is_group_admin"("gid" "uuid") TO "service_role";
-
-
-
-GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "private"."is_time_zone"("tz" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."is_time_zone"("tz" "text") TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "private"."local_today"("uid" "uuid") FROM PUBLIC;
 
 
 
@@ -8651,6 +9195,115 @@ GRANT INSERT("min_attendees"),UPDATE("min_attendees") ON TABLE "public"."events"
 
 
 GRANT INSERT("rsvp_deadline"),UPDATE("rsvp_deadline") ON TABLE "public"."events" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."event_slots"("ev" "public"."events", "slots" "jsonb") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."expenses_notify_removal"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."finish_past_events"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."forget_closed_account"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."forget_notification_prefs"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_debts"("gid" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."group_is_open"("gid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_members_notify_added"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."group_members_pause_recurring"() FROM PUBLIC;
+
+
+
+GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."group_role"("gid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."guard_group_delete"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."guard_open_group_write"() FROM PUBLIC;
+
+
+
+GRANT ALL ON TABLE "public"."event_guests" TO "service_role";
+
+
+
+GRANT SELECT("id") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("link_id") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("event_id") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("group_id") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("display_name") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+GRANT SELECT("updated_at") ON TABLE "public"."event_guests" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."guest_for_token"("lid" "uuid", "token" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."has_block"("a" "uuid", "b" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."invoke_edge_function"("fn" "text", "body" "jsonb") FROM PUBLIC;
+
+
+
+GRANT ALL ON FUNCTION "private"."is_group_admin"("gid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."is_group_admin"("gid" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."is_group_member"("gid" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."local_today"("uid" "uuid") FROM PUBLIC;
 
 
 
@@ -8951,6 +9604,17 @@ GRANT ALL ON FUNCTION "public"."create_group"("name" "text", "emoji" "text", "co
 
 
 
+GRANT ALL ON TABLE "public"."event_guest_links" TO "service_role";
+GRANT SELECT ON TABLE "public"."event_guest_links" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."create_guest_link"("event_id" "uuid", "ttl" "text", "max_guests" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_guest_link"("event_id" "uuid", "ttl" "text", "max_guests" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_guest_link"("event_id" "uuid", "ttl" "text", "max_guests" integer) TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."group_invites" TO "service_role";
 GRANT SELECT,DELETE ON TABLE "public"."group_invites" TO "authenticated";
 
@@ -9027,6 +9691,13 @@ GRANT ALL ON FUNCTION "public"."friend_balances"() TO "service_role";
 REVOKE ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."guest_link_preview"("code" "text", "token" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."guest_link_preview"("code" "text", "token" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."guest_link_preview"("code" "text", "token" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."guest_link_preview"("code" "text", "token" "text") TO "service_role";
 
 
 
@@ -9128,6 +9799,12 @@ GRANT ALL ON FUNCTION "public"."remind_debt"("group_id" "uuid", "user_id" "uuid"
 
 
 
+REVOKE ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."remove_guest_answer"("guest_id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."remove_member"("group_id" "uuid", "user_id" "uuid") TO "service_role";
@@ -9152,6 +9829,12 @@ GRANT ALL ON FUNCTION "public"."restore_settlement"("id" "uuid") TO "service_rol
 
 
 
+REVOKE ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."revoke_guest_link"("link_id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) TO "service_role";
@@ -9167,6 +9850,13 @@ GRANT ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "js
 REVOKE ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "service_role";
 
 
 
@@ -9368,6 +10058,11 @@ GRANT INSERT("settlement_id") ON TABLE "public"."comments" TO "authenticated";
 
 
 
+GRANT ALL ON TABLE "public"."event_guest_availability" TO "service_role";
+GRANT SELECT ON TABLE "public"."event_guest_availability" TO "authenticated";
+
+
+
 GRANT ALL ON TABLE "public"."event_rsvps" TO "service_role";
 GRANT SELECT,INSERT,DELETE ON TABLE "public"."event_rsvps" TO "authenticated";
 
@@ -9543,6 +10238,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."activity";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."availability";
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."event_guest_availability";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."event_rsvps";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."events";
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."expense_splits";
