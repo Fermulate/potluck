@@ -7,6 +7,6 @@ export {
   type BalanceSettlement,
   type BalanceSplit,
 } from './balances'
-export { pairwiseDebts } from './pairwise'
+export { pairEffect, pairwiseDebts } from './pairwise'
 export { simplifyDebts, type Transfer } from './simplify'
 export { expenseInvolvesBoth, settlementBetween } from './between'
