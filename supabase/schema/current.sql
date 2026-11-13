@@ -850,6 +850,7 @@ CREATE OR REPLACE FUNCTION "private"."forget_notification_prefs"() RETURNS "trig
     AS $$
 begin
   delete from public.notification_prefs p where p.user_id = new.id;
+  delete from private.email_unsubscribe_undo u where u.user_id = new.id;
   return null;
 end;
 $$;
@@ -1317,6 +1318,20 @@ $$;
 
 
 ALTER FUNCTION "private"."manageable_event"("eid" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."mask_email"("address" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select case
+    when address is null or position('@' in address) < 2 then null
+    else left(address, 1) || '***' || substr(address, position('@' in address))
+  end;
+$$;
+
+
+ALTER FUNCTION "private"."mask_email"("address" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."materialize_recurring_expenses"("run_on" "date" DEFAULT CURRENT_DATE) RETURNS integer
@@ -2195,23 +2210,34 @@ $_$;
 ALTER FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "private"."send_email_notifications"("hold" interval DEFAULT '00:01:00'::interval) RETURNS integer
+CREATE OR REPLACE FUNCTION "private"."send_email_notifications"("hold" interval DEFAULT '00:01:00'::interval, "batch_size" integer DEFAULT 50) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
 declare
   r record;
+  b record;
   chosen uuid;
+  old_batch uuid;
   ex public.expenses;
-  emails jsonb := '[]'::jsonb;
   item jsonb;
+  picked jsonb := '[]'::jsonb;
+  batches jsonb;
+  handed int := 0;
 begin
   if not pg_try_advisory_xact_lock(hashtext('private.send_email_notifications')) then
     return 0;
   end if;
 
-  update private.email_outbox o set handled_at = now(), outcome = 'dropped'
-  where o.handled_at is null and o.queued_at < now() - interval '1 day';
+  update private.email_outbox o
+  set state = 'dropped', handled_at = now(), last_error = coalesce(o.last_error, 'not sent within a day')
+  where o.state = 'pending' and o.queued_at < now() - interval '1 day';
+
+  update private.email_outbox o
+  set state = case when o.attempts >= 5 then 'failed' else 'pending' end,
+      handled_at = case when o.attempts >= 5 then now() end,
+      last_error = 'no report from notify'
+  where o.state = 'sending' and o.claimed_at < now() - interval '10 minutes';
 
   if not private.email_enabled() then
     return 0;
@@ -2224,11 +2250,12 @@ begin
       array_agg(n.type order by n.created_at, n.type <> 'expense.created', n.id) as types
     from private.email_outbox o
     join public.notifications n on n.id = o.notification_id
-    where o.handled_at is null
+    where o.state = 'pending'
     group by o.user_id, o.subject
     having max(o.queued_at) <= now() - hold
+       and max(coalesce(o.retry_at, '-infinity'::timestamptz)) <= now()
     order by min(o.queued_at)
-    limit 100
+    limit 200
   loop
     chosen := null;
     ex := null;
@@ -2248,8 +2275,8 @@ begin
     end if;
 
     update private.email_outbox o
-    set handled_at = now(), outcome = case when o.notification_id = chosen then 'sent' else 'folded' end
-    where o.notification_id = any (r.ids);
+    set state = 'folded', handled_at = now()
+    where o.notification_id = any (r.ids) and o.notification_id is distinct from chosen;
 
     if chosen is null then
       continue;
@@ -2290,21 +2317,58 @@ begin
       and 'email' = any (private.notification_channels(n.user_id, n.type));
 
     if item is null then
-      update private.email_outbox o set outcome = 'dropped' where o.notification_id = chosen;
-    else
-      emails := emails || jsonb_build_array(item);
+      update private.email_outbox o
+      set state = 'dropped', handled_at = now(), last_error = 'no longer wanted'
+      where o.notification_id = chosen;
+      continue;
     end if;
+
+    select o.batch_id into old_batch from private.email_outbox o where o.notification_id = chosen;
+    picked := picked || jsonb_build_array(jsonb_build_object('id', chosen, 'batch', old_batch, 'item', item));
   end loop;
 
-  if jsonb_array_length(emails) > 0 then
-    perform private.invoke_edge_function('notify', jsonb_build_object('emails', emails));
-  end if;
-  return jsonb_array_length(emails);
+  -- Rows that come back without a report keep their batch (same idempotency key);
+  -- the rest are cut into new batches of batch_size.
+  with p as (
+    select (x.e ->> 'id')::uuid as id, (x.e ->> 'batch')::uuid as old_batch, x.e -> 'item' as item, x.n
+    from jsonb_array_elements(picked) with ordinality as x (e, n)
+  ),
+  fresh as (
+    select p.id, (row_number() over (order by p.n) - 1) / greatest(batch_size, 1) as grp
+    from p where p.old_batch is null
+  ),
+  grps as (
+    select g.grp, gen_random_uuid() as batch from (select distinct f.grp from fresh f) g
+  ),
+  assigned as (
+    select p.id, p.item, coalesce(p.old_batch, grps.batch) as batch
+    from p left join fresh on fresh.id = p.id left join grps on grps.grp = fresh.grp
+  ),
+  marked as (
+    update private.email_outbox o
+    set state = 'sending', batch_id = a.batch, attempts = o.attempts + 1, claimed_at = now(),
+        retry_at = null
+    from assigned a
+    where o.notification_id = a.id
+    returning o.notification_id
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('batch', a.batch, 'emails', a.emails)), '[]'::jsonb)
+  into batches
+  from (select s.batch, jsonb_agg(s.item) as emails from assigned s group by s.batch) a;
+
+  for b in select x.value from jsonb_array_elements(batches) as x loop
+    perform private.invoke_edge_function(
+      'notify',
+      jsonb_build_object('batch', b.value -> 'batch', 'emails', b.value -> 'emails')
+    );
+    handed := handed + jsonb_array_length(b.value -> 'emails');
+  end loop;
+  return handed;
 end;
 $$;
 
 
-ALTER FUNCTION "private"."send_email_notifications"("hold" interval) OWNER TO "postgres";
+ALTER FUNCTION "private"."send_email_notifications"("hold" interval, "batch_size" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."send_event_reminders"() RETURNS integer
@@ -2373,6 +2437,11 @@ begin
     join public.group_members m on m.group_id = b.group_id and m.user_id = b.user_id
     join public.profiles p on p.id = b.user_id and p.deleted_at is null
     where b.net_cents <> 0
+      and coalesce(
+        (select np.email from public.notification_prefs np
+         where np.user_id = b.user_id and np.category = 'monthly_summary'),
+        (select c.email_default from private.notification_categories c where c.category = 'monthly_summary')
+      )
       and not exists (
         select 1 from public.notifications n
         where n.user_id = b.user_id and n.type = 'summary.monthly'
@@ -3085,7 +3154,42 @@ $$;
 ALTER FUNCTION "public"."delete_settlement"("id" "uuid") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean DEFAULT false) RETURNS "text"
+CREATE OR REPLACE FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text" DEFAULT NULL::"text", "rejected" "uuid"[] DEFAULT '{}'::"uuid"[]) RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  n int;
+begin
+  update private.email_outbox o
+  set state = 'dropped', handled_at = now(), last_error = 'rejected by notify'
+  where o.batch_id = email_outbox_report.batch and o.state = 'sending'
+    and o.notification_id = any (coalesce(email_outbox_report.rejected, '{}'));
+
+  if email_outbox_report.delivered then
+    update private.email_outbox o
+    set state = 'sent', handled_at = now(), last_error = null
+    where o.batch_id = email_outbox_report.batch and o.state = 'sending';
+  else
+    -- A known failure retries with a fresh batch, so a fresh idempotency key.
+    update private.email_outbox o
+    set state = case when o.attempts >= 5 then 'failed' else 'pending' end,
+        handled_at = case when o.attempts >= 5 then now() end,
+        batch_id = case when o.attempts >= 5 then o.batch_id end,
+        retry_at = now() + make_interval(mins => power(2, o.attempts)::int),
+        last_error = left(coalesce(email_outbox_report.error, 'send failed'), 500)
+    where o.batch_id = email_outbox_report.batch and o.state = 'sending';
+  end if;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text", "rejected" "uuid"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text" DEFAULT 'unsubscribe'::"text") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
@@ -3093,6 +3197,11 @@ declare
   parts text[] := string_to_array(coalesce(token, ''), '.');
   uid uuid;
   cat text;
+  cats text[];
+  saved jsonb;
+  active boolean;
+  address text;
+  subscribed boolean;
 begin
   if cardinality(parts) = 3 then
     uid := private.try_uuid(parts[1]);
@@ -3106,21 +3215,64 @@ begin
      or token is distinct from private.unsubscribe_token(uid, cat) then
     raise exception using message = 'invalid_unsubscribe_link', detail = 'This unsubscribe link is not valid', errcode = '22023';
   end if;
+  if action is null or action not in ('preview', 'unsubscribe', 'undo') then
+    raise exception using message = 'invalid_payload', detail = 'action must be preview, unsubscribe or undo', errcode = '22023';
+  end if;
 
-  if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null) then
+  select array_agg(c.category order by c.position) into cats
+  from private.notification_categories c
+  where c.email_allowed and (cat = 'all' or c.category = cat);
+
+  active := exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null);
+
+  if active and action = 'unsubscribe' then
+    -- Only the first click is remembered: a second one would snapshot "all off".
+    insert into private.email_unsubscribe_undo (user_id, scope, prior)
+    select uid, cat, jsonb_object_agg(s.c, p.email)
+    from unnest(cats) as s (c)
+    left join public.notification_prefs p on p.user_id = uid and p.category = s.c
+    on conflict (user_id, scope) do nothing;
+
     insert into public.notification_prefs as p (user_id, category, email)
-    select uid, c.category, case when cat = 'all' and subscribe then null else subscribe end
-    from private.notification_categories c
-    where c.email_allowed and (cat = 'all' or c.category = cat)
+    select uid, s.c, false from unnest(cats) as s (c)
+    on conflict (user_id, category) do update set email = false;
+  elsif active and action = 'undo' then
+    delete from private.email_unsubscribe_undo u
+    where u.user_id = uid and u.scope = cat
+    returning u.prior into saved;
+
+    -- With the snapshot: exactly what it held. Without one (already undone, or the
+    -- person changed settings since): that category on, or every default for 'all'.
+    insert into public.notification_prefs as p (user_id, category, email)
+    select uid, s.c,
+      case
+        when saved is not null then (saved ->> s.c)::boolean
+        when cat = 'all' then null
+        else true
+      end
+    from unnest(cats) as s (c)
     on conflict (user_id, category) do update set email = excluded.email;
   end if;
 
-  return cat;
+  select bool_or(coalesce(p.email, c.email_default)) into subscribed
+  from unnest(cats) as s (c)
+  join private.notification_categories c on c.category = s.c
+  left join public.notification_prefs p on p.user_id = uid and p.category = s.c;
+
+  if active then
+    select u.email into address from auth.users u where u.id = uid;
+  end if;
+
+  return jsonb_build_object(
+    'category', cat,
+    'email', private.mask_email(address),
+    'subscribed', active and coalesce(subscribed, false)
+  );
 end;
 $$;
 
 
-ALTER FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) OWNER TO "postgres";
+ALTER FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."get_or_create_direct_group"("friend_id" "uuid") RETURNS "uuid"
@@ -3707,6 +3859,9 @@ begin
   on conflict (user_id, category) do update
     set push = coalesce(excluded.push, p.push),
         email = coalesce(excluded.email, p.email);
+
+  -- A setting changed by hand makes any unsubscribe snapshot stale.
+  delete from private.email_unsubscribe_undo u where u.user_id = uid;
 end;
 $$;
 
@@ -3891,13 +4046,29 @@ CREATE TABLE IF NOT EXISTS "private"."email_outbox" (
     "user_id" "uuid" NOT NULL,
     "subject" "text" NOT NULL,
     "queued_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "state" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "attempts" integer DEFAULT 0 NOT NULL,
+    "batch_id" "uuid",
+    "claimed_at" timestamp with time zone,
+    "retry_at" timestamp with time zone,
     "handled_at" timestamp with time zone,
-    "outcome" "text",
-    CONSTRAINT "email_outbox_outcome_check" CHECK (("outcome" = ANY (ARRAY['sent'::"text", 'folded'::"text", 'dropped'::"text"])))
+    "last_error" "text",
+    CONSTRAINT "email_outbox_state_check" CHECK (("state" = ANY (ARRAY['pending'::"text", 'folded'::"text", 'sending'::"text", 'sent'::"text", 'failed'::"text", 'dropped'::"text"])))
 );
 
 
 ALTER TABLE "private"."email_outbox" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "private"."email_unsubscribe_undo" (
+    "user_id" "uuid" NOT NULL,
+    "scope" "text" NOT NULL,
+    "prior" "jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."email_unsubscribe_undo" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "private"."former_members" (
@@ -4337,6 +4508,11 @@ ALTER TABLE ONLY "private"."email_outbox"
 
 
 
+ALTER TABLE ONLY "private"."email_unsubscribe_undo"
+    ADD CONSTRAINT "email_unsubscribe_undo_pkey" PRIMARY KEY ("user_id", "scope");
+
+
+
 ALTER TABLE ONLY "private"."former_members"
     ADD CONSTRAINT "former_members_pkey" PRIMARY KEY ("group_id", "user_id");
 
@@ -4502,7 +4678,11 @@ ALTER TABLE ONLY "public"."settlements"
 
 
 
-CREATE INDEX "email_outbox_pending_idx" ON "private"."email_outbox" USING "btree" ("user_id", "subject") WHERE ("handled_at" IS NULL);
+CREATE INDEX "email_outbox_batch_idx" ON "private"."email_outbox" USING "btree" ("batch_id") WHERE ("state" = 'sending'::"text");
+
+
+
+CREATE INDEX "email_outbox_pending_idx" ON "private"."email_outbox" USING "btree" ("user_id", "subject") WHERE ("state" = 'pending'::"text");
 
 
 
@@ -4868,6 +5048,11 @@ ALTER TABLE ONLY "private"."email_outbox"
 
 
 
+ALTER TABLE ONLY "private"."email_unsubscribe_undo"
+    ADD CONSTRAINT "email_unsubscribe_undo_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "private"."former_members"
     ADD CONSTRAINT "former_members_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
 
@@ -5129,6 +5314,9 @@ ALTER TABLE ONLY "public"."settlements"
 
 
 ALTER TABLE "private"."email_outbox" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."email_unsubscribe_undo" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."former_members" ENABLE ROW LEVEL SECURITY;
@@ -5605,6 +5793,10 @@ REVOKE ALL ON FUNCTION "private"."manageable_event"("eid" "uuid") FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."mask_email"("address" "text") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."materialize_recurring_expenses"("run_on" "date") FROM PUBLIC;
 
 
@@ -5720,7 +5912,7 @@ REVOKE ALL ON FUNCTION "private"."save_expense"("eid" "uuid", "payload" "jsonb")
 
 
 
-REVOKE ALL ON FUNCTION "private"."send_email_notifications"("hold" interval) FROM PUBLIC;
+REVOKE ALL ON FUNCTION "private"."send_email_notifications"("hold" interval, "batch_size" integer) FROM PUBLIC;
 
 
 
@@ -5868,10 +6060,15 @@ GRANT ALL ON FUNCTION "public"."delete_settlement"("id" "uuid") TO "service_role
 
 
 
-REVOKE ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "anon";
-GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "subscribe" boolean) TO "service_role";
+REVOKE ALL ON FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text", "rejected" "uuid"[]) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text", "rejected" "uuid"[]) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "text") TO "service_role";
 
 
 
@@ -5973,6 +6170,10 @@ GRANT ALL ON FUNCTION "public"."update_expense"("id" "uuid", "payload" "jsonb") 
 
 
 GRANT ALL ON TABLE "private"."email_outbox" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."email_unsubscribe_undo" TO "service_role";
 
 
 

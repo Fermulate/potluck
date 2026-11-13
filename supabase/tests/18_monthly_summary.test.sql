@@ -95,15 +95,18 @@ delete from public.notifications where type = 'summary.monthly';
 select tests.login('ben');
 select set_notification_pref('monthly_summary', email => false);
 reset role;
-select ok(private.send_monthly_summaries(current_setting('tests.month')::date) >= 2, 'with email on, the job runs again');
+select ok(private.send_monthly_summaries(current_setting('tests.month')::date) >= 1, 'with email on, the job runs again');
 select results_eq(
   $$ select handle, channels from pg_temp.summaries() $$,
-  $$ values ('ava', '{email}'::text[]), ('ben', '{}'::text[]) $$,
-  'it is emailed unless that person opted out'
+  $$ values ('ava', '{email}'::text[]) $$,
+  'it is emailed; turning the summary off stops the inbox card and the email'
 );
 
 -- Closed accounts get nothing.
 delete from public.notifications where type = 'summary.monthly';
+select tests.login('ben');
+select set_notification_pref('monthly_summary', email => true);
+reset role;
 update public.profiles set deleted_at = now() where id = tests.uid('ben');
 select private.send_monthly_summaries(current_setting('tests.month')::date);
 select results_eq(

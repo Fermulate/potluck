@@ -18,11 +18,14 @@
 -- private.email_outbox. Email also needs app_config.email_notifications = true
 -- (false until a sender is configured), so with the flag off nothing is queued.
 -- A cron job hands due emails to notify after a 60 second hold, folding quick
--- fixes to one expense into a single email.
+-- fixes to one expense into a single email, in batches; notify reports each batch
+-- back through email_outbox_report (service role only), and unreported or failed
+-- batches are retried.
 --
 -- Unsubscribe links carry an HMAC token signed with a key that never leaves the
--- database (private.signing_keys). public.email_unsubscribe(token) is the second
--- anon-callable RPC after invite_preview: the token is the credential.
+-- database (private.signing_keys). public.email_unsubscribe(token, action) is the
+-- second anon-callable RPC after invite_preview: the token is the credential. An
+-- unsubscribe remembers what it changed so undo restores exactly that.
 --
 -- private.push_notification: body as in 20261105160000_edge_function_hooks.sql
 -- plus the 'push' channel check.
@@ -66,15 +69,20 @@ create index notification_types_category_idx on private.notification_types (cate
 comment on table private.notification_types is
   'Which setting governs each notification type. Add one row per new type.';
 
--- Includes types other branches add (payment.*, debt.reminder, recurring.upcoming)
--- so they follow the right setting as soon as they exist.
+-- Includes types other work adds (payment edits, deletes and restores from settle
+-- up, debt.reminder, recurring.upcoming) so they follow the right setting as soon
+-- as they exist. member.added has no sender yet: nobody can put someone else in a
+-- group today except 1:1 tabs, which are skipped. It is ready for placeholder
+-- members.
 insert into private.notification_types (type, category) values
   ('expense.created', 'expense_added'),
   ('expense.updated', 'expense_changed'),
   ('expense.deleted', 'expense_changed'),
   ('expense.restored', 'expense_changed'),
   ('settlement.created', 'payments'),
+  ('settlement.updated', 'payments'),
   ('settlement.deleted', 'payments'),
+  ('settlement.restored', 'payments'),
   ('payment.created', 'payments'),
   ('payment.updated', 'payments'),
   ('payment.deleted', 'payments'),
@@ -128,7 +136,7 @@ on public.notification_prefs for select
 to authenticated
 using (user_id = (select auth.uid()));
 
--- Closing an account drops its settings.
+-- Closing an account drops its settings (and any unsubscribe snapshot).
 create or replace function private.forget_notification_prefs()
 returns trigger
 language plpgsql
@@ -137,6 +145,7 @@ set search_path = ''
 as $$
 begin
   delete from public.notification_prefs p where p.user_id = new.id;
+  delete from private.email_unsubscribe_undo u where u.user_id = new.id;
   return null;
 end;
 $$;
@@ -202,6 +211,9 @@ begin
   on conflict (user_id, category) do update
     set push = coalesce(excluded.push, p.push),
         email = coalesce(excluded.email, p.email);
+
+  -- A setting changed by hand makes any unsubscribe snapshot stale.
+  delete from private.email_unsubscribe_undo u where u.user_id = uid;
 end;
 $$;
 
@@ -294,17 +306,31 @@ $$;
 
 -- Email outbox ---------------------------------------------------------------------
 
+-- One row per notification routed to email. state:
+--   pending  waiting for the hold (or a retry after a failed send)
+--   folded   another email for the same subject covered it
+--   sending  handed to notify in batch_id, waiting for its report
+--   sent     the provider accepted it
+--   failed   gave up after 5 attempts
+--   dropped  no longer wanted (settings changed, too old, or invalid)
 create table private.email_outbox (
   notification_id uuid primary key references public.notifications (id) on delete cascade,
   user_id uuid not null references public.profiles (id) on delete cascade,
   -- Rows with the same subject fold into one email (several changes to one expense).
   subject text not null,
   queued_at timestamptz not null default now(),
+  state text not null default 'pending'
+    check (state in ('pending', 'folded', 'sending', 'sent', 'failed', 'dropped')),
+  attempts int not null default 0,
+  batch_id uuid,
+  claimed_at timestamptz,
+  retry_at timestamptz,
   handled_at timestamptz,
-  outcome text check (outcome in ('sent', 'folded', 'dropped'))
+  last_error text
 );
 
-create index email_outbox_pending_idx on private.email_outbox (user_id, subject) where handled_at is null;
+create index email_outbox_pending_idx on private.email_outbox (user_id, subject) where state = 'pending';
+create index email_outbox_batch_idx on private.email_outbox (batch_id) where state = 'sending';
 create index email_outbox_user_id_idx on private.email_outbox (user_id);
 
 alter table private.email_outbox enable row level security;
@@ -370,11 +396,44 @@ as $$
   where k.name = 'email_unsubscribe';
 $$;
 
--- One-click unsubscribe from an email link, signed in or not. Returns the
--- category ('all' for every email). subscribe = true undoes it ('all' goes back
--- to the defaults).
-create or replace function public.email_unsubscribe(token text, subscribe boolean default false)
+-- What an unsubscribe link changed, so "keep sending them" puts back exactly that.
+-- prior maps each category the link covered to its email setting before (true,
+-- false or null for the default). Dropped when the person changes a setting
+-- themselves, since the snapshot is stale by then.
+create table private.email_unsubscribe_undo (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  scope text not null,
+  prior jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, scope)
+);
+
+alter table private.email_unsubscribe_undo enable row level security;
+revoke all on table private.email_unsubscribe_undo from public, anon, authenticated;
+grant all on table private.email_unsubscribe_undo to service_role;
+
+-- "a***@example.com": enough for someone to recognize their account, not enough to
+-- learn an address from a forwarded link.
+create or replace function private.mask_email(address text)
 returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case
+    when address is null or position('@' in address) < 2 then null
+    else left(address, 1) || '***' || substr(address, position('@' in address))
+  end;
+$$;
+
+-- Email unsubscribe links, signed in or not; the token is the credential.
+-- action:
+--   preview      change nothing, say what the link covers
+--   unsubscribe  turn email off for the link's category ('all': every category)
+--   undo         put back what the last unsubscribe with this link changed
+-- Returns { category, email (masked), subscribed (any email in scope still on) }.
+create or replace function public.email_unsubscribe(token text, action text default 'unsubscribe')
+returns jsonb
 language plpgsql
 security definer
 set search_path = ''
@@ -383,6 +442,11 @@ declare
   parts text[] := string_to_array(coalesce(token, ''), '.');
   uid uuid;
   cat text;
+  cats text[];
+  saved jsonb;
+  active boolean;
+  address text;
+  subscribed boolean;
 begin
   if cardinality(parts) = 3 then
     uid := private.try_uuid(parts[1]);
@@ -396,31 +460,84 @@ begin
      or token is distinct from private.unsubscribe_token(uid, cat) then
     raise exception using message = 'invalid_unsubscribe_link', detail = 'This unsubscribe link is not valid', errcode = '22023';
   end if;
+  if action is null or action not in ('preview', 'unsubscribe', 'undo') then
+    raise exception using message = 'invalid_payload', detail = 'action must be preview, unsubscribe or undo', errcode = '22023';
+  end if;
 
-  if exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null) then
+  select array_agg(c.category order by c.position) into cats
+  from private.notification_categories c
+  where c.email_allowed and (cat = 'all' or c.category = cat);
+
+  active := exists (select 1 from public.profiles p where p.id = uid and p.deleted_at is null);
+
+  if active and action = 'unsubscribe' then
+    -- Only the first click is remembered: a second one would snapshot "all off".
+    insert into private.email_unsubscribe_undo (user_id, scope, prior)
+    select uid, cat, jsonb_object_agg(s.c, p.email)
+    from unnest(cats) as s (c)
+    left join public.notification_prefs p on p.user_id = uid and p.category = s.c
+    on conflict (user_id, scope) do nothing;
+
     insert into public.notification_prefs as p (user_id, category, email)
-    select uid, c.category, case when cat = 'all' and subscribe then null else subscribe end
-    from private.notification_categories c
-    where c.email_allowed and (cat = 'all' or c.category = cat)
+    select uid, s.c, false from unnest(cats) as s (c)
+    on conflict (user_id, category) do update set email = false;
+  elsif active and action = 'undo' then
+    delete from private.email_unsubscribe_undo u
+    where u.user_id = uid and u.scope = cat
+    returning u.prior into saved;
+
+    -- With the snapshot: exactly what it held. Without one (already undone, or the
+    -- person changed settings since): that category on, or every default for 'all'.
+    insert into public.notification_prefs as p (user_id, category, email)
+    select uid, s.c,
+      case
+        when saved is not null then (saved ->> s.c)::boolean
+        when cat = 'all' then null
+        else true
+      end
+    from unnest(cats) as s (c)
     on conflict (user_id, category) do update set email = excluded.email;
   end if;
 
-  return cat;
+  select bool_or(coalesce(p.email, c.email_default)) into subscribed
+  from unnest(cats) as s (c)
+  join private.notification_categories c on c.category = s.c
+  left join public.notification_prefs p on p.user_id = uid and p.category = s.c;
+
+  if active then
+    select u.email into address from auth.users u where u.id = uid;
+  end if;
+
+  return jsonb_build_object(
+    'category', cat,
+    'email', private.mask_email(address),
+    'subscribed', active and coalesce(subscribed, false)
+  );
 end;
 $$;
 
-revoke execute on function public.email_unsubscribe(text, boolean) from public;
-grant execute on function public.email_unsubscribe(text, boolean) to anon, authenticated, service_role;
+revoke execute on function public.email_unsubscribe(text, text) from public;
+grant execute on function public.email_unsubscribe(text, text) to anon, authenticated, service_role;
 
 -- Sending --------------------------------------------------------------------------
 
--- Hands due emails to the notify edge function. A subject is due once nothing new
--- was queued for it for `hold`. Per expense, one email: nothing when it was added
--- and deleted inside the hold, the deletion when it is gone, else the earliest
--- change (created beats updated), with current amounts and shares. Settings are
--- checked again, so turning email off inside the hold still counts. Queued rows
--- older than a day are dropped. Returns the number of emails handed over.
-create or replace function private.send_email_notifications(hold interval default interval '60 seconds')
+-- Hands due emails to the notify edge function, batch_size per call. A subject is
+-- due once nothing new was queued for it for `hold`. Per expense, one email:
+-- nothing when it was added and deleted inside the hold, the deletion when it is
+-- gone, else the earliest change (created beats updated), with current amounts and
+-- shares. Settings are checked again, so turning email off inside the hold counts.
+--
+-- Delivery is at least once, made close to exactly once by the provider: notify
+-- answers right away and reports each batch through email_outbox_report. A batch
+-- with no report after 10 minutes goes out again under the same batch_id, which
+-- notify uses as the provider's idempotency key, so a send that did go out is not
+-- repeated. A reported failure retries with a fresh batch after 2, 4, 8, 16 minutes;
+-- after 5 attempts the row is failed. Rows not sent within a day are dropped.
+-- Returns the number of emails handed over.
+create or replace function private.send_email_notifications(
+  hold interval default interval '60 seconds',
+  batch_size int default 50
+)
 returns int
 language plpgsql
 security definer
@@ -428,17 +545,28 @@ set search_path = ''
 as $$
 declare
   r record;
+  b record;
   chosen uuid;
+  old_batch uuid;
   ex public.expenses;
-  emails jsonb := '[]'::jsonb;
   item jsonb;
+  picked jsonb := '[]'::jsonb;
+  batches jsonb;
+  handed int := 0;
 begin
   if not pg_try_advisory_xact_lock(hashtext('private.send_email_notifications')) then
     return 0;
   end if;
 
-  update private.email_outbox o set handled_at = now(), outcome = 'dropped'
-  where o.handled_at is null and o.queued_at < now() - interval '1 day';
+  update private.email_outbox o
+  set state = 'dropped', handled_at = now(), last_error = coalesce(o.last_error, 'not sent within a day')
+  where o.state = 'pending' and o.queued_at < now() - interval '1 day';
+
+  update private.email_outbox o
+  set state = case when o.attempts >= 5 then 'failed' else 'pending' end,
+      handled_at = case when o.attempts >= 5 then now() end,
+      last_error = 'no report from notify'
+  where o.state = 'sending' and o.claimed_at < now() - interval '10 minutes';
 
   if not private.email_enabled() then
     return 0;
@@ -451,11 +579,12 @@ begin
       array_agg(n.type order by n.created_at, n.type <> 'expense.created', n.id) as types
     from private.email_outbox o
     join public.notifications n on n.id = o.notification_id
-    where o.handled_at is null
+    where o.state = 'pending'
     group by o.user_id, o.subject
     having max(o.queued_at) <= now() - hold
+       and max(coalesce(o.retry_at, '-infinity'::timestamptz)) <= now()
     order by min(o.queued_at)
-    limit 100
+    limit 200
   loop
     chosen := null;
     ex := null;
@@ -475,8 +604,8 @@ begin
     end if;
 
     update private.email_outbox o
-    set handled_at = now(), outcome = case when o.notification_id = chosen then 'sent' else 'folded' end
-    where o.notification_id = any (r.ids);
+    set state = 'folded', handled_at = now()
+    where o.notification_id = any (r.ids) and o.notification_id is distinct from chosen;
 
     if chosen is null then
       continue;
@@ -517,18 +646,98 @@ begin
       and 'email' = any (private.notification_channels(n.user_id, n.type));
 
     if item is null then
-      update private.email_outbox o set outcome = 'dropped' where o.notification_id = chosen;
-    else
-      emails := emails || jsonb_build_array(item);
+      update private.email_outbox o
+      set state = 'dropped', handled_at = now(), last_error = 'no longer wanted'
+      where o.notification_id = chosen;
+      continue;
     end if;
+
+    select o.batch_id into old_batch from private.email_outbox o where o.notification_id = chosen;
+    picked := picked || jsonb_build_array(jsonb_build_object('id', chosen, 'batch', old_batch, 'item', item));
   end loop;
 
-  if jsonb_array_length(emails) > 0 then
-    perform private.invoke_edge_function('notify', jsonb_build_object('emails', emails));
-  end if;
-  return jsonb_array_length(emails);
+  -- Rows that come back without a report keep their batch (same idempotency key);
+  -- the rest are cut into new batches of batch_size.
+  with p as (
+    select (x.e ->> 'id')::uuid as id, (x.e ->> 'batch')::uuid as old_batch, x.e -> 'item' as item, x.n
+    from jsonb_array_elements(picked) with ordinality as x (e, n)
+  ),
+  fresh as (
+    select p.id, (row_number() over (order by p.n) - 1) / greatest(batch_size, 1) as grp
+    from p where p.old_batch is null
+  ),
+  grps as (
+    select g.grp, gen_random_uuid() as batch from (select distinct f.grp from fresh f) g
+  ),
+  assigned as (
+    select p.id, p.item, coalesce(p.old_batch, grps.batch) as batch
+    from p left join fresh on fresh.id = p.id left join grps on grps.grp = fresh.grp
+  ),
+  marked as (
+    update private.email_outbox o
+    set state = 'sending', batch_id = a.batch, attempts = o.attempts + 1, claimed_at = now(),
+        retry_at = null
+    from assigned a
+    where o.notification_id = a.id
+    returning o.notification_id
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('batch', a.batch, 'emails', a.emails)), '[]'::jsonb)
+  into batches
+  from (select s.batch, jsonb_agg(s.item) as emails from assigned s group by s.batch) a;
+
+  for b in select x.value from jsonb_array_elements(batches) as x loop
+    perform private.invoke_edge_function(
+      'notify',
+      jsonb_build_object('batch', b.value -> 'batch', 'emails', b.value -> 'emails')
+    );
+    handed := handed + jsonb_array_length(b.value -> 'emails');
+  end loop;
+  return handed;
 end;
 $$;
+
+-- notify reports each batch here (service role only). delivered: the provider took
+-- the whole batch. rejected: emails notify could not build, dropped for good.
+create or replace function public.email_outbox_report(
+  batch uuid,
+  delivered boolean,
+  error text default null,
+  rejected uuid[] default '{}'
+)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  n int;
+begin
+  update private.email_outbox o
+  set state = 'dropped', handled_at = now(), last_error = 'rejected by notify'
+  where o.batch_id = email_outbox_report.batch and o.state = 'sending'
+    and o.notification_id = any (coalesce(email_outbox_report.rejected, '{}'));
+
+  if email_outbox_report.delivered then
+    update private.email_outbox o
+    set state = 'sent', handled_at = now(), last_error = null
+    where o.batch_id = email_outbox_report.batch and o.state = 'sending';
+  else
+    -- A known failure retries with a fresh batch, so a fresh idempotency key.
+    update private.email_outbox o
+    set state = case when o.attempts >= 5 then 'failed' else 'pending' end,
+        handled_at = case when o.attempts >= 5 then now() end,
+        batch_id = case when o.attempts >= 5 then o.batch_id end,
+        retry_at = now() + make_interval(mins => power(2, o.attempts)::int),
+        last_error = left(coalesce(email_outbox_report.error, 'send failed'), 500)
+    where o.batch_id = email_outbox_report.batch and o.state = 'sending';
+  end if;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+revoke execute on function public.email_outbox_report(uuid, boolean, text, uuid[]) from public, anon, authenticated;
+grant execute on function public.email_outbox_report(uuid, boolean, text, uuid[]) to service_role;
 
 -- Monthly summary ------------------------------------------------------------------
 
@@ -598,9 +807,10 @@ as $$
 $$;
 
 -- On the first of the month: one summary.monthly notification (an inbox card,
--- and an email when email is on) for everyone with a non-zero balance. Run twice
--- for the same month, it skips people who already have theirs. Returns how many
--- were written.
+-- and an email when email is on) for everyone with a non-zero balance who has not
+-- turned the summary off. Its setting is the monthly_summary email flag, which
+-- covers the card too. Run twice for the same month, it skips people who already
+-- have theirs. Returns how many were written.
 create or replace function private.send_monthly_summaries(
   month date default (date_trunc('month', now()) - interval '1 month')::date
 )
@@ -620,6 +830,11 @@ begin
     join public.group_members m on m.group_id = b.group_id and m.user_id = b.user_id
     join public.profiles p on p.id = b.user_id and p.deleted_at is null
     where b.net_cents <> 0
+      and coalesce(
+        (select np.email from public.notification_prefs np
+         where np.user_id = b.user_id and np.category = 'monthly_summary'),
+        (select c.email_default from private.notification_categories c where c.category = 'monthly_summary')
+      )
       and not exists (
         select 1 from public.notifications n
         where n.user_id = b.user_id and n.type = 'summary.monthly'
@@ -718,7 +933,8 @@ revoke execute on function
   private.route_notification(),
   private.queue_email(),
   private.unsubscribe_token(uuid, text),
-  private.send_email_notifications(interval),
+  private.send_email_notifications(interval, int),
+  private.mask_email(text),
   private.monthly_summary(uuid, date),
   private.send_monthly_summaries(date),
   private.expenses_notify_removal(),

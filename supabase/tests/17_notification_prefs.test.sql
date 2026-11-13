@@ -1,7 +1,7 @@
 -- Notification settings, routing to push and email, the email outbox, unsubscribe
 -- links, and the expense.deleted / expense.restored / member.added types.
 begin;
-select plan(51);
+select plan(67);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -130,15 +130,37 @@ reset role;
 update private.email_outbox set queued_at = now() - interval '2 minutes';
 select is(private.send_email_notifications(), 2, 'one email each for ava and cleo once the hold is over');
 select results_eq(
-  $$ select n.type, o.outcome from private.email_outbox o join public.notifications n on n.id = o.notification_id
+  $$ select n.type, o.state from private.email_outbox o join public.notifications n on n.id = o.notification_id
      where n.user_id = tests.uid('ava') order by n.created_at, n.type $$,
-  $$ values ('expense.created', 'sent'), ('expense.updated', 'folded') $$,
+  $$ values ('expense.created', 'sending'), ('expense.updated', 'folded') $$,
   'a quick fix folds into the new expense email'
 );
 select is(
-  (select count(*)::int from private.email_outbox where handled_at is null),
+  (select count(distinct batch_id)::int from private.email_outbox where state = 'sending'),
+  1,
+  'both emails go out in one batch'
+);
+select is(
+  (select count(*)::int from private.email_outbox where state = 'pending'),
   0,
-  'everything sent is marked handled'
+  'nothing due is left behind'
+);
+
+-- notify reports each batch; only the service role may.
+select set_config('tests.batch', (select batch_id::text from private.email_outbox where state = 'sending' limit 1), true);
+select tests.login('ava');
+select throws_ok(
+  format($$ select email_outbox_report(%L, true) $$, current_setting('tests.batch')),
+  '42501', null, 'clients cannot report deliveries'
+);
+reset role;
+set local role service_role;
+select is(email_outbox_report(current_setting('tests.batch')::uuid, true), 2, 'a delivered batch is reported');
+reset role;
+select is(
+  (select count(*)::int from private.email_outbox where state = 'sent' and handled_at is not null),
+  2,
+  'its rows are sent'
 );
 
 -- Added and deleted inside the hold: no email at all.
@@ -163,13 +185,52 @@ select tests.login('ben');
 select delete_expense(tests.id('e2'));
 reset role;
 update private.email_outbox set queued_at = now() - interval '2 minutes';
-select is(private.send_email_notifications(), 2, 'a deletion is emailed');
+select is(private.send_email_notifications(batch_size => 1), 2, 'a deletion is emailed');
 select results_eq(
-  $$ select o.outcome from private.email_outbox o join public.notifications n on n.id = o.notification_id
+  $$ select o.state from private.email_outbox o join public.notifications n on n.id = o.notification_id
      where n.user_id = tests.uid('ava') and n.type = 'expense.deleted' and n.data ->> 'expense_id' = tests.id('e2')::text $$,
-  $$ values ('sent') $$,
+  $$ values ('sending') $$,
   'the deletion email is the one sent'
 );
+select is(
+  (select count(distinct batch_id)::int from private.email_outbox where state = 'sending'),
+  2,
+  'batch_size cuts the emails into separate calls'
+);
+
+-- A failed batch waits and retries with a fresh batch; a silent one retries under the same batch.
+select set_config('tests.fail', (select o.batch_id::text from private.email_outbox o
+  join public.notifications n on n.id = o.notification_id
+  where o.state = 'sending' and n.user_id = tests.uid('ava')), true);
+select set_config('tests.quiet', (select o.batch_id::text from private.email_outbox o
+  join public.notifications n on n.id = o.notification_id
+  where o.state = 'sending' and n.user_id = tests.uid('cleo')), true);
+select is(email_outbox_report(current_setting('tests.fail')::uuid, false, 'rate limited'), 1, 'a failed batch is reported');
+select results_eq(
+  $$ select state, attempts, batch_id is null, retry_at > now(), last_error from private.email_outbox
+     where state = 'pending' $$,
+  $$ values ('pending', 1, true, true, 'rate limited') $$,
+  'a failed email waits to retry, without its batch'
+);
+select is(private.send_email_notifications(), 0, 'nothing is retried before its back off');
+update private.email_outbox set retry_at = now() - interval '1 second' where state = 'pending';
+update private.email_outbox set claimed_at = now() - interval '11 minutes' where batch_id = current_setting('tests.quiet')::uuid;
+select is(private.send_email_notifications(), 2, 'both come back: the failed one and the one never reported');
+select results_eq(
+  $$ select o.batch_id = current_setting('tests.quiet')::uuid, o.attempts from private.email_outbox o
+     join public.notifications n on n.id = o.notification_id
+     where o.state = 'sending' order by n.user_id = tests.uid('cleo') $$,
+  $$ values (false, 2), (true, 2) $$,
+  'the unreported batch keeps its id (so its idempotency key), the failed one gets a new one'
+);
+update private.email_outbox set attempts = 5 where state = 'sending';
+select is(email_outbox_report(current_setting('tests.quiet')::uuid, false), 1, 'a fifth failure is reported');
+select is(
+  (select state from private.email_outbox where batch_id = current_setting('tests.quiet')::uuid),
+  'failed',
+  'and then it gives up'
+);
+update private.email_outbox set state = 'sent' where state = 'sending';
 
 select tests.login('ben');
 select restore_expense(tests.id('e2'));
@@ -187,7 +248,7 @@ reset role;
 update private.email_outbox set queued_at = now() - interval '2 minutes';
 select is(private.send_email_notifications(), 1, 'only cleo gets the restore email once ava turns them off');
 select results_eq(
-  $$ select o.outcome from private.email_outbox o join public.notifications n on n.id = o.notification_id
+  $$ select o.state from private.email_outbox o join public.notifications n on n.id = o.notification_id
      where n.user_id = tests.uid('ava') and n.type = 'expense.restored' $$,
   $$ values ('dropped') $$,
   'ava''s queued email is dropped'
@@ -204,21 +265,37 @@ select results_eq(
 );
 
 -- Stale rows are dropped, not sent late.
-update private.email_outbox set handled_at = null, outcome = null, queued_at = now() - interval '2 days'
-where outcome = 'sent';
+update private.email_outbox set state = 'pending', handled_at = null, queued_at = now() - interval '2 days'
+where state in ('sent', 'sending');
 select is(private.send_email_notifications(), 0, 'rows older than a day are not sent');
 
 update public.app_config set value = 'false' where key = 'email_notifications';
-update private.email_outbox set handled_at = null, outcome = null, queued_at = now() - interval '2 minutes';
+update private.email_outbox set state = 'pending', handled_at = null, queued_at = now() - interval '2 minutes';
 select is(private.send_email_notifications(), 0, 'turning the flag off stops sending');
 
 -- Unsubscribe links
 select set_config('tests.tok_pay', private.unsubscribe_token(tests.uid('ava'), 'payments'), true);
 select set_config('tests.tok_all', private.unsubscribe_token(tests.uid('ava'), 'all'), true);
-select set_config('tests.tok_ben', private.unsubscribe_token(tests.uid('ben'), 'payments'), true);
+select set_config('tests.cleo_all', private.unsubscribe_token(tests.uid('cleo'), 'all'), true);
 
 select tests.login_anon();
-select is(email_unsubscribe(current_setting('tests.tok_pay')), 'payments', 'a payments link unsubscribes from payment emails, signed out');
+select is(
+  email_unsubscribe(current_setting('tests.tok_pay'), 'preview'),
+  '{"category": "payments", "email": "a***@test.local", "subscribed": true}'::jsonb,
+  'a preview names the setting and a masked address, signed out'
+);
+select tests.login('ava');
+select results_eq(
+  $$ select email from my_notification_prefs() where category = 'payments' $$,
+  $$ values (true) $$,
+  'a preview changes nothing'
+);
+select tests.login_anon();
+select is(
+  email_unsubscribe(current_setting('tests.tok_pay')) ->> 'subscribed',
+  'false',
+  'a payments link unsubscribes from payment emails'
+);
 select throws_ok(
   format($$ select email_unsubscribe(%L) $$, replace(current_setting('tests.tok_pay'), 'payments', 'comments')),
   '22023', 'invalid_unsubscribe_link', 'the signature covers the category'
@@ -233,6 +310,10 @@ select throws_ok(
   format($$ select email_unsubscribe(%L) $$, tests.uid('ava')::text || '.monthly_summary.' || repeat('A', 32)),
   '22023', 'invalid_unsubscribe_link', 'a made up signature is refused'
 );
+select throws_ok(
+  format($$ select email_unsubscribe(%L, 'explode') $$, current_setting('tests.tok_pay')),
+  '22023', 'invalid_payload', 'unknown actions are refused'
+);
 
 select tests.login('ava');
 select results_eq(
@@ -242,8 +323,12 @@ select results_eq(
 );
 
 select tests.login_anon();
-select is(email_unsubscribe(current_setting('tests.tok_pay'), true), 'payments', 'the same link can undo it');
-select is(email_unsubscribe(current_setting('tests.tok_all')), 'all', 'an all link turns off every email');
+select is(
+  email_unsubscribe(current_setting('tests.tok_pay'), 'undo') ->> 'subscribed',
+  'true',
+  'the same link can undo it'
+);
+select is(email_unsubscribe(current_setting('tests.tok_all')) ->> 'category', 'all', 'an all link turns off every email');
 select tests.login('ava');
 select is(
   (select count(*)::int from my_notification_prefs() where email),
@@ -256,13 +341,30 @@ select is(
   7,
   'someone else''s link touches nobody else'
 );
+
+-- Undo puts back exactly what the link changed, not the defaults.
+select tests.login('cleo');
+select set_notification_pref('expense_added', email => false);
+select set_notification_pref('plans', email => true);
 select tests.login_anon();
-select is(email_unsubscribe(current_setting('tests.tok_all'), true), 'all', 'resubscribing to everything');
-select tests.login('ava');
+select email_unsubscribe(current_setting('tests.cleo_all'));
+select email_unsubscribe(current_setting('tests.cleo_all'));
+select is(
+  email_unsubscribe(current_setting('tests.cleo_all'), 'undo') ->> 'subscribed',
+  'true',
+  'cleo undoes unsubscribing from everything (after clicking twice)'
+);
+select tests.login('cleo');
 select results_eq(
-  $$ select email from my_notification_prefs() where category in ('plans', 'payments') order by category $$,
-  $$ values (true), (false) $$,
-  'resubscribing to everything goes back to the defaults'
+  $$ select category, email from my_notification_prefs()
+     where category in ('expense_added', 'payments', 'plans') order by category $$,
+  $$ values ('expense_added', false), ('payments', true), ('plans', true) $$,
+  'new expenses stay off, plans stay on, the rest are back'
+);
+select is(
+  (select count(*)::int from public.notification_prefs where user_id = tests.uid('cleo') and category = 'payments' and email is null),
+  1,
+  'a setting that was on its default goes back to the default'
 );
 
 -- member.added

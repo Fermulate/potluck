@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(68);
+select plan(70);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -71,7 +71,12 @@ select has_function('public', 'delete_my_account', array[]::text[], 'delete_my_a
 select has_function('public', 'delete_group', array['uuid'], 'delete_group');
 select has_function('public', 'my_notification_prefs', array[]::text[], 'my_notification_prefs');
 select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
-select has_function('public', 'email_unsubscribe', array['text', 'boolean'], 'email_unsubscribe(token, subscribe)');
+select has_function('public', 'email_unsubscribe', array['text', 'text'], 'email_unsubscribe(token, action)');
+select has_function('public', 'email_outbox_report', array['uuid', 'boolean', 'text', 'uuid[]'], 'email_outbox_report(batch, delivered, error, rejected)');
+select ok(
+  not has_function_privilege('authenticated', 'public.email_outbox_report(uuid, boolean, text, uuid[])', 'execute'),
+  'only the service role reports email deliveries'
+);
 
 select is(
   (select count(*)::int from pg_proc p

@@ -1388,7 +1388,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      email_unsubscribe: { Args: { subscribe?: boolean; token: string }; Returns: string }
+      email_outbox_report: {
+        Args: { batch: string; delivered: boolean; error?: string; rejected?: string[] }
+        Returns: number
+      }
+      email_unsubscribe: { Args: { action?: string; token: string }; Returns: Json }
       get_or_create_direct_group: { Args: { friend_id: string }; Returns: string }
       invite_preview: {
         Args: { code: string }
