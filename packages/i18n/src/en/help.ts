@@ -39,6 +39,9 @@ export const help = {
     payers: 'When several people paid',
     refunds: 'How refunds work',
     defaultSplit: 'About the default split',
+    search: 'What search looks through',
+    totals: 'How totals are counted',
+    restore: 'About restoring',
   },
   tips: {
     simplifiedDebts:

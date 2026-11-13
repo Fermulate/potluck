@@ -27,7 +27,7 @@ export interface QueryCall {
 
 export type Call =
   | QueryCall
-  | { kind: 'rpc'; name: string; args: unknown }
+  | { kind: 'rpc'; name: string; args: unknown; range?: [number, number] }
   | { kind: 'storage'; bucket: string; method: string; args: unknown[] }
   | { kind: 'auth'; method: string; args: unknown[] }
   | { kind: 'functions'; name: string; args: unknown[] }
@@ -232,9 +232,21 @@ export function fakeSupabase(options: FakeOptions = {}) {
   }
 
   function rpc(name: string, args?: unknown) {
-    const call: Call = { kind: 'rpc', name, args }
+    const call: Extract<Call, { kind: 'rpc' }> = { kind: 'rpc', name, args }
     calls.push(call)
-    return Promise.resolve().then(() => settle(next(`rpc:${name}`, call)))
+    // Resolves when awaited, so a `.range()` chained on it is recorded first.
+    const result = {
+      range(first: number, last: number) {
+        call.range = [first, last]
+        return result
+      },
+      then(onFulfilled?: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) {
+        return Promise.resolve()
+          .then(() => settle(next(`rpc:${name}`, call)))
+          .then(onFulfilled, onRejected)
+      },
+    }
+    return result
   }
 
   const storage = {

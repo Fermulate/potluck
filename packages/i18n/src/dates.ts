@@ -10,7 +10,8 @@ export interface DateFormatOptions {
   locale?: string
 }
 
-export type DateStyle = 'short' | 'medium' | 'long' | 'full' | 'weekday' | 'dayMonth'
+export type DateStyle =
+  'short' | 'medium' | 'long' | 'full' | 'weekday' | 'dayMonth' | 'monthYear' | 'monthShort'
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
 const MINUTE = 60_000
@@ -64,6 +65,8 @@ const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   full: { dateStyle: 'full' },
   weekday: { weekday: 'short', month: 'short', day: 'numeric' },
   dayMonth: { month: 'short', day: 'numeric' },
+  monthYear: { month: 'long', year: 'numeric' },
+  monthShort: { month: 'short' },
 }
 
 /** "Jun 12, 2026" by default. */

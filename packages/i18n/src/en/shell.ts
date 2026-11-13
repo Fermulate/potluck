@@ -198,6 +198,9 @@ export const errors = {
     invalid_friend: 'You cannot split with yourself.',
     not_a_friend: 'You can only split with friends.',
     blocked: 'A block between you and someone here stops this.',
+    invalid_date_range: 'The start date is after the end date.',
+    invalid_query: 'That search is a bit long. Try fewer words.',
+    invalid_cursor: 'We lost our place in the list. Search again.',
     member_not_in_group: 'Someone in this payment has left the group, so it stays on the books.',
     split_member_not_in_group:
       'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',

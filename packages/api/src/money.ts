@@ -513,18 +513,48 @@ export interface ActivityCursor {
 }
 
 /**
+ * Narrows the feed to one group, or to what involves both the viewer and one friend (expenses
+ * both are in, payments between them, their one-to-one tab).
+ */
+export interface ActivityFilter {
+  groupId?: string
+  friendId?: string
+}
+
+/**
  * The feed across every group the viewer is in, newest first. Pass `before` to page. Ordered by
  * (created_at, id) and paged on both, so rows sharing a timestamp are never skipped or repeated.
  */
 export async function fetchActivity(
   client: PotluckClient,
-  { before, limit = ACTIVITY_PAGE_SIZE }: { before?: ActivityCursor; limit?: number } = {},
+  {
+    before,
+    limit = ACTIVITY_PAGE_SIZE,
+    groupId,
+    friendId,
+  }: { before?: ActivityCursor; limit?: number } & ActivityFilter = {},
 ): Promise<ActivityItem[]> {
+  if (friendId) {
+    const rows = unwrap(
+      await client.rpc('friend_activity', {
+        friend: friendId,
+        max_rows: limit,
+        ...(before ? { before_at: before.createdAt, before_id: before.id } : {}),
+      }),
+    )
+    return (rows ?? []).map(({ actor_info, group_info, ...row }) => ({
+      ...row,
+      data: (row.data ?? {}) as Record<string, unknown>,
+      actor: actor_info as ActivityItem['actor'],
+      group: group_info as ActivityItem['group'],
+    }))
+  }
   let query = client.from('activity').select(
     `id, group_id, actor_id, verb, subject_id, data, created_at,
       actor:profiles!activity_actor_id_fkey (id, display_name, avatar_path),
       group:groups (id, name, emoji, is_direct)`,
   )
+  if (groupId) query = query.eq('group_id', groupId)
   if (before) {
     const at = `"${before.createdAt}"`
     query = query.or(`created_at.lt.${at},and(created_at.eq.${at},id.lt."${before.id}")`)
@@ -538,11 +568,20 @@ export async function fetchActivity(
   return rows as unknown as ActivityItem[]
 }
 
-/** The feed as an infinite query, shared by the screen and its route loader. */
-export const activityInfiniteQueryOptions = (client: PotluckClient) =>
+/**
+ * The feed as an infinite query, shared by the screen and its route loader. A filtered feed
+ * lives under the same key prefix, so invalidating `moneyKeys.activity()` refreshes it too.
+ */
+export const activityInfiniteQueryOptions = (client: PotluckClient, filter: ActivityFilter = {}) =>
   infiniteQueryOptions({
-    queryKey: moneyKeys.activity(),
-    queryFn: ({ pageParam }) => fetchActivity(client, { before: pageParam }),
+    queryKey:
+      filter.groupId || filter.friendId
+        ? ([
+            ...moneyKeys.activity(),
+            { groupId: filter.groupId, friendId: filter.friendId },
+          ] as const)
+        : moneyKeys.activity(),
+    queryFn: ({ pageParam }) => fetchActivity(client, { before: pageParam, ...filter }),
     initialPageParam: undefined as ActivityCursor | undefined,
     getNextPageParam: (last: ActivityItem[]): ActivityCursor | undefined => {
       const tail = last[last.length - 1]

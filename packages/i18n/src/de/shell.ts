@@ -201,6 +201,9 @@ export const errors = {
     invalid_friend: 'Mit dir selbst kannst du nicht teilen.',
     not_a_friend: 'Du kannst nur mit Freunden teilen.',
     blocked: 'Eine Blockierung zwischen dir und jemandem hier verhindert das.',
+    invalid_date_range: 'Das Startdatum liegt nach dem Enddatum.',
+    invalid_query: 'Diese Suche ist etwas lang. Versuch es mit weniger Wörtern.',
+    invalid_cursor: 'Wir haben den Faden in der Liste verloren. Such noch einmal.',
     member_not_in_group:
       'Jemand aus dieser Zahlung hat die Gruppe verlassen, deshalb bleibt sie in den Büchern.',
     split_member_not_in_group:

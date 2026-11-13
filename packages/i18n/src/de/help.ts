@@ -41,6 +41,9 @@ export const help = {
     settleEverything: 'Über „Alles ausgleichen“',
     settleFriend: 'Über Ausgleichen über Gruppen hinweg',
     paymentMethods: 'Wer deine Zahlungswege sieht',
+    search: 'Was die Suche durchsucht',
+    totals: 'Wie die Summen gezählt werden',
+    restore: 'Über das Wiederherstellen',
   },
   tips: {
     simplifiedDebts:

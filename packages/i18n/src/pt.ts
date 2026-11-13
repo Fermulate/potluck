@@ -7,6 +7,7 @@ import { expenses, categories, splitTypes, balances, settle, activity } from './
 import { events, availability, bestTime, rsvp, timeline, home, guests } from './pt/plans'
 import { notifications, settings, account, unsubscribe, security } from './pt/me'
 import { help } from './pt/help'
+import { search, filters, insights, deletedItems, activityFilter } from './pt/insights'
 
 /**
  * Portuguese (você, written to read naturally in Brazil and Portugal). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -43,6 +44,11 @@ export const pt = {
   unsubscribe,
   security,
   help,
+  search,
+  filters,
+  insights,
+  deletedItems,
+  activityFilter,
   empty,
   errors,
 } satisfies Translation<Dictionary>

@@ -7,6 +7,7 @@ import { expenses, categories, splitTypes, balances, settle, activity } from './
 import { events, availability, bestTime, rsvp, timeline, home, guests } from './de/plans'
 import { notifications, settings, account, unsubscribe, security } from './de/me'
 import { help } from './de/help'
+import { search, filters, insights, deletedItems, activityFilter } from './de/insights'
 
 /**
  * German (du). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -43,6 +44,11 @@ export const de = {
   unsubscribe,
   security,
   help,
+  search,
+  filters,
+  insights,
+  deletedItems,
+  activityFilter,
   empty,
   errors,
 } satisfies Translation<Dictionary>
