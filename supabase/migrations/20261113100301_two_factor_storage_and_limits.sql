@@ -6,6 +6,9 @@
 -- 2. Recovery attempts: the mfa-recover edge function records each try and stops after five in
 --    fifteen minutes per account.
 -- 3. Turning two-step sign in off clears the recovery codes: clear_mfa_recovery_codes().
+-- 4. A recovery tells the account: Supabase sends no "factor removed" email when the admin API
+--    removes a factor, so mfa-recover files an account.mfa_removed notification (inbox, push,
+--    and email once email is on) through notify_mfa_recovered().
 
 -- Storage -----------------------------------------------------------------------------------
 
@@ -79,3 +82,27 @@ $$;
 
 revoke execute on function public.clear_mfa_recovery_codes() from public, anon;
 grant execute on function public.clear_mfa_recovery_codes() to authenticated, service_role;
+
+-- Security notices ---------------------------------------------------------------------------
+
+-- Not in the settings list on Me (the app only shows categories it knows), so the defaults hold:
+-- push and email.
+insert into private.notification_categories
+  (category, position, push_default, email_default, push_allowed, email_allowed)
+values ('security', 90, true, true, true, true)
+on conflict (category) do nothing;
+
+insert into private.notification_types (type, category)
+values ('account.mfa_removed', 'security')
+on conflict (type) do nothing;
+
+-- Service role only (mfa-recover): tells the person a recovery code turned two-step sign in off.
+create or replace function public.notify_mfa_recovered(target uuid) returns void
+language plpgsql volatile security definer set search_path = '' as $$
+begin
+  perform private.notify(array[target], 'account.mfa_removed', '{}'::jsonb, null);
+end;
+$$;
+
+revoke execute on function public.notify_mfa_recovered(uuid) from public, anon, authenticated;
+grant execute on function public.notify_mfa_recovered(uuid) to service_role;

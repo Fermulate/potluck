@@ -41,6 +41,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   plans: 'plans',
   reminders: 'reminders',
   monthly_summary: 'the monthly summary',
+  security: 'account security',
 }
 
 const str = (value: unknown): string | undefined =>
@@ -216,6 +217,16 @@ function copyFor(job: EmailJob): Copy {
         heading: `${actor} left a comment${inGroup}:`,
         lines: [`"${str(d.excerpt) ?? '...'}"`],
         cta: 'Reply',
+      }
+    case 'account.mfa_removed':
+      return {
+        subject: 'Two-step sign in was turned off',
+        heading: 'A recovery code was used to sign in to your Potluck account.',
+        lines: [
+          'That turned two-step sign in off, so you can set it up again on a new phone from Me.',
+          'Not you? Change your password now and set up two-step sign in again.',
+        ],
+        cta: 'Open Me',
       }
     case 'member.added':
       return {

@@ -46,6 +46,10 @@ Deno.serve(async (req) => {
       const { error } = await admin.auth.admin.mfa.deleteFactor({ userId, id })
       if (error) throw error
     },
+    notifyRemoved: async (userId) => {
+      const { error } = await admin.rpc('notify_mfa_recovered', { target: userId })
+      if (error) throw error
+    },
     forgetCodes: async (userId) => {
       const { error } = await admin.rpc('forget_mfa_recovery_codes', { target: userId })
       if (error) throw error

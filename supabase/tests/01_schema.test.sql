@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(79);
+select plan(80);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -86,6 +86,7 @@ select has_function('public', 'mfa_recovery_code_matches', array['uuid', 'text']
 select has_function('public', 'forget_mfa_recovery_codes', array['uuid'], 'forget_mfa_recovery_codes');
 select has_function('public', 'record_mfa_recover_attempt', array['uuid'], 'record_mfa_recover_attempt');
 select has_function('public', 'clear_mfa_recovery_codes', array[]::text[], 'clear_mfa_recovery_codes');
+select has_function('public', 'notify_mfa_recovered', array['uuid'], 'notify_mfa_recovered');
 
 select is(
   (select count(*)::int from pg_proc p

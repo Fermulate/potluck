@@ -37,20 +37,20 @@ export function message(
       }
     case 'expense.deleted':
       return {
-        title: 'Expense deleted',
-        body: String(d.description ?? 'An expense was deleted'),
+        title: c.expenseDeleted,
+        body: String(d.description ?? c.expenseDeletedBody),
         url: expense,
       }
     case 'expense.restored':
       return {
-        title: 'Expense restored',
-        body: String(d.description ?? 'An expense is back'),
+        title: c.expenseRestored,
+        body: String(d.description ?? c.expenseRestoredBody),
         url: expense,
       }
     case 'member.added':
       return {
-        title: 'You were added to a group',
-        body: 'Pull up a chair.',
+        title: c.memberAdded,
+        body: c.memberAddedBody,
         url: group,
       }
     case 'settlement.created':
@@ -75,6 +75,8 @@ export function message(
       return { title: c.reminder, body: title(c.reminderBody), url: event }
     case 'rsvp.reminder':
       return { title: c.rsvp, body: title(c.rsvpBody), url: event }
+    case 'account.mfa_removed':
+      return { title: c.mfaRemoved, body: c.mfaRemovedBody, url: '/me' }
     default:
       return { title: 'Potluck', body: c.other, url: '/notifications' }
   }

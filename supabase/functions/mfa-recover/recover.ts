@@ -13,6 +13,11 @@ export interface RecoverDeps {
   deleteFactor: (userId: string, factorId: string) => Promise<void>
   /** Drops every recovery code of the user. */
   forgetCodes: (userId: string) => Promise<void>
+  /**
+   * Tells the account two-step sign in was turned off (`notify_mfa_recovered`), since the admin
+   * API sends no email of its own. A failure here does not undo the recovery.
+   */
+  notifyRemoved: (userId: string) => Promise<void>
 }
 
 export type RecoverError = 'invalid_recovery_code' | 'too_many_attempts' | 'recovery_failed'
@@ -47,6 +52,7 @@ export async function recover(
     const ids = await deps.factorIds(userId)
     for (const id of ids) await deps.deleteFactor(userId, id)
     await deps.forgetCodes(userId)
+    await deps.notifyRemoved(userId).catch(() => undefined)
     return { ok: true, removed: ids.length }
   } catch {
     return { ok: false, status: 500, error: 'recovery_failed' }

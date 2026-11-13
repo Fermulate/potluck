@@ -1,7 +1,7 @@
 -- Two-step sign in, continued (20261113100301_two_factor_storage_and_limits): storage refuses an
 -- unfinished sign in, recovery tries are limited, and codes go when two-step sign in goes.
 begin;
-select plan(17);
+select plan(20);
 
 select tests.create_user('alice');
 select tests.create_user('bob');
@@ -111,6 +111,24 @@ delete from auth.mfa_factors where user_id = tests.uid('alice');
 select tests.login('alice');
 select is(public.clear_mfa_recovery_codes(), 10, 'turning it off clears the codes');
 select is(public.mfa_recovery_codes_left(), 0, 'nothing left after clearing');
+
+-- Telling the account after a recovery (mfa-recover).
+reset role;
+select ok(
+  not has_function_privilege('authenticated', 'public.notify_mfa_recovered(uuid)', 'execute'),
+  'only the service role files the recovery notice'
+);
+select public.notify_mfa_recovered(tests.uid('bob'));
+select is(
+  (select array_agg(n.type) from public.notifications n where n.user_id = tests.uid('bob') and n.type like 'account.%'),
+  array['account.mfa_removed'],
+  'the account gets a notice in its inbox'
+);
+select ok(
+  (select 'push' = any (n.channels) from public.notifications n
+   where n.user_id = tests.uid('bob') and n.type = 'account.mfa_removed'),
+  'security notices push by default'
+);
 
 select * from finish();
 rollback;

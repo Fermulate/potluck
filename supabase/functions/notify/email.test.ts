@@ -119,6 +119,14 @@ test('deleted and restored expenses, payments and being added to a group read na
   )
 })
 
+test('a recovery code sign in is reported and links to Me', () => {
+  const e = renderEmail(job('account.mfa_removed', {}, { category: 'security' }), links)
+  assert.equal(e.subject, 'Two-step sign in was turned off')
+  assert.match(e.text, /Not you\? Change your password now/)
+  assert.match(e.text, /Open Me: https:\/\/potluck\.example\/me/)
+  assert.match(e.text, /emails about account security are on/)
+})
+
 test("plan times are shown in the reader's time zone", () => {
   const e = renderEmail(
     job(

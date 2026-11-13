@@ -24,12 +24,15 @@ function fakeDeps(overrides: Partial<RecoverDeps> = {}) {
     forgetCodes: async (user) => {
       calls.push(`forget ${user}`)
     },
+    notifyRemoved: async (user) => {
+      calls.push(`notify ${user}`)
+    },
     ...overrides,
   }
   return { deps, calls }
 }
 
-test('a matching code removes every factor, then the codes', async () => {
+test('a matching code removes every factor, then the codes, then tells the account', async () => {
   const { deps, calls } = fakeDeps()
   assert.deepEqual(await recover('u1', 'ABCDE-23456', deps), { ok: true, removed: 2 })
   assert.deepEqual(calls, [
@@ -38,7 +41,17 @@ test('a matching code removes every factor, then the codes', async () => {
     'delete u1 f1',
     'delete u1 f2',
     'forget u1',
+    'notify u1',
   ])
+})
+
+test('a notice that fails to send does not undo the recovery', async () => {
+  const { deps } = fakeDeps({
+    notifyRemoved: async () => {
+      throw new Error('outbox down')
+    },
+  })
+  assert.deepEqual(await recover('u1', 'ABCDE-23456', deps), { ok: true, removed: 2 })
 })
 
 test('a wrong code changes nothing', async () => {

@@ -25,6 +25,14 @@ export interface PushCopy {
   reminderBody: string
   rsvp: string
   rsvpBody: string
+  expenseDeleted: string
+  expenseDeletedBody: string
+  expenseRestored: string
+  expenseRestoredBody: string
+  memberAdded: string
+  memberAddedBody: string
+  mfaRemoved: string
+  mfaRemovedBody: string
   other: string
 }
 
@@ -51,6 +59,14 @@ const en: PushCopy = {
   reminderBody: 'A plan is coming up',
   rsvp: 'Are you in?',
   rsvpBody: 'Let the group know if you are coming',
+  expenseDeleted: 'Expense deleted',
+  expenseDeletedBody: 'An expense was deleted',
+  expenseRestored: 'Expense restored',
+  expenseRestoredBody: 'An expense is back',
+  memberAdded: 'You were added to a group',
+  memberAddedBody: 'Pull up a chair.',
+  mfaRemoved: 'Two-step sign in is off',
+  mfaRemovedBody: 'A recovery code was used to sign in. Not you? Change your password.',
   other: 'Something new is waiting for you.',
 }
 
@@ -77,6 +93,15 @@ const es: PushCopy = {
   reminderBody: 'Se acerca un plan',
   rsvp: '¿Te apuntas?',
   rsvpBody: 'Dile al grupo si vienes',
+  expenseDeleted: 'Gasto eliminado',
+  expenseDeletedBody: 'Se eliminó un gasto',
+  expenseRestored: 'Gasto recuperado',
+  expenseRestoredBody: 'Un gasto ha vuelto',
+  memberAdded: 'Te añadieron a un grupo',
+  memberAddedBody: 'Acerca una silla.',
+  mfaRemoved: 'El inicio de sesión en dos pasos está desactivado',
+  mfaRemovedBody:
+    'Alguien entró con un código de recuperación. ¿No fuiste tú? Cambia tu contraseña.',
   other: 'Tienes algo nuevo esperándote.',
 }
 
@@ -103,6 +128,15 @@ const fr: PushCopy = {
   reminderBody: 'Un plan approche',
   rsvp: 'Tu viens ?',
   rsvpBody: 'Dis au groupe si tu viens',
+  expenseDeleted: 'Dépense supprimée',
+  expenseDeletedBody: 'Une dépense a été supprimée',
+  expenseRestored: 'Dépense rétablie',
+  expenseRestoredBody: 'Une dépense est de retour',
+  memberAdded: "On t'a ajouté à un groupe",
+  memberAddedBody: 'Installe-toi.',
+  mfaRemoved: 'La connexion en deux étapes est désactivée',
+  mfaRemovedBody:
+    "Un code de secours a servi à se connecter. Ce n'était pas toi ? Change ton mot de passe.",
   other: "Quelque chose de nouveau t'attend.",
 }
 
@@ -129,6 +163,15 @@ const de: PushCopy = {
   reminderBody: 'Ein Plan steht bald an',
   rsvp: 'Bist du dabei?',
   rsvpBody: 'Sag der Gruppe, ob du kommst',
+  expenseDeleted: 'Ausgabe gelöscht',
+  expenseDeletedBody: 'Eine Ausgabe wurde gelöscht',
+  expenseRestored: 'Ausgabe wiederhergestellt',
+  expenseRestoredBody: 'Eine Ausgabe ist zurück',
+  memberAdded: 'Du wurdest zu einer Gruppe hinzugefügt',
+  memberAddedBody: 'Setz dich dazu.',
+  mfaRemoved: 'Die Anmeldung in zwei Schritten ist aus',
+  mfaRemovedBody:
+    'Jemand hat sich mit einem Wiederherstellungscode angemeldet. Warst du das nicht? Ändere dein Passwort.',
   other: 'Etwas Neues wartet auf dich.',
 }
 
@@ -155,6 +198,14 @@ const pt: PushCopy = {
   reminderBody: 'Um plano está chegando',
   rsvp: 'Você vem?',
   rsvpBody: 'Avise o grupo se você vem',
+  expenseDeleted: 'Despesa excluída',
+  expenseDeletedBody: 'Uma despesa foi excluída',
+  expenseRestored: 'Despesa restaurada',
+  expenseRestoredBody: 'Uma despesa voltou',
+  memberAdded: 'Você foi adicionado a um grupo',
+  memberAddedBody: 'Puxe uma cadeira.',
+  mfaRemoved: 'O login em duas etapas está desligado',
+  mfaRemovedBody: 'Alguém entrou com um código de recuperação. Não foi você? Troque sua senha.',
   other: 'Tem novidade esperando por você.',
 }
 
