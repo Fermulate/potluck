@@ -102,7 +102,12 @@ export function ScanReceipt({
         signal: controller.signal,
         onProgress: ({ stage, progress }) =>
           setState((s) => (s.phase === 'reading' ? { ...s, stage, progress } : s)),
-        enough: (text) => parse(text).itemsMatch === 'exact',
+        // One reading that adds up is enough; after two, anything close is. Only a reading that
+        // is still far off tries the plain colour photo too.
+        enough: (texts) => {
+          const best = bestScan(texts.map(parse)).itemsMatch
+          return best === 'exact' || (texts.length > 1 && best === 'close')
+        },
       })
       const scan = bestScan((texts.length > 0 ? texts : ['']).map(parse))
       const photo = await upload
@@ -405,7 +410,8 @@ function Review({
       <ZoomableImage
         src={url}
         alt={t('expenses.scan.photoAlt')}
-        className="h-48 w-full shrink-0 rounded-card border border-line bg-sunken sm:h-64 md:sticky md:top-0 md:h-[26rem] md:w-56"
+        className="w-full shrink-0 md:sticky md:top-0 md:w-56"
+        frameClassName="h-48 rounded-card border border-line bg-sunken sm:h-64 md:h-[24rem]"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <div className="relative rounded-t-card border border-b-0 border-line bg-paper px-4 pt-2 pb-6 text-ink [--tooth:0.625rem] [mask:linear-gradient(#000_0_0)_top/100%_calc(100%-var(--tooth))_no-repeat,conic-gradient(from_135deg_at_top,#000_90deg,#0000_0)_bottom/calc(2*var(--tooth))_var(--tooth)_repeat-x]">

@@ -453,6 +453,23 @@ describe('lines that are not items', () => {
   })
 })
 
+describe('scan noise', () => {
+  it('keeps rule lines and smudges off item names', () => {
+    const scan = parseReceipt(
+      'Pub\n| Pint Lager £5.40\n> Crisps £1.60\n_ Scampi_ £13.00\nTOTAL £20.00',
+      { currency: 'GBP' },
+    )
+    expect(scan.items.map((i) => i.description)).toEqual(['Pint Lager', 'Crisps', 'Scampi'])
+  })
+
+  it('reads a blurred 0 in a day as the 0 it was', () => {
+    // The UK pub photo: "07/11/2026" came back from the reader as "97/11/2026".
+    expect(parseReceipt('97/11/2026 21:14', { currency: 'GBP' }).date).toBe('2026-11-07')
+    expect(parseReceipt('86/11/2026', { currency: 'GBP' }).date).toBe('2026-11-06')
+    expect(parseReceipt('45/11/2026', { currency: 'GBP' }).date).toBeNull()
+  })
+})
+
 describe('do the items match the total', () => {
   const match = (text: string) => parseReceipt(text, { currency: 'USD' }).itemsMatch
 

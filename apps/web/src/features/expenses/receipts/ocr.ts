@@ -23,9 +23,10 @@ export class ReaderUnavailableError extends Error {
  * and English model come from our own origin (`ocr-assets.ts`) and the service worker keeps them,
  * so later scans work offline.
  *
- * The reader sees a lossless grayscale copy of the original photo (`ocrImage`). When `enough`
- * says the first reading falls short, it reads once more from an enlarged copy; the texts come
- * back in order, for the caller to pick from. The worker is ended afterwards, so the memory it
+ * The reader sees a lossless grayscale copy of the original photo (`ocrImage`). While `enough`
+ * says the readings so far fall short, it reads again: from an enlarged copy, then from the
+ * plain colour photo, which suits some long receipts better. The texts come back in order, for
+ * the caller to pick from. The worker is ended afterwards, so the memory it
  * takes (around 100 MB) goes back at once. Aborting `signal` stops it.
  */
 export async function readReceiptText(
@@ -37,12 +38,12 @@ export async function readReceiptText(
   }: {
     onProgress?: (p: ReadProgress) => void
     signal?: AbortSignal
-    enough?: (text: string) => boolean
+    enough?: (texts: string[]) => boolean
   } = {},
 ): Promise<string[]> {
   signal?.throwIfAborted()
   const base = new URL(`${__OCR_PATH__}/`, window.location.origin).href
-  let pass: 1 | 2 = 1
+  let pass = 1
   let worker: Worker
   try {
     const { createWorker, OEM } = await import('tesseract.js')
@@ -68,14 +69,18 @@ export async function readReceiptText(
     signal?.addEventListener('abort', stop, { once: true })
   })
   const texts: string[] = []
+  const read = new Set<Blob>()
+  const images = [() => ocrImage(original, 1), () => ocrImage(original, 2), async () => original]
   try {
-    for (const next of [1, 2] as const) {
-      pass = next
-      const image = await Promise.race([ocrImage(original, next), stopped])
-      if (!image) break
-      const { data } = await Promise.race([worker.recognize(image), stopped])
+    for (const [index, image] of images.entries()) {
+      pass = index + 1
+      const blob = await Promise.race([image(), stopped])
+      // A copy that could not be made, or the same photo again, adds nothing.
+      if (!blob || read.has(blob)) continue
+      read.add(blob)
+      const { data } = await Promise.race([worker.recognize(blob), stopped])
       texts.push(data.text)
-      if (enough(data.text)) break
+      if (enough(texts)) break
     }
     return texts
   } finally {

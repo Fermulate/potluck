@@ -266,7 +266,11 @@ function datesIn(key: string, order: 'dmy' | 'mdy'): string[] {
     const b = Number(m[3])
     const year = fullYear(m[4]!)
     const dayFirst = m[2] === '.' || a > 12 || (order === 'dmy' && b <= 12)
-    push(dayFirst ? isoDay(year, b, a) : isoDay(year, a, b))
+    const day = dayFirst ? isoDay(year, b, a) : isoDay(year, a, b)
+    // A blurred 0 often reads as 9, 8 or 6: "97/11/2026" was the 7th. Only a day no calendar
+    // has gets that second chance.
+    const repaired = !day && a > 31 && /^[689]\d$/.test(m[1]!) ? isoDay(year, b, a % 10) : null
+    push(day ?? repaired)
   }
   for (const m of key.matchAll(
     /\b(\d{1,2})(?:\.|st|nd|rd|th)?\s*(?:de\s+)?([a-z]{3,10})\.?,?\s*(?:de\s+)?(\d{4}|\d{2})\b/g,
@@ -328,6 +332,8 @@ const QTY_LINE =
   /^[^\p{L}\d]*(\d{1,3})?\s*(?:stk|st|pcs?|pz|ea|un|uds?|und|units?)?\.?\s*[x×@*]\s*$/iu
 const UNIT_AT_END = new RegExp(String.raw`\s+@\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`, 'u')
 
+const JUNK_EDGES = /^[\s.,:;\-*#|>_~'"`«»[\]){}\\/]+|[\s.,:;\-*#|>_~'"`«»[\]{}\\/]+$/g
+
 function itemOf(rest: string): { description: string; quantity: number } {
   let text = rest.replace(/^\d{4,}\s+/, '')
   let quantity = 1
@@ -348,7 +354,10 @@ function itemOf(rest: string): { description: string; quantity: number } {
     quantity = Number(first[1])
     text = text.slice(first[0].length)
   }
-  const description = titleCase(text.replace(/^[\s.:\-*#]+|[\s.:\-*#]+$/g, '').replace(/\s+/g, ' '))
+  // Rule lines, table borders and smudges read as "|", ">", "_" or quotes stay off the name.
+  const description = titleCase(
+    text.replace(JUNK_EDGES, '').replace(/\s+/g, ' ').replace(JUNK_EDGES, ''),
+  )
   return {
     description: description.slice(0, ITEM_NAME_MAX).trim(),
     quantity: Math.max(quantity, 1),

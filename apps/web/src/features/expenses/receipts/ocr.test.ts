@@ -32,12 +32,14 @@ vi.mock('tesseract.js', () => ({
   ),
 }))
 
+const copies = vi.hoisted(() => ({ first: 'native' as unknown }))
 vi.mock('./image', () => ({
-  ocrImage: vi.fn(async (_file: Blob, pass: 1 | 2) => (pass === 1 ? 'native' : 'closer')),
+  ocrImage: vi.fn(async (_file: Blob, pass: 1 | 2) => (pass === 1 ? copies.first : 'closer')),
 }))
 
 beforeEach(() => {
-  tess.texts = ['first', 'second']
+  tess.texts = ['first', 'second', 'third']
+  copies.first = 'native'
   tess.fail = false
   tess.seen = []
   tess.terminate.mockClear()
@@ -58,12 +60,26 @@ describe('readReceiptText', () => {
   it('reads again closer up when the first reading falls short', async () => {
     const stages: string[] = []
     const texts = await readReceiptText(photo, {
-      enough: (text) => text === 'second',
+      enough: (texts) => texts.includes('second'),
       onProgress: (p) => stages.push(p.stage),
     })
     expect(texts).toEqual(['first', 'second'])
     expect(tess.seen).toEqual(['native', 'closer'])
     expect(stages).toContain('closer')
+  })
+
+  it('reads the plain colour photo last when the others still fall short', async () => {
+    const texts = await readReceiptText(photo, { enough: () => false })
+    expect(texts).toEqual(['first', 'second', 'third'])
+    expect(tess.seen).toEqual(['native', 'closer', photo])
+  })
+
+  it('never reads the same photo twice', async () => {
+    // The photo could not be decoded, so the first reading already used the original.
+    copies.first = photo
+    const texts = await readReceiptText(photo, { enough: () => false })
+    expect(tess.seen).toEqual([photo, 'closer'])
+    expect(texts).toEqual(['first', 'second'])
   })
 
   it('says the reader is unavailable when it cannot start', async () => {
