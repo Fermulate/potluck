@@ -24,6 +24,11 @@ Deno.serve(async (req) => {
   const body = (await req.json().catch(() => ({}))) as { code?: unknown }
   const admin = adminClient()
   const result = await recover(userData.user.id, body.code, {
+    allowAttempt: async (userId) => {
+      const { data, error } = await admin.rpc('record_mfa_recover_attempt', { target: userId })
+      if (error) throw error
+      return data === true
+    },
     matches: async (userId, code) => {
       const { data, error } = await admin.rpc('mfa_recovery_code_matches', {
         target: userId,

@@ -1341,6 +1341,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      clear_mfa_recovery_codes: { Args: Record<PropertyKey, never>; Returns: number }
       create_expense: {
         Args: { payload: Json }
         Returns: {
@@ -1573,6 +1574,7 @@ export type Database = {
           window_start: string
         }[]
       }
+      record_mfa_recover_attempt: { Args: { target: string }; Returns: boolean }
       remove_member: { Args: { group_id: string; user_id: string }; Returns: undefined }
       request_availability: { Args: { event_id: string; user_ids?: string[] }; Returns: number }
       restore_expense: {

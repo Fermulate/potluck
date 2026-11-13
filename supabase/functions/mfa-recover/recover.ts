@@ -1,6 +1,11 @@
 // Recovery with a saved code. No Deno APIs, so the tests run under Node too.
 
 export interface RecoverDeps {
+  /**
+   * Records a try and says whether it is allowed: five per account per fifteen minutes
+   * (`record_mfa_recover_attempt`).
+   */
+  allowAttempt: (userId: string) => Promise<boolean>
   /** True when `code` is one of the user's unused recovery codes. */
   matches: (userId: string, code: string) => Promise<boolean>
   /** Ids of every second factor on the account, verified or not. */
@@ -10,9 +15,10 @@ export interface RecoverDeps {
   forgetCodes: (userId: string) => Promise<void>
 }
 
+export type RecoverError = 'invalid_recovery_code' | 'too_many_attempts' | 'recovery_failed'
+
 export type RecoverResult =
-  | { ok: true; removed: number }
-  | { ok: false; status: 400 | 500; error: 'invalid_recovery_code' | 'recovery_failed' }
+  { ok: true; removed: number } | { ok: false; status: 400 | 429 | 500; error: RecoverError }
 
 /** Codes are 10 symbols; anything far off that is refused before touching the database. */
 export function plausibleCode(code: unknown): code is string {
@@ -22,15 +28,19 @@ export function plausibleCode(code: unknown): code is string {
 }
 
 /**
- * Checks the code, removes every second factor, then forgets the codes. The codes go last, so
- * a failure half way leaves the person able to try again with the same code.
+ * Counts the try, checks the code, removes every second factor, then forgets the codes. The
+ * codes go last, so a failure half way leaves the person able to try again with the same code.
  */
 export async function recover(
   userId: string,
   code: unknown,
   deps: RecoverDeps,
 ): Promise<RecoverResult> {
-  if (!plausibleCode(code) || !(await deps.matches(userId, code))) {
+  if (!plausibleCode(code)) return { ok: false, status: 400, error: 'invalid_recovery_code' }
+  if (!(await deps.allowAttempt(userId))) {
+    return { ok: false, status: 429, error: 'too_many_attempts' }
+  }
+  if (!(await deps.matches(userId, code))) {
     return { ok: false, status: 400, error: 'invalid_recovery_code' }
   }
   try {
