@@ -737,7 +737,7 @@ Codes:
   - tombstones the profile (`Former member`, avatar cleared, timezone and locale reset, `deleted_at` set);
   - hands owned groups to the longest-standing admin (else member), or deletes groups with nobody else;
   - removes zero-balance memberships (open balances stay);
-  - deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes open invites.
+  - deletes push tokens, calendar links, busy blocks, notifications, availability, RSVPs, friendships and blocks, and revokes the open invites it made (seat claim links stay open).
   - Closed accounts then get `account_deleted` from every RPC.
   - Money tables reference `profiles` with `on delete restrict`, so the `delete-account` edge function must soft delete the auth user (`auth.admin.deleteUser(id, true)`); a hard delete would cascade into the profile and is refused.
   - The edge function also removes the avatar files under `<uid>/` in the `avatars` bucket, and a trigger on `profiles.deleted_at` drops the `calendar_feed_tokens` row so old feed URLs stop working.

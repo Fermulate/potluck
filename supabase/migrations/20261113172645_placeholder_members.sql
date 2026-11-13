@@ -1372,7 +1372,7 @@ begin
   update public.group_invites i set revoked_at = coalesce(i.revoked_at, now())
   where i.placeholder_id = ph.profile_id;
   insert into public.group_invites (group_id, role, max_uses, email, created_by, placeholder_id)
-  values (ph.group_id, 'member', 1, new_email, uid, ph.profile_id);
+  values (ph.group_id, 'member', 1, new_email, coalesce(ph.created_by, uid), ph.profile_id);
 
   update public.placeholders x
   set email = new_email,
@@ -1850,7 +1850,8 @@ end;
 $$;
 
 -- Body as in 20261113153242_recurring_editing.sql plus: a placeholder never inherits a group,
--- and the blocks a closing account leaves behind release no held seat invites.
+-- the blocks a closing account leaves behind release no held seat invites, and the claim links of
+-- seats it added stay open.
 create or replace function public.delete_my_account()
 returns void
 language plpgsql
@@ -1915,7 +1916,7 @@ begin
   perform set_config('potluck.closing_account', '', true);
 
   update public.group_invites i set revoked_at = now()
-  where i.created_by = uid and i.revoked_at is null;
+  where i.created_by = uid and i.revoked_at is null and i.placeholder_id is null;
 
   update public.profiles p set
     display_name = 'Former member',

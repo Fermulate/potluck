@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(169);
+select plan(171);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -747,6 +747,29 @@ select ok(
    where a.verb = 'member.invite_changed' and a.subject_id = tests.id('lu')),
   'the feed says the email changed, never what it was or is'
 );
+select is(
+  (select i.created_by from public.group_invites i where i.placeholder_id = tests.id('lu') and i.revoked_at is null),
+  tests.uid('ava'),
+  'the fresh claim link still belongs to whoever added the seat'
+);
+
+-- Closing the account that added a seat leaves its claim link open
+
+select tests.create_user('zed');
+select tests.remember('zg', tests.group_with('ava', '{}', array['zed'], 'Ski trip', 'USD'));
+select tests.login('zed');
+select tests.remember('quin', public.add_placeholder_member(tests.id('zg'), 'Quin'));
+reset role;
+select set_config('tests.quin_link', pg_temp.code(tests.id('quin')), true);
+select tests.login('zed');
+select public.delete_my_account();
+select tests.login_anon();
+select is(
+  (select v.status from public.invite_preview_v2(current_setting('tests.quin_link')) v),
+  'valid',
+  'a seat''s claim link outlives the account that added it'
+);
+reset role;
 
 -- A removed seat forgets its address
 
