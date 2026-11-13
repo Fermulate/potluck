@@ -46,6 +46,8 @@ export const help = {
     restore: 'Sobre restaurar',
     placeholders: 'Sobre quem ainda não está no Potluck',
     friends: 'Como funcionam os amigos',
+    yourData: 'O que a exportação e a cópia guardam',
+    importExpenses: 'Como funciona a importação',
   },
   tips: {
     simplifiedDebts:

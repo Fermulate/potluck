@@ -301,6 +301,10 @@ export const expenses = {
     settlement_deleted: 'Stell diese Zahlung wieder her, bevor du sie bearbeitest.',
     nothing_owed: 'Hier schuldet diese Person dir nichts.',
     already_reminded: 'Heute schon verschickt. Versuch es morgen.',
+    invalid_import: 'Diese Datei ließ sich nicht importieren. Prüf sie und versuch es noch mal.',
+    import_too_large: 'Ein Import nimmt höchstens 5.000 Zeilen. Teil die Datei.',
+    fx_rate_out_of_range:
+      'Dieser Wechselkurs liegt weit weg von dem in Potluck. Prüf ihn und bestätige ihn.',
   },
   payers: {
     title: 'Wer hat bezahlt?',
@@ -640,6 +644,9 @@ export const activity = {
       skipped: 'Du hast die nächste „{description}“ übersprungen',
       paused: '„{description}“ ist pausiert: {name} hat die Gruppe verlassen',
     },
+    expenses: {
+      imported: 'Du hast {summary} importiert',
+    },
   },
   toYou: {
     member: {
@@ -701,5 +708,8 @@ export const activity = {
     updated: '{actor} hat die wiederkehrende „{description}“ geändert',
     skipped: '{actor} hat die nächste „{description}“ übersprungen',
     paused: '„{description}“ ist pausiert: {name} hat die Gruppe verlassen',
+  },
+  expenses: {
+    imported: '{actor} hat {summary} importiert',
   },
 } satisfies Translation<typeof en.activity>

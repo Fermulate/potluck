@@ -1,15 +1,6 @@
-import type { transfer as en } from '../en/transfer'
+import type { Translation } from '../locales'
+import type * as en from '../en/transfer'
 
-/** Same nesting as English, every string optional (as `Translation` in the languages setup). */
-type Translation<T> = {
-  readonly [K in keyof T]?: T[K] extends string ? string : Translation<T[K]>
-}
-
-/**
- * Spanish for export, backup and import. Joins `es.ts` (one import and one entry, like the other
- * feature files) where the language switcher lives; the activity lines for an import are in
- * `activity` below, for `es/money.ts`.
- */
 export const transfer = {
   csv: {
     date: 'Fecha',
@@ -111,6 +102,8 @@ export const transfer = {
     balances: 'Saldos después de importar',
     now: 'ahora {amount}',
     totalsMatch: 'Cuadra con el saldo total del archivo.',
+    totalsLeftOut:
+      'El archivo cuadra con su saldo total, pero algunas filas se quedan fuera, así que los saldos de abajo no coincidirán con ese total.',
     totalsMismatch:
       'No cuadra con la línea de saldo total del archivo. Comprueba que nadie la haya editado.',
     dates: {
@@ -131,6 +124,12 @@ export const transfer = {
       typed: 'Cambio: 1 {currency} en {group}',
       skip: 'Dejar fuera estas filas',
       pending: 'Buscando tipos de cambio',
+      apply: 'Usar este cambio',
+      invalid: 'Usa un número positivo, como 0.0091.',
+      using: 'Usando 1 {currency} = {rate} {group}.',
+      far: '1 {currency} = {rate} {group} está lejos de {reference}, el último cambio que tiene Potluck. Revísalo.',
+      noReference: 'Potluck no tiene un cambio de {currency} a {group} para compararlo. Revísalo.',
+      confirm: 'Este cambio es correcto',
       file_one: '{count} fila conserva el cambio con el que se exportó, así que vuelve exacta.',
       file_other:
         '{count} filas conservan el cambio con el que se exportaron, así que vuelven exactas.',
@@ -142,15 +141,21 @@ export const transfer = {
       rows_one: '{count} fila parece un gasto o pago que ya está en {group}.',
       rows_other: '{count} filas parecen gastos o pagos que ya están en {group}.',
       leaveOut: 'Dejar fuera esas filas',
+      fromThisFile_one:
+        '{count} fila de este archivo ya está en {group}: entró antes de que la importación se detuviera.',
+      fromThisFile_other:
+        '{count} filas de este archivo ya están en {group}: entraron antes de que la importación se detuviera.',
     },
     parts:
       'Este archivo tiene {count} filas, así que entra en {parts} importaciones de hasta 5000. Si una falla, las anteriores se quedan.',
     progress: 'Importando {sent} de {total} filas',
+    justNow: 'hace un momento',
     submitBlocked: 'Importar',
     errors: {
       left: 'Fila {line}: alguien en ella dejó el grupo. Deja fuera sus filas, o invítale de nuevo, y vuelve a importar.',
       timeout:
         'Tardó demasiado, así que esta importación no se guardó. Inténtalo de nuevo en un momento.',
+      rate: 'Fila {line}: su tipo de cambio está lejos del que tiene Potluck. Revísalo y marca "Este cambio es correcto".',
       partly_one: '{count} fila de antes en el archivo sí entró.',
       partly_other: '{count} filas de antes en el archivo sí entraron.',
     },
@@ -192,10 +197,4 @@ export const transfer = {
     payments_other: '{count} pagos',
     both: '{expenses} y {payments}',
   },
-} as const satisfies Translation<typeof en>
-
-/** For `es/money.ts` `activity`: `expenses.imported` and `self.expenses.imported`. */
-export const activity = {
-  expenses: { imported: '{actor} importó {summary}' },
-  self: { expenses: { imported: 'Importaste {summary}' } },
-} as const
+} satisfies Translation<typeof en.transfer>

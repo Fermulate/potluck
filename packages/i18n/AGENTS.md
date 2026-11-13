@@ -25,7 +25,8 @@ recipe: the `add-i18n-strings-and-error-code` skill.
   in `en.ts` ([ADR 9](../../docs/adr/0009-i18n-strings-split-per-feature.md)).
 - Export and import copy is the `transfer` namespace (`src/en/transfer.ts`); `transfer.csv` names the spreadsheet
   columns, which the import reads back, so renaming one breaks reading older files in that language.
-  `src/es/transfer.ts` holds the Spanish, to join `es.ts` with the language switcher.
+  Each language has its `transfer.ts`; the import recognises column names in the current language
+  and in English, so translate `transfer.csv` once and leave it.
 - Keys are typed: `t('expenses.paidSummary', { name, amount })`. A missing key or placeholder fails
   `pnpm typecheck`. Placeholders are `{name}`; pass values already formatted (`formatMoney`, `formatDate`).
 - Plurals: `_one` / `_other` (optional `_zero`) siblings, looked up by the base key with `{ count }`;

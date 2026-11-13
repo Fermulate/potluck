@@ -9,6 +9,7 @@ import { notifications, settings, account, unsubscribe, security } from './pt/me
 import { help } from './pt/help'
 import { search, filters, insights, deletedItems, activityFilter } from './pt/insights'
 import { people } from './pt/people'
+import { transfer } from './pt/transfer'
 
 /**
  * Portuguese (você, written to read naturally in Brazil and Portugal). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -51,6 +52,7 @@ export const pt = {
   deletedItems,
   activityFilter,
   people,
+  transfer,
   empty,
   errors,
 } satisfies Translation<Dictionary>
