@@ -30,11 +30,3 @@ export function writeGuestMemory(code: string, memory: GuestMemory): void {
     // Nowhere to keep it: the answer is saved, only editing from this browser is lost.
   }
 }
-
-export function forgetGuestMemory(code: string): void {
-  try {
-    window.localStorage.removeItem(key(code))
-  } catch {
-    // Nothing to forget.
-  }
-}

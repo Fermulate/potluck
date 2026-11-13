@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { forgetGuestMemory, readGuestMemory, writeGuestMemory } from './guest-token'
+import { readGuestMemory, writeGuestMemory } from './guest-token'
 
 describe('guest memory', () => {
   afterEach(() => {
@@ -11,8 +11,6 @@ describe('guest memory', () => {
     writeGuestMemory('a', { token: 't-a', name: 'Ana' })
     writeGuestMemory('b', { token: 't-b', name: 'Ben' })
     expect(readGuestMemory('a')).toEqual({ token: 't-a', name: 'Ana' })
-    forgetGuestMemory('a')
-    expect(readGuestMemory('a')).toBeNull()
     expect(readGuestMemory('b')).toEqual({ token: 't-b', name: 'Ben' })
   })
 
@@ -29,11 +27,7 @@ describe('guest memory', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked')
     })
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
-      throw new Error('blocked')
-    })
     expect(() => writeGuestMemory('a', { token: 't', name: 'A' })).not.toThrow()
-    expect(() => forgetGuestMemory('a')).not.toThrow()
     expect(readGuestMemory('a')).toBeNull()
   })
 })
