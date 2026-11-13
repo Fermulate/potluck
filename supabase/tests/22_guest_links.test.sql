@@ -2,7 +2,7 @@
 -- revocation, the guest cap, rate limits, who can read what, removing a guest's answer, and
 -- best_slots counting guests (the same case as the guest test in packages/core rank-slots).
 begin;
-select plan(87);
+select plan(88);
 
 select tests.create_user('owner');
 select tests.create_user('m1');
@@ -108,6 +108,10 @@ select throws_ok($$ select * from public.event_guests $$, '42501', null, 'anon c
 select throws_ok($$ select * from public.event_guest_availability $$, '42501', null, 'anon cannot read guest slots');
 
 -- The anon preview ------------------------------------------------------------------------------
+
+-- PostgREST runs private.check_request() (two step sign in, ADR 13) before every call; a guest has
+-- no session and no second factor, so it lets them through.
+select lives_ok($$ select private.check_request() $$, 'the two step check lets signed out guests through');
 
 select results_eq(
   $$ select status, title, emoji, group_emoji, host_name, timezone, max_guests, guest_count, respondents, my_name, my_slots, heat
