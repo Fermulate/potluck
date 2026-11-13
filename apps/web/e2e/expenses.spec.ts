@@ -29,8 +29,12 @@ async function expectShares(page: Page, payer: TestUser, shares: [TestUser, numb
       const line = t('expenses.detail.paidAndShare', { paid: usd(total), share: usd(cents) })
       await expect(page.getByRole('listitem').filter({ hasText: line })).toHaveCount(1)
     } else {
-      const row = page.getByRole('listitem').filter({ hasText: user.name })
-      await expect(row).toContainText(t('expenses.detail.owes', { amount: usd(cents) }))
+      // By item, the items card names people too; the split line is the one with "owes".
+      const row = page
+        .getByRole('listitem')
+        .filter({ hasText: user.name })
+        .filter({ hasText: t('expenses.detail.owes', { amount: usd(cents) }) })
+      await expect(row).toHaveCount(1)
     }
   }
 }

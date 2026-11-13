@@ -80,12 +80,13 @@ export function SplitCard({
 }) {
   const paidBy = new Map(payersOf(e).map((p) => [p.user_id, p.paid_cents]))
   const shares = new Map(e.expense_splits.map((s) => [s.user_id, s]))
-  const ids = [...new Set([...shares.keys(), ...paidBy.keys()])].sort((a, b) =>
-    a === me
-      ? -1
-      : b === me
-        ? 1
-        : (shares.get(b)?.share_cents ?? 0) - (shares.get(a)?.share_cents ?? 0),
+  // You first, then whoever paid (most first), then everyone else by share.
+  const rank = (id: string) => (id === me ? 2 : paidBy.has(id) ? 1 : 0)
+  const ids = [...new Set([...shares.keys(), ...paidBy.keys()])].sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      (paidBy.get(b) ?? 0) - (paidBy.get(a) ?? 0) ||
+      (shares.get(b)?.share_cents ?? 0) - (shares.get(a)?.share_cents ?? 0),
   )
   const money = (cents: number) => formatMoney(cents, e.currency)
   const type = t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase()

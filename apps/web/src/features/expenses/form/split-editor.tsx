@@ -274,9 +274,11 @@ export function SplitEditor({
   return (
     <div className="flex flex-col gap-4">
       <div className="pb-1">
-        {/* Short labels so all five fit on a phone; icons join in once there is room. */}
+        {/* Short labels and tight padding so all six fit on a phone; icons join in only where
+            the split column is wide (one column layouts from md, before the two column lg). */}
         <SegmentedControl
           block
+          className="[&>button]:px-1.5 sm:[&>button]:px-2.5"
           label={t('splitTypes.label')}
           value={draft.mode}
           onValueChange={(mode) => onChange({ ...draft, mode })}
@@ -284,7 +286,7 @@ export function SplitEditor({
             value: mode,
             label: (
               <>
-                <span aria-hidden className="hidden sm:inline-flex">
+                <span aria-hidden className="hidden md:inline-flex lg:hidden">
                   {MODE_ICONS[mode]}
                 </span>
                 {t(`splitTypes.${mode}.short`)}
