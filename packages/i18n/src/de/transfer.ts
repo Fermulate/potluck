@@ -114,6 +114,10 @@ export const transfer = {
       toMdy: 'Als Monat/Tag/Jahr lesen',
     },
     left: '{name} hat {group} verlassen, deshalb können Zeilen mit dieser Person nicht hinein. Lass sie weg oder lade die Person vorher wieder ein.',
+    notAParty_one:
+      '{count} Zahlung ist zwischen zwei anderen Personen, und nur Eigentümer und Admins können solche importieren. Lass eine der beiden weg oder bitte einen Admin, die Datei zu importieren.',
+    notAParty_other:
+      '{count} Zahlungen sind zwischen zwei anderen Personen, und nur Eigentümer und Admins können solche importieren. Lass eine der beiden weg oder bitte einen Admin, die Datei zu importieren.',
     leftOption: '{name} (hat die Gruppe verlassen)',
     skipPerson: 'Zeilen dieser Person weglassen',
     rates: {

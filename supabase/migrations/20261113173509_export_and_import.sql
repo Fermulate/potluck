@@ -10,8 +10,9 @@
 -- in well under PostgREST's statement timeout. The checks are the ones save_expense makes when it
 -- creates an exact split with a payers list: description, amount, currency, payers (valid, one per
 -- person, adding up, members), split (valid, one per person, adding up, members), a rate into the
--- group currency for the day. Payments are checked like settle_up, but between any two members
--- and on the day the file gives. A row may carry `fx_rate` (the rate a Potluck file was written
+-- group currency for the day. Payments go through private.check_payment (as settle_up_v2: two
+-- different members, and only owners and admins record one between two other people) and keep
+-- the day the file gives, at noon UTC (the day the export writes back). A row may carry `fx_rate` (the rate a Potluck file was written
 -- with, or one the person typed); otherwise the day's stored rate is used, as for any expense.
 -- A rate a row brings is bounded: its currency must be one Potluck has rates for, it must lie
 -- between a fifth and five times the nearest stored rate for the pair (or carry
@@ -27,6 +28,8 @@
 --
 -- export_my_data(): the viewer's whole account as one JSON document (format `potluck-backup`,
 -- version 1, documented in docs/backup-format.md). Rates are decimal text, like every read.
+-- It carries payment comments, repeating expense templates and the caller's own payment methods
+-- (other people's methods stay out of it).
 
 -- Holding back per row side effects -----------------------------------------------------------
 
@@ -298,9 +301,12 @@ declare
   gid uuid := import_expenses.group_id;
   v_source text := lower(coalesce(nullif(btrim(import_expenses.source), ''), 'csv'));
   g public.groups;
+  my_role public.group_role;
   all_rows jsonb := '[]'::jsonb;
   total integer;
   bad record;
+  pay record;
+  err_detail text;
   n_expenses integer;
   n_payments integer;
   v_run uuid := gen_random_uuid();
@@ -334,7 +340,7 @@ begin
 
   -- Group row first, then membership, before any expense or payment row (lock order).
   perform 1 from public.groups x where x.id = gid for share;
-  perform private.require_member(gid);
+  my_role := private.require_member(gid);
   perform private.require_unarchived(gid);
   select * into g from public.groups x where x.id = gid;
 
@@ -441,7 +447,7 @@ begin
     where i.run = v_run
   ),
   failures as (
-    select ord, 1 as step, 'invalid_import' as code, 'Each row is an expense or a payment' as detail, '22023' as state
+    select ord, 1.0 as step, 'invalid_import' as code, 'Each row is an expense or a payment' as detail, '22023' as state
     from checked where kind is null or kind not in ('expense', 'payment')
     union all
     select ord, 2, 'invalid_import', 'Every row needs a date', '22023' from checked
@@ -456,8 +462,14 @@ begin
     select ord, 5, 'invalid_currency', 'Unknown currency code', '22023' from checked
     where kind in ('expense', 'payment') and (currency !~ '^[A-Z]{3}$' or not known)
     union all
-    select ord, 6, 'invalid_recipient', 'Say who paid whom', '22023' from checked
+    -- Payments: private.check_payment's checks, in its order (amount above, members at 15).
+    select ord, 6, 'invalid_parties', 'A payment needs two different people', '22023' from checked
     where kind = 'payment' and (from_user is null or to_user is null or from_user = to_user)
+    union all
+    select ord, 6.5, 'not_a_party', 'Only owners and admins can record a payment between two other people', '42501'
+    from checked
+    where kind = 'payment' and my_role = 'member' and from_user is not null and to_user is not null
+      and uid is distinct from from_user and uid is distinct from to_user
     union all
     select ord, 7, 'invalid_payers', 'Who paid is not valid', '22023' from checked
     where kind = 'expense' and (jsonb_typeof(payers) is distinct from 'array' or coalesce(payer_n, 0) = 0
@@ -521,6 +533,19 @@ begin
       hint = format('import_row:%s', bad.ord),
       errcode = bad.state;
   end if;
+
+  for pay in
+    select i.ord, i.from_user, i.to_user, i.amount from private.import_input i
+    where i.run = v_run and i.kind = 'payment' order by i.ord
+  loop
+    begin
+      perform private.check_payment(gid, my_role, pay.from_user, pay.to_user, pay.amount);
+    exception when others then
+      get stacked diagnostics err_detail = pg_exception_detail;
+      raise exception using
+        message = sqlerrm, detail = err_detail, hint = format('import_row:%s', pay.ord), errcode = sqlstate;
+    end;
+  end loop;
 
   perform set_config('potluck.importing', gid::text, true);
   -- The rows below are written one statement per table; the sum checks run at commit.
@@ -667,7 +692,12 @@ language sql stable security definer set search_path = '' as $$
         'settled_at', s.settled_at,
         'created_by', s.created_by,
         'created_at', s.created_at,
-        'deleted_at', s.deleted_at
+        'deleted_at', s.deleted_at,
+        'comments', coalesce((
+          select jsonb_agg(jsonb_build_object('id', c.id, 'author_id', c.author_id, 'body', c.body,
+                             'created_at', c.created_at)
+                           order by c.created_at, c.id)
+          from public.comments c where c.settlement_id = s.id and c.deleted_at is null), '[]'::jsonb)
       ) order by s.settled_at, s.id)
       from public.settlements s where s.group_id = g.id), '[]'::jsonb),
     'recurring', coalesce((
@@ -680,12 +710,19 @@ language sql stable security definer set search_path = '' as $$
         'payers', x.payers,
         'split_type', x.split_type,
         'splits', x.splits,
+        'items', x.items,
+        'tax_cents', x.tax_cents,
+        'tip_cents', x.tip_cents,
+        'discount_cents', x.discount_cents,
         'category', x.category,
+        'notes', x.notes,
         'recurrence', x.recurrence,
+        'anchor_day', x.anchor_day,
         'next_run_on', x.next_run_on,
         'active', x.active,
         'created_by', x.created_by,
-        'created_at', x.created_at
+        'created_at', x.created_at,
+        'updated_at', x.updated_at
       ) order by x.created_at, x.id)
       from public.recurring_expenses x where x.group_id = g.id), '[]'::jsonb),
     'plans', coalesce((
@@ -758,6 +795,11 @@ begin
       )
       from public.profiles p where p.id = uid
     ),
+    'payment_methods', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', pm.kind, 'handle', pm.handle, 'updated_at', pm.updated_at)
+                       order by pm.kind)
+      from public.payment_methods pm where pm.user_id = uid
+    ), '[]'::jsonb),
     -- Everyone the file mentions, so names survive people leaving or closing their account.
     'people', coalesce((
       select jsonb_agg(jsonb_build_object('id', p.id, 'display_name', p.display_name,

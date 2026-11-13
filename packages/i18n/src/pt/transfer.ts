@@ -111,6 +111,10 @@ export const transfer = {
       toMdy: 'Ler como mês/dia/ano',
     },
     left: '{name} saiu de {group}, então as linhas com essa pessoa não podem entrar. Deixe-as de fora ou convide a pessoa de novo antes.',
+    notAParty_one:
+      '{count} pagamento é entre duas outras pessoas, e só donos e admins podem trazer esses. Deixe uma delas de fora ou peça a um admin para importar o arquivo.',
+    notAParty_other:
+      '{count} pagamentos são entre duas outras pessoas, e só donos e admins podem trazer esses. Deixe uma delas de fora ou peça a um admin para importar o arquivo.',
     leftOption: '{name} (saiu do grupo)',
     skipPerson: 'Deixar as linhas dela de fora',
     rates: {

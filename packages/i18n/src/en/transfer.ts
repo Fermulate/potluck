@@ -110,6 +110,10 @@ export const transfer = {
       toMdy: 'Read them as month/day/year',
     },
     left: '{name} has left {group}, so rows with them cannot come in. Leave their rows out, or invite them back first.',
+    notAParty_one:
+      '{count} payment is between two other people, and only owners and admins can bring those in. Leave one of them out, or ask an admin to import the file.',
+    notAParty_other:
+      '{count} payments are between two other people, and only owners and admins can bring those in. Leave one of them out, or ask an admin to import the file.',
     leftOption: '{name} (left the group)',
     skipPerson: 'Leave out their rows',
     rates: {

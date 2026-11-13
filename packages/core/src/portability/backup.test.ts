@@ -75,6 +75,59 @@ describe('backupSchema', () => {
     expect(backupSchema.parse(sample).groups[0]!.expenses[0]!.fx_rate).toBe('1.000000000000')
   })
 
+  it('reads payment comments, payment methods and template fields, and files without them', () => {
+    const full = JSON.parse(JSON.stringify(sample)) as Record<string, unknown> & typeof sample
+    full.payment_methods = [{ kind: 'paypal', handle: 'avachen', updated_at: at }]
+    const group = full.groups[0]! as unknown as Record<string, unknown[]>
+    group.payments = [
+      {
+        id: id(40),
+        from_user: id(1),
+        to_user: id(2),
+        amount_cents: 500,
+        currency: 'USD',
+        fx_rate: '1.000000000000',
+        note: null,
+        settled_at: at,
+        created_by: id(1),
+        created_at: at,
+        deleted_at: null,
+        comments: [{ id: id(31), author_id: id(2), body: 'Thanks!', created_at: at }],
+      },
+    ]
+    group.recurring = [
+      {
+        id: id(50),
+        description: 'Wifi',
+        amount_cents: 4000,
+        currency: 'USD',
+        paid_by: id(1),
+        payers: null,
+        split_type: 'equal',
+        splits: [],
+        items: null,
+        tax_cents: null,
+        tip_cents: null,
+        discount_cents: null,
+        category: null,
+        notes: 'Router in the hall',
+        recurrence: 'monthly',
+        anchor_day: 31,
+        next_run_on: '2026-04-30',
+        active: true,
+        created_by: id(1),
+        created_at: at,
+        updated_at: at,
+      },
+    ]
+    const parsed = backupSchema.parse(full)
+    expect(parsed.payment_methods?.[0]?.handle).toBe('avachen')
+    expect(parsed.groups[0]!.payments[0]!.comments?.[0]?.body).toBe('Thanks!')
+    expect(parsed.groups[0]!.recurring[0]!.anchor_day).toBe(31)
+    // A backup written before these fields existed still reads.
+    expect(backupSchema.parse(sample).payment_methods).toBeUndefined()
+  })
+
   it('refuses another format, version, or a rate as a number', () => {
     expect(backupSchema.safeParse({ ...sample, version: 2 }).success).toBe(false)
     expect(backupSchema.safeParse({ ...sample, format: 'splitwise' }).success).toBe(false)

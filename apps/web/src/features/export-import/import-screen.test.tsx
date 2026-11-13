@@ -368,6 +368,25 @@ describe('ImportScreen', () => {
     }
   })
 
+  it('holds back payments between two other people unless an owner or admin imports', async () => {
+    const between = `${HEADER}\n2026-03-03,Cleo P. paid Ben J.,Payment,30.00,USD,0.00,-30.00,30.00`
+    const issue = t('transfer.import.notAParty', { count: 1 })
+    renderScreen()
+    await upload(between)
+    expect(await screen.findByText(issue)).toBeVisible()
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+  })
+
+  it('lets an admin import payments between two other people', async () => {
+    const between = `${HEADER}\n2026-03-03,Cleo P. paid Ben J.,Payment,30.00,USD,0.00,-30.00,30.00`
+    renderScreen({
+      group: { members: members.map((m) => (m.id === ME ? { ...m, role: 'admin' as const } : m)) },
+    })
+    await upload(between)
+    expect(await submitButton(1)).toBeEnabled()
+    expect(screen.queryByText(t('transfer.import.notAParty', { count: 1 }))).not.toBeInTheDocument()
+  })
+
   it('says when only part of a file went in before', async () => {
     renderScreen({
       imports: [

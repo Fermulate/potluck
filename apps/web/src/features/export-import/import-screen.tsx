@@ -14,6 +14,7 @@ import {
   failedLine,
   guessMapping,
   nearestRate,
+  paymentProblem,
   peopleInScope,
   planImport,
   rateIsOutlier,
@@ -512,7 +513,26 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const leftIssues = inScope
     .filter((i) => mapping[i] && formerIds.has(mapping[i]!))
     .map((i) => t('transfer.import.left', { name: source!.people[i]!, group: group.name }))
-  const issues = [...leftIssues, ...(plan?.issues ?? []).map(issueText)]
+  // Payments go through check_payment: a plain member brings in only their own.
+  const myRole = group.members.find((m) => m.id === me)?.role
+  const memberIds = group.members.map((m) => m.id)
+  const notMine = (plan?.rows ?? []).filter(
+    (row) =>
+      row.kind === 'payment' &&
+      paymentProblem({
+        viewerId: me,
+        viewerRole: myRole,
+        fromUser: row.from_user,
+        toUser: row.to_user,
+        amountCents: row.amount_cents,
+        memberIds,
+      }) === 'not_a_party',
+  ).length
+  const issues = [
+    ...leftIssues,
+    ...(notMine > 0 ? [t('transfer.import.notAParty', { count: notMine })] : []),
+    ...(plan?.issues ?? []).map(issueText),
+  ]
   const total = plan?.rows.length ?? 0
   const checks = new Map(
     (plan?.missingRates ?? []).map((m) => [m.currency, rateCheck(m, historyOf(m.currency))]),

@@ -2018,6 +2018,7 @@ export type Database = {
         Returns: number
       }
       email_unsubscribe: { Args: { action?: string; token: string }; Returns: Json }
+      export_my_data: { Args: Record<PropertyKey, never>; Returns: Json }
       forget_mfa_recovery_codes: { Args: { target: string }; Returns: undefined }
       friend_activity: {
         Args: { before_at?: string; before_id?: string; friend: string; max_rows?: number }
@@ -2080,6 +2081,17 @@ export type Database = {
           window_start: string
         }[]
       }
+      import_expenses: {
+        Args: {
+          batch_id?: string
+          fingerprint?: string
+          group_id: string
+          rows: Json
+          source?: string
+        }
+        Returns: Json
+      }
+      import_stage: { Args: { batch_id: string; group_id: string; rows: Json }; Returns: number }
       invite_preview: {
         Args: { code: string }
         Returns: {

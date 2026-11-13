@@ -113,6 +113,10 @@ export const transfer = {
       toMdy: 'Leerlas como mes/día/año',
     },
     left: '{name} dejó {group}, así que sus filas no pueden entrar. Déjalas fuera, o invítale de nuevo primero.',
+    notAParty_one:
+      '{count} pago es entre otras dos personas, y solo propietarios y admins pueden traer esos. Deja fuera a una de ellas, o pide a un admin que importe el archivo.',
+    notAParty_other:
+      '{count} pagos son entre otras dos personas, y solo propietarios y admins pueden traer esos. Deja fuera a una de ellas, o pide a un admin que importe el archivo.',
     leftOption: '{name} (dejó el grupo)',
     skipPerson: 'Dejar fuera sus filas',
     rates: {

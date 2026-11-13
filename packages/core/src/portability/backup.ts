@@ -72,6 +72,8 @@ const payment = z.object({
   created_by: uuid.nullable(),
   created_at: time,
   deleted_at: time.nullable(),
+  /** Added after the first backups: older files have none. */
+  comments: z.array(comment).optional(),
 })
 
 const recurring = z.object({
@@ -89,6 +91,14 @@ const recurring = z.object({
   active: z.boolean(),
   created_by: uuid.nullable(),
   created_at: time,
+  // Added with editable repeating expenses (ADR 14): older files have none of these.
+  items: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+  tax_cents: cents.nullable().optional(),
+  tip_cents: cents.nullable().optional(),
+  discount_cents: cents.nullable().optional(),
+  notes: z.string().nullable().optional(),
+  anchor_day: z.number().int().nullable().optional(),
+  updated_at: time.optional(),
 })
 
 const plan = z.object({
@@ -150,6 +160,10 @@ export const backupSchema = z.object({
     locale: z.string(),
     created_at: time,
   }),
+  /** The account's own ways to be paid (ADR 15); other people's are never in a backup. */
+  payment_methods: z
+    .array(z.object({ kind: z.string(), handle: z.string(), updated_at: time }))
+    .optional(),
   people: z.array(z.object({ id: uuid, display_name: z.string(), deleted: z.boolean() })),
   friends: z.array(uuid),
   groups: z.array(group),

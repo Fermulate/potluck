@@ -114,6 +114,10 @@ export const transfer = {
       toMdy: 'Les lire en mois/jour/année',
     },
     left: '{name} a quitté {group}, ses lignes ne peuvent donc pas entrer. Écarte-les, ou réinvite cette personne d’abord.',
+    notAParty_one:
+      '{count} paiement est entre deux autres personnes, et seuls les propriétaires et admins peuvent les importer. Écarte l’une d’elles, ou demande à un admin d’importer le fichier.',
+    notAParty_other:
+      '{count} paiements sont entre deux autres personnes, et seuls les propriétaires et admins peuvent les importer. Écarte l’une d’elles, ou demande à un admin d’importer le fichier.',
     leftOption: '{name} (a quitté le groupe)',
     skipPerson: 'Écarter ses lignes',
     rates: {

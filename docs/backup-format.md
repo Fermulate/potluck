@@ -10,19 +10,20 @@ One file, written by `export_my_data()`. Conventions:
 - Exchange rates (`fx_rate`) and split weights are decimal text, never JSON numbers, so no digit is lost (`"1.100000000000"`).
 - Times are ISO 8601 with an offset; days (`spent_at`, `next_run_on`, plan windows) are `YYYY-MM-DD`.
 - Ids are UUIDs; every person id resolves in `people`.
-- Within version 1, fields may be added. A field that is renamed, removed or changes meaning means version 2, and readers check `format` and `version` first.
+- Within version 1, fields may be added (payment comments, `payment_methods` and the template fields from `items` on came later; older files lack them). A field that is renamed, removed or changes meaning means version 2, and readers check `format` and `version` first.
 
 Top level:
 
-| Field         | What                                                                                                                                              |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `format`      | always `"potluck-backup"`                                                                                                                         |
-| `version`     | `1`                                                                                                                                               |
-| `exported_at` | when the file was made                                                                                                                            |
-| `profile`     | `id`, `display_name`, `email` (sign in address), `avatar_path`, `timezone`, `default_currency`, `locale`, `created_at`                            |
-| `people`      | everyone the file mentions: `id`, `display_name`, `deleted` (closed account). People who left a group stay here so old expenses keep their names. |
-| `friends`     | ids of everyone you share or shared a group with                                                                                                  |
-| `groups`      | every group you are in, archived ones too, oldest first                                                                                           |
+| Field             | What                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `format`          | always `"potluck-backup"`                                                                                                                         |
+| `version`         | `1`                                                                                                                                               |
+| `exported_at`     | when the file was made                                                                                                                            |
+| `profile`         | `id`, `display_name`, `email` (sign in address), `avatar_path`, `timezone`, `default_currency`, `locale`, `created_at`                            |
+| `payment_methods` | your own ways to be paid: `kind` (`paypal`, `venmo`, ...), `handle`, `updated_at`. Other people's are never in your file.                         |
+| `people`          | everyone the file mentions: `id`, `display_name`, `deleted` (closed account). People who left a group stay here so old expenses keep their names. |
+| `friends`         | ids of everyone you share or shared a group with                                                                                                  |
+| `groups`          | every group you are in, archived ones too, oldest first                                                                                           |
 
 Each group: `id`, `name`, `emoji`, `color`, `currency`, `is_direct` (a 1:1 tab), `simplify_debts`, `members_can_invite`, `default_split` (as stored, see [architecture](architecture.md)), `created_by`, `created_at`, `archived_at`, and:
 
@@ -32,8 +33,8 @@ Each group: `id`, `name`, `emoji`, `color`, `currency`, `is_direct` (a 1:1 tab),
   - `splits`: `user_id`, `share_cents` (sum to `amount_cents`), `weight` (percent or shares, text), `adjustment_cents`,
   - `items`: by-item bills as entered, `position`, `description`, `amount_cents`, `user_ids`,
   - `comments`: `id`, `author_id`, `body`, `created_at` (deleted comments are left out).
-- `payments`: `id`, `from_user` (paid), `to_user` (got it), `amount_cents`, `currency`, `fx_rate`, `note`, `settled_at`, `created_by`, `created_at`, `deleted_at`.
-- `recurring`: repeating expense templates, `id`, `description`, `amount_cents`, `currency`, `paid_by`, `payers` (null for one payer), `split_type`, `splits` (as stored), `category`, `recurrence`, `next_run_on`, `active`, `created_by`, `created_at`.
+- `payments`: `id`, `from_user` (paid), `to_user` (got it), `amount_cents`, `currency`, `fx_rate`, `note`, `settled_at`, `created_by`, `created_at`, `deleted_at`, `comments` (as for expenses).
+- `recurring`: repeating expense templates, `id`, `description`, `amount_cents`, `currency`, `paid_by`, `payers` (null for one payer), `split_type`, `splits` (as stored), `items` (a by-item bill as entered, or null), `tax_cents`, `tip_cents`, `discount_cents`, `category`, `notes`, `recurrence`, `anchor_day` (the day of the month it keeps), `next_run_on`, `active`, `created_by`, `created_at`, `updated_at`.
 - `plans`: `id`, `title`, `description`, `location`, `emoji`, `status`, `timezone`, `window_start`, `window_end`, `day_start_minute`, `day_end_minute`, `slot_minutes`, `duration_minutes`, `min_attendees`, `starts_at`, `ends_at`, `rsvp_deadline`, `created_by`, `created_at`, `rsvps` (`user_id`, `status`, `updated_at`), `availability` (`user_id`, `slot_start`, `level`), `comments`.
 
 A balance is not stored: it follows from the expenses and payments (ADR 3 and ADR 12), and the spreadsheet export shows it.
@@ -64,4 +65,4 @@ The import screen (group settings, Import) reads:
 - **A Potluck spreadsheet** (any language Potluck writes): each row comes back with its payers and shares, refunds as refunds and payments as payments. Into a group with the same currency, rows in other currencies keep the Rate they were exported with, so the balances come back exactly even if stored rates change. A file with several groups imports one group at a time. A friend export cannot be imported, since it leaves people out.
 - **A Splitwise export** ("Export as spreadsheet" on a Splitwise group or friend, in any language): Date, Description, Category, Cost, Currency, then one column per person with what the row did to them. Payments are rows with the category Payment; a negative cost is a refund. The "Total balance" lines are used to check the file. Who paid is rebuilt from those numbers (ADR 18), categories are mapped to Potluck's (Dining out to Food, Gas/fuel to Gas, and so on; anything else to Other).
 
-Dates may be ISO (2026-03-01) or as a spreadsheet saves them (3/1/26, 01/03/2026); month first or day first is worked out from the file, shown, and can be switched. Each person in the file is matched to a member or left out (their rows stay out); someone who left the group cannot be given new rows. Rows in another currency need a rate: the file's, Potluck's stored rate for the day, or one typed in; otherwise they wait or are left out. Rows that look like ones already in the group, and a file imported before, are pointed out. Up to 5,000 rows go in as one import, all or nothing; a longer file (up to 50,000 rows) goes in as several imports of 5,000.
+Dates may be ISO (2026-03-01) or as a spreadsheet saves them (3/1/26, 01/03/2026); month first or day first is worked out from the file, shown, and can be switched. Each person in the file is matched to a member or left out (their rows stay out); someone who left the group cannot be given new rows. Payments follow the same rules as recording one: a plain member brings in only payments they made or got, owners and admins any payment between two members. Rows in another currency need a rate: the file's, Potluck's stored rate for the day, or one typed in; otherwise they wait or are left out. Rows that look like ones already in the group, and a file imported before, are pointed out. Up to 5,000 rows go in as one import, all or nothing; a longer file (up to 50,000 rows) goes in as several imports of 5,000.

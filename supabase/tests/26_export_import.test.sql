@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(76);
+select plan(82);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -91,11 +91,24 @@ select throws_ok(
 
 -- A whole file -------------------------------------------------------------------------------
 
+-- Payments go through check_payment: a plain member records only their own.
+select tests.login('ben');
+select throws_ok(
+  $$ select public.import_expenses(tests.id('g'), pg_temp.file(), 'splitwise') $$,
+  '42501', 'not_a_party', 'a plain member cannot bring in a payment between two other people'
+);
+select is(
+  pg_temp.hint_of($$ select public.import_expenses(tests.id('g'), pg_temp.file(), 'splitwise') $$),
+  'import_row:3',
+  'and the error names that row'
+);
+reset role;
+update public.group_members set role = 'admin' where group_id = tests.id('g') and user_id = tests.uid('ben');
 select tests.login('ben');
 select is(
   public.import_expenses(tests.id('g'), pg_temp.file(), 'splitwise'),
   '{"expenses": 2, "payments": 1}'::jsonb,
-  'a member imports two expenses and a payment'
+  'an admin imports two expenses and a payment between two others'
 );
 reset role;
 
@@ -251,7 +264,7 @@ select throws_ok(
 );
 select throws_ok(
   $$ select public.import_expenses(tests.id('g'), jsonb_build_array(pg_temp.payment('ava', 'ava', 100))) $$,
-  '22023', 'invalid_recipient', 'a payment needs two people'
+  '22023', 'invalid_parties', 'a payment needs two different people'
 );
 select throws_ok(
   $$ select public.import_expenses(tests.id('g'), jsonb_build_array(pg_temp.payment('ava', 'ben', 0))) $$,
@@ -485,7 +498,14 @@ insert into public.comments (expense_id, author_id, body)
 select id, tests.uid('ava'), 'Great dinner' from public.expenses where group_id = tests.id('g') and description = 'Dinner';
 insert into public.comments (expense_id, author_id, body, deleted_at)
 select id, tests.uid('ava'), 'Oops', now() from public.expenses where group_id = tests.id('g') and description = 'Dinner';
+insert into public.comments (settlement_id, author_id, body)
+select id, tests.uid('ava'), 'Thanks!' from public.settlements where group_id = tests.id('g') and currency = 'EUR';
+insert into public.payment_methods (user_id, kind, handle) values
+  (tests.uid('ava'), 'paypal', 'avachen'), (tests.uid('ben'), 'venmo', 'ben-okafor');
 select tests.login('ava');
+select create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('left'), 'description', 'Wifi', 'amount_cents', 4000, 'recurrence', 'monthly',
+  'spent_at', '2026-03-31', 'notes', 'Router in the hall', 'splits', tests.people('ava', 'ben')));
 select set_config('tests.backup', public.export_my_data()::text, true);
 reset role;
 create view pg_temp.backup as select current_setting('tests.backup')::jsonb as doc;
@@ -522,6 +542,29 @@ select is(
      jsonb_array_elements(g -> 'expenses') x, jsonb_array_elements(x -> 'comments') c),
   '["Great dinner"]'::jsonb,
   'comments come with their expense, deleted ones do not'
+);
+select is(
+  (select jsonb_agg(c ->> 'body') from backup, jsonb_array_elements(doc -> 'groups') g,
+     jsonb_array_elements(g -> 'payments') x, jsonb_array_elements(x -> 'comments') c),
+  '["Thanks!"]'::jsonb,
+  'payments bring their comments'
+);
+select is(
+  (select doc -> 'payment_methods' -> 0 ->> 'handle' from backup),
+  'avachen',
+  'the caller''s own payment methods are in it'
+);
+select is(
+  (select jsonb_array_length(doc -> 'payment_methods') from backup),
+  1,
+  'other people''s are not'
+);
+select is(
+  (select (x ->> 'notes') || ', day ' || (x ->> 'anchor_day') from backup,
+     jsonb_array_elements(doc -> 'groups') g, jsonb_array_elements(g -> 'recurring') x
+   where x ->> 'description' = 'Wifi'),
+  'Router in the hall, day 31',
+  'repeating expenses come with their notes and the day of the month they keep'
 );
 select ok(
   (select bool_or(p ->> 'id' = tests.uid('dan')::text) from backup, jsonb_array_elements(doc -> 'people') p),
