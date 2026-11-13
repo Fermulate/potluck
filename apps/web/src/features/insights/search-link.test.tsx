@@ -34,4 +34,26 @@ describe('search entry points', () => {
     fireEvent.keyDown(document.body, { key: '/' })
     await waitFor(() => expect(router.state.location.pathname).toBe('/search'))
   })
+
+  it('jumps to the box on the search screen and keeps the query and filters', async () => {
+    function SearchPage() {
+      useSearchShortcut()
+      return (
+        <>
+          <input type="search" aria-label="Search" defaultValue="taco" />
+          <button type="button">Filters</button>
+        </>
+      )
+    }
+    const { router } = renderWithProviders(<SearchPage />, {
+      path: '/search',
+      url: '/search?q=taco&cats=food',
+    })
+    const filters = await screen.findByRole('button', { name: 'Filters' })
+    filters.focus()
+    fireEvent.keyDown(filters, { key: '/' })
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toHaveFocus()
+    expect(router.state.location.pathname).toBe('/search')
+    expect(router.state.location.search).toEqual({ q: 'taco', cats: 'food' })
+  })
 })

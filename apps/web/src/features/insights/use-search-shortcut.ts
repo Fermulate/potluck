@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 function typing(target: EventTarget | null): boolean {
@@ -11,17 +11,24 @@ function typing(target: EventTarget | null): boolean {
   )
 }
 
-/** "/" anywhere outside a text field opens search, as on most sites with a search box. */
+/**
+ * "/" anywhere outside a text field opens search, as on most sites with a search box. On the
+ * search screen it jumps to the box and keeps the query and filters.
+ */
 export function useSearchShortcut() {
-  const navigate = useNavigate()
+  const router = useRouter()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return
       if (document.querySelector('[role="dialog"]')) return
       e.preventDefault()
-      void navigate({ to: '/search' })
+      if (router.state.location.pathname === '/search') {
+        document.querySelector<HTMLInputElement>('input[type="search"]')?.focus()
+        return
+      }
+      void router.navigate({ to: '/search' })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate])
+  }, [router])
 }
