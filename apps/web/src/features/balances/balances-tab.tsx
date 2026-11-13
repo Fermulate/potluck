@@ -1,10 +1,14 @@
 import { avatarSrc } from '@/lib/queries'
 import { moneyQueries } from '@potluck/api'
+import { settleAllPayments } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, Button, Card, EmptyState, Skeleton, cn } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { RemindButton } from '@/features/settle/remind-button'
+import { SettleAllSheet } from '@/features/settle/settle-all-sheet'
 import { useDebts } from './use-debts'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
@@ -25,6 +29,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
   const group = useMoneyGroup(groupId)
   const balances = useQuery(moneyQueries.balances(supabase, groupId))
   const debts = useDebts(groupId, group.data)
+  const [settlingAll, setSettlingAll] = useState(false)
 
   if (!group.data || !balances.data || !debts) return <BalancesSkeleton />
 
@@ -37,7 +42,13 @@ export function BalancesTab({ groupId }: { groupId: string }) {
     .map((id) => ({ id, cents: net.get(id) ?? 0 }))
     .sort((a, b) => b.cents - a.cents)
   const scale = Math.max(1, ...rows.map((r) => Math.abs(r.cents)))
+  const open = !group.data.archived_at
   const myDebts = debts.filter((d) => d.from_user === me)
+  const involvingMe = settleAllPayments(
+    debts.map((d) => ({ fromUser: d.from_user, toUser: d.to_user, amountCents: d.amount_cents })),
+    me,
+    group.data.members.map((m) => m.id),
+  )
   // Your own lines first: they are the ones you can act on.
   const mineFirst = [...debts].sort(
     (a, b) =>
@@ -66,19 +77,26 @@ export function BalancesTab({ groupId }: { groupId: string }) {
             split
           />
         </p>
-        {myDebts.length > 0 && (
-          <Button asChild className="mt-5">
-            <Link
-              to="/new/settle"
-              search={
-                myDebts.length === 1
-                  ? { groupId, to: myDebts[0]!.to_user, amount: myDebts[0]!.amount_cents }
-                  : { groupId }
-              }
-            >
-              {t('balances.settleUp')}
-            </Link>
-          </Button>
+        {open && involvingMe.length > 0 && (
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button asChild>
+              <Link
+                to="/new/settle"
+                search={
+                  myDebts.length === 1 && involvingMe.length === 1
+                    ? { groupId, to: myDebts[0]!.to_user, amount: myDebts[0]!.amount_cents }
+                    : { groupId }
+                }
+              >
+                {t('balances.settleUp')}
+              </Link>
+            </Button>
+            {involvingMe.length > 1 && (
+              <Button variant="secondary" onClick={() => setSettlingAll(true)}>
+                {t('balances.settleAll')}
+              </Button>
+            )}
+          </div>
         )}
         <span
           aria-hidden
@@ -162,7 +180,14 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                         />
                       </span>
                       <span className="min-w-0 flex-1 text-[0.9375rem] font-medium">{text}</span>
-                      {d.from_user === me && (
+                      {open && d.to_user === me && (
+                        <RemindButton
+                          groupId={groupId}
+                          userId={d.from_user}
+                          name={nameOf(d.from_user)}
+                        />
+                      )}
+                      {open && d.from_user === me && (
                         <Button asChild size="sm" variant="ink">
                           <Link
                             to="/new/settle"
@@ -237,6 +262,13 @@ export function BalancesTab({ groupId }: { groupId: string }) {
           </section>
         </>
       )}
+      <SettleAllSheet
+        open={settlingAll}
+        onOpenChange={setSettlingAll}
+        group={group.data}
+        payments={involvingMe}
+        personOf={personOf}
+      />
     </div>
   )
 }

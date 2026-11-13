@@ -3,6 +3,7 @@ import { formatDate, formatMoney, hasMessage, t } from '@potluck/i18n'
 
 export type ActivityLink =
   | { to: '/expenses/$expenseId'; params: { expenseId: string } }
+  | { to: '/payments/$paymentId'; params: { paymentId: string } }
   | { to: '/groups/$groupId'; params: { groupId: string } }
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
   | { to: '/plans/$eventId'; params: { eventId: string } }
@@ -69,11 +70,13 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
         link = { to: '/expenses/$expenseId', params: { expenseId: item.subject_id } }
       break
     case 'settlement': {
-      emoji = '🤝'
+      emoji = item.verb === 'settlement.deleted' ? '🗑️' : '🤝'
       tone = 'olive'
       named = str(d.to_user)
       params.name = ctx.nameOf(named, { lower: true })
-      link = { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
+      link = item.subject_id
+        ? { to: '/payments/$paymentId', params: { paymentId: item.subject_id } }
+        : { to: '/groups/$groupId/balances', params: { groupId: item.group_id } }
       break
     }
     case 'member':
@@ -94,13 +97,20 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
       emoji = '💬'
       const expenseId = str(d.expense_id)
       const eventId = str(d.event_id)
-      params.subject = expenseId ? t('activity.anExpense') : t('activity.aPlan')
+      const paymentId = str(d.settlement_id)
+      params.subject = expenseId
+        ? t('activity.anExpense')
+        : paymentId
+          ? t('activity.aPayment')
+          : t('activity.aPlan')
       detail = str(d.excerpt)
       link = expenseId
         ? { to: '/expenses/$expenseId', params: { expenseId } }
-        : eventId
-          ? { to: '/plans/$eventId', params: { eventId } }
-          : link
+        : paymentId
+          ? { to: '/payments/$paymentId', params: { paymentId } }
+          : eventId
+            ? { to: '/plans/$eventId', params: { eventId } }
+            : link
       break
     }
     case 'group':

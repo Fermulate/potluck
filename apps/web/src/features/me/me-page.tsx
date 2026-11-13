@@ -63,6 +63,7 @@ import { supabase, supabaseUrl } from '@/lib/supabase'
 import { useTheme } from '@/styles/use-theme'
 import { AvatarPicker } from './avatar-picker'
 import { NotificationPrefs } from './notification-prefs'
+import { PaymentMethodsSection } from './payment-methods'
 import { CurrencyField, TimezoneField } from './profile-fields'
 import { useWebPush } from './use-web-push'
 
@@ -517,6 +518,7 @@ export function MePage() {
         <div className="grid gap-8 lg:block lg:columns-2 lg:gap-10 lg:[&>*]:mb-8 lg:[&>*]:break-inside-avoid">
           <ProfileSection key={profile.updated_at} profile={profile} />
           <PreferencesSection profile={profile} />
+          <PaymentMethodsSection />
           <SecuritySection />
           <NotificationsSection />
           <CalendarSection />

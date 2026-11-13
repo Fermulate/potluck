@@ -167,6 +167,55 @@ describe('FriendsPage', () => {
     expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
   })
 
+  it('adds up every shared group and settles them all in one go', async () => {
+    seed({ groups: [withBen, group({ id: 'g-hike', name: 'Hike crew' })] })
+    db().respond('rpc:friend_balances', {
+      data: [
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-ben',
+          currency: 'USD',
+          net_cents: 1500,
+          archived: false,
+        },
+        {
+          friend_id: 'u-ben',
+          group_id: 'g-hike',
+          currency: 'USD',
+          net_cents: 500,
+          archived: false,
+        },
+        { friend_id: 'u-ben', group_id: 'g-old', currency: 'EUR', net_cents: -700, archived: true },
+      ],
+    })
+    db().respond('rpc:settle_with_friend', {
+      data: [{ group_id: 'g-ben' }, { group_id: 'g-hike' }],
+    })
+    renderPage()
+    const ben = await openTab('Ben Ortiz')
+    await waitFor(() =>
+      expect(within(ben).getByText('owes you $20.00, you owe €7.00')).toBeInTheDocument(),
+    )
+    expect(screen.getByText(t('friends.acrossGroups', { count: 3 }))).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: t('friends.settle.actionLabel', { name: 'Ben Ortiz' }) }),
+    )
+    const sheet = await screen.findByRole('dialog', {
+      name: t('friends.settle.title', { name: 'Ben' }),
+    })
+    expect(within(sheet).getByText(t('friends.settle.archived', { count: 1 }))).toBeInTheDocument()
+    expect(
+      within(sheet).getByText(t('friends.settle.owesYou', { amount: '$5.00' })),
+    ).toBeInTheDocument()
+    fireEvent.click(
+      within(sheet).getByRole('button', { name: t('friends.settle.record', { count: 2 }) }),
+    )
+
+    expect(await screen.findByText(t('friends.settle.done', { name: 'Ben' }))).toBeInTheDocument()
+    expect(db().rpcArgs('settle_with_friend')).toEqual([{ friend_id: 'u-ben' }])
+  })
+
   it('refreshes balances when money moves', async () => {
     renderPage()
     await openTab('Ben Ortiz')

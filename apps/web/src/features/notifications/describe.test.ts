@@ -38,6 +38,54 @@ describe('describeNotification', () => {
     expect(view.target).toEqual({ to: '/expenses/$expenseId', params: { expenseId: 'e-9' } })
   })
 
+  it('links payment changes and payment comments to the payment', () => {
+    for (const [type, title] of [
+      ['settlement.updated', 'Payment changed'],
+      ['settlement.deleted', 'Payment deleted'],
+      ['settlement.restored', 'Payment restored'],
+    ] as const) {
+      const view = describeNotification(
+        row(type, {
+          actor_id: 'u-ben',
+          group_id: 'g-1',
+          settlement_id: 's-1',
+          amount_cents: 1000,
+          currency: 'USD',
+        }),
+        ctx,
+      )
+      expect(view.title).toBe(title)
+      expect(view.body).toContain('Ben')
+      expect(view.body).toContain('$10.00 payment in Hike crew')
+      expect(view.target).toEqual({ to: '/payments/$paymentId', params: { paymentId: 's-1' } })
+    }
+    const comment = describeNotification(
+      row('comment.created', { actor_id: 'u-ben', settlement_id: 's-1', excerpt: 'Thanks' }),
+      ctx,
+    )
+    expect(comment.target).toEqual({ to: '/payments/$paymentId', params: { paymentId: 's-1' } })
+  })
+
+  it('turns a reminder into a nudge that opens settle up with them picked', () => {
+    const view = describeNotification(
+      row('debt.reminder', {
+        actor_id: 'u-ben',
+        from_user: 'u-ben',
+        group_id: 'g-1',
+        amount_cents: 2500,
+        currency: 'USD',
+      }),
+      ctx,
+    )
+    expect(view.title).toBe('A friendly nudge')
+    expect(view.body).toBe('Ben says you owe $25.00 in Hike crew')
+    expect(view.kind).toBe('payment')
+    expect(view.target).toEqual({ to: '/new/settle', search: { groupId: 'g-1', to: 'u-ben' } })
+    expect(describeNotification(row('debt.reminder', {}), ctx).target).toEqual({
+      to: '/notifications',
+    })
+  })
+
   describe("settlements, from the reader's side of the payment", () => {
     const people = new Map([
       ['u-ben', 'Ben Ortiz'],

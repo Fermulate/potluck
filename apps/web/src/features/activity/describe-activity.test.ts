@@ -47,7 +47,28 @@ describe('describeActivity', () => {
       ctx,
     )
     expect(view.text).toBe('Ben paid you €20.00')
-    expect(view.link).toEqual({ to: '/groups/$groupId/balances', params: { groupId: 'g1' } })
+    expect(view.link).toEqual({ to: '/payments/$paymentId', params: { paymentId: 'x1' } })
+  })
+
+  it('describes payment edits, restores and comments, linking to the payment', () => {
+    const restored = describeActivity(
+      item({ verb: 'settlement.restored', data: { from_user: 'ben', to_user: ME } }),
+      ctx,
+    )
+    expect(restored.text).toBe('Ben restored a payment to you')
+    expect(restored.link).toEqual({ to: '/payments/$paymentId', params: { paymentId: 'x1' } })
+    const comment = describeActivity(
+      item({ verb: 'comment.created', data: { settlement_id: 's9', excerpt: 'Cash' } }),
+      ctx,
+    )
+    expect(comment.text).toBe('Ben commented on a payment')
+    expect(comment.link).toEqual({ to: '/payments/$paymentId', params: { paymentId: 's9' } })
+    const noSubject = describeActivity(
+      item({ verb: 'settlement.deleted', subject_id: null, data: { to_user: 'ben' } }),
+      ctx,
+    )
+    expect(noSubject.emoji).toBe('🗑️')
+    expect(noSubject.link).toEqual({ to: '/groups/$groupId/balances', params: { groupId: 'g1' } })
   })
 
   it('phrases every verb in the second person when the viewer did it', () => {
