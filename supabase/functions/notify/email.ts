@@ -133,6 +133,11 @@ function copyFor(job: EmailJob): Copy {
   const amount = amountCents !== undefined ? formatMoney(amountCents, currency) : undefined
   const shareCents = num(d.share_cents)
   const share = shareCents && shareCents > 0 ? formatMoney(shareCents, currency) : undefined
+  const shareLine = share
+    ? d.is_refund === true
+      ? `You get back: ${share}.`
+      : `Your share: ${share}.`
+    : ''
   const event = str(d.event_title) ?? 'a plan'
   const zone = str(job.timezone) ?? 'UTC'
   const startsAt = str(d.starts_at)
@@ -142,19 +147,14 @@ function copyFor(job: EmailJob): Copy {
       return {
         subject: `${actor} added "${description}"${inGroup}`,
         heading: `${actor} added "${description}"${inGroup}.`,
-        lines: [amount ? `Total: ${amount}.` : '', share ? `Your share: ${share}.` : ''].filter(
-          Boolean,
-        ),
+        lines: [amount ? `Total: ${amount}.` : '', shareLine].filter(Boolean),
         cta: 'See the expense',
       }
     case 'expense.updated':
       return {
         subject: `${actor} changed "${description}"${inGroup}`,
         heading: `${actor} changed "${description}"${inGroup}.`,
-        lines: [
-          amount ? `It now comes to ${amount}.` : '',
-          share ? `Your share: ${share}.` : '',
-        ].filter(Boolean),
+        lines: [amount ? `It now comes to ${amount}.` : '', shareLine].filter(Boolean),
         cta: 'See what changed',
       }
     case 'expense.deleted':
@@ -170,10 +170,9 @@ function copyFor(job: EmailJob): Copy {
       return {
         subject: `${actor} restored "${description}"${inGroup}`,
         heading: `${actor} restored "${description}"${inGroup}.`,
-        lines: [
-          `It counts toward balances again${amount ? `: ${amount}` : ''}.`,
-          share ? `Your share: ${share}.` : '',
-        ].filter(Boolean),
+        lines: [`It counts toward balances again${amount ? `: ${amount}` : ''}.`, shareLine].filter(
+          Boolean,
+        ),
         cta: 'See the expense',
       }
     case 'settlement.created':

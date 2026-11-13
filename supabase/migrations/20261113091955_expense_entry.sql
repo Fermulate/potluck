@@ -854,7 +854,8 @@ begin
           'group_id', result.group_id,
           'description', result.description,
           'amount_cents', result.amount_cents,
-          'currency', result.currency
+          'currency', result.currency,
+          'is_refund', result.is_refund
         ),
         uid
       );
@@ -1286,7 +1287,8 @@ begin
       'group_id', new.group_id,
       'description', new.description,
       'amount_cents', new.amount_cents,
-      'currency', new.currency
+      'currency', new.currency,
+      'is_refund', new.is_refund
     ),
     coalesce(auth.uid(), new.created_by)
   );
@@ -1510,7 +1512,7 @@ as $$
 $$;
 
 -- Body as in 20261113062656_notification_prefs_and_email.sql plus every payer as a recipient of
--- expense.deleted and expense.restored.
+-- expense.deleted and expense.restored, and is_refund in the data.
 create or replace function private.expenses_notify_removal()
 returns trigger
 language plpgsql
@@ -1546,7 +1548,8 @@ begin
       'group_id', new.group_id,
       'description', new.description,
       'amount_cents', new.amount_cents,
-      'currency', new.currency
+      'currency', new.currency,
+      'is_refund', new.is_refund
     ),
     coalesce(auth.uid(), new.created_by)
   );

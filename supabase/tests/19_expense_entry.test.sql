@@ -3,7 +3,7 @@
 -- Money cases match packages/core: payers-refunds.test.ts, split-adjustment.test.ts,
 -- split-itemized.test.ts and payers.test.ts.
 begin;
-select plan(86);
+select plan(88);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', current_date, 1.1);
@@ -655,6 +655,33 @@ select is(
    where user_id = tests.uid('ben') and type = 'expense.deleted' and data ->> 'expense_id' = tests.id('gift')::text),
   1,
   'and hears when it is deleted'
+);
+
+select tests.login('ava');
+select tests.remember('back', (select id from create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('fx'), 'description', 'Returned tent', 'amount_cents', 4000, 'is_refund', true,
+  'splits', tests.people('ben', 'cleo')))));
+set constraints all immediate;
+set constraints all deferred;
+select update_expense_v2(tests.id('back'), jsonb_build_object('amount_cents', 5000));
+set constraints all immediate;
+set constraints all deferred;
+select delete_expense(tests.id('back'));
+select restore_expense(tests.id('back'));
+set constraints all immediate;
+set constraints all deferred;
+reset role;
+select is(
+  (select array_agg(distinct (data ->> 'is_refund')) from public.notifications
+   where user_id = tests.uid('ben') and type = 'expense.updated' and data ->> 'expense_id' = tests.id('back')::text),
+  array['true'],
+  'an edited refund says it is a refund'
+);
+select is(
+  (select array_agg(distinct (data ->> 'is_refund')) from public.notifications
+   where user_id = tests.uid('ben') and type = 'expense.restored' and data ->> 'expense_id' = tests.id('back')::text),
+  array['true'],
+  'and so does a restored one'
 );
 
 select * from finish();
