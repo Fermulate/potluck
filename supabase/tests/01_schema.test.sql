@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(97);
+select plan(102);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -24,7 +24,7 @@ select tables_are('public', array[
   'event_guest_links', 'event_guests', 'event_guest_availability'
 ], 'public has exactly the documented tables');
 
-select views_are('public', array['group_balances'], 'public has the balances view');
+select views_are('public', array['group_balances', 'expense_ledger'], 'public has the balances and ledger views');
 
 select is(
   (select count(*)::int from pg_class c
@@ -36,6 +36,11 @@ select is(
 select ok(
   (select 'security_invoker=true' = any (c.reloptions) from pg_class c where c.oid = 'public.group_balances'::regclass),
   'group_balances is security_invoker'
+);
+
+select ok(
+  (select 'security_invoker=true' = any (c.reloptions) from pg_class c where c.oid = 'public.expense_ledger'::regclass),
+  'expense_ledger is security_invoker'
 );
 
 select enum_has_labels('public', 'group_role', array['owner', 'admin', 'member'], 'group_role labels');
@@ -84,6 +89,12 @@ select has_function('public', 'cancel_event', array['uuid'], 'cancel_event');
 select has_function('public', 'my_timeline', array['timestamp with time zone', 'timestamp with time zone'], 'my_timeline');
 select has_function('public', 'delete_my_account', array[]::text[], 'delete_my_account');
 select has_function('public', 'delete_group', array['uuid'], 'delete_group');
+select has_function('public', 'spending_summary', array['uuid', 'date', 'date', 'text'], 'spending_summary(in_group, from_day, to_day, in_currency)');
+select has_function('public', 'deleted_items', array['uuid', 'timestamp with time zone', 'uuid', 'integer'], 'deleted_items(in_group, cursor, max_rows)');
+select has_function('public', 'friend_activity', array['uuid', 'timestamp with time zone', 'uuid', 'integer'], 'friend_activity(friend, cursor, max_rows)');
+select has_function('public', 'search_money',
+  array['text', 'uuid', 'uuid', 'date', 'date', 'text[]', 'text[]', 'date', 'timestamp with time zone', 'uuid', 'integer'],
+  'search_money(query, filters, cursor, max_rows)');
 select has_function('public', 'my_notification_prefs', array[]::text[], 'my_notification_prefs');
 select has_function('public', 'set_notification_pref', array['text', 'boolean', 'boolean'], 'set_notification_pref(category, push, email)');
 select has_function('public', 'email_unsubscribe', array['text', 'text'], 'email_unsubscribe(token, action)');

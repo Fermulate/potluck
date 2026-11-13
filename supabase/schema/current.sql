@@ -1682,6 +1682,35 @@ $$;
 ALTER FUNCTION "private"."has_block"("a" "uuid", "b" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."insights_fx_rate"("from_currency" character, "to_currency" character, "on_day" "date") RETURNS numeric
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  result numeric := private.fx_rate(from_currency, to_currency, on_day);
+  base char(3);
+  first_leg numeric;
+  second_leg numeric;
+begin
+  if result is not null then
+    return result;
+  end if;
+  foreach base in array array['USD', 'EUR']::char(3)[] loop
+    continue when base = from_currency or base = to_currency;
+    first_leg := private.fx_rate(from_currency, base, on_day);
+    second_leg := private.fx_rate(base, to_currency, on_day);
+    if first_leg is not null and second_leg is not null then
+      return round(first_leg * second_leg, 12);
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."insights_fx_rate"("from_currency" character, "to_currency" character, "on_day" "date") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."invoke_edge_function"("fn" "text", "body" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4819,6 +4848,97 @@ $$;
 ALTER FUNCTION "public"."delete_settlement"("id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone DEFAULT NULL::timestamp with time zone, "before_id" "uuid" DEFAULT NULL::"uuid", "max_rows" integer DEFAULT 50) RETURNS TABLE("kind" "text", "id" "uuid", "group_id" "uuid", "day" "date", "description" "text", "category" "text", "amount_cents" bigint, "currency" "text", "paid_by" "uuid", "to_user" "uuid", "created_by" "uuid", "deleted_at" timestamp with time zone, "deleted_by" "uuid", "payers" "uuid"[])
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  tz text;
+  lim int := least(greatest(coalesce(deleted_items.max_rows, 50), 1), 100);
+begin
+  perform private.require_member(deleted_items.in_group);
+  if (deleted_items.before_at is null) <> (deleted_items.before_id is null) then
+    raise exception using message = 'invalid_cursor', detail = 'A page cursor needs a time and an id', errcode = '22023';
+  end if;
+  select p.timezone into tz from public.profiles p where p.id = uid;
+
+  return query
+  select
+    d.kind,
+    d.id,
+    d.group_id,
+    d.day,
+    d.description,
+    d.category,
+    d.amount_cents,
+    d.currency,
+    d.paid_by,
+    d.to_user,
+    d.created_by,
+    d.deleted_at,
+    who.actor_id,
+    d.payers
+  from (
+    select
+      'expense'::text as kind,
+      e.id,
+      e.group_id,
+      e.spent_at as day,
+      e.description,
+      e.category,
+      e.amount_cents,
+      e.currency::text as currency,
+      e.paid_by,
+      null::uuid as to_user,
+      e.created_by,
+      e.deleted_at,
+      array(select x.user_id from public.expense_payers x where x.expense_id = e.id) as payers
+    from public.expenses e
+    where e.group_id = deleted_items.in_group and e.deleted_at is not null
+    union all
+    select
+      'payment',
+      st.id,
+      st.group_id,
+      (st.settled_at at time zone coalesce(tz, 'UTC'))::date,
+      st.note,
+      null,
+      st.amount_cents,
+      st.currency::text,
+      st.from_user,
+      st.to_user,
+      st.created_by,
+      st.deleted_at,
+      array[st.from_user]
+    from public.settlements st
+    where st.group_id = deleted_items.in_group and st.deleted_at is not null
+  ) d
+  left join lateral (
+    -- The latest delete in the feed for this row is who deleted it.
+    select a.actor_id
+    from public.activity a
+    where a.subject_id = d.id
+      and a.verb = case d.kind when 'expense' then 'expense.deleted' else 'settlement.deleted' end
+    order by a.created_at desc
+    limit 1
+  ) who on true
+  where deleted_items.before_id is null
+     or (d.deleted_at, d.id) < (deleted_items.before_at, deleted_items.before_id)
+  order by d.deleted_at desc, d.id desc
+  limit lim;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) IS 'A group''s deleted expenses and payments, most recently deleted first, with who deleted each.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text" DEFAULT NULL::"text", "rejected" "uuid"[] DEFAULT '{}'::"uuid"[]) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -4953,6 +5073,111 @@ $$;
 
 
 ALTER FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone DEFAULT NULL::timestamp with time zone, "before_id" "uuid" DEFAULT NULL::"uuid", "max_rows" integer DEFAULT 30) RETURNS TABLE("id" "uuid", "group_id" "uuid", "actor_id" "uuid", "verb" "text", "subject_id" "uuid", "data" "jsonb", "created_at" timestamp with time zone, "actor_info" "jsonb", "group_info" "jsonb")
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  gids uuid[] := array(select private.my_group_ids());
+  lim int := least(greatest(coalesce(friend_activity.max_rows, 30), 1), 100);
+begin
+  if friend_activity.friend is null or friend_activity.friend = uid then
+    raise exception using message = 'invalid_friend', detail = 'Pick someone other than yourself', errcode = '22023';
+  end if;
+  if (friend_activity.before_at is null) <> (friend_activity.before_id is null) then
+    raise exception using message = 'invalid_cursor', detail = 'A page cursor needs a time and an id', errcode = '22023';
+  end if;
+
+  -- Both people paid for (expense_payers) or share in the expense (for expense entries and
+  -- comments on one), the payment is between them (and comments on it), or it happened in their
+  -- one-to-one tab.
+  return query
+  select
+    a.id,
+    a.group_id,
+    a.actor_id,
+    a.verb,
+    a.subject_id,
+    a.data,
+    a.created_at,
+    case when p.id is null then null else
+      jsonb_build_object('id', p.id, 'display_name', p.display_name, 'avatar_path', p.avatar_path)
+    end,
+    jsonb_build_object('id', g.id, 'name', g.name, 'emoji', g.emoji, 'is_direct', g.is_direct)
+  from public.activity a
+  join public.groups g on g.id = a.group_id
+  left join public.profiles p on p.id = a.actor_id
+  where a.group_id = any (gids)
+    and (
+      friend_activity.before_id is null
+      or (a.created_at, a.id) < (friend_activity.before_at, friend_activity.before_id)
+    )
+    and (
+      (
+        -- Their one-to-one tab, minus the bookkeeping of setting it up.
+        g.is_direct
+        and a.verb not like 'member.%'
+        and a.verb not like 'group.%'
+        and exists (
+          select 1 from public.group_members m
+          where m.group_id = g.id and m.user_id = friend_activity.friend
+        )
+      )
+      or (
+        (a.verb like 'settlement.%' or (a.verb = 'comment.created' and a.data ? 'settlement_id'))
+        and exists (
+          select 1 from public.settlements st
+          where st.id = case
+              when a.verb = 'comment.created' then private.try_uuid(a.data ->> 'settlement_id')
+              else a.subject_id
+            end
+            and (
+              (st.from_user = uid and st.to_user = friend_activity.friend)
+              or (st.from_user = friend_activity.friend and st.to_user = uid)
+            )
+        )
+      )
+      or (
+        (a.verb like 'expense.%' or (a.verb = 'comment.created' and a.data ? 'expense_id'))
+        and exists (
+          select 1
+          from public.expenses e
+          where e.id = case
+              when a.verb = 'comment.created' then private.try_uuid(a.data ->> 'expense_id')
+              else a.subject_id
+            end
+            and (
+              exists (select 1 from public.expense_payers x where x.expense_id = e.id and x.user_id = uid)
+              or exists (select 1 from public.expense_splits s where s.expense_id = e.id and s.user_id = uid)
+            )
+            and (
+              exists (
+                select 1 from public.expense_payers x
+                where x.expense_id = e.id and x.user_id = friend_activity.friend
+              )
+              or exists (
+                select 1 from public.expense_splits s
+                where s.expense_id = e.id and s.user_id = friend_activity.friend
+              )
+            )
+        )
+      )
+    )
+  order by a.created_at desc, a.id desc
+  limit lim;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) IS 'Feed entries that involve both the viewer and a friend, newest first.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."friend_balances"() RETURNS TABLE("friend_id" "uuid", "group_id" "uuid", "currency" "text", "net_cents" bigint, "archived" boolean)
@@ -5917,6 +6142,242 @@ $$;
 ALTER FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" timestamp with time zone) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."search_money"("query" "text" DEFAULT NULL::"text", "in_group" "uuid" DEFAULT NULL::"uuid", "person" "uuid" DEFAULT NULL::"uuid", "from_day" "date" DEFAULT NULL::"date", "to_day" "date" DEFAULT NULL::"date", "categories" "text"[] DEFAULT NULL::"text"[], "kinds" "text"[] DEFAULT NULL::"text"[], "before_day" "date" DEFAULT NULL::"date", "before_at" timestamp with time zone DEFAULT NULL::timestamp with time zone, "before_id" "uuid" DEFAULT NULL::"uuid", "max_rows" integer DEFAULT 50) RETURNS TABLE("kind" "text", "id" "uuid", "group_id" "uuid", "day" "date", "at" timestamp with time zone, "description" "text", "category" "text", "amount_cents" bigint, "currency" "text", "group_currency" "text", "group_amount_cents" bigint, "paid_by" "uuid", "to_user" "uuid", "created_by" "uuid", "my_paid_cents" bigint, "my_share_cents" bigint, "deleted_at" timestamp with time zone, "matched" "text", "snippet" "text", "payers" "uuid"[], "is_refund" boolean)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  gids uuid[];
+  q text := nullif(btrim(coalesce(search_money.query, '')), '');
+  pat text;
+  amount numeric;
+  tz text;
+  lim int := least(greatest(coalesce(search_money.max_rows, 50), 1), 100);
+  want_expenses boolean := search_money.kinds is null or 'expense' = any (search_money.kinds);
+  want_payments boolean := (search_money.kinds is null or 'payment' = any (search_money.kinds))
+    and search_money.categories is null;
+begin
+  if search_money.in_group is not null then
+    perform private.require_member(search_money.in_group);
+    gids := array[search_money.in_group];
+  else
+    gids := array(select private.my_group_ids());
+  end if;
+  if from_day is not null and to_day is not null and from_day > to_day then
+    raise exception using message = 'invalid_date_range', detail = 'The start date is after the end date', errcode = '22023';
+  end if;
+  if char_length(q) > 200 then
+    raise exception using message = 'invalid_query', detail = 'Search for something shorter', errcode = '22023';
+  end if;
+  if (before_id is null) <> (before_day is null) or (before_id is null) <> (before_at is null) then
+    raise exception using message = 'invalid_cursor', detail = 'A page cursor needs a day, a time and an id', errcode = '22023';
+  end if;
+  select p.timezone into tz from public.profiles p where p.id = uid;
+
+  if q is not null then
+    pat := '%' || replace(replace(replace(q, '\', '\\'), '%', '\%'), '_', '\_') || '%';
+    -- "12.50", "12,50", "$12.50", "12.50 EUR": an amount in the expense's own currency.
+    if q ~* '^[^0-9a-z]{0,3}\s*[0-9]{1,12}([.,][0-9]{1,3})?\s*([a-z]{3}|[^0-9a-z]{0,3})$' then
+      amount := replace(substring(q from '[0-9]{1,12}(?:[.,][0-9]{1,3})?'), ',', '.')::numeric;
+    end if;
+  end if;
+
+  return query
+  with hits as (
+    select e.id, 1 as rank, 'description'::text as matched, null::text as snippet
+    from public.expenses e
+    where q is not null and e.group_id = any (gids) and e.description ilike pat
+    union all
+    select e.id, 2, 'notes', e.notes
+    from public.expenses e
+    where q is not null and e.group_id = any (gids) and e.notes ilike pat
+    union all
+    select c.expense_id, 3, 'comment', c.body
+    from public.comments c
+    where q is not null
+      and c.group_id = any (gids)
+      and c.expense_id is not null
+      and c.deleted_at is null
+      and c.body ilike pat
+    union all
+    select x.expense_id, 4, 'person', p.display_name
+    from public.expense_payers x
+    join public.expenses e on e.id = x.expense_id
+    join public.profiles p on p.id = x.user_id
+    where q is not null and e.group_id = any (gids) and p.display_name ilike pat
+    union all
+    select s.expense_id, 4, 'person', p.display_name
+    from public.expense_splits s
+    join public.expenses e on e.id = s.expense_id
+    join public.profiles p on p.id = s.user_id
+    where q is not null and e.group_id = any (gids) and p.display_name ilike pat
+    union all
+    select e.id, 5, 'amount', null
+    from public.expenses e
+    where amount is not null
+      and e.group_id = any (gids)
+      and e.amount_cents = round(amount * power(10::numeric, private.minor_units(e.currency::text)))
+  ),
+  best as (
+    select distinct on (h.id) h.id, h.matched, h.snippet
+    from hits h
+    order by h.id, h.rank
+  ),
+  expense_rows as (
+    select
+      'expense'::text as kind,
+      e.id,
+      e.group_id,
+      e.spent_at as day,
+      e.created_at as at,
+      e.description,
+      e.category,
+      e.amount_cents,
+      e.currency::text as currency,
+      g.currency::text as group_currency,
+      private.convert_minor(e.amount_cents, e.fx_rate, e.currency::text, g.currency::text) as group_amount_cents,
+      e.paid_by,
+      null::uuid as to_user,
+      e.created_by,
+      e.deleted_at,
+      b.matched,
+      b.snippet,
+      -- Everyone who paid, most first (or who got a refund).
+      array(
+        select x.user_id from public.expense_payers x
+        where x.expense_id = e.id
+        order by x.paid_cents desc, x.user_id
+      ) as payers,
+      e.is_refund
+    from public.expenses e
+    join public.groups g on g.id = e.group_id
+    left join best b on b.id = e.id
+    where want_expenses
+      and e.group_id = any (gids)
+      and (q is null or b.id is not null)
+      and e.deleted_at is null
+      and (search_money.categories is null or coalesce(e.category, 'other') = any (search_money.categories))
+      and (
+        search_money.person is null
+        or exists (
+          select 1 from public.expense_payers x
+          where x.expense_id = e.id and x.user_id = search_money.person
+        )
+        or exists (
+          select 1 from public.expense_splits s
+          where s.expense_id = e.id and s.user_id = search_money.person
+        )
+      )
+  ),
+  payment_rows as (
+    select
+      'payment'::text as kind,
+      st.id,
+      st.group_id,
+      (st.settled_at at time zone coalesce(tz, 'UTC'))::date as day,
+      st.settled_at as at,
+      st.note as description,
+      null::text as category,
+      st.amount_cents,
+      st.currency::text as currency,
+      g.currency::text as group_currency,
+      private.convert_minor(st.amount_cents, st.fx_rate, st.currency::text, g.currency::text) as group_amount_cents,
+      st.from_user as paid_by,
+      st.to_user,
+      st.created_by,
+      st.deleted_at,
+      case
+        when q is null then null
+        when st.note ilike pat then 'notes'
+        when pf.display_name ilike pat or pt.display_name ilike pat then 'person'
+        when amount is not null
+          and st.amount_cents = round(amount * power(10::numeric, private.minor_units(st.currency::text)))
+          then 'amount'
+      end as matched,
+      case
+        when q is not null and st.note ilike pat then null
+        when q is not null and pf.display_name ilike pat then pf.display_name
+        when q is not null and pt.display_name ilike pat then pt.display_name
+      end as snippet,
+      array[st.from_user] as payers,
+      false as is_refund
+    from public.settlements st
+    join public.groups g on g.id = st.group_id
+    join public.profiles pf on pf.id = st.from_user
+    join public.profiles pt on pt.id = st.to_user
+    where want_payments
+      and st.group_id = any (gids)
+      and st.deleted_at is null
+      and (
+        search_money.person is null
+        or st.from_user = search_money.person
+        or st.to_user = search_money.person
+      )
+  ),
+  page as (
+    select u.*
+    from (
+      select * from expense_rows
+      union all
+      select * from payment_rows where q is null or payment_rows.matched is not null
+    ) u
+    where (search_money.from_day is null or u.day >= search_money.from_day)
+      and (search_money.to_day is null or u.day <= search_money.to_day)
+      and (
+        search_money.before_id is null
+        or (u.day, u.at, u.id) < (search_money.before_day, search_money.before_at, search_money.before_id)
+      )
+    order by u.day desc, u.at desc, u.id desc
+    limit lim
+  )
+  select
+    pg.kind,
+    pg.id,
+    pg.group_id,
+    pg.day,
+    pg.at,
+    pg.description,
+    pg.category,
+    pg.amount_cents,
+    pg.currency,
+    pg.group_currency,
+    pg.group_amount_cents,
+    pg.paid_by,
+    pg.to_user,
+    pg.created_by,
+    mine.paid_cents,
+    mine.share_cents,
+    pg.deleted_at,
+    pg.matched,
+    pg.snippet,
+    pg.payers,
+    pg.is_refund
+  from page pg
+  left join lateral (
+    select l.paid_cents, l.share_cents
+    from public.expense_ledger l
+    where pg.kind = 'expense'
+      and l.group_id = pg.group_id
+      and l.expense_id = pg.id
+      and l.user_id = uid
+    -- Keeps this a per-row subquery, so the group and expense ids reach the ledger's window
+    -- functions instead of the ledger being computed for every group first.
+    offset 0
+  ) mine on true
+  order by pg.day desc, pg.at desc, pg.id desc;
+end;
+$_$;
+
+
+ALTER FUNCTION "public"."search_money"("query" "text", "in_group" "uuid", "person" "uuid", "from_day" "date", "to_day" "date", "categories" "text"[], "kinds" "text"[], "before_day" "date", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."search_money"("query" "text", "in_group" "uuid", "person" "uuid", "from_day" "date", "to_day" "date", "categories" "text"[], "kinds" "text"[], "before_day" "date", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) IS 'Expenses and payments in the viewer''s groups matching a query and filters, newest first. Page with before_day, before_at, before_id.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "jsonb") RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -6557,6 +7018,151 @@ $$;
 
 
 ALTER FUNCTION "public"."skip_recurring_expense"("id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."spending_summary"("in_group" "uuid" DEFAULT NULL::"uuid", "from_day" "date" DEFAULT NULL::"date", "to_day" "date" DEFAULT NULL::"date", "in_currency" "text" DEFAULT NULL::"text") RETURNS TABLE("group_id" "uuid", "currency" "text", "month" "date", "category" "text", "expense_count" integer, "spend_cents" bigint, "paid_cents" bigint, "share_cents" bigint, "payments_made_cents" bigint, "payments_received_cents" bigint, "unconverted_count" integer)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  gids uuid[];
+  tz text;
+  target text := upper(nullif(btrim(spending_summary.in_currency), ''));
+begin
+  if spending_summary.in_group is not null then
+    perform private.require_member(spending_summary.in_group);
+    gids := array[spending_summary.in_group];
+  else
+    gids := array(select private.my_group_ids());
+  end if;
+  if from_day is not null and to_day is not null and from_day > to_day then
+    raise exception using message = 'invalid_date_range', detail = 'The start date is after the end date', errcode = '22023';
+  end if;
+  if target is not null and target !~ '^[A-Z]{3}$' then
+    raise exception using message = 'invalid_currency', detail = 'Pick a currency', errcode = '22023';
+  end if;
+  select p.timezone into tz from public.profiles p where p.id = uid;
+
+  -- With in_currency, every amount (already in its group's currency) is converted once more, at
+  -- the rate on or before that expense's date (a payment's day for payments), with the lookup
+  -- and rounding expenses use when they are saved, plus private.insights_fx_rate's step through
+  -- a common base when two currencies have no rate between them. Amounts with no rate are left
+  -- out and counted in unconverted_count.
+  return query
+  with ledger as (
+    select
+      l.*,
+      row_number() over (partition by l.group_id, l.expense_id order by l.user_id) = 1 as first_line
+    from public.expense_ledger l
+    where l.group_id = any (gids)
+      and (spending_summary.from_day is null or l.spent_at >= spending_summary.from_day)
+      and (spending_summary.to_day is null or l.spent_at <= spending_summary.to_day)
+  ),
+  lines as (
+    select
+      x.group_id,
+      x.currency,
+      date_trunc('month', x.spent_at)::date as month,
+      coalesce(x.category, 'other') as category,
+      x.user_id,
+      x.first_line,
+      x.total_cents,
+      x.paid_cents,
+      x.share_cents,
+      case
+        when target is null or target = x.currency then 1::numeric
+        else private.insights_fx_rate(x.currency::char(3), target::char(3), x.spent_at)
+      end as rate
+    from ledger x
+    where x.first_line or x.user_id = uid
+  ),
+  payments as (
+    select
+      st.group_id,
+      g.currency::text as currency,
+      (st.settled_at at time zone coalesce(tz, 'UTC'))::date as day,
+      st.from_user,
+      st.to_user,
+      private.convert_minor(st.amount_cents, st.fx_rate, st.currency::text, g.currency::text) as amount
+    from public.settlements st
+    join public.groups g on g.id = st.group_id
+    where st.group_id = any (gids)
+      and st.deleted_at is null
+      and (st.from_user = uid or st.to_user = uid)
+  ),
+  payment_lines as (
+    select
+      p.*,
+      case
+        when target is null or target = p.currency then 1::numeric
+        else private.insights_fx_rate(p.currency::char(3), target::char(3), p.day)
+      end as rate
+    from payments p
+    where (spending_summary.from_day is null or p.day >= spending_summary.from_day)
+      and (spending_summary.to_day is null or p.day <= spending_summary.to_day)
+  )
+  select
+    x.group_id,
+    x.currency,
+    x.month,
+    x.category,
+    sum(x.expense_count)::int,
+    sum(x.spend_cents)::bigint,
+    sum(x.paid_cents)::bigint,
+    sum(x.share_cents)::bigint,
+    sum(x.payments_made_cents)::bigint,
+    sum(x.payments_received_cents)::bigint,
+    sum(x.unconverted_count)::int
+  from (
+    select
+      l.group_id,
+      coalesce(target, l.currency) as currency,
+      l.month,
+      l.category,
+      -- Converted expenses only; the rest are in unconverted_count.
+      count(*) filter (where l.first_line and l.rate is not null) as expense_count,
+      coalesce(sum(private.convert_minor(l.total_cents, l.rate, l.currency, coalesce(target, l.currency)))
+        filter (where l.first_line and l.rate is not null), 0) as spend_cents,
+      coalesce(sum(private.convert_minor(l.paid_cents, l.rate, l.currency, coalesce(target, l.currency)))
+        filter (where l.user_id = uid and l.rate is not null), 0) as paid_cents,
+      coalesce(sum(private.convert_minor(l.share_cents, l.rate, l.currency, coalesce(target, l.currency)))
+        filter (where l.user_id = uid and l.rate is not null), 0) as share_cents,
+      0::bigint as payments_made_cents,
+      0::bigint as payments_received_cents,
+      count(*) filter (where l.first_line and l.rate is null) as unconverted_count
+    from lines l
+    group by l.group_id, l.currency, l.month, l.category
+    union all
+    select
+      p.group_id,
+      coalesce(target, p.currency),
+      date_trunc('month', p.day)::date,
+      null::text,
+      0,
+      0,
+      0,
+      0,
+      coalesce(sum(private.convert_minor(p.amount, p.rate, p.currency, coalesce(target, p.currency)))
+        filter (where p.from_user = uid and p.rate is not null), 0),
+      coalesce(sum(private.convert_minor(p.amount, p.rate, p.currency, coalesce(target, p.currency)))
+        filter (where p.to_user = uid and p.rate is not null), 0),
+      count(*) filter (where p.rate is null)
+    from payment_lines p
+    group by p.group_id, p.currency, date_trunc('month', p.day)
+  ) x
+  group by x.group_id, x.currency, x.month, x.category
+  order by x.month, x.group_id, x.category nulls last;
+end;
+$_$;
+
+
+ALTER FUNCTION "public"."spending_summary"("in_group" "uuid", "from_day" "date", "to_day" "date", "in_currency" "text") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."spending_summary"("in_group" "uuid", "from_day" "date", "to_day" "date", "in_currency" "text") IS 'The viewer''s spending per group, month and category, in group currency or converted into in_currency at each expense''s date. Payment rows have no category.';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."transfer_ownership"("group_id" "uuid", "user_id" "uuid") RETURNS "void"
@@ -7347,6 +7953,124 @@ COMMENT ON COLUMN "public"."expense_splits"."adjustment_cents" IS 'Adjustment sp
 
 
 
+CREATE OR REPLACE VIEW "public"."expense_ledger" WITH ("security_invoker"='true') AS
+ WITH "totals" AS NOT MATERIALIZED (
+         SELECT "e"."id",
+            "e"."group_id",
+            "e"."spent_at",
+            "e"."category",
+            ("g"."currency")::"text" AS "currency",
+                CASE
+                    WHEN "e"."is_refund" THEN '-1'::integer
+                    ELSE 1
+                END AS "sign",
+            "private"."convert_minor"("e"."amount_cents", "e"."fx_rate", ("e"."currency")::"text", ("g"."currency")::"text") AS "total"
+           FROM ("public"."expenses" "e"
+             JOIN "public"."groups" "g" ON (("g"."id" = "e"."group_id")))
+          WHERE ("e"."deleted_at" IS NULL)
+        ), "split_parts" AS NOT MATERIALIZED (
+         SELECT "t"."id",
+            "t"."group_id",
+            "t"."spent_at",
+            "t"."category",
+            "t"."currency",
+            "t"."sign",
+            "t"."total",
+            "s"."user_id",
+            "div"((("t"."total")::numeric * ("s"."share_cents")::numeric), "sum"("s"."share_cents") OVER "w") AS "base",
+            "mod"((("t"."total")::numeric * ("s"."share_cents")::numeric), "sum"("s"."share_cents") OVER "w") AS "rem"
+           FROM ("totals" "t"
+             JOIN "public"."expense_splits" "s" ON (("s"."expense_id" = "t"."id")))
+          WINDOW "w" AS (PARTITION BY "t"."group_id", "t"."id")
+        ), "split_shares" AS NOT MATERIALIZED (
+         SELECT "p"."group_id",
+            "p"."id",
+            "p"."spent_at",
+            "p"."category",
+            "p"."currency",
+            "p"."sign",
+            "p"."total",
+            "p"."user_id",
+            ("p"."base" + (
+                CASE
+                    WHEN (("row_number"() OVER (PARTITION BY "p"."group_id", "p"."id" ORDER BY "p"."rem" DESC, "p"."user_id"))::numeric <= (("p"."total")::numeric - "sum"("p"."base") OVER (PARTITION BY "p"."group_id", "p"."id"))) THEN 1
+                    ELSE 0
+                END)::numeric) AS "share"
+           FROM "split_parts" "p"
+        ), "payer_parts" AS NOT MATERIALIZED (
+         SELECT "t"."id",
+            "t"."group_id",
+            "t"."spent_at",
+            "t"."category",
+            "t"."currency",
+            "t"."sign",
+            "t"."total",
+            "x"."user_id",
+            "div"((("t"."total")::numeric * ("x"."paid_cents")::numeric), "sum"("x"."paid_cents") OVER "w") AS "base",
+            "mod"((("t"."total")::numeric * ("x"."paid_cents")::numeric), "sum"("x"."paid_cents") OVER "w") AS "rem"
+           FROM ("totals" "t"
+             JOIN "public"."expense_payers" "x" ON (("x"."expense_id" = "t"."id")))
+          WINDOW "w" AS (PARTITION BY "t"."group_id", "t"."id")
+        ), "payer_shares" AS NOT MATERIALIZED (
+         SELECT "p"."group_id",
+            "p"."id",
+            "p"."spent_at",
+            "p"."category",
+            "p"."currency",
+            "p"."sign",
+            "p"."total",
+            "p"."user_id",
+            ("p"."base" + (
+                CASE
+                    WHEN (("row_number"() OVER (PARTITION BY "p"."group_id", "p"."id" ORDER BY "p"."rem" DESC, "p"."user_id"))::numeric <= (("p"."total")::numeric - "sum"("p"."base") OVER (PARTITION BY "p"."group_id", "p"."id"))) THEN 1
+                    ELSE 0
+                END)::numeric) AS "paid"
+           FROM "payer_parts" "p"
+        ), "lines" AS NOT MATERIALIZED (
+         SELECT "s"."group_id",
+            "s"."id",
+            "s"."spent_at",
+            "s"."category",
+            "s"."currency",
+            "s"."sign",
+            "s"."total",
+            "s"."user_id",
+            (0)::numeric AS "paid",
+            "s"."share"
+           FROM "split_shares" "s"
+        UNION ALL
+         SELECT "p"."group_id",
+            "p"."id",
+            "p"."spent_at",
+            "p"."category",
+            "p"."currency",
+            "p"."sign",
+            "p"."total",
+            "p"."user_id",
+            "p"."paid",
+            (0)::numeric AS "numeric"
+           FROM "payer_shares" "p"
+        )
+ SELECT "group_id",
+    "id" AS "expense_id",
+    "user_id",
+    "spent_at",
+    "category",
+    "currency",
+    ("sign" * "total") AS "total_cents",
+    ((("sign")::numeric * "sum"("paid")))::bigint AS "paid_cents",
+    ((("sign")::numeric * "sum"("share")))::bigint AS "share_cents"
+   FROM "lines" "l"
+  GROUP BY "group_id", "id", "user_id", "spent_at", "category", "currency", "sign", "total";
+
+
+ALTER VIEW "public"."expense_ledger" OWNER TO "postgres";
+
+
+COMMENT ON VIEW "public"."expense_ledger" IS 'Per expense and person: paid and share in group currency (live expenses only).';
+
+
+
 CREATE TABLE IF NOT EXISTS "public"."friendships" (
     "user_id" "uuid" NOT NULL,
     "friend_id" "uuid" NOT NULL,
@@ -7855,11 +8579,15 @@ CREATE INDEX "recurring_heads_ups_user_id_idx" ON "private"."recurring_heads_ups
 
 
 
-CREATE INDEX "activity_actor_id_idx" ON "public"."activity" USING "btree" ("actor_id");
+CREATE INDEX "activity_actor_id_created_at_idx" ON "public"."activity" USING "btree" ("actor_id", "created_at" DESC, "id" DESC);
 
 
 
 CREATE INDEX "activity_group_id_created_at_idx" ON "public"."activity" USING "btree" ("group_id", "created_at" DESC);
+
+
+
+CREATE INDEX "activity_subject_id_idx" ON "public"."activity" USING "btree" ("subject_id", "created_at" DESC);
 
 
 
@@ -7884,6 +8612,10 @@ CREATE INDEX "blocks_blocked_id_idx" ON "public"."blocks" USING "btree" ("blocke
 
 
 CREATE INDEX "comments_author_id_idx" ON "public"."comments" USING "btree" ("author_id");
+
+
+
+CREATE INDEX "comments_body_trgm_idx" ON "public"."comments" USING "gin" ("body" "extensions"."gin_trgm_ops") WHERE (("expense_id" IS NOT NULL) AND ("deleted_at" IS NULL));
 
 
 
@@ -7967,11 +8699,19 @@ CREATE INDEX "expenses_created_by_idx" ON "public"."expenses" USING "btree" ("cr
 
 
 
+CREATE INDEX "expenses_description_trgm_idx" ON "public"."expenses" USING "gin" ("description" "extensions"."gin_trgm_ops");
+
+
+
 CREATE INDEX "expenses_event_id_idx" ON "public"."expenses" USING "btree" ("event_id");
 
 
 
 CREATE INDEX "expenses_group_id_spent_at_idx" ON "public"."expenses" USING "btree" ("group_id", "spent_at" DESC);
+
+
+
+CREATE INDEX "expenses_notes_trgm_idx" ON "public"."expenses" USING "gin" ("notes" "extensions"."gin_trgm_ops") WHERE ("notes" IS NOT NULL);
 
 
 
@@ -8060,6 +8800,10 @@ CREATE INDEX "settlements_from_user_idx" ON "public"."settlements" USING "btree"
 
 
 CREATE INDEX "settlements_group_id_idx" ON "public"."settlements" USING "btree" ("group_id", "settled_at" DESC);
+
+
+
+CREATE INDEX "settlements_note_trgm_idx" ON "public"."settlements" USING "gin" ("note" "extensions"."gin_trgm_ops") WHERE ("note" IS NOT NULL);
 
 
 
@@ -9289,6 +10033,10 @@ REVOKE ALL ON FUNCTION "private"."has_block"("a" "uuid", "b" "uuid") FROM PUBLIC
 
 
 
+REVOKE ALL ON FUNCTION "private"."insights_fx_rate"("from_currency" character, "to_currency" character, "on_day" "date") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."invoke_edge_function"("fn" "text", "body" "jsonb") FROM PUBLIC;
 
 
@@ -9665,6 +10413,12 @@ GRANT ALL ON FUNCTION "public"."delete_settlement"("id" "uuid") TO "service_role
 
 
 
+REVOKE ALL ON FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."deleted_items"("in_group" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text", "rejected" "uuid"[]) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."email_outbox_report"("batch" "uuid", "delivered" boolean, "error" "text", "rejected" "uuid"[]) TO "service_role";
 
@@ -9679,6 +10433,12 @@ GRANT ALL ON FUNCTION "public"."email_unsubscribe"("token" "text", "action" "tex
 
 REVOKE ALL ON FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."forget_mfa_recovery_codes"("target" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."friend_activity"("friend" "uuid", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "service_role";
 
 
 
@@ -9841,6 +10601,12 @@ GRANT ALL ON FUNCTION "public"."schedule_event"("event_id" "uuid", "starts_at" t
 
 
 
+REVOKE ALL ON FUNCTION "public"."search_money"("query" "text", "in_group" "uuid", "person" "uuid", "from_day" "date", "to_day" "date", "categories" "text"[], "kinds" "text"[], "before_day" "date", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."search_money"("query" "text", "in_group" "uuid", "person" "uuid", "from_day" "date", "to_day" "date", "categories" "text"[], "kinds" "text"[], "before_day" "date", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."search_money"("query" "text", "in_group" "uuid", "person" "uuid", "from_day" "date", "to_day" "date", "categories" "text"[], "kinds" "text"[], "before_day" "date", "before_at" timestamp with time zone, "before_id" "uuid", "max_rows" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "jsonb") TO "service_role";
@@ -9905,6 +10671,12 @@ GRANT ALL ON FUNCTION "public"."simplified_debts"("group_id" "uuid") TO "service
 REVOKE ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."skip_recurring_expense"("id" "uuid") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."spending_summary"("in_group" "uuid", "from_day" "date", "to_day" "date", "in_currency" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."spending_summary"("in_group" "uuid", "from_day" "date", "to_day" "date", "in_currency" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."spending_summary"("in_group" "uuid", "from_day" "date", "to_day" "date", "in_currency" "text") TO "service_role";
 
 
 
@@ -10114,6 +10886,11 @@ GRANT SELECT("paid_cents") ON TABLE "public"."expense_payers" TO "authenticated"
 
 GRANT ALL ON TABLE "public"."expense_splits" TO "service_role";
 GRANT SELECT ON TABLE "public"."expense_splits" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."expense_ledger" TO "service_role";
+GRANT SELECT ON TABLE "public"."expense_ledger" TO "authenticated";
 
 
 
