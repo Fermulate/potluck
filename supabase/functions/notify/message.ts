@@ -93,7 +93,14 @@ export function message(
       return {
         title: c.memberAdded,
         body: c.memberAddedBody,
-        url: group,
+        // Someone not on Potluck yet gets the claim link for their saved seat.
+        url: d.claim_code ? `/join/${encodeURIComponent(String(d.claim_code))}` : group,
+      }
+    case 'friend.added':
+      return {
+        title: c.friendAdded,
+        body: c.friendAddedBody,
+        url: d.user_id ? `/friends/${d.user_id}` : '/friends',
       }
     case 'settlement.created':
       return { title: c.payment, body: c.paymentBody, url: payment }

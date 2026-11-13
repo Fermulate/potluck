@@ -147,6 +147,41 @@ describe('can', () => {
     })
   })
 
+  describe('people not on Potluck yet', () => {
+    it('lets whoever may invite add them, like add_placeholder_member', () => {
+      expect(everyone((r) => can(r, 'placeholder.add', { membersCanInvite: true }))).toEqual([
+        true,
+        true,
+        true,
+      ])
+      expect(everyone((r) => can(r, 'placeholder.add', { membersCanInvite: false }))).toEqual([
+        true,
+        true,
+        false,
+      ])
+    })
+
+    it('lets whoever added them rename them even when members cannot invite', () => {
+      const locked = { membersCanInvite: false }
+      expect(everyone((r) => can(r, 'placeholder.edit', { ...locked, isCreator: true }))).toEqual([
+        true,
+        true,
+        true,
+      ])
+      expect(everyone((r) => can(r, 'placeholder.edit', { ...locked, isCreator: false }))).toEqual(
+        [true, true, false],
+      )
+    })
+
+    it('lets admins or whoever added them remove them once settled', () => {
+      expect(
+        everyone((r) => can(r, 'placeholder.remove', { netCents: 0, isCreator: false })),
+      ).toEqual([true, true, false])
+      expect(can('member', 'placeholder.remove', { netCents: 0, isCreator: true })).toBe(true)
+      expect(can('owner', 'placeholder.remove', { netCents: -700, isCreator: true })).toBe(false)
+    })
+  })
+
   describe('leaving', () => {
     it('lets settled admins and members leave', () => {
       expect(everyone((r) => can(r, 'group.leave', { netCents: 0 }))).toEqual([false, true, true])

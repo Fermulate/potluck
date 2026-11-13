@@ -235,11 +235,33 @@ function copyFor(job: EmailJob): Copy {
         cta: 'Open Me',
       }
     case 'member.added':
+      if (d.placeholder === true) {
+        const where = group ?? 'their group'
+        return {
+          subject:
+            d.reminder === true
+              ? `Reminder: ${actor} saved you a seat in ${where}`
+              : `${actor} added you to ${where} on Potluck`,
+          heading: `${actor} added you to ${where}.`,
+          lines: [
+            'They are splitting costs on Potluck and already counted you in.',
+            'Sign up with this email address (or open the link) to see what has been split and settle up. It is free.',
+          ],
+          cta: 'Take your seat',
+        }
+      }
       return {
         subject: `${actor} added you to ${group ?? 'a group'}`,
         heading: `${actor} added you to ${group ?? 'a group'}.`,
         lines: ['Expenses and plans in the group now include you. Pull up a chair.'],
         cta: 'Open the group',
+      }
+    case 'friend.added':
+      return {
+        subject: `${actor} is now your friend on Potluck`,
+        heading: `${actor} accepted your friend link.`,
+        lines: ['You can split with each other now, no group needed.'],
+        cta: 'Open their page',
       }
     case 'member.joined':
       return {

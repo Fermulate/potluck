@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest'
+import { friendInviteSchema, placeholderSchema } from '../index'
+
+describe('placeholderSchema', () => {
+  it('trims the name and lower cases the email, like add_placeholder_member', () => {
+    expect(placeholderSchema.parse({ display_name: ' Sam ', email: ' Sam@Example.com ' })).toEqual({
+      display_name: 'Sam',
+      email: 'sam@example.com',
+    })
+  })
+
+  it('treats a missing or blank email as none', () => {
+    expect(placeholderSchema.parse({ display_name: 'Sam' }).email).toBeNull()
+    expect(placeholderSchema.parse({ display_name: 'Sam', email: '   ' }).email).toBeNull()
+    expect(placeholderSchema.parse({ display_name: 'Sam', email: null }).email).toBeNull()
+  })
+
+  it.each([
+    ['a blank name', { display_name: '   ' }],
+    ['a long name', { display_name: 'x'.repeat(81) }],
+    ['a bad email', { display_name: 'Sam', email: 'not an email' }],
+  ])('rejects %s', (_label, input) => {
+    expect(placeholderSchema.safeParse(input).success).toBe(false)
+  })
+})
+
+describe('friendInviteSchema', () => {
+  it('needs an email', () => {
+    expect(friendInviteSchema.parse({ email: ' Cleo@Example.com' })).toEqual({
+      email: 'cleo@example.com',
+    })
+    expect(friendInviteSchema.safeParse({ email: '' }).success).toBe(false)
+  })
+})

@@ -29,6 +29,12 @@ export interface ActionContext {
   'invite.create': { membersCanInvite: boolean; inviteRole: 'admin' | 'member' }
   'member.remove': { targetRole: GroupRole; targetNetCents: number }
   'member.changeRole': { targetRole: GroupRole; newRole: GroupRole }
+  /** Adding someone not on Potluck yet (`add_placeholder_member`): whoever may invite. */
+  'placeholder.add': { membersCanInvite: boolean }
+  /** Renaming, changing the email of, or reminding a placeholder. `isCreator`: the viewer added them. */
+  'placeholder.edit': { membersCanInvite: boolean; isCreator: boolean }
+  /** `remove_placeholder`: admins or whoever added them, once settled. */
+  'placeholder.remove': { netCents: number; isCreator: boolean }
   'group.edit': undefined
   'group.delete': undefined
   'group.transferOwnership': undefined
@@ -71,6 +77,11 @@ const RULES: { [A in Action]: Rule<A> } = {
     newRole !== 'owner' &&
     newRole !== targetRole &&
     ((role === 'owner' && targetRole !== 'owner') || (role === 'admin' && targetRole === 'member')),
+  'placeholder.add': (role, { membersCanInvite }) => isManager(role) || membersCanInvite,
+  'placeholder.edit': (role, { membersCanInvite, isCreator }) =>
+    isCreator || isManager(role) || membersCanInvite,
+  'placeholder.remove': (role, { netCents, isCreator }) =>
+    netCents === 0 && (isCreator || isManager(role)),
   'group.edit': isManager,
   'group.delete': (role) => role === 'owner',
   'group.transferOwnership': (role) => role === 'owner',

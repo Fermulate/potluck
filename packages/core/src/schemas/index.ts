@@ -30,3 +30,10 @@ export {
   type SettleUpInput,
   type SettleUpPayload,
 } from './settle-invite'
+export {
+  friendInviteSchema,
+  placeholderSchema,
+  type FriendInviteInput,
+  type PlaceholderInput,
+  type PlaceholderPayload,
+} from './people'
