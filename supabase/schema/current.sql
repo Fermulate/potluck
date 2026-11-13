@@ -3478,6 +3478,47 @@ $$;
 ALTER FUNCTION "private"."settlements_notify"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."settlements_notify_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  kind text;
+begin
+  if old.deleted_at is null and new.deleted_at is not null then
+    kind := 'settlement.deleted';
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    kind := 'settlement.restored';
+  elsif new.deleted_at is null
+    and (new.from_user, new.to_user, new.amount_cents, new.currency, new.settled_at)
+        is distinct from
+        (old.from_user, old.to_user, old.amount_cents, old.currency, old.settled_at) then
+    kind := 'settlement.updated';
+  else
+    return null;
+  end if;
+
+  perform private.notify(
+    array[old.from_user, old.to_user, new.from_user, new.to_user],
+    kind,
+    jsonb_build_object(
+      'settlement_id', new.id,
+      'group_id', new.group_id,
+      'from_user', new.from_user,
+      'to_user', new.to_user,
+      'amount_cents', new.amount_cents,
+      'currency', new.currency
+    ),
+    coalesce(auth.uid(), new.created_by)
+  );
+  return null;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."settlements_notify_change"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."shares_group_with"("other" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -6898,6 +6939,10 @@ CREATE OR REPLACE TRIGGER "settlements_activity" AFTER INSERT OR UPDATE ON "publ
 
 
 CREATE OR REPLACE TRIGGER "settlements_notify" AFTER INSERT ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify"();
+
+
+
+CREATE OR REPLACE TRIGGER "settlements_notify_change" AFTER UPDATE ON "public"."settlements" FOR EACH ROW EXECUTE FUNCTION "private"."settlements_notify_change"();
 
 
 

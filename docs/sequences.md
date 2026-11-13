@@ -220,7 +220,7 @@ sequenceDiagram
   W->>DB: refetch group_balances
 ```
 
-`update_settlement(id, payload)` edits a payment and `delete_settlement(id)` soft deletes it; `restore_settlement(id)` brings it back. All three are open to the payer, the recipient, whoever recorded it, or an admin. Anything that would move the balance of someone who has left is refused (`member_not_in_group`); the note stays editable. Each change logs `settlement.updated`, `settlement.deleted` or `settlement.restored` in the activity feed.
+`update_settlement(id, payload)` edits a payment and `delete_settlement(id)` soft deletes it; `restore_settlement(id)` brings it back. All three are open to the payer, the recipient, whoever recorded it, or an admin. Anything that would move the balance of someone who has left is refused (`member_not_in_group`); the note stays editable. Each change logs `settlement.updated`, `settlement.deleted` or `settlement.restored` in the activity feed and notifies the other people in the payment (a note-only edit is logged, not notified).
 
 ## Settle with a friend across groups
 

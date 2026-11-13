@@ -70,10 +70,15 @@ test('copy follows the recipient language, English when it is missing or unknown
 })
 
 test('payment pushes open the payment, and a comment on one does too', () => {
-  assert.equal(
-    message(row('settlement.created', { group_id: 'g1', settlement_id: 's1' })).url,
-    '/payments/s1',
-  )
+  for (const type of [
+    'settlement.created',
+    'settlement.updated',
+    'settlement.deleted',
+    'settlement.restored',
+  ]) {
+    assert.equal(message(row(type, { group_id: 'g1', settlement_id: 's1' })).url, '/payments/s1')
+  }
+  assert.equal(message(row('settlement.deleted', {}), 'es').title, 'Pago eliminado')
   assert.equal(
     message(row('comment.created', { group_id: 'g1', settlement_id: 's1' })).url,
     '/payments/s1',

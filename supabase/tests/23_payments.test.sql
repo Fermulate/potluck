@@ -1,8 +1,8 @@
 -- Payments, second version: settle_up_v2, update_settlement, restore_settlement, comments on
 -- payments, payment_methods, pairwise and group debts, settle_all, friend_balances,
--- settle_with_friend and remind_debt.
+-- settle_with_friend, remind_debt and the settlement change notifications.
 begin;
-select plan(107);
+select plan(117);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values
@@ -24,6 +24,16 @@ $$;
 
 create function pg_temp.notes(handle text, kind text) returns int language sql security definer as $$
   select count(*)::int from public.notifications where user_id = tests.uid(handle) and type = kind
+$$;
+
+-- The category of someone's latest notification of a kind, and whether it was pushed.
+create function pg_temp.route(handle text, kind text) returns text language sql security definer as $$
+  select t.category || case when 'push' = any (n.channels) then ' push' else ' no push' end
+  from public.notifications n
+  join private.notification_types t on t.type = n.type
+  where n.user_id = tests.uid(handle) and n.type = kind
+  order by n.created_at desc
+  limit 1
 $$;
 
 -- A fresh group, simplify on or off, owned by o with the given members.
@@ -120,6 +130,9 @@ select is(
   'a party can change the amount'
 );
 select is(pg_temp.net(tests.id('g'), 'b'), 3000::bigint, 'the balance follows the edit');
+select is(pg_temp.notes('b', 'settlement.updated'), 1, 'the other person hears about the edit');
+select is(pg_temp.notes('a', 'settlement.updated'), 0, 'whoever edits is not told about it');
+select is(pg_temp.route('b', 'settlement.updated'), 'payments push', 'an edit is a payments notification, pushed by default');
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('s1') and verb = 'settlement.updated'),
   1,
@@ -150,6 +163,7 @@ select is(
   1.5::numeric(24,12),
   'a note change keeps the rate'
 );
+select is(pg_temp.notes('a', 'settlement.updated'), 1, 'a new day is announced, a note-only edit is not');
 
 select tests.login('x');
 select throws_ok(
@@ -164,9 +178,13 @@ select throws_ok(
 
 -- delete and restore -----------------------------------------------------------------------------
 
+select tests.login('a');
+select public.set_notification_pref('payments', push => false);
 select tests.login('b');
 select lives_ok(format($$ select public.delete_settlement(%L) $$, tests.id('s1')), 'the payer deletes the payment');
 select is(pg_temp.net(tests.id('g'), 'b'), 500::bigint, 'deleting takes it off the balance');
+select is(pg_temp.notes('a', 'settlement.deleted'), 1, 'the other person hears about the delete');
+select is(pg_temp.route('a', 'settlement.deleted'), 'payments no push', 'with payment pushes off it reaches the inbox only');
 
 select tests.login('a');
 select throws_ok(
@@ -181,6 +199,10 @@ select throws_ok(
 select tests.login('a');
 select ok((select deleted_at is null from public.restore_settlement(tests.id('s1'))), 'a party restores it');
 select is(pg_temp.net(tests.id('g'), 'b'), 3000::bigint, 'restoring puts the balance back');
+select is(pg_temp.notes('b', 'settlement.restored'), 1, 'the other person hears about the restore');
+select is(pg_temp.route('b', 'settlement.restored'), 'payments push', 'a restore is a payments notification');
+select is(pg_temp.notes('a', 'settlement.restored'), 0, 'whoever restores is not told about it');
+select public.set_notification_pref('payments', push => true);
 select is(
   (select count(*)::int from public.activity where subject_id = tests.id('s1') and verb = 'settlement.restored'),
   1,
@@ -188,6 +210,7 @@ select is(
 );
 select tests.login('o');
 select lives_ok(format($$ select public.restore_settlement(%L) $$, tests.id('s1')), 'restoring a live payment is a no-op');
+select is(pg_temp.notes('b', 'settlement.restored'), 1, 'and tells nobody');
 select tests.login('x');
 select throws_ok(format($$ select public.restore_settlement(%L) $$, tests.id('s1')), '42501', 'not_a_member', 'outsiders cannot restore');
 

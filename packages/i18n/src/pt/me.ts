@@ -53,6 +53,18 @@ export const notifications = {
         title: 'Pagamento registrado',
         body: '{actor} registrou seu pagamento de {amount} para {payee}',
       },
+      updated: {
+        title: 'Pagamento alterado',
+        body: '{actor} alterou um pagamento de {amount} em {group}',
+      },
+      deleted: {
+        title: 'Pagamento excluído',
+        body: '{actor} excluiu um pagamento de {amount} em {group}',
+      },
+      restored: {
+        title: 'Pagamento restaurado',
+        body: '{actor} restaurou um pagamento de {amount} em {group}',
+      },
     },
     member: {
       joined: { title: 'Rosto novo em {group}', body: '{actor} acabou de entrar. Diga oi.' },

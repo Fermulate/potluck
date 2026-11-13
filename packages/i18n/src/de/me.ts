@@ -59,6 +59,18 @@ export const notifications = {
         title: 'Zahlung erfasst',
         body: '{actor} hat deine Zahlung über {amount} an {payee} erfasst',
       },
+      updated: {
+        title: 'Zahlung geändert',
+        body: '{actor} hat eine Zahlung über {amount} in {group} geändert',
+      },
+      deleted: {
+        title: 'Zahlung gelöscht',
+        body: '{actor} hat eine Zahlung über {amount} in {group} gelöscht',
+      },
+      restored: {
+        title: 'Zahlung wiederhergestellt',
+        body: '{actor} hat eine Zahlung über {amount} in {group} wiederhergestellt',
+      },
     },
     member: {
       joined: {
