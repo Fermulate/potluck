@@ -13,7 +13,7 @@ import {
   SheetContent,
 } from '@potluck/ui'
 import { SlidersHorizontal, X } from 'lucide-react'
-import { useId, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { categoryEmoji, categoryLabel } from '@/features/expenses/format'
 import { avatarSrc } from '@/lib/queries'
 import {
@@ -150,11 +150,15 @@ export function FilterSheet({
   categories?: readonly string[]
   showKind?: boolean
 }) {
+  const [customPicked, setCustomPicked] = useState(false)
+  const dated = Boolean(filters.from || filters.to)
   const preset = matchingPreset(filters, today)
-  const custom = !preset && Boolean(filters.from || filters.to)
+  const custom = dated && (customPicked || !preset)
   const set = (patch: Partial<MoneyFilters>) => onChange({ ...filters, ...patch })
-  const setPreset = (next: DatePreset | null) =>
+  const setPreset = (next: DatePreset | null) => {
+    setCustomPicked(false)
     set(next ? presetRange(next, today) : { from: null, to: null })
+  }
   const selectedCategories = filters.categories ?? []
   const toggleCategory = (c: string) =>
     set({
@@ -193,22 +197,23 @@ export function FilterSheet({
         <div className="flex flex-col gap-4">
           <Section title={t('filters.when')}>
             <div role="group" aria-label={t('filters.when')} className="flex flex-wrap gap-2">
-              <Chip selected={!filters.from && !filters.to} onClick={() => setPreset(null)}>
+              <Chip selected={!dated} onClick={() => setPreset(null)}>
                 {t('filters.anyTime')}
               </Chip>
               {(['thisMonth', 'lastMonth', 'thisYear'] as const).map((p) => (
-                <Chip key={p} selected={preset === p} onClick={() => setPreset(p)}>
+                <Chip key={p} selected={!custom && preset === p} onClick={() => setPreset(p)}>
                   {t(`filters.${p}`)}
                 </Chip>
               ))}
               <Chip
                 selected={custom}
-                onClick={() =>
+                onClick={() => {
+                  setCustomPicked(true)
                   set({
                     from: filters.from ?? presetRange('thisMonth', today).from,
                     to: filters.to ?? today,
                   })
-                }
+                }}
               >
                 {t('filters.custom')}
               </Chip>
