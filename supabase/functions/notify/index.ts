@@ -6,7 +6,7 @@ import { adminClient } from '../_shared/admin.ts'
 import { hasEdgeSecret, json } from '../_shared/http.ts'
 import { message, type NotificationRow } from './message.ts'
 
-const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.potluck-web.workers.dev'
+const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.fermulate.com'
 
 Deno.serve(async (req) => {
   if (!hasEdgeSecret(req)) return json({ error: 'forbidden' }, 403)

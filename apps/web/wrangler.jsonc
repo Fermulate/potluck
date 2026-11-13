@@ -6,4 +6,11 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application",
   },
+  // Listing the custom domain keeps `wrangler deploy` from detaching it. Self-hosters: change or
+  // remove this route, the deploy fails on a zone your account does not own.
+  "routes": [{ "pattern": "potluck.fermulate.com", "custom_domain": true }],
+  // With `routes` set, wrangler turns workers.dev off unless asked. Keep it on: the old URL stays a
+  // working second origin, and PR previews are `pr-<number>-potluck.potluck-web.workers.dev`.
+  "workers_dev": true,
+  "preview_urls": true,
 }

@@ -4,7 +4,7 @@
 import { adminClient } from '../_shared/admin.ts'
 import { escapeText, fold } from './ics.ts'
 
-const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.potluck-web.workers.dev'
+const appUrl = Deno.env.get('APP_URL') ?? 'https://potluck.fermulate.com'
 
 function stamp(iso: string): string {
   return new Date(iso)
