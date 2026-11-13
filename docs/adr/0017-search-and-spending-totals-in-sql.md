@@ -1,0 +1,23 @@
+# 17. Search and spending totals in SQL, over one ledger view
+
+- Status: accepted
+- Date: 2026-11-13
+
+## Context
+
+Splitwise parity needs search across every group (descriptions, notes, comments, people, amounts) and a Totals screen with charts: what a group spent, what you paid, your share, payments made and received, per month and category, matching the balances to the cent. The client only loads one group's expenses at a time, PostgREST caps a response at 1000 rows, and a phone should not download every expense of every group to add them up. Totals must use the exact convert-once and largest-remainder rules of `group_balances`, or a month's share and the balance drift apart by a cent. Expenses are about to get several payers (Batch 1), so anything that reads `expenses.paid_by` directly would have to be found and fixed later.
+
+## Decision
+
+- **One ledger view.** `public.expense_ledger` (`security_invoker`) has one row per live expense and person with `paid_cents` and `share_cents` in group currency, computed exactly like `group_balances`. Every step partitions its windows by `(group_id, id)` so a filter on a group or an expense reaches the base tables. Payers come from `expense_payers` (spread by what each paid, like the split) and a refund flips every sign, the same as `group_balances` since ADR 12.
+- **Reads that scan are RPCs.** `search_money`, `spending_summary`, `deleted_items` and `friend_activity` are `security definer`, check `private.require_member` for a single group or use `private.my_group_ids()` for all of them, and return already aggregated or paged rows. Clients never filter money across groups themselves.
+- **Text search is trigram ILIKE**, not full-text: names, amounts and short descriptions ("taco", "Uber") are substrings, not words, and the data per user is small. `pg_trgm` GIN indexes cover `expenses.description`, `expenses.notes`, `settlements.note` and live expense comments. Wildcards in the query are escaped. Paging is keyset on `(day, at, id)`.
+- **Totals are per currency, or converted the way expenses are.** Each group keeps its own currency, and the per-currency view never adds two currencies together. The "everything in one currency" view (Splitwise Pro's convert) converts each amount once more from its group's currency at the rate on or before that expense's own date (a payment's day), with the same `private.fx_rate` lookup and `convert_minor` rounding as saving an expense. When two currencies have no rate between them (EUR and GBP with only USD rates), the Spending view goes through a common base, USD then EUR: `private.insights_fx_rate` multiplies the two legs `private.fx_rate` finds and rounds to 12 places (`spendingRate` and `crossRate` in core, same cases). That helper is only for these totals: saving expenses and payments, and every balance, keep `private.fx_rate`, which never triangulates. Amounts with no rate even then are left out, counted, and their groups named, never guessed; the converted expense count covers converted expenses only. Converting per amount means a converted share can differ by a minor unit from a converted total split again; we accept that, it is the same rule everywhere.
+- **Same rules in core.** `spendingSummary` in `packages/core/src/insights` returns the same rows from raw expenses; core and pgTAP share the same test case, and a property test pins "all-time net change equals `computeBalances`". A group's filtered expense list uses the core version on data it already has.
+
+## Consequences
+
+- Search and totals stay correct as RLS and membership change, with no extra policies.
+- The ledger recomputes largest remainder on every read. Across a dozen groups and 2,400 expenses `spending_summary` takes about 150 ms, a group about 50 ms, search 15 to 35 ms (`supabase/snippets/perf_volume.sql`). If that grows, materialize the ledger per expense on write.
+- A change to how a balance is computed (refunds, several payers, adjustments) must change `group_balances`, `expense_ledger` and core together. `25_search_insights.test.sql` checks that paid minus share equals the balance, with several payers and a refund.
+- Substring search on one or two characters falls back to scanning the viewer's groups by `group_id`, which is fine at this size.
