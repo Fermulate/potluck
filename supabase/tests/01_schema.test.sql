@@ -10,10 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(126);
-select plan(98);
-select plan(100);
-select plan(101);
+select plan(130);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -271,6 +268,8 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'purge-import-batches' and schedule = '*/15 * * * *'),
   'unfinished imports are cleared every quarter hour'
+);
+select ok(
   exists (select 1 from cron.job where jobname = 'receipts-sweep' and schedule = '40 3 * * *'),
   'orphaned receipt files are swept daily'
 );

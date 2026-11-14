@@ -34,4 +34,5 @@ How a receipt photo becomes an expense, and how files are kept on expenses. The 
 - `receipt_path` is always the first attachment. A trigger mirrors an older client's writes: its file is replaced or dropped and the others stay.
 - Dropped files are deleted by the client when the bucket lets it (uploader or admin). Files uploaded for a save that never happened are deleted when the form closes, and kept for a retry while it is open.
 - The daily `receipts-sweep` job finds files in the bucket older than a day that no expense or attachment names (`private.orphan_receipts`) and has the `receipts-sweep` edge function delete them through the Storage API, which also removes the stored object. Deleting rows from `storage.objects` in SQL would leave the object behind.
+- A deleted group's files stay while it can be restored (its expenses still name them). When `purge-deleted-groups` removes it after 30 days, its rows go and the next sweep deletes the files.
 - pgTAP deletes from `storage.objects` need `set_config('storage.allow_delete_query', 'true', true)`, as the Storage API sets.

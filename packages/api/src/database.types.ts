@@ -1956,6 +1956,39 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_expense_with_attachments: {
+        Args: { attachments: Json; payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          discount_cents: number | null
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          is_refund: boolean
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_friend_invite: {
         Args: { email: string }
         Returns: {
