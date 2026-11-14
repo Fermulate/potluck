@@ -134,19 +134,16 @@ describe('GroupNotesPage', () => {
     expect(screen.getByText(t('groups.notes.theyEdited', { name: 'Cleo' }))).toBeInTheDocument()
   })
 
-  it.each(['status', 'postgres'] as const)(
-    'fetches an edit saved before the live channel joined (%s)',
-    async (step) => {
-      renderNotes(group(), [])
-      await waitFor(() => expect(box()).toHaveValue(''))
-      // Saved by Cleo while this page was still joining: no change event will ever come for it.
-      db().respond('from:group_whiteboards', { data: board('Wifi: soup', 1, 'u-cleo') })
-      act(() => emitJoined('group_whiteboards', step))
+  it('fetches an edit saved before the live channel joined', async () => {
+    renderNotes(group(), [])
+    await waitFor(() => expect(box()).toHaveValue(''))
+    // Saved by Cleo while this page was still joining: no change event will ever come for it.
+    db().respond('from:group_whiteboards', { data: board('Wifi: soup', 1, 'u-cleo') })
+    act(() => emitJoined('group_whiteboards'))
 
-      await waitFor(() => expect(box()).toHaveValue('Wifi: soup'))
-      expect(screen.getByText(t('groups.notes.theyEdited', { name: 'Cleo' }))).toBeInTheDocument()
-    },
-  )
+    await waitFor(() => expect(box()).toHaveValue('Wifi: soup'))
+    expect(screen.getByText(t('groups.notes.theyEdited', { name: 'Cleo' }))).toBeInTheDocument()
+  })
 
   it('keeps unsaved text when the channel joins late, and saves nothing on its own', async () => {
     renderNotes()
@@ -154,7 +151,7 @@ describe('GroupNotesPage', () => {
     db().respond('rpc:save_group_whiteboard', { data: board('Bins on Tuesday', 4, VIEWER) })
     db().respond('from:group_whiteboards', { data: board('Wifi: potluck123', 3) })
     fireEvent.change(box(), { target: { value: 'Bins on Tuesday' } })
-    act(() => emitJoined('group_whiteboards', 'postgres'))
+    act(() => emitJoined('group_whiteboards'))
 
     await waitFor(() =>
       expect(db().rpcArgs('save_group_whiteboard')).toEqual([

@@ -32,7 +32,6 @@ interface Listener {
   filter?: string
   handler: Handler
   onStatus?: (status: string) => void
-  onSystem?: (message: unknown) => void
 }
 
 type Row = Record<string, unknown>
@@ -177,33 +176,26 @@ export function emitChange(table: string, eventType = 'INSERT', row: unknown = {
   }
 }
 
-/**
- * Tells every channel listening to `table` that it has joined, as Realtime does: the
- * `SUBSCRIBED` status (`'status'`), or the later system message saying Postgres changes now
- * stream (`'postgres'`).
- */
-export function emitJoined(table: string, step: 'status' | 'postgres' = 'status') {
+/** Tells every channel listening to `table` that it has joined (`SUBSCRIBED`), as Realtime does. */
+export function emitJoined(table: string) {
   const topics = new Set<string>()
   for (const l of listeners.filter((l) => l.table === table)) {
     if (topics.has(l.topic)) continue
     topics.add(l.topic)
-    if (step === 'status') l.onStatus?.('SUBSCRIBED')
-    else l.onSystem?.({ extension: 'postgres_changes', status: 'ok' })
+    l.onStatus?.('SUBSCRIBED')
   }
 }
 
 function channel(topic: string) {
   const pending: Listener[] = []
-  let onSystem: ((message: unknown) => void) | undefined
   const ch = {
     topic,
-    on(type: string, filter: { table: string; filter?: string }, handler: Handler) {
-      if (type === 'system') onSystem = handler as (message: unknown) => void
-      else pending.push({ topic, table: filter.table, filter: filter.filter, handler })
+    on(_type: string, filter: { table: string; filter?: string }, handler: Handler) {
+      pending.push({ topic, table: filter.table, filter: filter.filter, handler })
       return ch
     },
     subscribe(onStatus?: (status: string) => void) {
-      listeners.push(...pending.map((l) => ({ ...l, onStatus, onSystem })))
+      listeners.push(...pending.map((l) => ({ ...l, onStatus })))
       return ch
     },
   }

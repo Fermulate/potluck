@@ -60,31 +60,28 @@ describe('useEventRealtime', () => {
     }
   })
 
-  it.each(['status', 'postgres'] as const)(
-    'refetches the whole plan once the live channel joins (%s), for answers sent before',
-    async (step) => {
-      const invalidate = vi.spyOn(client, 'invalidateQueries')
-      renderHook(() => useEventRealtime('e1', 'g1'), { wrapper })
-      expect(invalidate).not.toHaveBeenCalled()
+  it('refetches the whole plan once the live channel joins, for answers sent before', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    renderHook(() => useEventRealtime('e1', 'g1'), { wrapper })
+    expect(invalidate).not.toHaveBeenCalled()
 
-      emitJoined('availability', step)
-      await waitFor(() =>
-        expect(invalidate).toHaveBeenCalledWith({ queryKey: plansKeys.availability('e1') }),
-      )
-      for (const key of [
-        plansKeys.bestSlots('e1'),
-        plansKeys.requests('e1'),
-        guestKeys.slots('e1'),
-        guestKeys.guests('e1'),
-        guestKeys.links('e1'),
-        plansKeys.event('e1'),
-        plansKeys.rsvps('e1'),
-        plansKeys.comments('e1'),
-      ]) {
-        expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
-      }
-    },
-  )
+    emitJoined('availability')
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: plansKeys.availability('e1') }),
+    )
+    for (const key of [
+      plansKeys.bestSlots('e1'),
+      plansKeys.requests('e1'),
+      guestKeys.slots('e1'),
+      guestKeys.guests('e1'),
+      guestKeys.links('e1'),
+      plansKeys.event('e1'),
+      plansKeys.rsvps('e1'),
+      plansKeys.comments('e1'),
+    ]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
+    }
+  })
 
   it('waits for the group before listening', () => {
     renderHook(() => useEventRealtime('e1', undefined), { wrapper })

@@ -59,9 +59,10 @@ export interface RealtimeSubscription {
  * own topic, so a remount never picks up a channel the previous mount is still leaving.
  *
  * Joining takes a moment, and a change made before the join (or while reconnecting) is never
- * sent. `SUBSCRIBED` can even come before the server streams Postgres changes; the system
- * message "Subscribed to PostgreSQL" marks that. A screen that must not miss a change passes
- * `onSubscribed`, called on both, to refetch what it shows.
+ * sent. Without `postgres_changes_options.wait` the server can even answer the join before it
+ * streams Postgres changes, so the channel asks it to hold `SUBSCRIBED` until they flow. A
+ * screen that must not miss a change passes `onSubscribed`, called on every `SUBSCRIBED`
+ * (first join and each rejoin), to refetch what it shows.
  */
 let mounts = 0
 
@@ -78,12 +79,13 @@ export function useRealtime(
     joined.current = onSubscribed
   })
   const key = JSON.stringify(subscriptions)
-  const catchUp = onSubscribed !== undefined
 
   useEffect(() => {
     if (!channel) return
     const subs = JSON.parse(key) as RealtimeSubscription[]
-    let ch = supabase.channel(`${channel}:${++mounts}`)
+    let ch = supabase.channel(`${channel}:${++mounts}`, {
+      config: { postgres_changes_options: { wait: true } },
+    })
     for (const sub of subs) {
       ch = ch.on(
         'postgres_changes' as never,
@@ -97,22 +99,11 @@ export function useRealtime(
           handler.current(payload),
       )
     }
-    if (catchUp) {
-      ch = ch.on(
-        'system' as never,
-        {} as never,
-        (message: { extension?: string; status?: string }) => {
-          if (message.extension === 'postgres_changes' && message.status === 'ok') {
-            joined.current?.()
-          }
-        },
-      )
-    }
     ch.subscribe((status) => {
       if (status === 'SUBSCRIBED') joined.current?.()
     })
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [channel, key, catchUp])
+  }, [channel, key])
 }
