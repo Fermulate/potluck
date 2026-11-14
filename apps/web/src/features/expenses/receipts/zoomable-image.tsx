@@ -1,13 +1,13 @@
 import { t } from '@potluck/i18n'
 import { IconButton, cn } from '@potluck/ui'
 import { ZoomIn, ZoomOut } from 'lucide-react'
-import { useId } from 'react'
+import { useEffect, useId } from 'react'
 import { MAX_ZOOM, useZoomPan } from './use-zoom-pan'
 
 /**
  * A photo that pinches, double taps and drags to zoom. The zoom buttons sit under it, never on
  * the print; with the photo focused, + and - zoom and the arrow keys move it. Swiping sideways
- * when it is not zoomed calls `onSwipe`. Key it by `src` so a new photo starts unzoomed.
+ * when it is not zoomed calls `onSwipe`. A new `src` starts unzoomed.
  */
 export function ZoomableImage({
   src,
@@ -26,6 +26,10 @@ export function ZoomableImage({
 }) {
   const zoom = useZoomPan({ onSwipe })
   const hint = useId()
+  // A new photo starts unzoomed. The frame stays mounted, so focus stays on the button that
+  // moved to it.
+  const { reset } = zoom
+  useEffect(() => reset(), [src, reset])
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       <div

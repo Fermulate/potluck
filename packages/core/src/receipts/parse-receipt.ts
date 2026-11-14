@@ -412,6 +412,8 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // The line the last item came from, and a unit price line still waiting for its item.
   let lastItemLine = -2
   let pendingQty: { count: number | null; unit: number } | null = null
+  // What the card or cash lines say was paid.
+  const paid: number[] = []
 
   for (const [index, line] of lines.entries()) {
     const key = keys[index]!
@@ -447,6 +449,7 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         discount = (discount ?? 0) + price.cents
         break
       case 'payment':
+        paid.push(price.cents)
         itemsEnd = Math.min(itemsEnd, index)
         break
       case 'item': {
@@ -508,6 +511,10 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       else if (sums(null, null, null)) [tax, tip, discount] = [null, null, null]
     }
   }
+  // A total line read a few cents off, while the card line says exactly what the items say: the
+  // card line was the bill ("TOTAL $76.59" over "VISA $76.50" on a blurred photo).
+  const formSum = itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0)
+  if (offered.length > 0 && total !== formSum && paid.includes(formSum)) total = formSum
 
   return {
     merchant: findMerchant(lines),

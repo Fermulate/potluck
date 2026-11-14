@@ -21,10 +21,12 @@ vi.mock('tesseract.js', () => ({
       tess.logger = options.logger
       options.logger({ status: 'loading tesseract core', progress: 0.5 })
       return {
-        recognize: vi.fn(async (image: unknown) => {
+        recognize: vi.fn((image: unknown) => {
           tess.seen.push(image)
           tess.logger?.({ status: 'recognizing text', progress: 1 })
-          return { data: { text: tess.texts.shift() ?? '' } }
+          const text = tess.texts.shift() ?? ''
+          // 'slow' never finishes, like a long colour reading on a slow phone.
+          return text === 'slow' ? new Promise(() => {}) : Promise.resolve({ data: { text } })
         }),
         terminate: tess.terminate,
       }
@@ -72,6 +74,13 @@ describe('readReceiptText', () => {
     const texts = await readReceiptText(photo, { enough: () => false })
     expect(texts).toEqual(['first', 'second', 'third'])
     expect(tess.seen).toEqual(['native', 'closer', photo])
+  })
+
+  it('drops a last reading that takes too long and keeps the others', async () => {
+    tess.texts = ['first', 'second', 'slow']
+    const texts = await readReceiptText(photo, { enough: () => false, lastPassMs: 10 })
+    expect(texts).toEqual(['first', 'second'])
+    expect(tess.terminate).toHaveBeenCalled()
   })
 
   it('never reads the same photo twice', async () => {

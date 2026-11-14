@@ -99,7 +99,8 @@ export function fillFromScan(
     }
     const missing =
       choice.total && scan.totalCents !== null ? scan.totalCents - itemsTotal(next) : 0
-    if (missing > 0) {
+    // A gap of a cent or so is a misread digit, not a forgotten line: no "Everything else" for it.
+    if (missing > 0 && missing * 100 > (scan.totalCents ?? 0)) {
       next.items = [
         ...items,
         { ...newItem([...people]), name: t('expenses.scan.rest'), amountCents: missing },

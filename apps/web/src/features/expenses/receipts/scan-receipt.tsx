@@ -447,7 +447,7 @@ function Review({
                       : item.description
                   return (
                     <li key={i} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 break-words">{name}</span>
+                      <span className="min-w-0 wrap-anywhere">{name}</span>
                       {price(name, item.amountCents, (cents) =>
                         edit({
                           items: scan.items.map((x, j) =>

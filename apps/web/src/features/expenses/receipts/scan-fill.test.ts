@@ -96,6 +96,16 @@ describe('fillFromScan', () => {
     expect(fill.amount).toBe(5617)
   })
 
+  it('adds no line for a gap of a cent or so', () => {
+    const fill = fillFromScan(scan({ totalCents: 5618 }), all, {
+      draft,
+      currency: 'USD',
+      memberIds: people,
+    })
+    expect(fill.draft?.items.map((i) => i.name)).toEqual(['2× Cheeseburger', 'Fries'])
+    expect(fill.amount).toBe(5617)
+  })
+
   it('uses only the people already in the split', () => {
     const two = { ...draft, participants: ['me', 'ben'] }
     const fill = fillFromScan(scan(), all, { draft: two, currency: 'USD', memberIds: people })

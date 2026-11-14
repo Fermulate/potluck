@@ -10,6 +10,9 @@ export interface ReadProgress {
   progress: number
 }
 
+/** How long the last, colour reading may take (a long receipt on a slow phone). */
+const LAST_PASS_MS = 8000
+
 /** The reader could not start: almost always the first scan without a connection. */
 export class ReaderUnavailableError extends Error {
   constructor(cause: unknown) {
@@ -35,10 +38,13 @@ export async function readReceiptText(
     onProgress,
     signal,
     enough = () => true,
+    lastPassMs = LAST_PASS_MS,
   }: {
     onProgress?: (p: ReadProgress) => void
     signal?: AbortSignal
     enough?: (texts: string[]) => boolean
+    /** The colour reading is a last try: past this it is dropped and the readings so far stand. */
+    lastPassMs?: number
   } = {},
 ): Promise<string[]> {
   signal?.throwIfAborted()
@@ -78,7 +84,17 @@ export async function readReceiptText(
       // A copy that could not be made, or the same photo again, adds nothing.
       if (!blob || read.has(blob)) continue
       read.add(blob)
-      const { data } = await Promise.race([worker.recognize(blob), stopped])
+      const limit =
+        index === images.length - 1
+          ? new Promise<null>((resolve) => setTimeout(() => resolve(null), lastPassMs))
+          : null
+      const result = await Promise.race([
+        worker.recognize(blob),
+        stopped,
+        ...(limit ? [limit] : []),
+      ])
+      if (!result) break
+      const { data } = result
       texts.push(data.text)
       if (enough(texts)) break
     }

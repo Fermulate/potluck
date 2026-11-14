@@ -480,6 +480,17 @@ describe('do the items match the total', () => {
     expect(match('Shop\nTotal 10.00')).toBeNull()
   })
 
+  it('trusts the card line when it matches the items and the total line was misread', () => {
+    const scan = parseReceipt('Shop\nRice 2.99\nGarlic 0.99\nTOTAL $4.08\nVISA $3.98', {
+      currency: 'USD',
+    })
+    expect(scan.totalCents).toBe(398)
+    expect(scan.itemsMatch).toBe('exact')
+    // A cash line that matches nothing changes nothing.
+    const cash = parseReceipt('Shop\nRice 2.99\nTOTAL 4.08\nCash 10.00', { currency: 'USD' })
+    expect(cash.totalCents).toBe(408)
+  })
+
   it('drops a line dearer than the whole bill', () => {
     const scan = parseReceipt('Shop\nGarlic 81.89\nRice 2.99\nTotal 76.50', { currency: 'USD' })
     expect(scan.items.map((i) => i.description)).toEqual(['Rice'])

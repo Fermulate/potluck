@@ -223,7 +223,6 @@ function Viewer({
         </div>
       ) : url ? (
         <ZoomableImage
-          key={url}
           src={url}
           alt={t('expenses.attachments.alt', { number: index + 1, description })}
           onSwipe={count > 1 ? onMove : undefined}

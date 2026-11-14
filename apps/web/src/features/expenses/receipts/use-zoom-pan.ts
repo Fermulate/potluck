@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useRef,
   useState,
   type CSSProperties,
@@ -147,6 +148,7 @@ export function useZoomPan({ onSwipe }: { onSwipe?: (step: 1 | -1) => void } = {
     toggleAt(e.clientX, e.clientY)
   }
 
+  const reset = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
   const step = (factor: number) => settle(zoomAt(view, view.scale * factor, 0, 0))
 
   // Keyboard: + and - zoom, 0 resets, arrows move a zoomed photo. Unzoomed, arrows are left to
@@ -197,6 +199,6 @@ export function useZoomPan({ onSwipe }: { onSwipe?: (step: 1 | -1) => void } = {
     },
     zoomIn: () => step(1.5),
     zoomOut: () => step(1 / 1.5),
-    reset: () => setView({ scale: 1, x: 0, y: 0 }),
+    reset,
   }
 }
