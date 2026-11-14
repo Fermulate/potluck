@@ -38,7 +38,7 @@ const RANK = { exact: 3, close: 2, off: 1, unconfirmed: 0 } as const
  */
 export function bestScan(scans: ReceiptScan[]): ReceiptScan {
   const score = (s: ReceiptScan) =>
-    (s.itemsMatch ? RANK[s.itemsMatch] : 0) * 1000 +
+    (s.itemsMatch && !s.totalDerived ? RANK[s.itemsMatch] : 0) * 1000 +
     (s.totalCents !== null && !s.totalDerived ? 100 : 0) +
     s.items.length
   return scans.reduce((best, s) => (score(s) > score(best) ? s : best))

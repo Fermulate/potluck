@@ -26,14 +26,14 @@ export interface ReceiptScan {
   discountCents: number | null
   items: ReceiptItem[]
   /**
-   * True when no total line was read and the total was worked out from the card line, the cash
-   * and change lines, the subtotal or the items. The person should check it.
+   * True when no total line was read and the total is the subtotal, or else the items, with no
+   * payment line saying the same amount. The person should check it.
    */
   totalDerived: boolean
   /**
    * Whether the items (with tax, tip and discount) come to the total: `exact`, `close` (within
-   * 5%), `off`, `unconfirmed` when the total was worked out rather than read (so it cannot
-   * confirm the items), or null when there is no total or no item to compare. Anything but
+   * 5%), `off`, `unconfirmed` when the total was worked out rather than read and the items are
+   * not far off it (it cannot confirm them), or null when there is no total or no item to compare. Anything but
    * `exact` means a line was misread or missed, and the review says so.
    */
   itemsMatch: 'exact' | 'close' | 'off' | 'unconfirmed' | null
@@ -176,7 +176,7 @@ function trailingPrice(line: string, currency: string): Priced | null {
 
 const SUBTOTAL =
   /\b(sub\s*-?\s*total|subtot|sous\s*-?\s*total|zwischensumme|zw\.?\s*summe|total\s+ht|net\s+total|total\s+parcial|base\s+imponible|netto(betrag)?)\b/
-const INCLUSIVE = /\b(incl|inkl|incluse?|incluido|included|ttc|inc|dont)\b/
+const INCLUSIVE = /\b(incl|inkl|incluse?|incluido|included|ttc|inc)\b/
 const TAX =
   /\b(tax|taxes|vat|tva|iva|mwst|mw\.?\s?st|ust|gst|hst|pst|qst|impuesto|imposto|steuer|tasse)\b/
 const TIP =
@@ -185,14 +185,10 @@ const DISCOUNT =
   /\b(discount|remise|rabatt|descuento|desconto|coupon|savings|you\s+saved|reduction|promo)\b/
 const TOTAL =
   /\b(total|totale|totaal|gesamt\w*|summe|betrag|amount\s+due|balance\s+due|to\s+pay|a\s+pagar|zu\s+zahlen|montant|net\s+a\s+payer)\b/
-// A payment line starts with the payment word ("VISA 14.77", "Geg. BAR EUR 10,00"); one inside a
-// name ("Birthday Card 4.99", "Bar snacks 4.00") is an item.
 const PAYMENT =
-  /^[^a-z\d]*((cash|change|card|gift\s*card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty|ec)\b|bar\s*((eur|chf)\s*)?[\d-])/
-// Which payment line it is: the change given back, a card, or cash handed over.
+  /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b|\bbar\s+(eur|chf)\b/
+// Cash handed over and the change given back: together they say what was paid.
 const CHANGE_GIVEN = /\b(change|rendu|rendue|monnaie|wechselgeld|ruckgeld|cambio|troco)\b/
-const CARD_PAID =
-  /\b(card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|paypal|carte|cb|karte|kartenzahlung|kontaktlos|girocard|tarjeta|debito|credito|cartao|pix)\b|^ec\b/
 const CASH_PAID =
   /\b(cash|tendered|tend|especes|gegeben|geg|efectivo|dinheiro)\b|^bar\b|\bbar\s+(eur|chf)\b/
 
@@ -381,7 +377,8 @@ function itemOf(rest: string): { description: string; quantity: number } {
 
 /**
  * Whether the items, with tax and tip added and the discount taken off, come to the total:
- * `exact`, `close` (within 5% of it), `off`, or null when there is no total or no item. Run again
+ * `exact`, `close` (within 5% of it), `off`, or null when there is no total or no item. A total
+ * worked out without a total line is `unconfirmed` unless the items are far off it. Run again
  * after the person corrects a price.
  */
 export function receiptItemsMatch(
@@ -392,14 +389,14 @@ export function receiptItemsMatch(
 ): ReceiptScan['itemsMatch'] {
   const total = scan.totalCents
   if (total === null || total <= 0 || scan.items.length === 0) return null
-  if (scan.totalDerived) return 'unconfirmed'
   const sum =
     scan.items.reduce((a, i) => a + i.amountCents, 0) +
     (scan.taxCents ?? 0) +
     (scan.tipCents ?? 0) -
     (scan.discountCents ?? 0)
   const diff = Math.abs(sum - total)
-  return diff === 0 ? 'exact' : diff * 20 <= total ? 'close' : 'off'
+  const match = diff === 0 ? 'exact' : diff * 20 <= total ? 'close' : 'off'
+  return scan.totalDerived && match !== 'off' ? 'unconfirmed' : match
 }
 
 // The parser -----------------------------------------------------------------------------------
@@ -430,13 +427,10 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // The line the last item came from, and a unit price line still waiting for its item.
   let lastItemLine = -2
   let pendingQty: { count: number | null; unit: number } | null = null
-  // What the card or cash lines say was paid.
+  // What the card or cash lines say was paid, and the change given back.
   const paid: number[] = []
-  const card: number[] = []
   const cash: number[] = []
   const change: number[] = []
-  // Tax printed on top of the prices, not VAT they already include ("dont TVA", "IVA incluido").
-  let addedTax = 0
 
   for (const [index, line] of lines.entries()) {
     const key = keys[index]!
@@ -463,7 +457,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         break
       case 'tax':
         tax = (tax ?? 0) + price.cents
-        if (!INCLUSIVE.test(key)) addedTax += price.cents
         break
       case 'tip':
         tip = (tip ?? 0) + price.cents
@@ -472,10 +465,9 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         discount = (discount ?? 0) + price.cents
         break
       case 'payment':
-        paid.push(price.cents)
         if (CHANGE_GIVEN.test(key)) change.push(price.cents)
-        else if (CARD_PAID.test(key)) card.push(price.cents)
-        else if (CASH_PAID.test(key)) cash.push(price.cents)
+        else paid.push(price.cents)
+        if (CASH_PAID.test(key)) cash.push(price.cents)
         itemsEnd = Math.min(itemsEnd, index)
         break
       case 'item': {
@@ -517,17 +509,10 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     pending = null
   }
 
-  // No total line read: what was paid (every card line, as a bill can be split, and the cash
-  // handed over less the change), else the subtotal with tax and tip on top, else the items.
-  // Never one item or the cash handed over alone.
-  const totalDerived = total === null
-  if (total === null) {
-    const sum = (amounts: number[]) => amounts.reduce((a, c) => a + c, 0)
-    const handedOver = cash.length > 0 && change.length > 0 ? sum(cash) - sum(change) : 0
-    const paidOut = sum(card) + Math.max(handedOver, 0)
-    if (paidOut > 0) total = paidOut
-    else if (subtotal !== null) total = subtotal + addedTax + (tip ?? 0)
-  }
+  // No total line read: the subtotal, else the items, with nothing added on top. Payment lines
+  // never set it; one that says the same amount confirms it (below).
+  let totalDerived = total === null
+  total ??= subtotal
   // A line dearer than a printed total is a misread (a smudge read as 81.89). A total worked out
   // here cannot tell.
   const offered = items
@@ -552,7 +537,13 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // A total line read a few cents off, while the card line says exactly what the items say: the
   // card line was the bill ("TOTAL $76.59" over "VISA $76.50" on a blurred photo).
   const formSum = itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0)
-  if (offered.length > 0 && total !== formSum && paid.includes(formSum)) total = formSum
+  if (!totalDerived && offered.length > 0 && total !== formSum && paid.includes(formSum)) {
+    total = formSum
+  }
+  // A worked-out total the card paid, or the cash handed over less the change, is confirmed.
+  const sum = (amounts: number[]) => amounts.reduce((a, c) => a + c, 0)
+  const handedOver = cash.length > 0 && change.length > 0 ? sum(cash) - sum(change) : null
+  if (total !== null && (paid.includes(total) || handedOver === total)) totalDerived = false
 
   return {
     merchant: findMerchant(lines),

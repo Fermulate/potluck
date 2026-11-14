@@ -132,6 +132,22 @@ describe('ScanReceipt', () => {
     expect(within(sheet).getByText(t('expenses.scan.totalDerived'))).toBeInTheDocument()
   })
 
+  it('says when the items are far off a subtotal taken for the total', async () => {
+    ocr.text = 'Cafe\nTea 3.00\nSubtotal 7.00'
+    const { pick } = renderScan()
+    await pick()
+    const sheet = await screen.findByRole('dialog', { name: t('expenses.scan.reviewTitle') })
+    expect(within(sheet).getByText(t('expenses.scan.totalDerived'))).toBeInTheDocument()
+    expect(
+      within(sheet).getByText(
+        t('expenses.scan.itemsOff', {
+          items: formatMoney(300, 'USD'),
+          total: formatMoney(700, 'USD'),
+        }),
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('offers to attach the photo when nothing reads as prices', async () => {
     ocr.text = 'a blurry thumb'
     const { onApply, pick } = renderScan()

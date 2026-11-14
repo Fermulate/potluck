@@ -78,6 +78,20 @@ describe('scan review defaults', () => {
     expect(readingsEnough([printed])).toBe(true)
   })
 
+  it('leaves items unticked when they are far off a subtotal taken for the total', () => {
+    // Burger 14.00 and Fries 5.00 make the 19.00 subtotal; the fries were not read.
+    const read = parseReceipt(['Diner', 'Burger 14.00', 'Subtotal 19.00'].join('\n'), {
+      currency: 'USD',
+    })
+    expect(defaultChoice(read, '')).toMatchObject({ total: true, items: false })
+    expect(readingsEnough([read])).toBe(false)
+    // A reading with a printed total ranks above it even when its items are off too.
+    const printed = parseReceipt(['Diner', 'Burger 14.00', 'TOTAL 19.00'].join('\n'), {
+      currency: 'USD',
+    })
+    expect(bestScan([read, printed])).toBe(printed)
+  })
+
   it('knows when a scan found nothing usable', () => {
     expect(scanFoundSomething(scan())).toBe(true)
     expect(scanFoundSomething(scan({ items: [] }))).toBe(true)
