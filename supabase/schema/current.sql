@@ -358,6 +358,22 @@ $$;
 ALTER FUNCTION "private"."blocked_in_group"("gid" "uuid", "uid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."blocked_pair"("people" "uuid"[], "fresh" "uuid"[] DEFAULT NULL::"uuid"[]) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select exists (
+    select 1 from public.blocks b
+    where b.blocker_id = any (people)
+      and b.blocked_id = any (people)
+      and (fresh is null or b.blocker_id = any (fresh) or b.blocked_id = any (fresh))
+  );
+$$;
+
+
+ALTER FUNCTION "private"."blocked_pair"("people" "uuid"[], "fresh" "uuid"[]) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."can_manage_event"("eid" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -2814,6 +2830,17 @@ begin
 
       due := r.next_run_on;
       anchor_day := private.recurring_anchor_day(r);
+
+      -- Two people in it have a block between them: nothing posts while it stands. The dates
+      -- that came due are skipped (lifting the block brings no backlog) and the run goes on.
+      if private.recurring_has_blocked_pair(r) then
+        while due <= run_on loop
+          due := private.recurring_step(due, r.recurrence, anchor_day);
+        end loop;
+        update public.recurring_expenses x set next_run_on = due where x.id = r.id;
+        continue;
+      end if;
+
       runs := 0;
       while due <= run_on and runs < 12 loop
         fx := private.fx_rate(r.currency, g.currency, due);
@@ -3751,6 +3778,24 @@ $$;
 ALTER FUNCTION "private"."recurring_departed"("r" "public"."recurring_expenses") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."recurring_has_blocked_pair"("r" "public"."recurring_expenses") RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select private.blocked_pair(array(
+    select r.paid_by
+    union
+    select private.try_uuid(e ->> 'user_id') from jsonb_array_elements(coalesce(r.payers, '[]'::jsonb)) e
+    union
+    select c.user_id from private.compute_split_rows(r.amount_cents, r.split_type, r.splits) c
+    where c.share_cents > 0
+  ));
+$$;
+
+
+ALTER FUNCTION "private"."recurring_has_blocked_pair"("r" "public"."recurring_expenses") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") RETURNS boolean
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO ''
@@ -4030,6 +4075,28 @@ $$;
 ALTER FUNCTION "private"."require_member"("gid" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."require_no_blocked_pair"("gid" "uuid", "people" "uuid"[], "fresh" "uuid"[] DEFAULT NULL::"uuid"[]) RETURNS "void"
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if not private.blocked_pair(people, fresh) then
+    return;
+  end if;
+  if exists (select 1 from public.groups g where g.id = gid and g.is_direct) then
+    raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
+  end if;
+  raise exception using
+    message = 'blocked_person',
+    detail = 'Some people in this expense cannot share one; take one of them out',
+    errcode = '23514';
+end;
+$$;
+
+
+ALTER FUNCTION "private"."require_no_blocked_pair"("gid" "uuid", "people" "uuid"[], "fresh" "uuid"[]) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."require_unarchived"("gid" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -4143,6 +4210,7 @@ declare
   payer_left boolean := false;
   sharer_left boolean := false;
   changes jsonb;
+  in_it uuid[];
 begin
   if jsonb_typeof(p) <> 'object' then
     raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
@@ -4414,6 +4482,22 @@ begin
                           or v_refund <> prev.is_refund)) then
     raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
   end if;
+
+  -- A block either way keeps two people off one new expense, as payers or with a share. An edit
+  -- is refused only when it brings in someone with a block with someone else in it, so an
+  -- expense from before the block keeps its details, amount and split editable.
+  in_it := array(
+    select k::uuid from jsonb_object_keys(new_payers) as k
+    union
+    select j.key::uuid
+    from jsonb_each(coalesce(case when rewrite_splits then new_shares else old_shares end, '{}'::jsonb)) j
+    where j.value::bigint > 0
+  );
+  perform private.require_no_blocked_pair(gid, in_it, array(
+    select u from unnest(in_it) as u
+    where not old_payers ? u::text
+      and coalesce((old_shares ->> u::text)::bigint, 0) <= 0
+  ));
 
   -- The expense row, its payers and its splits are written one after the other, so the sum
   -- checks must run at commit even if the caller made constraints immediate.
@@ -4915,7 +4999,7 @@ begin
   loop
     begin
       deadline := (r.next_run_on::timestamp + interval '10 minutes') at time zone 'UTC';
-      if run_at >= deadline or private.recurring_blocked(r) then
+      if run_at >= deadline or private.recurring_blocked(r) or private.recurring_has_blocked_pair(r) then
         continue;
       end if;
       for person in
@@ -5785,9 +5869,7 @@ begin
       and exists (select 1 from public.group_members m where m.group_id = g.id and m.user_id = uid)
       and exists (select 1 from public.group_members m where m.group_id = g.id and m.user_id = person)
   ) then
-    return not exists (
-      select 1 from public.blocks b where b.blocker_id = person and b.blocked_id = uid
-    );
+    return not private.has_block(uid, person);
   end if;
 
   return exists (
@@ -7349,6 +7431,14 @@ begin
     left join private.import_rates r on r.run = v_run and r.currency = i.currency and r.day = i.day
     where i.run = v_run
   ),
+  -- Expense rows naming two people (payers or shares, money on each) with a block between them.
+  blocked_rows as (
+    select distinct a.ord
+    from private.import_people a
+    join public.blocks k on k.blocker_id = a.user_id
+    join private.import_people b on b.run = a.run and b.ord = a.ord and b.user_id = k.blocked_id
+    where a.run = v_run and a.cents > 0 and b.cents > 0
+  ),
   failures as (
     select ord, 1.0 as step, 'invalid_import' as code, 'Each row is an expense or a payment' as detail, '22023' as state
     from checked where kind is null or kind not in ('expense', 'payment')
@@ -7398,6 +7488,14 @@ begin
     union all
     select ord, 14, 'split_member_not_in_group', 'Everyone in the split must be in the group', '23514' from checked
     where kind = 'expense' and share_outsiders > 0
+    union all
+    -- As private.require_no_blocked_pair, which save_expense calls next.
+    select ord, 14.5,
+      case when g.is_direct then 'not_a_friend' else 'blocked_person' end,
+      case when g.is_direct then 'You can only split with friends'
+        else 'Some people in this expense cannot share one; take one of them out' end,
+      case when g.is_direct then '42501' else '23514' end
+    from checked where kind = 'expense' and ord in (select x.ord from blocked_rows x)
     union all
     select ord, 15, 'member_not_in_group', 'Both people must be in the group', '23514' from checked
     where kind = 'payment' and from_user is not null and to_user is not null and (
@@ -10053,6 +10151,7 @@ declare
   old_payers jsonb;
   new_payers jsonb;
   result public.recurring_expenses;
+  in_it uuid[];
 begin
   if jsonb_typeof(p) <> 'object' then
     raise exception using message = 'invalid_payload', detail = 'The expense is not valid', errcode = '22023';
@@ -10228,6 +10327,18 @@ begin
       raise exception using message = 'split_member_not_in_group', detail = 'Everyone in the split must be in the group', errcode = '23514';
     end if;
   end if;
+
+  -- As private.save_expense: nobody the edit brings in may have a block with someone else in it.
+  in_it := array(
+    select k::uuid from jsonb_object_keys(new_payers) as k
+    union
+    select s.user_id from jsonb_to_recordset(computed) as s (user_id uuid, share_cents bigint)
+    where s.share_cents > 0
+  );
+  perform private.require_no_blocked_pair(gid, in_it, array(
+    select u from unnest(in_it) as u
+    where not exists (select 1 from private.recurring_people(r) as was (w) where was.w = u)
+  ));
 
   update public.recurring_expenses x set
     description = v_description,
@@ -13105,6 +13216,10 @@ REVOKE ALL ON FUNCTION "private"."blocked_in_group"("gid" "uuid", "uid" "uuid") 
 
 
 
+REVOKE ALL ON FUNCTION "private"."blocked_pair"("people" "uuid"[], "fresh" "uuid"[]) FROM PUBLIC;
+
+
+
 GRANT ALL ON FUNCTION "private"."can_manage_event"("eid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."can_manage_event"("eid" "uuid") TO "service_role";
 
@@ -13544,6 +13659,10 @@ REVOKE ALL ON FUNCTION "private"."recurring_departed"("r" "public"."recurring_ex
 
 
 
+REVOKE ALL ON FUNCTION "private"."recurring_has_blocked_pair"("r" "public"."recurring_expenses") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."recurring_involves"("created_by" "uuid", "paid_by" "uuid", "payers" "jsonb", "splits" "jsonb", "uid" "uuid") TO "service_role";
@@ -13591,6 +13710,10 @@ REVOKE ALL ON FUNCTION "private"."require_live_group"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."require_member"("gid" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."require_no_blocked_pair"("gid" "uuid", "people" "uuid"[], "fresh" "uuid"[]) FROM PUBLIC;
 
 
 

@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(172);
+select plan(174);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -822,6 +822,10 @@ select is(
   'a blocked person sees a revoked friend link with no name'
 );
 select tests.login('ben');
+-- Lunch in their 1:1 tab, from before the block.
+select public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('dm'), 'description', 'Lunch', 'amount_cents', 800, 'paid_by', tests.uid('ben'),
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('dan')), pg_temp.person(tests.uid('ben')))));
 select public.block_user(tests.uid('dan'));
 select tests.login('dan');
 select throws_ok(
@@ -832,28 +836,37 @@ select throws_ok(
   format($$ select public.get_or_create_direct_group(%L) $$, tests.uid('ben')),
   '42501', 'not_a_friend', 'nor open a 1:1 tab with them'
 );
-select tests.remember('muted', (select id from public.create_expense_v2(jsonb_build_object(
+select throws_ok(
+  format($$ select public.create_expense_v2(jsonb_build_object(
+    'group_id', %L, 'description', 'Pizza', 'amount_cents', 900, 'paid_by', %L,
+    'splits', jsonb_build_array(jsonb_build_object('user_id', %L), jsonb_build_object('user_id', %L)))) $$,
+    tests.id('g'), tests.uid('dan'), tests.uid('ben'), tests.uid('dan')),
+  '23514', 'blocked_person', 'no new expense names both of them, in a shared group too'
+);
+select set_config('tests.ben_before', pg_temp.bal('g', tests.uid('ben'))::text, true);
+select tests.remember('muted', (select id from public.settle_up_v2(tests.id('g'), tests.uid('dan'), tests.uid('ben'), 300)));
+select tests.remember('pizza', (select id from public.create_expense_v2(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Pizza', 'amount_cents', 900, 'paid_by', tests.uid('dan'),
-  'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.uid('ben')), pg_temp.person(tests.uid('dan')))))));
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.uid('dan')))))));
 reset role;
 set constraints all immediate;
 set constraints all deferred;
 select is(
   (select count(*)::int from public.notifications n
-   where n.user_id = tests.uid('ben') and n.data ->> 'expense_id' = tests.id('muted')::text),
+   where n.user_id = tests.uid('ben') and n.data ->> 'settlement_id' = tests.id('muted')::text),
   0,
   'the blocker hears nothing the blocked person does'
 );
 select is(
   (select count(*)::int from public.notifications n
-   where n.user_id = tests.uid('ava') and n.data ->> 'expense_id' = tests.id('muted')::text),
+   where n.user_id = tests.uid('ava') and n.data ->> 'expense_id' = tests.id('pizza')::text),
   1,
   'everyone else still does'
 );
 select is(
-  pg_temp.bal('g', tests.uid('ben')) < 0,
-  true,
-  'and the shared group keeps working: the expense counts for Ben'
+  pg_temp.bal('g', tests.uid('ben')),
+  current_setting('tests.ben_before')::bigint - 300,
+  'and the shared group keeps working: Dan can still pay Ben'
 );
 select tests.login('dan');
 select throws_ok(
@@ -868,12 +881,16 @@ select throws_ok(
   '42501', 'not_a_friend', 'nor record payments there'
 );
 select tests.login('ben');
-select lives_ok(
+select throws_ok(
   format($$ select public.create_expense_v2(jsonb_build_object(
     'group_id', %L, 'description', 'Lunch', 'amount_cents', 800, 'paid_by', %L,
     'splits', jsonb_build_array(jsonb_build_object('user_id', %L), jsonb_build_object('user_id', %L)))) $$,
     tests.id('dm'), tests.uid('ben'), tests.uid('dan'), tests.uid('ben')),
-  'the person who blocked them still can'
+  '42501', 'not_a_friend', 'nor can the person who blocked them add a new expense there'
+);
+select lives_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('dm'), tests.uid('ben'), tests.uid('dan')),
+  'but they can still settle up there'
 );
 reset role;
 select tests.remember('dm_lunch', (select e.id from public.expenses e where e.group_id = tests.id('dm') order by e.created_at desc limit 1));
