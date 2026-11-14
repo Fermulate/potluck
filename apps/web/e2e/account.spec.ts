@@ -84,6 +84,16 @@ test('changing the password signs out other devices and the new one works', asyn
 
 test('sign out everywhere ends every session', async ({ newUser, openAs }) => {
   const user = await newUser()
+  // Another device, with its own session, that has a page open.
+  const phone = await openAs(null)
+  await signIn(phone, user.email, user.password)
+  await expect(phone).toHaveURL(/\/home$/)
+  const phoneToken = await phone.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => /^sb-.*-auth-token$/.test(k))
+    return key ? (JSON.parse(localStorage.getItem(key)!) as { access_token: string }) : null
+  })
+  expect(phoneToken).not.toBeNull()
+
   const page = await openAs(user)
   await page.goto('/me')
   await security(page)
@@ -97,6 +107,18 @@ test('sign out everywhere ends every session', async ({ newUser, openAs }) => {
   expect((await user.client.auth.refreshSession()).error).not.toBeNull()
   await page.goto('/home')
   await expect(page).toHaveURL(/\/sign-in/)
+
+  // The other device's access token has not expired, but the database no longer takes it.
+  const env = stackEnv()
+  const refused = await fetch(`${env.url}/rest/v1/profiles?select=id`, {
+    headers: { apikey: env.publishableKey, Authorization: `Bearer ${phoneToken!.access_token}` },
+  })
+  expect(refused.ok).toBe(false)
+  expect(((await refused.json()) as { message?: string }).message).toBe('session_ended')
+
+  // And the device itself leaves on its next look at the app.
+  await phone.goto('/groups')
+  await expect(phone).toHaveURL(/\/sign-in/)
 })
 
 test('two-step sign in: set up, asked at sign in, wrong code refused, off with a code', async ({

@@ -15,6 +15,13 @@ export interface NavItem {
   href: string
   /** Small count or dot, e.g. requests waiting on you. */
   badge?: number | boolean
+  /**
+   * What the count is, for screen readers ("3 unread notifications"). Without it they hear the
+   * bare number. Set it when the badge is about something other than the item itself.
+   */
+  badgeLabel?: string
+  /** A tiny icon in the badge that says what it counts, e.g. a bell on Me. */
+  badgeIcon?: ReactNode
 }
 
 export interface NavLinkRenderProps {
@@ -29,16 +36,18 @@ export type RenderNavLink = (props: NavLinkRenderProps) => ReactNode
 
 const defaultLink: RenderNavLink = ({ children, ...props }) => <a {...props}>{children}</a>
 
-function Badge({ value }: { value: number | boolean }) {
+function Badge({ value, icon }: { value: number | boolean; icon?: ReactNode }) {
   if (value === false || value === 0) return null
   return (
     <span
       aria-hidden
       className={cn(
-        'absolute -top-1 left-[calc(50%+0.375rem)] grid place-items-center rounded-pill bg-tomato-strong font-bold text-on-tomato tabular ring-2 ring-paper',
+        'absolute -top-1 left-[calc(50%+0.375rem)] flex items-center justify-center rounded-pill bg-tomato-strong font-bold text-on-tomato tabular ring-2 ring-paper',
         value === true ? 'size-2.5' : 'h-[1.125rem] min-w-[1.125rem] px-1 text-[0.625rem]',
+        icon && value !== true && 'gap-0.5 pl-1 [&_svg]:size-2.5! [&_svg]:stroke-[3]',
       )}
     >
+      {value !== true && icon}
       {value === true ? null : value > 99 ? '99+' : value}
     </span>
   )
@@ -48,12 +57,12 @@ function Badge({ value }: { value: number | boolean }) {
  * The count for screen readers. It lives in the link text (not an `aria-label`) so the
  * accessible name still starts with the visible label, which voice control relies on.
  */
-function BadgeText({ badge }: { badge: NavItem['badge'] }) {
+function BadgeText({ badge, label }: { badge: NavItem['badge']; label?: string }) {
   if (typeof badge !== 'number' || badge <= 0) return null
   return (
     <>
       {' '}
-      <span className="sr-only">({badge})</span>
+      <span className="sr-only">({label ?? badge})</span>
     </>
   )
 }
@@ -107,9 +116,9 @@ export function BottomTabBar({
               </span>
               <span>
                 {item.label}
-                <BadgeText badge={item.badge} />
+                <BadgeText badge={item.badge} label={item.badgeLabel} />
               </span>
-              {item.badge !== undefined && <Badge value={item.badge} />}
+              {item.badge !== undefined && <Badge value={item.badge} icon={item.badgeIcon} />}
             </>
           ),
         })}
@@ -201,7 +210,7 @@ export function SideRail({
                       {active ? (item.activeIcon ?? item.icon) : item.icon}
                       <span className="min-w-0 flex-1 leading-tight break-words hyphens-auto">
                         {item.label}
-                        <BadgeText badge={item.badge} />
+                        <BadgeText badge={item.badge} label={item.badgeLabel} />
                       </span>
                       {typeof item.badge === 'number' && item.badge > 0 && (
                         <span

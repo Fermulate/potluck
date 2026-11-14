@@ -47,7 +47,7 @@ import {
 } from '@potluck/ui'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Upload } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, RotateCw, Upload } from 'lucide-react'
 import {
   useEffect,
   useId,
@@ -432,7 +432,8 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const [fromGroup, setFromGroup] = useState<string | null>(null)
   const [typedRates, setTypedRates] = useState<Record<string, string>>({})
   const [skipCurrencies, setSkipCurrencies] = useState<ReadonlySet<string>>(new Set())
-  const [leaveOutDuplicates, setLeaveOutDuplicates] = useState(false)
+  // Rows that look already imported stay out unless someone ticks them back in.
+  const [includeDuplicates, setIncludeDuplicates] = useState(false)
   const [confirmedRates, setConfirmedRates] = useState<ReadonlySet<string>>(new Set())
   const [confirmedFileRates, setConfirmedFileRates] = useState<ReadonlySet<string>>(new Set())
   const [partlyImported, setPartlyImported] = useState(false)
@@ -481,7 +482,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       setTypedRates({})
       setSkipCurrencies(new Set())
       setConfirmedFileRates(new Set())
-      setLeaveOutDuplicates(false)
+      setIncludeDuplicates(false)
       setFocusAfterRead(true)
     } finally {
       setReading(false)
@@ -540,10 +541,10 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   )
   const plan = useMemo(
     () =>
-      source && leaveOutDuplicates && duplicates.length > 0
+      source && !includeDuplicates && duplicates.length > 0
         ? planImport(source, { ...options, skipLines: new Set(duplicates) })
         : basePlan,
-    [source, options, leaveOutDuplicates, duplicates, basePlan],
+    [source, options, includeDuplicates, duplicates, basePlan],
   )
 
   useEffect(() => {
@@ -591,7 +592,10 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       if (!check || check.unsupported || !m.typed) return true
       return check.outlier && !confirmedRates.has(m.currency)
     })
-  const blocked = !plan || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
+  const existingReady = expenses.isSuccess && settlements.isSuccess
+  const existingError = expenses.error ?? settlements.error
+  const blocked =
+    !plan || !existingReady || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
   const leftOut = (['person', 'rate', 'duplicate'] as const).some((r) =>
     plan?.skipped.some((s) => s.reason === r),
   )
@@ -626,7 +630,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       if ((imported?.expenses ?? 0) + (imported?.payments ?? 0) > 0) {
         invalidateMoney(queryClient, group.id)
         setPartlyImported(true)
-        setLeaveOutDuplicates(true)
+        setIncludeDuplicates(false)
       }
     },
     onSettled: () => setProgress(null),
@@ -862,7 +866,32 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             </Step>
           )}
 
-          {duplicates.length > 0 && (
+          {!existingReady &&
+            (existingError ? (
+              <div
+                role="alert"
+                className="grid justify-items-start gap-3 rounded-card bg-tomato-soft p-4 text-sm text-tomato-ink"
+              >
+                {moneyErrorMessage(existingError)}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<RotateCw />}
+                  onClick={() => {
+                    if (expenses.isError) void expenses.refetch()
+                    if (settlements.isError) void settlements.refetch()
+                  }}
+                >
+                  {t('common.retry')}
+                </Button>
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-mute">
+                <LoadingDots /> {t('transfer.import.checkingExisting', { group: group.name })}
+              </p>
+            ))}
+
+          {existingReady && duplicates.length > 0 && (
             <Card padding="default" className="grid gap-3 bg-saffron-soft text-saffron-ink">
               <p className="flex items-start gap-2 text-sm">
                 <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -877,14 +906,14 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                     })}
               </p>
               <Checkbox
-                label={t('transfer.import.duplicates.leaveOut')}
-                checked={leaveOutDuplicates}
-                onCheckedChange={(checked) => setLeaveOutDuplicates(checked === true)}
+                label={t('transfer.import.duplicates.bringIn', { count: duplicates.length })}
+                checked={includeDuplicates}
+                onCheckedChange={(checked) => setIncludeDuplicates(checked === true)}
               />
             </Card>
           )}
 
-          {plan && plan.rows.length > 0 && (
+          {existingReady && plan && plan.rows.length > 0 && (
             <Step title={t('transfer.import.preview')} headingRef={previewHeading}>
               <div className="flex flex-wrap gap-2">
                 {plan.counts.expenses > 0 && (
@@ -1012,7 +1041,9 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                 ? t('transfer.import.progress', { sent: progress.sent, total: progress.total })
                 : t('transfer.import.importing')
               : blocked
-                ? t('transfer.import.submitBlocked')
+                ? total === 0 && skippedBy('duplicate') > 0
+                  ? t('transfer.import.nothingNew')
+                  : t('transfer.import.submitBlocked')
                 : t('transfer.import.submit', { count: total })}
           </Button>
         </>

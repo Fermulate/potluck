@@ -2,7 +2,9 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { currentLocale, t } from '@potluck/i18n'
 import { Button, Field, Input, toast } from '@potluck/ui'
 import { useState, type FormEvent } from 'react'
+import { HELP_PAGES } from '@/features/help/topics'
 import { authCallbackUrl, safeRedirect } from '@/lib/auth'
+import { docsUrl } from '@/lib/docs'
 import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { supabase } from '@/lib/supabase'
@@ -90,7 +92,18 @@ export function SignUpPage({ redirect, notice }: AuthPageProps) {
               {t('auth.signUp.signInLink')}
             </Link>
           </p>
-          <p className="text-xs">{t('auth.signUp.terms')}</p>
+          {/* Potluck has no separate terms: the guide's privacy page says what is kept and shown. */}
+          <p className="text-xs">
+            {t('auth.signUp.privacy')}{' '}
+            <a
+              href={docsUrl(HELP_PAGES.privacy)}
+              target="_blank"
+              rel="noopener"
+              className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+            >
+              {t('auth.signUp.privacyLink')} <span className="sr-only">({t('help.newTab')})</span>
+            </a>
+          </p>
         </div>
       }
     >

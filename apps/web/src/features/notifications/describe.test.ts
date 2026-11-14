@@ -39,6 +39,78 @@ describe('describeNotification', () => {
     expect(view.target).toEqual({ to: '/expenses/$expenseId', params: { expenseId: 'e-9' } })
   })
 
+  it('says what a new expense means for the reader, Splitwise style', () => {
+    const dinner = {
+      actor_id: 'u-ben',
+      group_id: 'g-1',
+      expense_id: 'e-9',
+      description: 'Dinner',
+      amount_cents: 9000,
+      currency: 'USD',
+      paid_by: 'u-ben',
+    }
+    // In the split, paid nothing.
+    expect(
+      describeNotification(
+        row('expense.created', { ...dinner, share_cents: 3000, paid_cents: 0 }),
+        ctx,
+      ).body,
+    ).toBe('Ben added Dinner: $90.00. You owe $30.00.')
+    // One of two payers: paid 60, share 30.
+    expect(
+      describeNotification(
+        row('expense.created', { ...dinner, share_cents: 3000, paid_cents: 6000 }),
+        ctx,
+      ).body,
+    ).toBe('Ben added Dinner: $90.00. You get back $30.00.')
+    // Older rows without paid_cents cannot tell who paid what: just the expense.
+    expect(
+      describeNotification(
+        row('expense.created', { ...dinner, paid_by: 'me', share_cents: 3000 }),
+        ctx,
+      ).body,
+    ).toBe('Ben added Dinner: $90.00')
+    // Square, or no share at all: just the expense.
+    expect(
+      describeNotification(
+        row('expense.created', { ...dinner, share_cents: 0, paid_cents: 0 }),
+        ctx,
+      ).body,
+    ).toBe('Ben added Dinner: $90.00')
+  })
+
+  it('marks refunds and turns the line around for them', () => {
+    const refund = {
+      actor_id: 'u-ben',
+      group_id: 'g-1',
+      expense_id: 'e-7',
+      description: 'Returned tickets',
+      amount_cents: 3000,
+      currency: 'USD',
+      is_refund: true,
+    }
+    // The refund went to the reader, so they hold the others' part.
+    const toMe = describeNotification(
+      row('expense.created', { ...refund, share_cents: 1500, paid_cents: 3000 }),
+      ctx,
+    )
+    expect(toMe.title).toBe('Refund in Hike crew')
+    expect(toMe.body).toBe('Ben added Returned tickets: $30.00. You owe $15.00.')
+    expect(
+      describeNotification(
+        row('expense.created', { ...refund, share_cents: 1500, paid_cents: 0 }),
+        ctx,
+      ).body,
+    ).toBe('Ben added Returned tickets: $30.00. You get back $15.00.')
+    for (const [type, title] of [
+      ['expense.updated', 'Refund updated'],
+      ['expense.deleted', 'Refund deleted'],
+      ['expense.restored', 'Refund restored'],
+    ] as const) {
+      expect(describeNotification(row(type, refund), ctx).title).toBe(title)
+    }
+  })
+
   it('links payment changes and payment comments to the payment', () => {
     for (const [type, title] of [
       ['settlement.updated', 'Payment changed'],

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MoneyFilters } from '@/features/insights/filter-state'
 import { ExpensesTab } from './expenses-tab'
 import { renderInRouter } from './router-test-utils'
-import { BEN, CLEO, GROUP_ID, ME, expense, seededClient } from './test-utils'
+import { BEN, CLEO, GROUP_ID, ME, expense, group, seededClient } from './test-utils'
 
 vi.mock('@/lib/supabase', () => import('./fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
@@ -213,6 +213,31 @@ describe('ExpensesTab', () => {
     })
     renderInRouter(<Tab />, client)
     expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
+  })
+
+  it('offers no new expense in an archived group, empty or not, and says why', async () => {
+    const archived = { ...group, archived_at: '2026-11-01T00:00:00Z' }
+    const empty = seededClient((c) => {
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), archived)
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+    })
+    const { unmount } = renderInRouter(<Tab />, empty)
+    expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
+    expect(
+      screen.getByText(t('expenses.form.archived', { group: 'Hike crew' })),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('empty.expenses.action') })).toBeNull()
+    unmount()
+
+    const full = seededClient((c) => {
+      c.setQueryData(moneyKeys.groupInfo(GROUP_ID), archived)
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [expense({ id: 'e1', description: 'Tacos' })])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+    })
+    renderInRouter(<Tab />, full)
+    expect(await screen.findByText('Tacos')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('expenses.add') })).toBeNull()
   })
 
   it('waits for payments before calling the tab empty', async () => {

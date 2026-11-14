@@ -1,9 +1,10 @@
 import type * as Api from '@potluck/api'
-import { importExpenses, moneyKeys, transferKeys } from '@potluck/api'
+import { importExpenses, moneyKeys, moneyQueries, transferKeys } from '@potluck/api'
 import { ledgerCsv } from '@potluck/core'
 import { formatMoney, setLocale, t } from '@potluck/i18n'
+import { queryOptions } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderInRouter } from '@/features/expenses/router-test-utils'
 import {
   BEN,
@@ -48,9 +49,24 @@ interface Seed {
   people?: Api.MoneyPerson[]
   /** Stored rates per currency into USD. */
   rates?: Record<string, Api.FxHistory>
+  /** How the group's payments load; seeded as none when missing. */
+  loadSettlements?: () => Promise<Api.Settlement[]>
 }
 
 function renderScreen(seed: Seed = {}) {
+  const load = seed.loadSettlements
+  vi.spyOn(moneyQueries, 'expenses').mockImplementation((_client, groupId) =>
+    queryOptions({
+      queryKey: moneyKeys.expenses(groupId),
+      queryFn: async () => seed.expenses ?? [],
+    }),
+  )
+  vi.spyOn(moneyQueries, 'settlements').mockImplementation((_client, groupId) =>
+    queryOptions({
+      queryKey: moneyKeys.settlements(groupId),
+      queryFn: load ?? (async () => []),
+    }),
+  )
   return renderInRouter(
     <ImportScreen groupId={GROUP_ID} />,
     seededClient((c) => {
@@ -60,7 +76,7 @@ function renderScreen(seed: Seed = {}) {
         { user_id: BEN, net_cents: -1000 },
       ])
       c.setQueryData(moneyKeys.expenses(GROUP_ID), seed.expenses ?? [])
-      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+      if (!load) c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
       c.setQueryData(transferKeys.imports(GROUP_ID), seed.imports ?? [])
       if (seed.people) c.setQueryData(moneyKeys.people(), seed.people)
       for (const [from, history] of Object.entries(seed.rates ?? {})) {
@@ -86,6 +102,7 @@ async function pick(label: string, option: string) {
 
 describe('ImportScreen', () => {
   beforeEach(() => save.mockClear())
+  afterEach(() => vi.restoreAllMocks())
 
   it('reads a Splitwise export, matches people and previews everyone after the import', async () => {
     renderScreen()
@@ -530,10 +547,69 @@ describe('ImportScreen', () => {
     expect(
       screen.getByText(t('transfer.import.duplicates.rows', { count: 1, group: group.name })),
     ).toBeVisible()
+    // The row already there stays out unless someone brings it back in.
+    const bringIn = screen.getByRole('checkbox', {
+      name: t('transfer.import.duplicates.bringIn', { count: 1 }),
+    })
+    expect(bringIn).not.toBeChecked()
+    expect(await submitButton(3)).toBeEnabled()
+    fireEvent.click(bringIn)
+    expect(await submitButton(4)).toBeEnabled()
+    fireEvent.click(await submitButton(4))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save.mock.calls[0]![2]).toHaveLength(4)
+  })
+
+  it('has nothing to import when every row is already there, until some are ticked back in', async () => {
+    renderScreen({
+      expenses: [
+        expense({ id: 'x1', description: 'Dinner', amount_cents: 9000, spent_at: '2026-03-01' }),
+        expense({ id: 'x2', description: 'Groceries', amount_cents: 4500, spent_at: '2026-03-02' }),
+        expense({ id: 'x3', description: 'Taxi', amount_cents: 2400, spent_at: '2026-03-03' }),
+      ],
+    })
+    await upload(
+      [
+        HEADER,
+        '2026-03-01,Dinner,Dining out,90.00,USD,60.00,-30.00,-30.00',
+        '2026-03-02,Groceries,Groceries,45.00,USD,-15.00,30.00,-15.00',
+        '2026-03-03,Taxi,Taxi,24.00,USD,16.00,-8.00,-8.00',
+      ].join('\n'),
+    )
+    expect(
+      screen.getByText(t('transfer.import.duplicates.rows', { count: 3, group: group.name })),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: t('transfer.import.nothingNew') })).toBeDisabled()
     fireEvent.click(
-      screen.getByRole('checkbox', { name: t('transfer.import.duplicates.leaveOut') }),
+      screen.getByRole('checkbox', { name: t('transfer.import.duplicates.bringIn', { count: 3 }) }),
     )
     expect(await submitButton(3)).toBeEnabled()
+  })
+
+  it('holds the import until the rows already in the group have loaded', async () => {
+    renderScreen({ loadSettlements: () => new Promise(() => {}) })
+    await upload(SPLITWISE)
+    expect(
+      screen.getByText(t('transfer.import.checkingExisting', { group: group.name })),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { name: t('transfer.import.preview') }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+  })
+
+  it('says when the rows already in the group cannot load, and tries again', async () => {
+    const load = vi
+      .fn<() => Promise<Api.Settlement[]>>()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([])
+    renderScreen({ loadSettlements: load })
+    await upload(SPLITWISE)
+    const problem = await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+    fireEvent.click(within(problem).getByRole('button', { name: t('common.retry') }))
+    expect(await submitButton(4)).toBeEnabled()
+    expect(load).toHaveBeenCalledTimes(2)
   })
 
   it('reads dates a spreadsheet rewrote, and can read them the other way round', async () => {

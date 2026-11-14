@@ -53,6 +53,7 @@ import { SecuritySection } from '@/features/account/security-section'
 import { YourDataSection } from '@/features/export-import/your-data-section'
 import { Help } from '@/features/help/help'
 import { HELP_PAGES } from '@/features/help/topics'
+import { InboxBell } from '@/features/notifications/inbox-bell'
 import { useUnreadCount } from '@/features/notifications/use-notifications'
 import { copyText } from '@/features/invites/share'
 import { signOut, useUserId } from '@/lib/auth'
@@ -506,9 +507,15 @@ export function MePage() {
   const { data: profile, isPending } = useMyProfile()
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-32 lg:max-w-5xl lg:px-8 lg:pt-10 lg:pb-12">
-      <header className="mb-8">
-        <h1 className="font-display text-5xl leading-[0.95] sm:text-6xl">{t('settings.title')}</h1>
-        <p className="mt-2 text-mute">{t('settings.subtitle')}</p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-5xl leading-[0.95] sm:text-6xl">
+            {t('settings.title')}
+          </h1>
+          <p className="mt-2 text-mute">{t('settings.subtitle')}</p>
+        </div>
+        {/* The tab bar's unread count sits on Me; the inbox it counts is one tap from here. */}
+        <InboxBell className="lg:hidden" />
       </header>
       {isPending || !profile ? (
         <div className="grid gap-4" aria-hidden>

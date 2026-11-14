@@ -229,3 +229,32 @@ test('a long group name keeps the groups page and its sheets on a phone screen',
     ratio: 1,
   })
 })
+
+test('a phone lists five groups at once, and a long name keeps to two lines until tapped', async ({
+  newUser,
+  openAs,
+}, testInfo) => {
+  test.skip(!testInfo.project.use.isMobile, 'the compact rows are the phone layout')
+  const owner = await newUser()
+  // Five lines at the header's size on a phone, inside the 80 character limit.
+  const long = `${unique('Book club')} with a name that keeps going on and on`
+  const groups = [await groupWith(owner, [], { name: long })]
+  for (let i = 0; i < 4; i++) groups.push(await groupWith(owner))
+  const page = await openAs(owner)
+
+  await page.goto('/groups')
+  for (const group of groups) {
+    await expect(page.getByRole('link', { name: group.name })).toBeInViewport({ ratio: 1 })
+  }
+
+  await page.getByRole('link', { name: long }).click()
+  const title = page.getByRole('heading', { level: 1, name: long })
+  await expect(title).toHaveAttribute('title', long)
+  const lineHeight = await title.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight))
+  const height = async () => (await title.boundingBox())!.height
+  await expect.poll(height).toBeLessThanOrEqual(lineHeight * 2 + 1)
+  const more = title.getByRole('button', { name: long })
+  await more.click()
+  await expect(more).toHaveAttribute('aria-expanded', 'true')
+  await expect.poll(height).toBeGreaterThan(lineHeight * 2 + 1)
+})

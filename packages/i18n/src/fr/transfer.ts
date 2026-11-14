@@ -151,9 +151,12 @@ export const transfer = {
     duplicates: {
       sameFile: 'Ce fichier est déjà entré dans {group} {when}.',
       partSameFile: 'Une partie de ce fichier est entrée dans {group} {when}.',
-      rows_one: '{count} ligne ressemble à une dépense ou un paiement déjà dans {group}.',
-      rows_other: '{count} lignes ressemblent à des dépenses ou paiements déjà dans {group}.',
-      leaveOut: 'Écarter ces lignes',
+      rows_one:
+        '{count} ligne ressemble à une dépense ou un paiement déjà dans {group}, elle reste donc de côté.',
+      rows_other:
+        '{count} lignes ressemblent à des dépenses ou paiements déjà dans {group}, elles restent donc de côté.',
+      bringIn_one: 'Importer cette ligne quand même',
+      bringIn_other: 'Importer les {count} quand même',
       fromThisFile_one:
         '{count} ligne de ce fichier est déjà dans {group} : elle est entrée avant que l’import s’arrête.',
       fromThisFile_other:
@@ -164,6 +167,8 @@ export const transfer = {
     progress: 'Import de {sent} lignes sur {total}',
     justNow: 'à l’instant',
     submitBlocked: 'Importer',
+    nothingNew: 'Rien de nouveau à importer',
+    checkingExisting: 'Vérification de ce qui est déjà dans {group}',
     errors: {
       left: 'Ligne {line} : quelqu’un dans cette ligne a quitté le groupe. Écarte ses lignes, ou réinvite cette personne, puis importe à nouveau.',
       timeout:

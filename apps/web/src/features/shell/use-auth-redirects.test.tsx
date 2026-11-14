@@ -36,6 +36,14 @@ describe('useAuthRedirects', () => {
     expect(queryClient.getQueryData(['potluck', 'groups'])).toBeUndefined()
   })
 
+  it('still leaves when the sign out came before the app was listening', async () => {
+    // A page opened with a session the server had ended: its first requests, sent while the
+    // router loads, sign it out before any screen is on.
+    act(() => emitAuth('SIGNED_OUT'))
+    const { router } = await renderAt('/groups')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
+  })
+
   it.each(['/', '/sign-up', '/join/hikecrew-demo', '/auth/callback', '/forgot-password'])(
     'stays on the public page %s after sign out',
     async (path) => {

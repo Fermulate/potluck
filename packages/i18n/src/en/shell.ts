@@ -114,6 +114,8 @@ export const nav = {
   main: 'Main',
   friends: 'Friends',
   notifications: 'Notifications',
+  unreadNotifications_one: '{count} unread notification',
+  unreadNotifications_other: '{count} unread notifications',
   quickAdd: {
     title: 'What are we doing?',
     expense: 'Add expense',
@@ -225,6 +227,7 @@ export const errors = {
       'Security notices always come through, so they cannot be turned off.',
     invalid_unsubscribe_link:
       'This unsubscribe link does not work. Change email settings on the Me page instead.',
+    session_ended: 'You were signed out on this device. Sign in again to carry on.',
     mfa_required: 'Finish two-step sign in first.',
     already_member: 'Someone with that email is already in this group.',
     // People not on Potluck yet, friends and blocks (ADR 19).

@@ -139,6 +139,53 @@ function BackLink({ direct }: { direct?: boolean }) {
   )
 }
 
+/**
+ * The group's name, at most two lines. A longer one ends in an ellipsis: hovering shows it
+ * whole (its `title`), and tapping it opens it out. Screen readers always get the full name.
+ */
+function GroupName({ id, name }: { id: string; name: string }) {
+  // The clamp sits on the text itself: a button around it is one box the heading cannot cut.
+  const ref = useRef<HTMLSpanElement>(null)
+  const [clamped, setClamped] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const tappable = clamped || expanded
+  useEffect(() => {
+    const text = ref.current
+    if (!text) return
+    const measure = () => setClamped(text.scrollHeight > text.clientHeight + 1)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(text)
+    return () => observer.disconnect()
+  }, [name, tappable, expanded])
+  const text = (
+    <span ref={ref} className={expanded ? 'block' : 'line-clamp-2'}>
+      {name}
+    </span>
+  )
+  return (
+    <h1
+      id={id}
+      title={name}
+      className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] wrap-anywhere lg:text-5xl"
+    >
+      {tappable ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+          className="block w-full cursor-pointer rounded-[0.5rem] text-left"
+        >
+          {text}
+        </button>
+      ) : (
+        text
+      )}
+    </h1>
+  )
+}
+
 function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () => void }) {
   const people = stackPeople(group.members)
   const canInvite =
@@ -172,12 +219,7 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
           style={{ viewTransitionName: groupTransitionName(group.id) }}
         />
         <div className="min-w-0">
-          <h1
-            id={titleId(group.id)}
-            className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] wrap-anywhere lg:text-5xl"
-          >
-            {group.name}
-          </h1>
+          <GroupName id={titleId(group.id)} name={group.name} />
           {dates && (
             <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-plum-ink">
               <CalendarRange aria-hidden className="size-4" />

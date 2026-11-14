@@ -2,6 +2,8 @@ import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { HELP_PAGES } from '@/features/help/topics'
+import { docsUrl } from '@/lib/docs'
 import { renderWithProviders } from '@/test/render'
 import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
 import { SignUpPage } from './sign-up-page'
@@ -34,6 +36,16 @@ async function submit(password = 'long enough') {
 describe('SignUpPage', () => {
   beforeEach(() => {
     resetDb({ tables: { app_config: [] } })
+  })
+
+  it("links to the guide's privacy page in a new tab", async () => {
+    renderPage()
+    const link = await screen.findByRole('link', {
+      name: `${t('auth.signUp.privacyLink')} (${t('help.newTab')})`,
+    })
+    expect(link).toHaveAttribute('href', docsUrl(HELP_PAGES.privacy))
+    expect(link.getAttribute('href')).toMatch(/\/privacy-and-security\/$/)
+    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('creates the account and goes to onboarding when signed in straight away', async () => {

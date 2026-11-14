@@ -5,7 +5,7 @@ export interface NotificationRow {
   id: string
   user_id: string
   type: string
-  data: Record<string, string | number | null | undefined>
+  data: Record<string, string | number | boolean | null | undefined>
 }
 
 /** Fill `{name}` placeholders in a copy line. */
@@ -17,6 +17,45 @@ function fill(text: string, values: Record<string, string>): string {
 function intl(locale: string | null | undefined): string {
   const base = (locale ?? 'en').toLowerCase().split(/[-_]/)[0] ?? 'en'
   return base === 'en' ? 'en-US' : base
+}
+
+/**
+ * Minor units to a display string in an Intl locale, using the currency's own number of digits.
+ * Never goes through a float: the amount is handed to Intl as a decimal string.
+ */
+export function formatMoneyIn(amountMinor: number, currency: string, locale: string): string {
+  const code = currency.trim().toUpperCase()
+  let format: Intl.NumberFormat
+  try {
+    format = new Intl.NumberFormat(locale, { style: 'currency', currency: code })
+  } catch {
+    return `${amountMinor} ${code}`
+  }
+  const digits = format.resolvedOptions().maximumFractionDigits ?? 2
+  const negative = amountMinor < 0
+  const abs = Math.abs(amountMinor)
+    .toString()
+    .padStart(digits + 1, '0')
+  const whole = digits > 0 ? abs.slice(0, -digits) : abs
+  const frac = digits > 0 ? `.${abs.slice(-digits)}` : ''
+  // A decimal string keeps exact digits; Intl accepts it in Node 22 and Deno 2.
+  return format.format(`${negative ? '-' : ''}${whole}${frac}` as unknown as number)
+}
+
+const int = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
+
+/**
+ * What a new expense does to the recipient's balance, in its own currency: what they paid minus
+ * their share, turned around for a refund (core `expenseEffect`). Positive means money back.
+ * Zero for rows from before `paid_cents` was stored.
+ */
+export function recipientNet(n: NotificationRow): number {
+  const d = n.data
+  const share = int(d.share_cents)
+  const paid = int(d.paid_cents)
+  if (share === undefined || paid === undefined) return 0
+  return (d.is_refund === true ? -1 : 1) * (paid - share)
 }
 
 /** A calendar date (`YYYY-MM-DD`) as "Thu, Jan 10". Calendar dates are the same everywhere. */
@@ -64,28 +103,38 @@ export function message(
   const event = d.event_id ? `/plans/${d.event_id}` : '/plans'
   const payment = d.settlement_id ? `/payments/${d.settlement_id}` : `${group}/balances`
   const title = (fallback: string) => String(d.event_title ?? fallback)
+  const refund = d.is_refund === true
   switch (n.type) {
-    case 'expense.created':
+    case 'expense.created': {
+      const what = String(d.description ?? c.expenseNewBody)
+      const net = recipientNet(n)
+      const amount = formatMoneyIn(Math.abs(net), String(d.currency ?? 'USD'), intl(locale))
       return {
-        title: c.expenseNew,
-        body: String(d.description ?? c.expenseNewBody),
+        title: refund ? c.refundNew : c.expenseNew,
+        body:
+          net < 0
+            ? fill(c.youOwe, { what, amount })
+            : net > 0
+              ? fill(c.youGetBack, { what, amount })
+              : what,
         url: expense,
       }
+    }
     case 'expense.updated':
       return {
-        title: c.expenseUpdated,
+        title: refund ? c.refundUpdated : c.expenseUpdated,
         body: String(d.description ?? c.expenseUpdatedBody),
         url: expense,
       }
     case 'expense.deleted':
       return {
-        title: c.expenseDeleted,
+        title: refund ? c.refundDeleted : c.expenseDeleted,
         body: String(d.description ?? c.expenseDeletedBody),
         url: expense,
       }
     case 'expense.restored':
       return {
-        title: c.expenseRestored,
+        title: refund ? c.refundRestored : c.expenseRestored,
         body: String(d.description ?? c.expenseRestoredBody),
         url: expense,
       }

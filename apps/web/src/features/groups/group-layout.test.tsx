@@ -182,6 +182,29 @@ describe('GroupLayout', () => {
     )
   })
 
+  it('keeps a long name to two lines, whole on hover and opened out on a tap', async () => {
+    const name = 'Book club with an extraordinarily long name that keeps going and going forever'
+    // jsdom has no layout: report a heading taller than its two clamped lines.
+    const tall = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(200)
+    const short = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(80)
+    renderLayout([group({ name })])
+    const heading = await screen.findByRole('heading', { level: 1, name })
+    expect(heading).toHaveAttribute('title', name)
+    const more = within(heading).getByRole('button', { name })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    tall.mockRestore()
+    short.mockRestore()
+  })
+
+  it('shows a name that fits as plain text', async () => {
+    renderLayout([group()])
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Hike crew' })
+    expect(heading).toHaveAttribute('title', 'Hike crew')
+    expect(within(heading).queryByRole('button')).toBeNull()
+  })
+
   it('shows only the first or last day when that is all a trip has', async () => {
     renderLayout([group({ type: 'trip', starts_on: '2026-06-03' })])
     expect(await screen.findByText('From Jun 3')).toBeInTheDocument()

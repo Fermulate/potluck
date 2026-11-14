@@ -4,6 +4,13 @@
 
 export interface PushCopy {
   expenseNew: string
+  /** A new expense with the reader's line. {what} is the description, {amount} their part. */
+  youOwe: string
+  youGetBack: string
+  refundNew: string
+  refundUpdated: string
+  refundDeleted: string
+  refundRestored: string
   expenseNewBody: string
   expenseUpdated: string
   expenseUpdatedBody: string
@@ -61,6 +68,12 @@ export interface PushCopy {
 }
 
 const en: PushCopy = {
+  youOwe: '{what}: you owe {amount}',
+  youGetBack: '{what}: you get back {amount}',
+  refundNew: 'New refund',
+  refundUpdated: 'Refund updated',
+  refundDeleted: 'Refund deleted',
+  refundRestored: 'Refund restored',
   expenseNew: 'New expense',
   expenseNewBody: 'Someone added an expense',
   expenseUpdated: 'Expense updated',
@@ -119,6 +132,12 @@ const en: PushCopy = {
 }
 
 const es: PushCopy = {
+  youOwe: '{what}: debes {amount}',
+  youGetBack: '{what}: te devuelven {amount}',
+  refundNew: 'Nuevo reembolso',
+  refundUpdated: 'Reembolso actualizado',
+  refundDeleted: 'Reembolso eliminado',
+  refundRestored: 'Reembolso restaurado',
   expenseNew: 'Nuevo gasto',
   expenseNewBody: 'Alguien añadió un gasto',
   expenseUpdated: 'Gasto actualizado',
@@ -178,6 +197,12 @@ const es: PushCopy = {
 }
 
 const fr: PushCopy = {
+  youOwe: '{what} : tu dois {amount}',
+  youGetBack: '{what} : on te rend {amount}',
+  refundNew: 'Nouveau remboursement',
+  refundUpdated: 'Remboursement modifié',
+  refundDeleted: 'Remboursement supprimé',
+  refundRestored: 'Remboursement rétabli',
   expenseNew: 'Nouvelle dépense',
   expenseNewBody: "Quelqu'un a ajouté une dépense",
   expenseUpdated: 'Dépense modifiée',
@@ -237,6 +262,12 @@ const fr: PushCopy = {
 }
 
 const de: PushCopy = {
+  youOwe: '{what}: du schuldest {amount}',
+  youGetBack: '{what}: du bekommst {amount} zurück',
+  refundNew: 'Neue Erstattung',
+  refundUpdated: 'Erstattung geändert',
+  refundDeleted: 'Erstattung gelöscht',
+  refundRestored: 'Erstattung wiederhergestellt',
   expenseNew: 'Neue Ausgabe',
   expenseNewBody: 'Jemand hat eine Ausgabe hinzugefügt',
   expenseUpdated: 'Ausgabe geändert',
@@ -296,6 +327,12 @@ const de: PushCopy = {
 }
 
 const pt: PushCopy = {
+  youOwe: '{what}: você deve {amount}',
+  youGetBack: '{what}: você recebe {amount} de volta',
+  refundNew: 'Novo reembolso',
+  refundUpdated: 'Reembolso atualizado',
+  refundDeleted: 'Reembolso excluído',
+  refundRestored: 'Reembolso restaurado',
   expenseNew: 'Nova despesa',
   expenseNewBody: 'Alguém adicionou uma despesa',
   expenseUpdated: 'Despesa atualizada',

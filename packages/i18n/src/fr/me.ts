@@ -33,6 +33,16 @@ export const notifications = {
       more_other: 'et {count} autres groupes',
     },
     expense: {
+      yours: {
+        owe: '{actor} a ajouté {description} : {amount}. Tu dois {yours}.',
+        back: '{actor} a ajouté {description} : {amount}. On te rend {yours}.',
+      },
+      refund: {
+        created: 'Remboursement dans {group}',
+        updated: 'Remboursement modifié',
+        deleted: 'Remboursement supprimé',
+        restored: 'Remboursement rétabli',
+      },
       created: {
         title: 'Nouvelle dépense dans {group}',
         body: '{actor} a ajouté {description} : {amount}',

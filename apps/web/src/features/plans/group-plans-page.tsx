@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo } from 'react'
+import { useMoneyGroup } from '@/features/expenses/money-data'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
 import { Appear } from '@/features/timeline/appear'
@@ -36,6 +37,8 @@ export function GroupPlansPage({ groupId }: { groupId: string }) {
   const events = useQuery(planQueries.groupEvents(supabase, groupId))
   const timeline = useQuery(planQueries.timeline(supabase, range))
   useGroupEventsRealtime(groupId)
+  // An archived group is read only: no new plans, and its note says why.
+  const archived = !!useMoneyGroup(groupId).data?.archived_at
 
   const mine = useMemo(
     () => new Map((timeline.data ?? []).map((item) => [item.event_id, fromTimeline(item)])),
@@ -66,7 +69,7 @@ export function GroupPlansPage({ groupId }: { groupId: string }) {
   const days = groupByDay(upcoming, (r) => r.startsAt!, { timeZone, now })
   const todayKey = dayKey(now, timeZone)
 
-  const planButton = (
+  const planButton = archived ? null : (
     <Button asChild size="sm" leadingIcon={<Plus aria-hidden />}>
       <Link to="/new/plan" search={{ groupId }}>
         {t('events.new')}
@@ -89,7 +92,7 @@ export function GroupPlansPage({ groupId }: { groupId: string }) {
       <EmptyState
         className="py-12"
         title={t('events.emptyGroup.title')}
-        description={t('events.emptyGroup.body')}
+        description={archived ? t('events.errors.group_archived') : t('events.emptyGroup.body')}
         illustration={<span className="text-6xl">🗓️</span>}
         action={planButton}
       />
@@ -102,6 +105,11 @@ export function GroupPlansPage({ groupId }: { groupId: string }) {
         <h2 className="text-2xl font-bold tracking-tight">{t('events.title')}</h2>
         {planButton}
       </div>
+      {archived && (
+        <p role="note" className="-mt-6 rounded-card bg-sunken px-4 py-3 text-sm text-mute">
+          {t('events.errors.group_archived')}
+        </p>
+      )}
 
       {polls.length > 0 && (
         <Appear as="section" className="flex flex-col gap-3">

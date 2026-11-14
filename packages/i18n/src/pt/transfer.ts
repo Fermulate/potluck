@@ -148,9 +148,12 @@ export const transfer = {
     duplicates: {
       sameFile: 'Este arquivo já entrou em {group} {when}.',
       partSameFile: 'Parte deste arquivo entrou em {group} {when}.',
-      rows_one: '{count} linha parece uma despesa ou pagamento que já está em {group}.',
-      rows_other: '{count} linhas parecem despesas ou pagamentos que já estão em {group}.',
-      leaveOut: 'Deixar essas linhas de fora',
+      rows_one:
+        '{count} linha parece uma despesa ou pagamento que já está em {group}, então fica de fora.',
+      rows_other:
+        '{count} linhas parecem despesas ou pagamentos que já estão em {group}, então ficam de fora.',
+      bringIn_one: 'Importar esta linha mesmo assim',
+      bringIn_other: 'Importar as {count} mesmo assim',
       fromThisFile_one:
         '{count} linha deste arquivo já está em {group}: entrou antes de a importação parar.',
       fromThisFile_other:
@@ -161,6 +164,8 @@ export const transfer = {
     progress: 'Importando {sent} de {total} linhas',
     justNow: 'agora há pouco',
     submitBlocked: 'Importar',
+    nothingNew: 'Nada novo para importar',
+    checkingExisting: 'Verificando o que já está em {group}',
     errors: {
       left: 'Linha {line}: alguém nela saiu do grupo. Deixe as linhas dessa pessoa de fora ou convide-a de novo, e importe outra vez.',
       timeout: 'Demorou demais, então esta importação não foi salva. Tente de novo daqui a pouco.',

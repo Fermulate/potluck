@@ -38,6 +38,58 @@ test('other types keep their copy and links', () => {
   assert.equal(message(row('something.new', {})).url, '/notifications')
 })
 
+test("a new expense push says the reader's part, like Splitwise", () => {
+  const dinner = (data: Record<string, string | number | boolean>) => ({
+    id: 'n1',
+    user_id: 'u1',
+    type: 'expense.created',
+    data: { expense_id: 'x1', description: 'Dinner', amount_cents: 9000, currency: 'USD', ...data },
+  })
+  assert.deepEqual(message(dinner({ share_cents: 3000, paid_cents: 0 })), {
+    title: 'New expense',
+    body: 'Dinner: you owe $30.00',
+    url: '/expenses/x1',
+  })
+  assert.equal(
+    message(dinner({ share_cents: 3000, paid_cents: 6000 })).body,
+    'Dinner: you get back $30.00',
+  )
+  // Rows from before paid_cents cannot tell who paid what: just the expense.
+  assert.equal(message(dinner({ share_cents: 3000, paid_by: 'u1' })).body, 'Dinner')
+  assert.equal(message(dinner({ share_cents: 0, paid_cents: 0 })).body, 'Dinner')
+  // In the reader's language and number format.
+  assert.match(
+    message(dinner({ share_cents: 3050, paid_cents: 0, currency: 'EUR' }), 'fr').body,
+    /^Dinner : tu dois 30,50\s€$/,
+  )
+})
+
+test('refunds say so, and the line turns around for them', () => {
+  const refund = (type: string, data: Record<string, string | number | boolean> = {}) => ({
+    id: 'n1',
+    user_id: 'u1',
+    type,
+    data: {
+      expense_id: 'x1',
+      description: 'Tickets',
+      amount_cents: 3000,
+      currency: 'USD',
+      is_refund: true,
+      ...data,
+    },
+  })
+  const toMe = message(refund('expense.created', { share_cents: 1500, paid_cents: 3000 }))
+  assert.equal(toMe.title, 'New refund')
+  assert.equal(toMe.body, 'Tickets: you owe $15.00')
+  assert.equal(
+    message(refund('expense.created', { share_cents: 1500, paid_cents: 0 })).body,
+    'Tickets: you get back $15.00',
+  )
+  assert.equal(message(refund('expense.updated')).title, 'Refund updated')
+  assert.equal(message(refund('expense.deleted')).title, 'Refund deleted')
+  assert.equal(message(refund('expense.restored'), 'es').title, 'Reembolso restaurado')
+})
+
 test('deleted and restored expenses and being added to a group', () => {
   assert.deepEqual(message(row('expense.deleted', { expense_id: 'x1', description: 'Gas' })), {
     title: 'Expense deleted',

@@ -33,6 +33,16 @@ export const notifications = {
       more_other: 'y {count} grupos más',
     },
     expense: {
+      yours: {
+        owe: '{actor} añadió {description}: {amount}. Debes {yours}.',
+        back: '{actor} añadió {description}: {amount}. Te devuelven {yours}.',
+      },
+      refund: {
+        created: 'Reembolso en {group}',
+        updated: 'Reembolso actualizado',
+        deleted: 'Reembolso eliminado',
+        restored: 'Reembolso restaurado',
+      },
       created: { title: 'Nuevo gasto en {group}', body: '{actor} añadió {description}: {amount}' },
       updated: { title: 'Gasto actualizado', body: '{actor} cambió {description} en {group}' },
       deleted: { title: 'Gasto eliminado', body: '{actor} eliminó {description} en {group}' },

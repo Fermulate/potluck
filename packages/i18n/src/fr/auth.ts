@@ -17,8 +17,8 @@ export const auth = {
     submit: 'Créer un compte',
     haveAccount: 'Déjà un compte ?',
     signInLink: 'Se connecter',
-    terms:
-      "En continuant, tu acceptes les conditions d'utilisation et la politique de confidentialité.",
+    privacy: 'Ce que Potluck garde sur toi, et qui le voit :',
+    privacyLink: 'Confidentialité et sécurité',
   },
   fields: {
     email: 'E-mail',
