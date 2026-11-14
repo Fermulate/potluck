@@ -1,19 +1,16 @@
--- Settling up works across a block, for both people, and is never silent. ADR 19 froze a 1:1 tab
--- for the blocked side, payments included; that side may now record a new payment there, and
--- edit, delete or restore the payments they recorded themselves. Payments the blocker recorded
--- stay out of their reach. Payment notifications (created, updated, deleted, restored) are no
--- longer muted by a block, so the blocker hears about every payment the blocked person touches.
+-- Settling up works across a block, for both people. ADR 19 froze a 1:1 tab for the blocked side,
+-- payments included; payments are now left out of that freeze, so either of them can record,
+-- edit, delete or restore a payment, in a tab as in a shared group, and the two can square up.
 -- Expenses, repeating expenses and comments in the tab stay frozen for the blocked side, and no
 -- new expense names both of them anywhere (20261114154849_block_shared_expenses.sql).
 -- Restoring a deleted expense that names two people with a block between them is refused like
 -- creating one: `blocked_person` in a group, `not_a_friend` in a 1:1 tab.
 --
 -- Redefined (each body copied from schema/current.sql, as noted above it):
---   private.freeze_blocked_direct_money, private.skip_placeholder_notification,
---   public.import_expenses, public.restore_expense.
+--   private.freeze_blocked_direct_money, public.import_expenses, public.restore_expense.
 
--- Body as in 20261113201107_friends_and_blocks.sql (live copy in schema/current.sql) plus: the
--- blocked side of a 1:1 tab may add a payment (settlements) and change the ones they recorded.
+-- Body as in 20261113201107_friends_and_blocks.sql (live copy in schema/current.sql) plus: payments
+-- (settlements) are no longer frozen for the blocked side of a 1:1 tab.
 CREATE OR REPLACE FUNCTION "private"."freeze_blocked_direct_money"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -23,13 +20,8 @@ declare
   row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
   gid uuid;
 begin
-  if uid is null or private.claiming() then
-    return coalesce(new, old);
-  end if;
-  -- Payments are how the two square up: a new one goes through, and so does a change to one the
-  -- person recorded. The blocker hears of each (skip_placeholder_notification lets them through).
-  if tg_table_name = 'settlements'
-     and (tg_op = 'INSERT' or (to_jsonb(old) ->> 'created_by')::uuid = uid) then
+  -- Payments are how the two square up, so they always go through.
+  if uid is null or private.claiming() or tg_table_name = 'settlements' then
     return coalesce(new, old);
   end if;
   if tg_table_name = 'comments' then
@@ -55,41 +47,6 @@ begin
     raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
   end if;
   return coalesce(new, old);
-end;
-$$;
-
--- Body as in 20261113201103_placeholder_members.sql (live copy in schema/current.sql) plus: a
--- block no longer mutes payment notifications, so no payment changes without the blocker hearing.
-CREATE OR REPLACE FUNCTION "private"."skip_placeholder_notification"() RETURNS "trigger"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO ''
-    AS $$
-begin
-  -- A placeholder only ever gets its invite.
-  if new.type <> 'member.added'
-     and exists (select 1 from public.profiles p where p.id = new.user_id and p.is_placeholder) then
-    return null;
-  end if;
-  -- Its invite never goes to an address whose account has a block with whoever sent it. The
-  -- seat remembers, so one goes out if that block is lifted.
-  if new.type = 'member.added'
-     and private.seat_email_blocked(new.user_id, private.try_uuid(new.data ->> 'actor_id')) then
-    update public.placeholders x
-    set held_by = private.try_uuid(new.data ->> 'actor_id'),
-        held_reminder = coalesce((new.data ->> 'reminder')::boolean, false)
-    where x.profile_id = new.user_id;
-    return null;
-  end if;
-  -- Blocking mutes: nothing someone did reaches a person who blocked them, except a payment that
-  -- moves the blocker's balance.
-  if new.type not like 'settlement.%' and exists (
-    select 1 from public.blocks b
-    where b.blocker_id = new.user_id
-      and b.blocked_id = private.try_uuid(new.data ->> 'actor_id')
-  ) then
-    return null;
-  end if;
-  return new;
 end;
 $$;
 
