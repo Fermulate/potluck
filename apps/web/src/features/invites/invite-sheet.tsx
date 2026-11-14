@@ -104,6 +104,8 @@ function InviteRow({
         icon={<Share2 />}
         onClick={() => void shareInvite(groupName, invite.code)}
       />
+      {/* A rule and a gap keep Revoke from sitting right against Copy and Share. */}
+      <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-line" />
       <IconButton
         size="sm"
         variant="ghost"
@@ -174,6 +176,7 @@ export function InvitePanel({
     },
     onSuccess: (_data, invite) => {
       toast(t('invites.revoked'), {
+        duration: 8000,
         action: {
           label: t('common.undo'),
           onClick: async () => {
@@ -369,13 +372,6 @@ function LatestLink({
           <p className="truncate font-semibold">{url.replace(/^https?:\/\//, '')}</p>
           <p className="truncate text-xs text-mute">{inviteMeta(invite, timeZone)}</p>
         </div>
-        <IconButton
-          size="sm"
-          variant="ghost"
-          label={t('invites.revokeLink', { code: invite.code })}
-          icon={<X />}
-          onClick={onRevoke}
-        />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button
@@ -400,17 +396,29 @@ function LatestLink({
           {t('common.share')}
         </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="justify-self-center"
-        leadingIcon={<QrCode />}
-        aria-expanded={showQr}
-        aria-controls={qrId}
-        onClick={() => setShowQr((v) => !v)}
-      >
-        {showQr ? t('invites.qr.hide') : t('invites.qr.show')}
-      </Button>
+      {/* Revoking sits on its own, below a rule and away from Copy, so a slip never closes
+          the link; it also leaves an Undo in the toast. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          leadingIcon={<QrCode />}
+          aria-expanded={showQr}
+          aria-controls={qrId}
+          onClick={() => setShowQr((v) => !v)}
+        >
+          {showQr ? t('invites.qr.hide') : t('invites.qr.show')}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-tomato-ink"
+          leadingIcon={<X />}
+          onClick={onRevoke}
+        >
+          {t('invites.revoke')}
+        </Button>
+      </div>
       {showQr && (
         <div id={qrId} className="pb-1">
           <InviteQr url={url} groupName={groupName} />

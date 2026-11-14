@@ -143,9 +143,7 @@ describe('InvitePanel links', () => {
   it('revokes the only link, and undo brings it back', async () => {
     renderPanel()
     await screen.findByRole('region', { name: t('invites.latest') })
-    fireEvent.click(
-      screen.getByRole('button', { name: t('invites.revokeLink', { code: 'code-i-1-xyz' }) }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: t('invites.revoke') }))
     expect(await screen.findByText(t('invites.revoked'))).toBeInTheDocument()
     expect(rowsOf('group_invites')[0]!.revoked_at).toEqual(expect.any(String))
     expect(await screen.findByText(t('invites.intro', { group: 'Hike crew' }))).toBeInTheDocument()
@@ -167,9 +165,7 @@ describe('InvitePanel links', () => {
         ? { error: { message: 'Server error' } }
         : { data: [invite('i-1')] },
     )
-    fireEvent.click(
-      screen.getByRole('button', { name: t('invites.revokeLink', { code: 'code-i-1-xyz' }) }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: t('invites.revoke') }))
     expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
     expect(screen.getByText(/code-i-1-xyz/)).toBeInTheDocument()
   })

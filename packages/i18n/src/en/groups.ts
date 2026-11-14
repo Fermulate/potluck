@@ -251,6 +251,8 @@ export const invites = {
   expiresOn: 'Expires {date}',
   revoke: 'Revoke',
   revokeLink: 'Revoke link {code}',
+  /** On the newest link, apart from Copy and Share. */
+  revoke: 'Revoke link',
   revoked: 'Invite revoked. That link is closed.',
   create: 'Create link',
   created: 'Link ready. Copy it or share it.',

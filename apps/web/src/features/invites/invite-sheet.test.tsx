@@ -1,7 +1,8 @@
 import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { Toaster } from '@potluck/ui'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { encode } from 'uqr'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { inviteUrl } from '@/lib/app-url'
@@ -24,6 +25,8 @@ const api = vi.hoisted(() => ({
     created_by: 'u-ava',
     revoked_at: null,
   })),
+  revokeInvite: vi.fn(async () => undefined),
+  restoreInvite: vi.fn(async () => undefined),
 }))
 
 vi.mock('@potluck/api', async (importOriginal) => {
@@ -39,6 +42,8 @@ vi.mock('@potluck/api', async (importOriginal) => {
       queryFn: async () => ({ id: VIEWER, timezone: 'UTC' }),
     }),
     createInvite: api.createInvite,
+    revokeInvite: api.revokeInvite,
+    restoreInvite: api.restoreInvite,
   }
 })
 
@@ -77,6 +82,40 @@ describe('InvitePanel', () => {
     expect(latest).toHaveTextContent('2 joined')
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'New link' })).toBeInTheDocument()
+  })
+
+  it('keeps Revoke apart from Copy, and offers Undo after revoking', async () => {
+    api.open = [
+      {
+        id: 'i-9',
+        code: 'zzzzzzzzzz99',
+        group_id: 'g-hike',
+        role: 'member',
+        max_uses: null,
+        uses: 0,
+        expires_at: null,
+        email: null,
+        created_at: '2026-11-05T00:00:00Z',
+        created_by: VIEWER,
+        revoked_at: null,
+      },
+    ]
+    renderWithProviders(
+      <>
+        <InvitePanel group={group()} />
+        <Toaster label="Notifications" />
+      </>,
+    )
+    const latest = await screen.findByRole('region', { name: 'Your link' })
+    const copy = within(latest).getByRole('button', { name: 'Copy link' })
+    const revoke = within(latest).getByRole('button', { name: t('invites.revoke') })
+    // Not in the same row as Copy and Share.
+    expect(copy.parentElement).not.toBe(revoke.parentElement)
+    fireEvent.click(revoke)
+    await waitFor(() => expect(api.revokeInvite).toHaveBeenCalledTimes(1))
+    fireEvent.click(await screen.findByRole('button', { name: t('common.undo') }))
+    await waitFor(() => expect(api.restoreInvite).toHaveBeenCalledTimes(1))
+    expect(api.restoreInvite.mock.calls[0]).toEqual([expect.anything(), 'i-9'])
   })
 
   it('creates a member link in one tap, with sensible defaults', async () => {

@@ -250,6 +250,7 @@ export const invites = {
   expiresOn: 'Läuft am {date} ab',
   revoke: 'Widerrufen',
   revokeLink: 'Link {code} widerrufen',
+  revoke: 'Link widerrufen',
   revoked: 'Einladung widerrufen. Der Link ist zu.',
   create: 'Link erstellen',
   created: 'Link ist bereit. Kopier oder teil ihn.',
