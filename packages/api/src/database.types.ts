@@ -1856,6 +1856,7 @@ export type Database = {
       }
       block_user: { Args: { user_id: string }; Returns: undefined }
       calendar_feed_token: { Args: { rotate?: boolean }; Returns: string }
+      can_split_with: { Args: { person: string }; Returns: boolean }
       cancel_event: {
         Args: { event_id: string }
         Returns: {

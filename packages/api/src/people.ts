@@ -18,6 +18,7 @@ export const peopleKeys = {
   friendInvite: (code: string, viewerId: string | null = null) =>
     ['potluck', 'people', 'friend-invite', code, viewerId ?? 'anon'] as const,
   blocks: (userId: string) => ['potluck', 'people', 'blocks', userId] as const,
+  canSplit: (personId: string) => ['potluck', 'people', 'can-split', personId] as const,
 }
 
 // Placeholders -------------------------------------------------------------------------------
@@ -209,6 +210,20 @@ export const myBlocksQueryOptions = (client: PotluckClient, userId: string) =>
   queryOptions({
     queryKey: peopleKeys.blocks(userId),
     queryFn: () => fetchMyBlocks(client),
+  })
+
+/**
+ * Whether a new expense with this person would go in (`can_split_with`): false for someone you
+ * do not know, a seat, a closed account, or across a block (never saying which).
+ */
+export async function canSplitWith(client: PotluckClient, personId: string): Promise<boolean> {
+  return unwrap(await client.rpc('can_split_with', { person: personId })) === true
+}
+
+export const canSplitWithQueryOptions = (client: PotluckClient, personId: string) =>
+  queryOptions({
+    queryKey: peopleKeys.canSplit(personId),
+    queryFn: () => canSplitWith(client, personId),
   })
 
 /** Tells the Potluck team about a person (or a group). */

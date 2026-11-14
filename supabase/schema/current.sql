@@ -5739,6 +5739,44 @@ $$;
 ALTER FUNCTION "public"."calendar_feed_token"("rotate" boolean) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."can_split_with"("person" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid := private.require_user();
+begin
+  if person is null or person = uid then
+    return false;
+  end if;
+
+  if exists (
+    select 1 from public.groups g
+    where g.is_direct
+      and g.deleted_at is null
+      and exists (select 1 from public.group_members m where m.group_id = g.id and m.user_id = uid)
+      and exists (select 1 from public.group_members m where m.group_id = g.id and m.user_id = person)
+  ) then
+    return not exists (
+      select 1 from public.blocks b where b.blocker_id = person and b.blocked_id = uid
+    );
+  end if;
+
+  return exists (
+      select 1 from public.profiles p
+      where p.id = person
+        and p.deleted_at is null
+        and not p.is_placeholder
+        and p.id in (select private.my_contact_ids())
+    )
+    and not private.has_block(uid, person);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."can_split_with"("person" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."cancel_event"("event_id" "uuid") RETURNS "public"."events"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -13653,6 +13691,12 @@ GRANT ALL ON FUNCTION "public"."block_user"("user_id" "uuid") TO "service_role";
 REVOKE ALL ON FUNCTION "public"."calendar_feed_token"("rotate" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."calendar_feed_token"("rotate" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."calendar_feed_token"("rotate" boolean) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."can_split_with"("person" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."can_split_with"("person" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."can_split_with"("person" "uuid") TO "service_role";
 
 
 
