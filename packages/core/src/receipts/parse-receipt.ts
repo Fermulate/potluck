@@ -191,6 +191,9 @@ const PAYMENT =
 const CHANGE_GIVEN = /\b(change|rendu|rendue|monnaie|wechselgeld|ruckgeld|cambio|troco)\b/
 const CASH_PAID =
   /\b(cash|tendered|tend|especes|gegeben|geg|efectivo|dinheiro)\b|^bar\b|\bbar\s+(eur|chf)\b/
+// What is left on a card, points and approval codes: nothing to do with what this bill came to.
+const NOT_PAID =
+  /\b(balance|bal|remaining|points|loyalty|auth|approval|solde|saldo|restguthaben|restbetrag)\b/
 
 const NOT_AN_ITEM =
   /\b(tel|phone|fax|www|http|order|table|server|guest|guests|cashier|kasse|receipt|invoice|facture|rechnung|ticket|recibo|qty|items|articles|artikel|anzahl)\b/
@@ -427,7 +430,7 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // The line the last item came from, and a unit price line still waiting for its item.
   let lastItemLine = -2
   let pendingQty: { count: number | null; unit: number } | null = null
-  // What the card or cash lines say was paid, and the change given back.
+  // What the card lines say was paid, the cash handed over, and the change given back.
   const paid: number[] = []
   const cash: number[] = []
   const change: number[] = []
@@ -466,8 +469,8 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         break
       case 'payment':
         if (CHANGE_GIVEN.test(key)) change.push(price.cents)
-        else paid.push(price.cents)
-        if (CASH_PAID.test(key)) cash.push(price.cents)
+        else if (CASH_PAID.test(key)) cash.push(price.cents)
+        else if (!NOT_PAID.test(key)) paid.push(price.cents)
         itemsEnd = Math.min(itemsEnd, index)
         break
       case 'item': {
@@ -534,16 +537,17 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       else if (sums(null, null, null)) [tax, tip, discount] = [null, null, null]
     }
   }
+  // What was paid: the card lines, and the cash handed over, less the change when there was any.
+  const sum = (amounts: number[]) => amounts.reduce((a, c) => a + c, 0)
+  if (cash.length > 0) paid.push(...(change.length > 0 ? [sum(cash) - sum(change)] : cash))
   // A total line read a few cents off, while the card line says exactly what the items say: the
   // card line was the bill ("TOTAL $76.59" over "VISA $76.50" on a blurred photo).
   const formSum = itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0)
   if (!totalDerived && offered.length > 0 && total !== formSum && paid.includes(formSum)) {
     total = formSum
   }
-  // A worked-out total the card paid, or the cash handed over less the change, is confirmed.
-  const sum = (amounts: number[]) => amounts.reduce((a, c) => a + c, 0)
-  const handedOver = cash.length > 0 && change.length > 0 ? sum(cash) - sum(change) : null
-  if (total !== null && (paid.includes(total) || handedOver === total)) totalDerived = false
+  // A worked-out total that was paid is confirmed.
+  if (total !== null && paid.includes(total)) totalDerived = false
 
   return {
     merchant: findMerchant(lines),

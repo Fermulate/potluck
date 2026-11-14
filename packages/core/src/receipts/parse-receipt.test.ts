@@ -607,6 +607,40 @@ describe('do the items match the total', () => {
     expect([cvs.totalCents, cvs.totalDerived, cvs.itemsMatch]).toEqual([649, true, 'unconfirmed'])
   })
 
+  it('counts cash handed over only less the change it got back', () => {
+    // TOTAL 19.00, paid with 20.00 and 1.00 back; the fries (5.00) were misread as 6.00.
+    const lines = [
+      'Diner',
+      'Burger 14.00',
+      'Fries 6.00',
+      'TOTAL 19.00',
+      'CASH 20.00',
+      'CHANGE 1.00',
+    ]
+    const read = parseReceipt(lines.join('\n'), { currency: 'USD' })
+    expect([read.totalCents, read.itemsMatch]).toEqual([1900, 'off'])
+    // With the total line lost, the 20.00 the items make is not what was paid.
+    const lost = parseReceipt(lines.filter((l) => !l.startsWith('TOTAL')).join('\n'), {
+      currency: 'USD',
+    })
+    expect([lost.totalCents, lost.totalDerived, lost.itemsMatch]).toEqual([
+      2000,
+      true,
+      'unconfirmed',
+    ])
+  })
+
+  it('never takes what is left on a card for what was paid', () => {
+    // TOTAL 19.00 for a 12.00 shirt and 7.00 socks misread as 8.00; the gift card has 20.00 left.
+    const lines = ['Shop', 'Shirt 12.00', 'Socks 8.00', 'TOTAL 19.00', 'GIFT CARD BALANCE 20.00']
+    const read = parseReceipt(lines.join('\n'), { currency: 'USD' })
+    expect([read.totalCents, read.itemsMatch]).toEqual([1900, 'off'])
+    const lost = parseReceipt(lines.filter((l) => !l.startsWith('TOTAL')).join('\n'), {
+      currency: 'USD',
+    })
+    expect([lost.totalCents, lost.totalDerived]).toEqual([2000, true])
+  })
+
   it('never adds up a bill paid in parts or a card balance', () => {
     // 12.00 + 7.00 is 19.00: 5.00 on a gift card that has 20.00 left, and 14.00 on VISA.
     const scan = parseReceipt(
