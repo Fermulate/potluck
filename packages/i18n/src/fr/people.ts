@@ -122,9 +122,10 @@ export const people = {
     removeConfirm: 'Retirer {name} de tes amis ? Les groupes partagés ne changent pas.',
     removed: "{name} n'est plus dans ta liste d'amis.",
     block: 'Bloquer {name}',
-    blockHint: "La personne n'est pas prévenue, et tu n'entends plus parler d'elle.",
+    blockHint:
+      "La personne n'est pas prévenue. Plus de nouvelles dépenses partagées, et seuls ses paiements te notifient.",
     blockConfirm:
-      "{name} n'est pas prévenu. Vous n'êtes plus amis, tu ne reçois plus de notifications sur ce qu'il fait, et il ne peut ni rejoindre tes groupes ni ouvrir un compte à deux avec toi. Les groupes que vous partagez déjà continuent de marcher.",
+      "{name} n'est pas prévenu. Vous n'êtes plus amis, aucune nouvelle dépense ne peut vous inclure tous les deux, et il ne peut ni rejoindre tes groupes ni ouvrir un compte à deux avec toi. Tu ne reçois plus de notifications sur ce qu'il fait, sauf pour les paiements, pour qu'un compte puisse encore être soldé. Les groupes que vous partagez déjà continuent de marcher.",
     blocked: '{name} est bloqué.',
     report: 'Signaler {name}',
     reportHint: 'Dis-nous si quelque chose ne va pas.',
@@ -142,7 +143,7 @@ export const people = {
     sent: 'Merci. On va regarder.',
   },
   blocked: {
-    hint: "Les gens ne sont pas prévenus quand tu les bloques ou débloques. Tant qu'ils sont bloqués, rien de ce qu'ils font ne te notifie.",
+    hint: "Les gens ne sont pas prévenus quand tu les bloques ou débloques. Tant qu'ils sont bloqués, aucune nouvelle dépense ne peut vous inclure tous les deux, et seuls leurs paiements te notifient.",
     unblockName: 'Débloquer {name}',
     unblocked: '{name} est débloqué.',
   },

@@ -122,9 +122,9 @@ export const people = {
     removeConfirm: 'Remove {name} from your friends? Shared groups stay as they are.',
     removed: '{name} is no longer on your friends list.',
     block: 'Block {name}',
-    blockHint: 'They are not told, and you stop hearing from them.',
+    blockHint: 'They are not told. No new shared expenses, and you only hear about payments.',
     blockConfirm:
-      '{name} is not told. You stop being friends, you get no notifications about what they do, and they cannot join your groups or start a tab with you. Groups you already share keep working.',
+      '{name} is not told. You stop being friends, no new expense can include you both anywhere, and they cannot join your groups or start a tab with you. You get no notifications about what they do, except payments, so a tab can still be settled. Groups you already share keep working.',
     blocked: '{name} is blocked.',
     report: 'Report {name}',
     reportHint: 'Tell us if something is wrong.',
@@ -142,7 +142,7 @@ export const people = {
     sent: 'Thanks. We will take a look.',
   },
   blocked: {
-    hint: 'They are not told when you block or unblock them. While blocked, nothing they do notifies you.',
+    hint: 'They are not told when you block or unblock them. While blocked, no new expense can include you both, and only their payments notify you.',
     unblockName: 'Unblock {name}',
     unblocked: '{name} is unblocked.',
   },
