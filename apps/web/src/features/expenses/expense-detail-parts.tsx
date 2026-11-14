@@ -74,21 +74,26 @@ export function SplitCard({
   me,
   people,
   nameOf,
+  memberOrder = [],
 }: {
   expense: ExpenseWithSplits
   me: string
   people: Map<string, MoneyPerson>
   nameOf: NameOf
+  /** The group's member ids in order, so people sit where the form puts them. */
+  memberOrder?: readonly string[]
 }) {
   const paidBy = new Map(payersOf(e).map((p) => [p.user_id, p.paid_cents]))
   const shares = new Map(e.expense_splits.map((s) => [s.user_id, s]))
-  // You first, then whoever paid (most first), then everyone else by share.
-  const rank = (id: string) => (id === me ? 2 : paidBy.has(id) ? 1 : 0)
+  // The same order as the form: you first, then the group's member order. Anyone who has left
+  // the group comes last, in the order the expense lists them.
+  const position = (id: string) => {
+    if (id === me) return -1
+    const i = memberOrder.indexOf(id)
+    return i === -1 ? memberOrder.length : i
+  }
   const ids = [...new Set([...shares.keys(), ...paidBy.keys()])].sort(
-    (a, b) =>
-      rank(b) - rank(a) ||
-      (paidBy.get(b) ?? 0) - (paidBy.get(a) ?? 0) ||
-      (shares.get(b)?.share_cents ?? 0) - (shares.get(a)?.share_cents ?? 0),
+    (a, b) => position(a) - position(b),
   )
   const money = (cents: number) => formatMoney(cents, e.currency)
   const type = t(`splitTypes.${e.split_type}.label`).toLocaleLowerCase()
