@@ -48,6 +48,11 @@ test('search finds an expense in every group the viewer is in, and only those', 
   await page.getByRole('searchbox', { name: t('search.label') }).fill(cleo.name)
   await expect(page.getByRole('link', { name: new RegExp(`Taco truck ${tag}`) })).toBeVisible()
   await expect(page.getByRole('link', { name: new RegExp(`Taco night ${tag}`) })).toHaveCount(0)
+
+  // A number in the address (a shared link, a bookmark) is a search for that text, not a crash.
+  await page.goto('/search?q=24')
+  await expect(page.getByRole('searchbox', { name: t('search.label') })).toHaveValue('24')
+  await expect(page.getByRole('heading', { name: t('errors.screen.title') })).toHaveCount(0)
 })
 
 test('filtering a group to one person, one month and one category shows a matching total', async ({
