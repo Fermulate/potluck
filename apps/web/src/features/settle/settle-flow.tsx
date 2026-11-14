@@ -574,9 +574,11 @@ export function PaymentForm({
 }
 
 /**
- * Signature moment: what was owed ticks down to what is left (usually $0.00), then confetti in
- * the palette colors. With reduced motion it simply shows the result. A payment in another
- * currency skips the count, since its group currency value is the server's to work out.
+ * Signature moment. Settling in full: what was owed ticks down to $0.00, then confetti in the
+ * palette colors. Paying part: the amount just paid is the headline and what is left sits
+ * underneath in plain type, so the screen celebrates the payment rather than the debt. With
+ * reduced motion it simply shows the result. A payment in another currency skips the count,
+ * since its group currency value is the server's to work out.
  */
 export function SettledMoment({
   done,
@@ -596,8 +598,9 @@ export function SettledMoment({
   const start = sameCurrency ? Math.max(done.owedBefore, done.paid) : 0
   const remaining = sameCurrency ? Math.max(0, done.owedBefore - done.paid) : 0
   const settled = sameCurrency && remaining === 0
-  // Reduced motion: show the result straight away.
-  const [shown, setShown] = useState(reduced ? remaining : start)
+  // Only settling in full counts down; reduced motion shows the result straight away.
+  const counts = settled && !reduced
+  const [shown, setShown] = useState(counts ? start : remaining)
   const [fire, setFire] = useState(reduced && settled ? 1 : 0)
   const from = firstName(done.from.display_name)
   const to = firstName(done.to.display_name)
@@ -605,18 +608,16 @@ export function SettledMoment({
   const youGot = done.to.id === viewerId
 
   useEffect(() => {
-    if (reduced || !sameCurrency) return
+    if (!counts) return
     const controls = animate(start, remaining, {
       duration: 1.1,
       delay: 0.25,
       ease: [0.16, 1, 0.3, 1],
       onUpdate: (v) => setShown(Math.round(v)),
-      onComplete: () => {
-        if (settled) setFire((n) => n + 1)
-      },
+      onComplete: () => setFire((n) => n + 1),
     })
     return () => controls.stop()
-  }, [reduced, sameCurrency, start, remaining, settled])
+  }, [counts, start, remaining])
 
   const left = formatMoney(remaining, groupCurrency)
   const paid = formatMoney(done.paid, done.currency)
@@ -658,10 +659,10 @@ export function SettledMoment({
           aria-hidden
           className={
             'tabular text-[4rem] leading-none font-extrabold tracking-tight transition-colors duration-500 ' +
-            (!sameCurrency || shown === 0 ? 'text-olive-ink' : 'text-tomato-ink')
+            (settled && shown !== 0 ? 'text-tomato-ink' : 'text-olive-ink')
           }
         >
-          {sameCurrency
+          {settled
             ? formatMoney(shown, groupCurrency, { locale: intlLocale() })
             : formatMoney(done.paid, done.currency, { locale: intlLocale() })}
         </p>
