@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(174);
+select plan(175);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -826,6 +826,10 @@ select tests.login('ben');
 select public.create_expense_v2(jsonb_build_object(
   'group_id', tests.id('dm'), 'description', 'Lunch', 'amount_cents', 800, 'paid_by', tests.uid('ben'),
   'splits', jsonb_build_array(pg_temp.person(tests.uid('dan')), pg_temp.person(tests.uid('ben')))));
+-- Snacks in the shared group, from before the block.
+select tests.remember('snacks', (select id from public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Snacks', 'amount_cents', 400, 'paid_by', tests.uid('ben'),
+  'splits', jsonb_build_array(pg_temp.person(tests.uid('dan')), pg_temp.person(tests.uid('ben')))))));
 select public.block_user(tests.uid('dan'));
 select tests.login('dan');
 select throws_ok(
@@ -844,7 +848,8 @@ select throws_ok(
   '23514', 'blocked_person', 'no new expense names both of them, in a shared group too'
 );
 select set_config('tests.ben_before', pg_temp.bal('g', tests.uid('ben'))::text, true);
-select tests.remember('muted', (select id from public.settle_up_v2(tests.id('g'), tests.uid('dan'), tests.uid('ben'), 300)));
+insert into public.comments (expense_id, body) values (tests.id('snacks'), 'Thanks');
+select tests.remember('paid', (select id from public.settle_up_v2(tests.id('g'), tests.uid('dan'), tests.uid('ben'), 300)));
 select tests.remember('pizza', (select id from public.create_expense_v2(jsonb_build_object(
   'group_id', tests.id('g'), 'description', 'Pizza', 'amount_cents', 900, 'paid_by', tests.uid('dan'),
   'splits', jsonb_build_array(pg_temp.person(tests.uid('ava')), pg_temp.person(tests.uid('dan')))))));
@@ -853,9 +858,16 @@ set constraints all immediate;
 set constraints all deferred;
 select is(
   (select count(*)::int from public.notifications n
-   where n.user_id = tests.uid('ben') and n.data ->> 'settlement_id' = tests.id('muted')::text),
+   where n.user_id = tests.uid('ben') and n.type = 'comment.created'
+     and n.data ->> 'expense_id' = tests.id('snacks')::text),
   0,
   'the blocker hears nothing the blocked person does'
+);
+select is(
+  (select count(*)::int from public.notifications n
+   where n.user_id = tests.uid('ben') and n.data ->> 'settlement_id' = tests.id('paid')::text),
+  1,
+  'except a payment, which moves their balance'
 );
 select is(
   (select count(*)::int from public.notifications n

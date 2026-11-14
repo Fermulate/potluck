@@ -195,7 +195,7 @@ sequenceDiagram
   DB->>DB: checks (revoked, expired, used up, email, block)<br/>friendships both ways, notify friend.added to Ava
   A->>W: friend page, Remove friend or Block
   W->>DB: rpc remove_friend(id) (refused with an open 1:1 balance)<br/>or rpc block_user(id) (friendship gone both ways)
-  Note over DB: a block is never announced (refusals read like a dead link or a stranger)<br/>and mutes: no notification whose actor Ava blocked reaches her
+  Note over DB: a block is never announced (refusals read like a dead link or a stranger)<br/>and mutes: no notification whose actor Ava blocked reaches her, payments aside
 ```
 
 ## Delete and restore a group

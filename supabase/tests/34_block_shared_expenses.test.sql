@@ -2,10 +2,11 @@
 -- blocked the other, no new expense names both of them, as payers or with a share, in any group
 -- or 1:1 tab. Creating, editing so someone comes in, restoring, repeating expenses and import are
 -- covered; details of older expenses, payments and settling up keep working for both people
--- (20261114161054_payments_across_blocks), and no answer says who blocked whom. Ben and Cleo are
--- the pair; Ava and Dan have no block with anyone.
+-- (20261114161054_payments_across_blocks: in a 1:1 tab the blocked person changes only the payments
+-- they recorded, and the blocker hears of each), and no answer says who blocked whom. Ben and Cleo
+-- are the pair; Ava and Dan have no block with anyone.
 begin;
-select plan(43);
+select plan(50);
 
 delete from public.fx_rates;
 
@@ -227,6 +228,43 @@ select lives_ok(
 select lives_ok(
   format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('tab'), tests.uid('cleo'), tests.uid('ben')),
   '...and in their 1:1 tab'
+);
+reset role;
+select tests.remember('ben_paid', (select s.id from public.settlements s
+  where s.group_id = tests.id('tab') and s.created_by = tests.uid('ben')));
+select tests.remember('cleo_paid', (select s.id from public.settlements s
+  where s.group_id = tests.id('tab') and s.created_by = tests.uid('cleo')));
+select is(
+  (select count(*)::int from public.notifications n
+   where n.user_id = tests.uid('ben') and n.type = 'settlement.created'
+     and n.data ->> 'settlement_id' = tests.id('cleo_paid')::text),
+  1,
+  'the blocker is told of a payment the blocked person records, block or no block'
+);
+select tests.login('cleo');
+select lives_ok(
+  format($$ select public.update_settlement(%L, '{"amount_cents": 150}') $$, tests.id('cleo_paid')),
+  'the blocked person can change a payment they recorded in the tab'
+);
+select throws_ok(
+  format($$ select public.update_settlement(%L, '{"amount_cents": 150}') $$, tests.id('ben_paid')),
+  '42501', 'not_a_friend', 'but not one the blocker recorded'
+);
+select throws_ok(
+  format($$ select public.delete_settlement(%L) $$, tests.id('ben_paid')),
+  '42501', 'not_a_friend', 'nor delete it'
+);
+select lives_ok(format($$ select public.delete_settlement(%L) $$, tests.id('cleo_paid')),
+  'their own they can delete');
+select lives_ok(format($$ select public.restore_settlement(%L) $$, tests.id('cleo_paid')),
+  'and restore');
+reset role;
+select is(
+  (select array_agg(n.type::text order by n.type::text) from public.notifications n
+   where n.user_id = tests.uid('ben') and n.type <> 'settlement.created'
+     and n.data ->> 'settlement_id' = tests.id('cleo_paid')::text),
+  array['settlement.deleted', 'settlement.restored', 'settlement.updated'],
+  'and the blocker hears of every change'
 );
 select tests.login('ben');
 select is(public.can_split_with(tests.uid('cleo')), false, 'can_split_with says no to the blocker too');

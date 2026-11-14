@@ -1969,8 +1969,13 @@ declare
   row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
   gid uuid;
 begin
-  -- Payments are how the two square up, so they always go through.
-  if uid is null or private.claiming() or tg_table_name = 'settlements' then
+  if uid is null or private.claiming() then
+    return coalesce(new, old);
+  end if;
+  -- Payments are how the two square up: a new one goes through, and so does a change to one the
+  -- person recorded. The blocker hears of each (skip_placeholder_notification lets them through).
+  if tg_table_name = 'settlements'
+     and (tg_op = 'INSERT' or (to_jsonb(old) ->> 'created_by')::uuid = uid) then
     return coalesce(new, old);
   end if;
   if tg_table_name = 'comments' then
@@ -5238,8 +5243,9 @@ begin
     where x.profile_id = new.user_id;
     return null;
   end if;
-  -- Blocking mutes: nothing someone did reaches a person who blocked them.
-  if exists (
+  -- Blocking mutes: nothing someone did reaches a person who blocked them, except a payment that
+  -- moves the blocker's balance.
+  if new.type not like 'settlement.%' and exists (
     select 1 from public.blocks b
     where b.blocker_id = new.user_id
       and b.blocked_id = private.try_uuid(new.data ->> 'actor_id')
