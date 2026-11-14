@@ -392,7 +392,15 @@ describe('expense form files', () => {
     view.unmount()
     expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(expect.anything(), paths)
 
-    await act(async () => call.resolve({ id: 'new-expense' }))
+    await act(async () =>
+      call.resolve({
+        id: 'new-expense',
+        description: 'Lunch',
+        amount_cents: 2000,
+        currency: 'USD',
+        is_refund: false,
+      } as { id: string }),
+    )
     expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(expect.anything(), paths)
   })
 

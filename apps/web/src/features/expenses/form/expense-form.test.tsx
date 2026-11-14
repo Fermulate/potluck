@@ -20,22 +20,39 @@ import { ExpenseForm } from './expense-form'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
-vi.mock('@potluck/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof Api>()),
-  // Like the server: the expense it saved.
-  createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
-    id: 'new-expense',
-    ...payload,
-  })),
-  // Like the server: a rewritten split may only name current members.
-  updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
-    const current = new Set(members.map((m) => m.id))
-    if (payload.splits?.some((s) => !current.has(s.user_id))) {
-      throw { message: 'split_member_not_in_group', code: '23514' }
-    }
-    return { id }
+// What the server has stored under an expense id, split and all.
+const storedExpense = vi.hoisted(() =>
+  vi.fn(async (_id: string): Promise<unknown> => {
+    throw new Error('not stored')
   }),
-}))
+)
+
+vi.mock('@potluck/api', async (importOriginal) => {
+  const api = await importOriginal<typeof Api>()
+  return {
+    ...api,
+    moneyQueries: {
+      ...api.moneyQueries,
+      expense: (_c: unknown, id: string) => ({
+        queryKey: api.moneyKeys.expense(id),
+        queryFn: () => storedExpense(id),
+      }),
+    },
+    // Like the server: the expense it saved.
+    createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+      id: 'new-expense',
+      ...payload,
+    })),
+    // Like the server: a rewritten split may only name current members.
+    updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
+      const current = new Set(members.map((m) => m.id))
+      if (payload.splits?.some((s) => !current.has(s.user_id))) {
+        throw { message: 'split_member_not_in_group', code: '23514' }
+      }
+      return { id }
+    }),
+  }
+})
 
 const create = vi.mocked(createExpense)
 const update = vi.mocked(updateExpense)
@@ -564,7 +581,8 @@ describe('ExpenseForm offline', () => {
     expect(screen.getByRole('radio', { name: 'Shares' })).toBeDisabled()
     expect(screen.getByRole('button', { name: t('common.retry') })).toBeEnabled()
 
-    // The first try had landed: the server hands that expense back, and the toast describes it.
+    // The first try had landed, split between you and Ben only: the server hands that expense
+    // back, and the toast describes it, your share from its stored split.
     create.mockResolvedValueOnce({
       id: 'new-expense',
       description: 'Cabin deposit (first try)',
@@ -572,11 +590,39 @@ describe('ExpenseForm offline', () => {
       currency: 'USD',
       is_refund: false,
     } as Awaited<ReturnType<typeof createExpense>>)
+    storedExpense.mockResolvedValueOnce(
+      expense({
+        id: 'new-expense',
+        description: 'Cabin deposit (first try)',
+        amount_cents: 9000,
+        expense_splits: [
+          { user_id: ME, share_cents: 4500, weight: null, adjustment_cents: null },
+          { user_id: BEN, share_cents: 4500, weight: null, adjustment_cents: null },
+        ],
+      }),
+    )
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
     expect(
-      await screen.findByText('Added "Cabin deposit (first try)". Your share: $30.00.'),
+      await screen.findByText('Added "Cabin deposit (first try)". Your share: $45.00.'),
     ).toBeInTheDocument()
+  })
+
+  it('holds the percent slider too while a save is unconfirmed', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    const handle = screen.getByRole('slider', {
+      name: t('expenses.splitEditor.handle', { left: 'You', right: 'Ben' }),
+    })
+    const before = handle.getAttribute('aria-valuenow')
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    expect(handle).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.pointerDown(handle, { pointerId: 1 })
+    expect(handle).toHaveAttribute('aria-valuenow', before)
   })
 
   it('lets the draft change again once a retry is refused', async () => {

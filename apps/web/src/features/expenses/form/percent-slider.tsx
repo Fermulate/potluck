@@ -31,10 +31,13 @@ export function PercentSlider({
   people,
   percent,
   onChange,
+  disabled = false,
 }: {
   people: SliderPerson[]
   percent: Record<string, number>
   onChange: (next: Record<string, number>) => void
+  /** The handles neither move nor take focus. */
+  disabled?: boolean
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const reduced = usePrefersReducedMotion()
@@ -52,6 +55,7 @@ export function PercentSlider({
   }))
 
   const setBoundary = (index: number, cumulative: number) => {
+    if (disabled) return
     const snapped = Math.round(cumulative / STEP) * STEP
     const next = moveBoundary(percent, order, index, snapped)
     if (next[order[index]!] !== percent[order[index]!]) onChange(next)
@@ -64,6 +68,7 @@ export function PercentSlider({
   }
 
   const onPointerDown = (index: number) => (e: PointerEvent<HTMLDivElement>) => {
+    if (disabled) return
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
     e.currentTarget.focus()
@@ -144,7 +149,8 @@ export function PercentSlider({
           <div
             key={`${s.id}-${right.id}`}
             role="slider"
-            tabIndex={0}
+            tabIndex={disabled ? undefined : 0}
+            aria-disabled={disabled || undefined}
             aria-label={t('expenses.splitEditor.handle', { left: s.name, right: right.name })}
             aria-valuemin={s.start / 100}
             aria-valuemax={(right.start + right.value) / 100}
@@ -157,6 +163,7 @@ export function PercentSlider({
             onKeyDown={onKeyDown(index)}
             className={cn(
               'group absolute top-12 z-10 flex h-12 w-8 -translate-x-1/2 cursor-ew-resize touch-none items-center justify-center outline-none',
+              disabled && 'cursor-not-allowed opacity-60',
             )}
             style={{ left: `${(boundary / scale) * 100}%` }}
           >

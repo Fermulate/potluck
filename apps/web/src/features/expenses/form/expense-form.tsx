@@ -538,25 +538,33 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
     onSuccess: async (saved) => {
       invalidateMoney(queryClient, group.id, saved.id)
-      // Say what was saved and what it means for you, from the row the server returned (a retry
-      // gets the first try's row back). The draft is held while a save is out, so the split
-      // previewed here is the one that row was made from.
-      const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
-      toast.success(
-        editing
-          ? t('expenses.updated', { description: saved.description })
-          : saved.is_refund
-            ? t('expenses.refund.savedToast', { description: saved.description })
-            : mine > 0
-              ? t('expenses.saved', {
-                  description: saved.description,
-                  share: formatMoney(mine, saved.currency),
-                })
-              : t('expenses.savedNotIn', {
-                  description: saved.description,
-                  amount: formatMoney(saved.amount_cents, saved.currency),
-                }),
-      )
+      // Say what was saved and what it means for you, from what the server stored (a retry gets
+      // the first try's expense back), never from the form. Your share comes from the stored
+      // split; without it the toast gives the amount.
+      if (editing) toast.success(t('expenses.updated', { description: saved.description }))
+      else if (saved.is_refund) {
+        toast.success(t('expenses.refund.savedToast', { description: saved.description }))
+      } else {
+        void queryClient
+          .fetchQuery(moneyQueries.expense(supabase, saved.id))
+          .then(
+            (stored) => stored.expense_splits.find((s) => s.user_id === me)?.share_cents ?? 0,
+            () => 0,
+          )
+          .then((mine) =>
+            toast.success(
+              mine > 0
+                ? t('expenses.saved', {
+                    description: saved.description,
+                    share: formatMoney(mine, saved.currency),
+                  })
+                : t('expenses.savedNotIn', {
+                    description: saved.description,
+                    amount: formatMoney(saved.amount_cents, saved.currency),
+                  }),
+            ),
+          )
+      }
       if (saveDefault && canSaveDefault && defaultSplit) {
         try {
           await setDefaultSplit(supabase, group.id, plainEqual ? null : defaultSplit)
@@ -899,6 +907,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                   currency={currency}
                   locale={intlLocale()}
                   onAddPerson={canAddPerson ? () => setAddingPerson(true) : undefined}
+                  disabled={held}
                 />
                 {canAddPerson && (
                   <AddPlaceholderSheet
