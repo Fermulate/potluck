@@ -8,6 +8,21 @@ import type { BalanceSummary } from './summary'
 const TEAR =
   'radial-gradient(circle 6px at 50% 100%, #0000 5.5px, #000 6px) 50% 100% / 16px 100% repeat-x'
 
+/** "Plus you are owed 12.00 EUR and you owe 5.00 GBP": each other currency, unconverted. */
+function otherTotals(summary: BalanceSummary): string {
+  const money = (cents: number, currency: string) =>
+    formatMoney(cents, currency, { locale: intlLocale() })
+  const parts = summary.otherCurrencies.flatMap(({ currency, owed, owe }) => [
+    ...(owed > 0 ? [t('home.balance.otherOwed', { amount: money(owed, currency) })] : []),
+    ...(owe < 0 ? [t('home.balance.otherOwe', { amount: money(-owe, currency) })] : []),
+  ])
+  const list =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(', ')} ${t('common.and')} ${parts[parts.length - 1]}`
+      : (parts[0] ?? '')
+  return t('home.balance.otherTotals', { list })
+}
+
 function GroupLinks({ summary }: { summary: BalanceSummary }) {
   const groups = [...summary.oweGroups, ...summary.owedGroups].slice(0, 5)
   if (groups.length === 0) return null
@@ -21,9 +36,11 @@ function GroupLinks({ summary }: { summary: BalanceSummary }) {
             className="-mx-2 flex items-center gap-2.5 rounded-[0.625rem] px-2 py-1.5 text-sm hover:bg-on-hero/10"
           >
             <span aria-hidden className="w-5 shrink-0 text-center">
-              {g.groupEmoji ?? '•'}
+              {g.groupEmoji ?? (g.isDirect ? '🤝' : '•')}
             </span>
-            <span className="min-w-0 flex-1 truncate">{g.groupName}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {g.groupName || t('people.friendPage.oneOnOne')}
+            </span>
             <Amount
               cents={g.netCents}
               currency={summary.currency}
@@ -122,9 +139,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
       </div>
       <GroupLinks summary={summary} />
       {summary.otherCurrencies.length > 0 && (
-        <p className="mt-4 text-xs text-hero-mute">
-          {t('home.balance.otherCurrencies', { currencies: summary.otherCurrencies.join(', ') })}
-        </p>
+        <p className="mt-4 text-xs text-hero-mute">{otherTotals(summary)}</p>
       )}
     </section>
   )

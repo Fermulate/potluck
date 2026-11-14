@@ -414,7 +414,10 @@ export const home = {
     settledHint: 'Nobody owes anybody. Enjoy it while it lasts.',
     youOwe: 'You owe',
     owedToYou: 'Owed to you',
-    otherCurrencies: 'Plus balances in {currencies}',
+    /** Totals in other currencies, never converted: "Plus you are owed 12.00 EUR and you owe 5.00 GBP". */
+    otherTotals: 'Plus {list}',
+    otherOwed: 'you are owed {amount}',
+    otherOwe: 'you owe {amount}',
     acrossGroups_one: 'across {count} group',
     acrossGroups_other: 'across {count} groups',
   },
