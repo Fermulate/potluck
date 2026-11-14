@@ -14,7 +14,8 @@ Per-feature notes (payers and refunds, repeating expenses, language, two-step si
 
 ## Rules
 
-- Route files are in the first download: no schema libraries (search params use `src/lib/search.ts`),
+- Route files are in the first download: no schema libraries (search params use `src/lib/search.ts`;
+  a validator returns every key, `undefined` when dropped, or the raw value shows through),
   no feature imports beyond the screen. A `loader` may call `prefetch.<screen>()` from
   `src/lib/prefetch.ts` and must not await it.
 - `/a/$code` (guest links) is signed out. `/` is prerendered (`prerender-landing.ts`): nothing on the
@@ -22,6 +23,8 @@ Per-feature notes (payers and refunds, repeating expenses, language, two-step si
 - Server data goes through `@potluck/api` functions and `queryOptions`; never `supabase.from()` in a component.
 - Realtime: subscribe with `useRealtime` / `useBatchedInvalidate` (`src/lib/realtime.ts`) and invalidate
   query keys; never patch the cache from the payload.
+- Offline: forms in `MoneyPageShell` disable save with `OfflineSaveNote` and `useWarnBeforeUnload`
+  (`src/lib/online.ts`); a screen that throws shows `RouteError`.
 - Errors: `errorMessage(error, scope)` from `src/lib/errors.ts` (scopes `expenses.errors`,
   `events.errors`, then `errors.codes`). Not found is `isNotFoundError()`.
 - Dates: pass the viewer's zone from `resolveTimeZone` (`src/lib/locale.ts`); calendar dates
