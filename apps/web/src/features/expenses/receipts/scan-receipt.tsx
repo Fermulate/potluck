@@ -17,7 +17,7 @@ import { todayIn } from '../format'
 import { CompactMoneyInput } from '../form/compact-inputs'
 import type { SplitDraft } from '../form/split-state'
 import { draftFromFile, type AttachmentDraft } from './attachments-state'
-import { prepareImage } from './image'
+import { prepareImage, previewUrl } from './image'
 import { ReaderUnavailableError, readReceiptText, type ReadStage } from './ocr'
 import { ZoomableImage } from './zoomable-image'
 import {
@@ -77,7 +77,7 @@ export function ScanReceipt({
   const [state, setState] = useState<State>({ phase: 'idle' })
   // The photo as picked, shown while reading and beside the review.
   const original = 'original' in state ? state.original : null
-  const url = useMemo(() => (original ? URL.createObjectURL(original) : null), [original])
+  const url = useMemo(() => (original ? previewUrl(original) : null), [original])
   useEffect(
     () => () => {
       if (url) URL.revokeObjectURL(url)

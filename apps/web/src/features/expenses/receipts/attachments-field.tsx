@@ -14,7 +14,7 @@ import {
   isPdf,
   type AttachmentDraft,
 } from './attachments-state'
-import { prepareImage } from './image'
+import { prepareImage, previewUrl } from './image'
 
 const MAX_BYTES = 10 * 1024 * 1024
 
@@ -159,7 +159,7 @@ function Tile({
   index: number
   onRemove: () => void
 }) {
-  const local = useMemo(() => (draft.file ? URL.createObjectURL(draft.file) : null), [draft.file])
+  const local = useMemo(() => (draft.file ? previewUrl(draft.file) : null), [draft.file])
   useEffect(
     () => () => {
       if (local) URL.revokeObjectURL(local)

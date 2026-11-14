@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ocrImage, ocrScale, stretchGray } from './image'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ocrImage, ocrScale, previewUrl, stretchGray } from './image'
 
 describe('the copy the reader sees', () => {
   it('keeps every pixel of a normal photo, cuts a huge one down, enlarges a small one once', () => {
@@ -29,5 +29,35 @@ describe('the copy the reader sees', () => {
     const heic = new Blob(['x'], { type: 'image/heic' })
     expect(await ocrImage(heic, 1)).toBe(heic)
     expect(await ocrImage(heic, 2)).toBeNull()
+  })
+})
+
+describe('the preview of a picked file', () => {
+  const real = URL.createObjectURL
+  afterEach(() => {
+    URL.createObjectURL = real
+  })
+
+  // A blob: URL is served with its blob's type, so a picked page must never keep text/html.
+  const shown = (file: File) => {
+    const make = vi.fn((_: Blob) => 'blob:preview')
+    URL.createObjectURL = make
+    expect(previewUrl(file)).toBe('blob:preview')
+    return make.mock.calls[0]![0]
+  }
+
+  it('keeps a photo typed as the image it is, with the same bytes', async () => {
+    const blob = shown(new File(['jpeg bytes'], 'receipt.jpg', { type: 'image/jpeg' }))
+    expect(blob.type).toBe('image/jpeg')
+    expect(await blob.text()).toBe('jpeg bytes')
+  })
+
+  it('never serves a picked page or script as one', async () => {
+    const page = '<script>alert(1)</script>'
+    for (const type of ['text/html', 'application/javascript', '']) {
+      const blob = shown(new File([page], 'receipt.html', { type }))
+      expect(blob.type).toBe('application/octet-stream')
+      expect(await blob.text()).toBe(page)
+    }
   })
 })

@@ -14,6 +14,16 @@ export function fitWithin(width: number, height: number, max = MAX_EDGE) {
 const RESIZABLE = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 /**
+ * An object URL for showing a picked file as a picture. The bytes are copied into a blob typed
+ * as the image the file says it is, or as opaque bytes otherwise, so the URL can never be read as
+ * a page or a script, whatever was picked. Revoke it with `URL.revokeObjectURL`.
+ */
+export function previewUrl(file: Blob): string {
+  const type = file.type.startsWith('image/') ? file.type : 'application/octet-stream'
+  return URL.createObjectURL(new Blob([file], { type }))
+}
+
+/**
  * Shrinks a photo before it is uploaded (OCR reads `ocrImage` instead): at most MAX_EDGE on its longest side, as JPEG
  * on white (a phone photo of a receipt goes from about 4 MB to about 400 KB). The camera's
  * orientation is applied, and re-encoding drops the photo's metadata (location included).
