@@ -132,6 +132,25 @@ describe('ScanReceipt', () => {
     expect(within(sheet).getByText(t('expenses.scan.totalDerived'))).toBeInTheDocument()
   })
 
+  it('keeps a total worked out from the items in step with a corrected price', async () => {
+    // The total line was lost and the fries (5.00) were misread as 6.00.
+    ocr.text = 'Diner\nBurger 14.00\nFries 6.00'
+    const { onApply, pick } = renderScan()
+    await pick()
+    const sheet = await screen.findByRole('dialog', { name: t('expenses.scan.reviewTitle') })
+    fireEvent.change(
+      within(sheet).getByRole('textbox', { name: `${t('expenses.itemized.itemAmount')}, Fries` }),
+      { target: { value: '5.00' } },
+    )
+    fireEvent.click(within(sheet).getByRole('button', { name: t('expenses.scan.apply') }))
+    const [{ fill }] = onApply.mock.calls[0]!
+    expect(fill.amount).toBe(1900)
+    expect(fill.draft?.items.map((i) => [i.name, i.amountCents])).toEqual([
+      ['Burger', 1400],
+      ['Fries', 500],
+    ])
+  })
+
   it('says when the items are far off a subtotal taken for the total', async () => {
     ocr.text = 'Cafe\nTea 3.00\nSubtotal 7.00'
     const { pick } = renderScan()

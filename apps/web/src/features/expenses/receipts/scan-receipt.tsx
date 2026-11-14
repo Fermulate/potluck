@@ -357,9 +357,11 @@ function Review({
   const itemsTotal = useMemo(() => scanItemsTotal(scan), [scan])
   const toggle = (key: keyof ScanChoice) => (on: boolean | 'indeterminate') =>
     onChoice({ ...choice, [key]: on === true })
-  // A corrected price is checked against the total again straight away.
+  // A corrected price is checked against the total again straight away. A total that was only
+  // the items added up follows them.
   const edit = (patch: Partial<ReceiptScan>) => {
     const next = { ...scan, ...patch }
+    if (next.totalDerived && next.subtotalCents === null) next.totalCents = scanItemsTotal(next)
     onScan({ ...next, itemsMatch: receiptItemsMatch(next) })
   }
   const price = (

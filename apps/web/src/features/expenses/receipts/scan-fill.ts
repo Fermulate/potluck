@@ -106,8 +106,11 @@ export function fillFromScan(
       discountCents: scan.discountCents,
       tipPercent: null,
     }
+    // Only a total printed on the receipt can show a line the items missed.
     const missing =
-      choice.total && scan.totalCents !== null ? scan.totalCents - itemsTotal(next) : 0
+      choice.total && scan.totalCents !== null && !scan.totalDerived
+        ? scan.totalCents - itemsTotal(next)
+        : 0
     // A gap of a cent or so is a misread digit, not a forgotten line: no "Everything else" for it.
     if (missing > 0 && missing * 100 > (scan.totalCents ?? 0)) {
       next.items = [
