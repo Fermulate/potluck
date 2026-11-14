@@ -233,6 +233,13 @@ describe('AttachmentsField', () => {
       screen.getByRole('img', { name: t('expenses.attachments.pdf', { number: 2 }) }),
     ).toBeInTheDocument()
     expect(screen.getByText(t('expenses.attachments.count', { count: 2, max: 5 }))).toBeVisible()
+    // The count is separate from the label, for eyes and for screen readers.
+    const list = screen.getByRole('list', { name: t('expenses.attachments.label') })
+    expect(list).toHaveAccessibleName(t('expenses.attachments.label'))
+    expect(list).toHaveAccessibleDescription(t('expenses.attachments.count', { count: 2, max: 5 }))
+    expect(
+      screen.getByLabelText(t('expenses.attachments.label'), { selector: 'input' }),
+    ).toHaveAccessibleName(t('expenses.attachments.label'))
 
     fireEvent.click(
       screen.getByRole('button', { name: t('expenses.attachments.remove', { name: one }) }),

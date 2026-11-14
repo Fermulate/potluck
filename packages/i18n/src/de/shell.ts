@@ -59,6 +59,12 @@ export const app = {
       source: 'Quellcode',
     },
   },
+  offline: {
+    banner: 'Offline. Manches muss kurz warten.',
+    form: 'Du bist offline. Deine Eingaben bleiben hier; speichere, sobald du wieder online bist.',
+    failed:
+      'Potluck konnte das Speichern nicht bestätigen. Deine Eingaben sind noch da: Schau in der Gruppe nach, ob es angekommen ist, bevor du es nochmal versuchst.',
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {
@@ -169,6 +175,11 @@ export const errors = {
   updateRequired: 'Diese Version ist veraltet. Lade neu, um die aktuelle zu bekommen.',
   groupNotFound:
     'Diese Gruppe steht nicht auf deiner Liste. Vielleicht bist du ausgetreten oder der Link stimmt nicht.',
+  screen: {
+    title: 'Na, da ist was übergelaufen.',
+    body: 'Auf dieser Seite ist etwas kaputtgegangen. Versuch es nochmal oder fang auf der Startseite neu an.',
+    home: 'Zur Startseite',
+  },
   codes: {
     not_authenticated: 'Melde dich dafür an.',
     account_deleted: 'Dieses Konto wurde geschlossen.',

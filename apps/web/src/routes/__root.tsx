@@ -3,6 +3,8 @@ import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import { t } from '@potluck/i18n'
 import { Toaster, useMediaQuery } from '@potluck/ui'
 import { Fragment } from 'react'
+import { OfflineBanner } from '@/features/shell/offline'
+import { RouteError } from '@/features/shell/route-error'
 import { useAuthRedirects } from '@/features/shell/use-auth-redirects'
 import { useLocale } from '@/lib/language'
 import { useTheme } from '@/styles/use-theme'
@@ -13,6 +15,9 @@ export interface RouterContext {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
+  // Errors in a screen land in the router's defaultErrorComponent (main.tsx), inside the app
+  // frame; this one catches anything that breaks the root itself.
+  errorComponent: RouteError,
 })
 
 function RootLayout() {
@@ -26,6 +31,7 @@ function RootLayout() {
     <>
       <Fragment key={locale}>
         <Outlet />
+        <OfflineBanner />
       </Fragment>
       {/* Bottom right on desktop, clear of page titles and section tabs. */}
       <Toaster

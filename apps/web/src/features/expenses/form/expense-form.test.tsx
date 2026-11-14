@@ -1,8 +1,9 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { goOffline, goOnline } from '@/test/network'
 import {
   BEN,
   CLEO,
@@ -36,14 +37,14 @@ const update = vi.mocked(updateExpense)
 
 function setup() {
   const onDone = vi.fn()
-  renderWithClient(
+  const { client } = renderWithClient(
     <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
   )
   fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
     target: { value: 'Cabin deposit' },
   })
-  return { onDone }
+  return { onDone, client }
 }
 
 const percentOf = (name: string) =>
@@ -119,7 +120,7 @@ describe('ExpenseForm', () => {
     expect(percentOf('You').value).toBe('38')
     expect(percentOf('Ben').value).toBe('28.67')
     expect(percentOf('Cleo').value).toBe('33.33')
-    expect(screen.getByText('100% / 100%')).toBeInTheDocument()
+    expect(screen.getByText('Everything adds up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
@@ -130,13 +131,73 @@ describe('ExpenseForm', () => {
     ])
   })
 
-  it('rebalances everyone else when a percent is typed', () => {
+  // Like a person at a keyboard: one change per keystroke, then on to the next field.
+  const typeKeys = (input: HTMLInputElement, text: string) => {
+    fireEvent.focus(input)
+    for (let i = 1; i <= text.length; i++) {
+      fireEvent.change(input, { target: { value: text.slice(0, i) } })
+    }
+    fireEvent.blur(input)
+  }
+
+  it('keeps typed percents exactly as typed and saves them', async () => {
     setup()
     fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    typeKeys(percentOf('You'), '50')
+    expect(percentOf('Ben').value).toBe('33.33')
+    expect(percentOf('Cleo').value).toBe('33.33')
+    expect(screen.getByText('16.66% too much')).toBeInTheDocument()
+    typeKeys(percentOf('Ben'), '30')
+    expect(screen.getByText('13.33% too much')).toBeInTheDocument()
+    typeKeys(percentOf('Cleo'), '20')
+
+    expect([percentOf('You').value, percentOf('Ben').value, percentOf('Cleo').value]).toEqual([
+      '50',
+      '30',
+      '20',
+    ])
+    expect(screen.getByText('Everything adds up')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].splits).toEqual([
+      { user_id: ME, weight: 50 },
+      { user_id: BEN, weight: 30 },
+      { user_id: CLEO, weight: 20 },
+    ])
+  })
+
+  it('keeps every field when they are filled fast, without a blur in between', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    // A whole value per change and no blur, the way autofill or a test runner fills fields.
     fireEvent.change(percentOf('You'), { target: { value: '50' } })
-    fireEvent.blur(percentOf('You'))
-    expect(percentOf('Ben').value).toBe('25')
-    expect(percentOf('Cleo').value).toBe('25')
+    fireEvent.change(percentOf('Ben'), { target: { value: '30' } })
+    fireEvent.change(percentOf('Cleo'), { target: { value: '20' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].splits).toEqual([
+      { user_id: ME, weight: 50 },
+      { user_id: BEN, weight: 30 },
+      { user_id: CLEO, weight: 20 },
+    ])
+  })
+
+  it('does not save percents that do not add up to 100%', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    typeKeys(percentOf('You'), '50')
+    typeKeys(percentOf('Ben'), '30')
+    typeKeys(percentOf('Cleo'), '10')
+    expect(screen.getByText('10% left to assign')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Percentages need to add up to 100%.',
+    )
+    expect(create).not.toHaveBeenCalled()
+    // Typed values are left alone by a failed save.
+    expect(percentOf('Cleo').value).toBe('10')
   })
 
   it('does not save exact amounts that do not add up', async () => {
@@ -405,5 +466,80 @@ describe('ExpenseForm', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
       expect(create.mock.calls[0]![1]).toMatchObject({ category: 'rent', recurrence: 'monthly' })
     })
+  })
+})
+
+describe('ExpenseForm offline', () => {
+  beforeEach(() => create.mockClear())
+  afterEach(() => goOnline())
+  const saveButton = () => screen.getByRole('button', { name: 'Save expense' })
+
+  it('keeps the entry and holds the save until the connection is back', async () => {
+    const { onDone } = setup()
+    act(() => goOffline())
+
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+    // Enter in a field does not sneak a save through either.
+    fireEvent.submit(document.querySelector('form')!)
+    expect(create).not.toHaveBeenCalled()
+    // Closing the tab now would lose what was typed, so the browser asks first.
+    const leave = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leave)
+    expect(leave.defaultPrevented).toBe(true)
+
+    act(() => goOnline())
+    expect(screen.queryByText(t('app.offline.form'))).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1]).toMatchObject({
+      description: 'Cabin deposit',
+      amount_cents: 9000,
+    })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+  })
+
+  it('keeps the entry when the connection drops during a save, and Try again saves it once', async () => {
+    const { onDone, client } = setup()
+    client.setQueryData(moneyKeys.expenses(GROUP_ID), [])
+    // What supabase-js hands back when fetch never got an answer.
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    // The save may have landed anyway, so the group's expenses are fetched again.
+    expect(client.getQueryState(moneyKeys.expenses(GROUP_ID))?.isInvalidated).toBe(true)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
+    const leave = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leave)
+    expect(leave.defaultPrevented).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[1]![1]).toEqual(create.mock.calls[0]![1])
+    expect(create.mock.calls[1]![1]).toMatchObject({
+      description: 'Cabin deposit',
+      amount_cents: 9000,
+    })
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+  })
+
+  it('still reports a refused save as an error, not as the connection', async () => {
+    setup()
+    create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
+
+    // Losing the connection afterwards does not turn the refusal into a lost connection.
+    act(() => goOffline())
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
   })
 })

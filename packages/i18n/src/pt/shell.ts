@@ -59,6 +59,12 @@ export const app = {
       source: 'Código-fonte',
     },
   },
+  offline: {
+    banner: 'Sem conexão. Algumas coisas vão esperar.',
+    form: 'Você está offline. O que você preencheu fica aqui; salve quando voltar.',
+    failed:
+      'O Potluck não conseguiu confirmar o salvamento. O que você preencheu continua aqui: veja no grupo se foi salvo antes de tentar de novo.',
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {
@@ -169,6 +175,11 @@ export const errors = {
   updateRequired: 'Esta versão está desatualizada. Recarregue para ter a mais recente.',
   groupNotFound:
     'Esse grupo não está na sua lista. Talvez você tenha saído, ou o link esteja errado.',
+  screen: {
+    title: 'Opa, algo derramou.',
+    body: 'Algo quebrou nesta página. Tente de novo ou volte ao início.',
+    home: 'Ir para o início',
+  },
   codes: {
     not_authenticated: 'Entre na sua conta para fazer isso.',
     account_deleted: 'Esta conta foi encerrada.',

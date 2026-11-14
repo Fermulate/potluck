@@ -59,6 +59,12 @@ export const app = {
       source: 'Code source',
     },
   },
+  offline: {
+    banner: 'Hors ligne. Certaines choses attendront.',
+    form: 'Tu es hors ligne. Ce que tu as saisi reste ici ; enregistre dès que tu es de retour.',
+    failed:
+      "Potluck n'a pas pu confirmer l'enregistrement. Ce que tu as saisi est toujours là : regarde dans le groupe si c'est passé avant de réessayer.",
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {
@@ -169,6 +175,11 @@ export const errors = {
   updateRequired: "Cette version n'est plus à jour. Actualise pour avoir la dernière.",
   groupNotFound:
     "Ce groupe n'est pas dans ta liste. Tu l'as peut-être quitté, ou le lien est faux.",
+  screen: {
+    title: 'Oups, ça a débordé.',
+    body: "Quelque chose a cassé sur cette page. Réessaie, ou repars de l'accueil.",
+    home: "Aller à l'accueil",
+  },
   codes: {
     not_authenticated: 'Connecte-toi pour faire ça.',
     account_deleted: 'Ce compte a été fermé.',

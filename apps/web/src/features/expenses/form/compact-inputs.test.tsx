@@ -1,7 +1,7 @@
 import { MoneyInput } from '@potluck/ui'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { CompactMoneyInput, PercentInput } from './compact-inputs'
 
 function MoneyHarness({ locale, currency = 'EUR' }: { locale: string; currency?: string }) {
@@ -85,43 +85,74 @@ describe('CompactMoneyInput', () => {
   })
 })
 
-describe('PercentInput', () => {
-  function renderPercent(locale: string, basisPoints = 5000) {
-    const onCommit = vi.fn()
-    render(
+function PercentHarness({ locale, start }: { locale: string; start: number }) {
+  const [basisPoints, setBasisPoints] = useState(start)
+  return (
+    <>
       <PercentInput
         aria-label="Share"
         basisPoints={basisPoints}
-        onCommit={onCommit}
+        onValueChange={setBasisPoints}
         locale={locale}
-      />,
-    )
-    return { onCommit, input: screen.getByRole('textbox', { name: 'Share' }) }
+      />
+      <output aria-label="basis points">{basisPoints}</output>
+      <button type="button" onClick={() => setBasisPoints(2500)}>
+        Quarter
+      </button>
+    </>
+  )
+}
+
+describe('PercentInput', () => {
+  function renderPercent(locale: string, basisPoints = 5000) {
+    render(<PercentHarness locale={locale} start={basisPoints} />)
+    return {
+      input: screen.getByRole('textbox', { name: 'Share' }),
+      value: () => Number(screen.getByRole('status', { name: 'basis points' }).textContent),
+    }
   }
 
   it('reads "12,50" as 12.5% in German', () => {
-    const { onCommit, input } = renderPercent('de-DE')
+    const { input, value } = renderPercent('de-DE')
     fireEvent.change(input, { target: { value: '12,50' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onCommit).toHaveBeenLastCalledWith(1250)
+    expect(value()).toBe(1250)
+    expect(input).toHaveValue('12,50')
   })
 
   it('agrees with the money fields in US English', () => {
-    const { onCommit, input } = renderPercent('en-US')
+    const { input, value } = renderPercent('en-US')
     fireEvent.change(input, { target: { value: '12,5' } })
     expect(input).toHaveValue('125')
-    fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onCommit).toHaveBeenLastCalledWith(12500)
+    expect(value()).toBe(12500)
+  })
+
+  it('passes on every keystroke, without waiting for blur or Enter', () => {
+    const { input, value } = renderPercent('en-US')
+    fireEvent.change(input, { target: { value: '3' } })
+    expect(value()).toBe(300)
+    fireEvent.change(input, { target: { value: '30.' } })
+    expect(value()).toBe(3000)
+    // A trailing decimal mark stays while typing.
+    expect(input).toHaveValue('30.')
+    fireEvent.blur(input)
+    expect(input).toHaveValue('30')
   })
 
   it('shows the value with the locale decimal mark', () => {
     expect(renderPercent('de-DE', 3333).input).toHaveValue('33,33')
   })
 
-  it('commits an emptied field as 0%', () => {
-    const { onCommit, input } = renderPercent('en-US')
+  it('reads an emptied field as 0%', () => {
+    const { input, value } = renderPercent('en-US')
     fireEvent.change(input, { target: { value: '' } })
-    fireEvent.blur(input)
-    expect(onCommit).toHaveBeenLastCalledWith(0)
+    expect(value()).toBe(0)
+    expect(input).toHaveValue('')
+  })
+
+  it('shows a value set from elsewhere', () => {
+    const { input } = renderPercent('en-US')
+    fireEvent.change(input, { target: { value: '40' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Quarter' }))
+    expect(input).toHaveValue('25')
   })
 })

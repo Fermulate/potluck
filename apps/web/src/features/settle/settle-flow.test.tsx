@@ -7,8 +7,9 @@ import {
   type Settlement,
 } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { goOffline, goOnline } from '@/test/network'
 import {
   BEN,
   CLEO,
@@ -62,7 +63,7 @@ function setup(props: { from?: string; to?: string; amount?: number; role?: 'adm
     />,
     client,
   )
-  return { onPickPerson, onFinish }
+  return { onPickPerson, onFinish, client }
 }
 
 describe('SettleFlow', () => {
@@ -70,6 +71,7 @@ describe('SettleFlow', () => {
     pay.mockClear()
     update.mockClear()
   })
+  afterEach(() => goOnline())
 
   it('lists who you owe and who owes you, with the amounts', () => {
     const { onPickPerson } = setup()
@@ -104,6 +106,51 @@ describe('SettleFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to Hike crew' }))
     expect(onFinish).toHaveBeenCalled()
+  })
+
+  it('holds a payment while offline and records it once back', async () => {
+    setup({ to: BEN })
+    act(() => goOffline())
+    const record = screen.getByRole('button', { name: 'Record payment' })
+    expect(record).toBeDisabled()
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+
+    act(() => goOnline())
+    fireEvent.click(record)
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(1))
+    expect(pay.mock.calls[0]![1]).toMatchObject({ toUser: BEN, amountCents: 4750 })
+  })
+
+  it('keeps the payment when the connection drops while recording, and Try again records it once', async () => {
+    const { client } = setup({ to: BEN })
+    client.setQueryData(moneyKeys.recurring(GROUP_ID), [])
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'Venmo' } })
+    pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    // The payment may have landed anyway, so the group's money is fetched again.
+    expect(client.getQueryState(moneyKeys.recurring(GROUP_ID))?.isInvalidated).toBe(true)
+    expect(pay).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('47.50')
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('Venmo')
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
+    expect(pay).toHaveBeenCalledTimes(2)
+    expect(pay.mock.calls[1]![1]).toMatchObject({ toUser: BEN, amountCents: 4750, note: 'Venmo' })
+  })
+
+  it('keeps a refused payment a refusal after the connection goes', async () => {
+    setup({ to: BEN })
+    pay.mockRejectedValueOnce({ message: 'member_not_in_group', code: '23514' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(1))
+
+    act(() => goOffline())
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
   })
 
   it('says what is left after a partial payment', async () => {

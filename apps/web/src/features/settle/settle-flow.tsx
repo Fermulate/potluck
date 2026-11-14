@@ -1,5 +1,6 @@
 import { avatarSrc } from '@/lib/queries'
 import {
+  moneyKeys,
   paymentKeys,
   recordPayment,
   updateSettlement,
@@ -31,6 +32,9 @@ import { ArrowLeftRight, Check, ChevronRight } from 'lucide-react'
 import { animate, motion } from 'motion/react'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
+import { isNetworkError } from '@/lib/errors'
+import { useOnline, useWarnBeforeUnload } from '@/lib/online'
+import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
 import { useDebts } from '@/features/balances/use-debts'
 import { groupTitle, todayIn } from '@/features/expenses/format'
@@ -324,7 +328,9 @@ export function PaymentForm({
         ? t(`expenses.errors.${problem}`)
         : undefined
 
+  const [unreached, setUnreached] = useState(false)
   const pay = useMutation({
+    onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
       const trimmed = note.trim() || null
       if (editing) {
@@ -356,11 +362,21 @@ export function PaymentForm({
       }
       onDone({ from: payer, to: payee, owedBefore: owed, paid: cents, currency })
     },
-    onError: (e) => toast.error(moneyErrorMessage(e)),
+    onError: (e) => {
+      const network = isNetworkError(e)
+      setUnreached(network)
+      if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
+      else toast.error(moneyErrorMessage(e))
+    },
   })
+
+  // Offline, recording waits with the form filled in, as in the expense form.
+  const online = useOnline()
+  useWarnBeforeUnload(unreached || (!online && amount !== null))
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
+    if (!online) return
     setSubmitted(true)
     if (problem || !amount) return
     pay.mutate(amount)
@@ -414,12 +430,14 @@ export function PaymentForm({
               {error}
             </p>
           )}
+          <OfflineSaveNote failed={unreached} onRetry={submit} />
           <Button
             type="submit"
             form={formId}
             size="lg"
             block
             loading={pay.isPending}
+            disabled={!online && !pay.isPending}
             leadingIcon={<Check />}
           >
             {editing ? t('settle.saveChanges') : t('settle.recordPayment')}

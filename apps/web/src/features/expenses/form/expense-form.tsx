@@ -54,6 +54,9 @@ import { Link } from '@tanstack/react-router'
 import { CalendarHeart, Repeat } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
+import { isNetworkError } from '@/lib/errors'
+import { useOnline, useWarnBeforeUnload } from '@/lib/online'
+import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
@@ -364,7 +367,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const canSaveDefault =
     !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
+  const [unreached, setUnreached] = useState(false)
+  const failSave = (error: unknown) => {
+    const network = isNetworkError(error)
+    setUnreached(network)
+    if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
+    else toast.error(moneyErrorMessage(error))
+  }
+
   const saveTemplate = useMutation({
+    onMutate: () => setUnreached(false),
     mutationFn: async (current: RecurringExpense) => {
       const payload: RecurringUpdate = {
         description: description.trim(),
@@ -394,12 +406,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       toast.success(t('expenses.recurring.savedToast', { description: saved.description }))
       props.onDone(saved.id)
     },
-    onError: (error) => toast.error(moneyErrorMessage(error)),
+    onError: failSave,
   })
 
   const save = useMutation({
     onMutate: () => {
       saveRunning.current = true
+      setUnreached(false)
     },
     onSettled: () => {
       saveRunning.current = false
@@ -504,11 +517,12 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       props.onDone(saved.id)
     },
     onError: (error) => {
-      toast.error(
-        error instanceof Error && error.message === 'receipt_upload_failed'
-          ? t('expenses.receiptUpload.failed')
-          : moneyErrorMessage(error),
-      )
+      if (error instanceof Error && error.message === 'receipt_upload_failed') {
+        setUnreached(false)
+        toast.error(t('expenses.receiptUpload.failed'))
+      } else {
+        failSave(error)
+      }
     },
   })
 
@@ -549,8 +563,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     />
   )
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
+  // Offline, saving waits: the button is off and the entry stays in the form (and the tab asks
+  // before closing). A save the network dropped leaves the form as typed, with a Try again.
+  const online = useOnline()
+  const typed = !!editing || amount !== null || description.trim() !== '' || notes.trim() !== ''
+  useWarnBeforeUnload(unreached || (!online && typed))
+
+  const onSubmit = (e?: FormEvent) => {
+    e?.preventDefault()
+    if (!online) return
     setSubmitted(true)
     if (!description.trim()) return
     if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
@@ -581,11 +602,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
               </p>
             )}
+          <OfflineSaveNote failed={unreached} onRetry={onSubmit} />
           <Button
             type="submit"
             form={formId}
             size="lg"
             loading={saving}
+            disabled={!online && !saving}
             className="w-full sm:w-auto"
           >
             {editing ? t('expenses.form.saveChanges') : t('expenses.form.save')}

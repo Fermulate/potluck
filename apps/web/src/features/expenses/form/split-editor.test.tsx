@@ -1,5 +1,5 @@
 import { t } from '@potluck/i18n'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { BEN, CLEO, ME, members } from '../test-utils'
@@ -8,7 +8,15 @@ import { initialDraft, type SplitDraft } from './split-state'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 
-function Harness({ mode, onAddPerson }: { mode: SplitDraft['mode']; onAddPerson?: () => void }) {
+function Harness({
+  mode,
+  onAddPerson,
+  viewerId = ME,
+}: {
+  mode: SplitDraft['mode']
+  onAddPerson?: () => void
+  viewerId?: string
+}) {
   const [draft, setDraft] = useState<SplitDraft>(() => ({
     ...initialDraft(members.map((m) => m.id)),
     mode,
@@ -17,7 +25,7 @@ function Harness({ mode, onAddPerson }: { mode: SplitDraft['mode']; onAddPerson?
     <>
       <SplitEditor
         members={members}
-        viewerId={ME}
+        viewerId={viewerId}
         draft={draft}
         onChange={setDraft}
         amountCents={9000}
@@ -52,9 +60,10 @@ describe('SplitEditor locale', () => {
     render(<Harness mode="percent" />)
     const you = screen.getByRole('textbox', { name: 'You, percent' })
     fireEvent.change(you, { target: { value: '12,5' } })
-    fireEvent.blur(you)
     expect(draft().percent[ME]).toBe(1250)
-    expect(draft().percent[BEN]! + draft().percent[CLEO]!).toBe(8750)
+    // Nobody else moves; what is left shows with the same decimal mark.
+    expect(draft().percent[BEN]! + draft().percent[CLEO]!).toBe(6666)
+    expect(screen.getByText('20,84% left to assign')).toBeInTheDocument()
   })
 
   it('reads item prices, tax and tip in the given locale', () => {
@@ -77,5 +86,48 @@ describe('SplitEditor people', () => {
     render(<Harness mode="equal" onAddPerson={onAddPerson} />)
     fireEvent.click(screen.getByRole('button', { name: t('people.placeholder.addToSplit') }))
     expect(onAddPerson).toHaveBeenCalledOnce()
+  })
+})
+
+describe('SplitEditor order and faces', () => {
+  // Who each person chip is, in order, and the initials on its avatar.
+  const chips = (group: HTMLElement) =>
+    within(group)
+      .getAllByRole('button', { pressed: true })
+      .map((b) => {
+        const name = b.lastChild?.textContent ?? ''
+        const initials = (b.textContent ?? '').slice(0, -name.length)
+        return `${name}:${initials}`
+      })
+
+  it('lists you first with the same initials in every split type, by item too', () => {
+    const expected = ['You:CP', 'Ava:AC', 'Ben:BO']
+    for (const mode of ['equal', 'exact', 'percent', 'shares', 'adjustment'] as const) {
+      const { unmount } = render(<Harness mode={mode} viewerId={CLEO} />)
+      expect(chips(screen.getByRole('group', { name: t('expenses.fields.splitBetween') }))).toEqual(
+        expected,
+      )
+      unmount()
+    }
+    render(<Harness mode="itemized" viewerId={CLEO} />)
+    expect(
+      chips(
+        screen.getByRole('group', {
+          name: t('expenses.itemizedEditor.assign', {
+            item: t('expenses.itemizedEditor.untitled', { number: 1 }),
+          }),
+        }),
+      ),
+    ).toEqual(expected)
+  })
+
+  it('shows the rows in the same order as the chips', () => {
+    render(<Harness mode="percent" viewerId={CLEO} />)
+    expect(
+      screen
+        .getAllByRole('textbox')
+        .map((input) => input.getAttribute('aria-label'))
+        .slice(0, 3),
+    ).toEqual(['You, percent', 'Ava, percent', 'Ben, percent'])
   })
 })

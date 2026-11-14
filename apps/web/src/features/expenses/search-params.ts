@@ -18,7 +18,8 @@ export function validateNewExpenseSearch(search: Record<string, unknown>): NewEx
   return {
     groupId: uuidParam(search.groupId),
     eventId: uuidParam(search.eventId),
-    ...(preset ? { preset } : {}),
+    // Every key, even when dropped: the router lays these over the raw params (src/lib/search.ts).
+    preset,
   }
 }
 

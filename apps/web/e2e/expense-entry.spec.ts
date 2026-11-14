@@ -326,4 +326,24 @@ test.describe('expense entry', () => {
       page.getByRole('button', { name: `${t('expenses.fields.currency')}, USD` }),
     ).toBeVisible()
   })
+
+  test('offline, the entry waits in the form and saves once back', async ({ newUser, openAs }) => {
+    const { me, group } = await threePeople(newUser)
+    const page = await openAs(me)
+    const description = unique('Offline tacos')
+
+    await startExpense(page, group, '30', description)
+    await page.context().setOffline(true)
+    await expect(page.getByText(t('app.offline.form'))).toBeVisible()
+    const saveButton = page.getByRole('button', { name: t('expenses.form.save') })
+    await expect(saveButton).toBeDisabled()
+
+    await page.context().setOffline(false)
+    await expect(page.getByText(t('app.offline.form'))).toHaveCount(0)
+    await expect(page.getByRole('textbox', { name: t('expenses.fields.description') })).toHaveValue(
+      description,
+    )
+    await save(page, group)
+    await expect(page.getByRole('link', { name: new RegExp(description) })).toBeVisible()
+  })
 })

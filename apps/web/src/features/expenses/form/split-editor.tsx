@@ -23,13 +23,15 @@ import { CompactMoneyInput, PercentInput, SignedMoneyInput } from './compact-inp
 import { ItemizedEditor } from './itemized-editor'
 import { PercentSlider } from './percent-slider'
 import {
-  FULL,
   evenPercent,
+  formatPercent,
+  percentLeft,
   previewSplit,
   roundingExtras,
-  setPercent,
   splitErrorText,
   toggleParticipant,
+  typePercent,
+  viewerFirst,
   type SplitDraft,
 } from './split-state'
 
@@ -92,9 +94,9 @@ export function SplitEditor({
   const byId = new Map(members.map((m) => [m.id, m]))
   const result = previewSplit(draft, amountCents)
   const shares = result.ok ? result.shares : null
-  const participants = draft.participants
-    .map((id) => byId.get(id))
-    .filter((m): m is MoneyMember => !!m)
+  // Chips, rows and the slider all list people the same way, in every split type.
+  const shown = viewerFirst(members, viewerId)
+  const participants = shown.filter((m) => draft.participants.includes(m.id))
 
   const money = (cents: number) => formatMoney(cents, currency)
   const extras = amountCents > 0 ? roundingExtras(draft, result) : []
@@ -211,8 +213,8 @@ export function SplitEditor({
         <PercentInput
           locale={locale}
           basisPoints={draft.percent[m.id] ?? 0}
-          onCommit={(bp) =>
-            onChange({ ...draft, percent: setPercent(draft.percent, draft.participants, m.id, bp) })
+          onValueChange={(bp) =>
+            onChange({ ...draft, percent: typePercent(draft.percent, m.id, bp) })
           }
           aria-label={t('expenses.splitEditor.percentOf', { name: displayName(m, viewerId) })}
           className="w-24"
@@ -220,10 +222,17 @@ export function SplitEditor({
         {shareCell(m.id)}
       </li>
     ))
-    const total = participants.reduce((a, m) => a + (draft.percent[m.id] ?? 0), 0)
+    const left = percentLeft(draft)
+    const percent = formatPercent(Math.abs(left), locale)
     status = (
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <StatusPill tone={total === FULL ? 'ok' : 'over'}>{`${total / 100}% / 100%`}</StatusPill>
+        <StatusPill tone={left === 0 ? 'ok' : left > 0 ? 'left' : 'over'}>
+          {left === 0
+            ? t('expenses.allAssigned')
+            : left > 0
+              ? t('expenses.percentRemaining', { percent })
+              : t('expenses.percentOver', { percent })}
+        </StatusPill>
         <Button
           size="sm"
           variant="ghost"
@@ -348,7 +357,7 @@ export function SplitEditor({
             aria-label={t('expenses.fields.splitBetween')}
             className="flex flex-wrap gap-2"
           >
-            {members.map((m) => {
+            {shown.map((m) => {
               const on = draft.participants.includes(m.id)
               return (
                 <button

@@ -56,6 +56,12 @@ export const app = {
       source: 'Source code',
     },
   },
+  offline: {
+    banner: 'Offline for now. Some things will wait.',
+    form: 'You are offline. What you entered stays here; save it once you are back.',
+    failed:
+      'Potluck could not confirm this save. What you typed is still here: check the group to see if it went through before you try again.',
+  },
 } as const
 
 export const toast = {
@@ -166,6 +172,11 @@ export const errors = {
   rateLimited: 'Easy there. Try again in a moment.',
   updateRequired: 'This version is out of date. Refresh to get the latest.',
   groupNotFound: 'That group is not on your list. Maybe you left, or the link is off.',
+  screen: {
+    title: 'Well, that spilled.',
+    body: 'Something on this page broke. Try again, or head home and start fresh.',
+    home: 'Go home',
+  },
   /** Stable codes raised by the database RPCs (error.message). */
   codes: {
     not_authenticated: 'Sign in to do that.',

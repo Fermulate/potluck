@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { RouteError } from '@/features/shell/route-error'
 import { startLanguage } from '@/lib/language'
 import { queryClient } from '@/lib/query-client'
 import { initTheme } from '@/styles/theme-preference'
@@ -13,7 +14,14 @@ import './index.css'
 installTokens()
 initTheme()
 
-const router = createRouter({ routeTree, context: { queryClient }, defaultPreload: 'intent' })
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  defaultPreload: 'intent',
+  // A screen that throws shows our own page, with a retry and a way home, in place of the
+  // router's unstyled default.
+  defaultErrorComponent: RouteError,
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

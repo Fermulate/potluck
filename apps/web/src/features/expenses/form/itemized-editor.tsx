@@ -13,6 +13,7 @@ import {
   itemsTotal,
   newItem,
   withTip,
+  viewerFirst,
   type ItemDraft,
   type SplitDraft,
 } from './split-state'
@@ -46,8 +47,8 @@ export function ItemizedEditor({
       items: draft.items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     })
   const subtotal = itemsSubtotal(draft.items)
-  // You first, so your own chip is always in the same spot.
-  const chips = [...members].sort((a, b) => Number(b.id === viewerId) - Number(a.id === viewerId))
+  // The same order as every other split type.
+  const chips = viewerFirst(members, viewerId)
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,7 +108,7 @@ export function ItemizedEditor({
                         })
                       }
                       className={cn(
-                        'inline-flex h-8 items-center gap-1.5 rounded-pill border pr-2.5 pl-0.5 text-xs font-semibold transition-colors',
+                        'inline-flex h-9 items-center gap-1.5 rounded-pill border pr-2.5 pl-0.5 text-xs font-semibold transition-colors',
                         on
                           ? 'border-ink bg-ink text-paper'
                           : 'border-dashed border-line-strong text-mute hover:text-ink',
@@ -117,7 +118,7 @@ export function ItemizedEditor({
                         name={m.display_name}
                         seed={m.id}
                         src={avatarSrc(m.avatar_path)}
-                        size="xs"
+                        size="sm"
                         className={cn(on ? 'ring-1 ring-paper/60' : 'opacity-50')}
                       />
                       {name(m)}
@@ -227,7 +228,7 @@ export function ItemizedEditor({
 
       {shares && (
         <ul className="divide-y divide-line">
-          {members
+          {chips
             .filter((m) => (shares[m.id] ?? 0) > 0)
             .map((m) => (
               <li key={m.id} className="flex items-center gap-3 py-2">
