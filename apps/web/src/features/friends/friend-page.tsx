@@ -334,6 +334,18 @@ export function FriendPage({ friendId }: { friendId: string }) {
     )
   }
 
+  // "Settled up" only on the newest payment in a group where the two are square now; every
+  // other payment (a partial one included) just says it is a payment.
+  const squaring = new Set<string>()
+  const seenGroups = new Set<string>()
+  for (const item of ledger.sections.flatMap((s) => s.items)) {
+    if (item.kind !== 'settlement' || seenGroups.has(item.group.id)) continue
+    seenGroups.add(item.group.id)
+    if (ledger.standings.find((s) => s.group.id === item.group.id)?.net === 0) {
+      squaring.add(item.settlement.id)
+    }
+  }
+
   async function addExpense() {
     setOpening(true)
     try {
@@ -519,6 +531,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
                             viewerId={me}
                             nameOf={nameOf}
                             locale={intlLocale()}
+                            square={squaring.has(item.settlement.id)}
                           />
                         )}
                       </li>

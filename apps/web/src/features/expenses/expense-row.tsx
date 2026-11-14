@@ -172,6 +172,7 @@ export function SettlementRow({
   nameOf,
   locale,
   actions,
+  square = false,
 }: {
   settlement: Settlement
   viewerId: string
@@ -179,6 +180,11 @@ export function SettlementRow({
   locale?: string
   /** A menu button at the end of the row. */
   actions?: ReactNode
+  /**
+   * The two people in it are square now. Only then does the row say "settled up"; a partial
+   * payment (or one followed by new spending) is just a payment.
+   */
+  square?: boolean
 }) {
   const text = settlementText(settlement, viewerId, nameOf, locale)
   return (
@@ -198,7 +204,9 @@ export function SettlementRow({
             </span>
           }
           title={text}
-          subtitle={settlement.note ?? t('balances.settledShort')}
+          subtitle={
+            settlement.note ?? (square ? t('balances.settledShort') : t('settle.paymentShort'))
+          }
           right={
             <Money
               cents={settlement.amount_cents}
