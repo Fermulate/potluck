@@ -120,6 +120,7 @@ describe('parseReceipt', () => {
       taxCents: 367,
       tipCents: 800,
       discountCents: null,
+      totalDerived: false,
       itemsMatch: 'exact',
       items: [
         { description: 'Cheeseburger', amountCents: 2500, quantity: 2 },
@@ -289,6 +290,7 @@ describe('parseReceipt', () => {
       tipCents: null,
       discountCents: null,
       items: [],
+      totalDerived: false,
       itemsMatch: null,
     })
     const scan = parseReceipt('12\n****\nhello there', { currency: 'USD' })
@@ -497,19 +499,63 @@ describe('do the items match the total', () => {
       currency: 'USD',
     })
     expect(tendered.totalCents).toBe(1900)
-    expect(tendered.itemsMatch).toBe('exact')
+    expect(tendered.totalDerived).toBe(true)
     expect(items(tendered.items)).toEqual([
       ['Burger', 1400, 1],
       ['Fries', 500, 1],
     ])
-    // A card line for exactly what the items add up to is the bill.
+    // What the card paid is the bill.
     const card = parseReceipt('Diner\nBurger 14.00\nFries 5.00\nVISA 19.00', { currency: 'USD' })
     expect(card.totalCents).toBe(1900)
-    expect(card.itemsMatch).toBe('exact')
+    // Cash handed over with no change line says nothing about the bill.
+    const cashOnly = parseReceipt('Diner\nBurger 14.00\nFries 5.00\nCASH 20.00', {
+      currency: 'USD',
+    })
+    expect(cashOnly.totalCents).toBe(1900)
   })
 
-  it('leaves the total empty when no line says total and no items were read', () => {
-    expect(parseReceipt('Shop\nCash 10.00\nChange 1.00', { currency: 'USD' }).totalCents).toBeNull()
+  it('never calls a total it worked out a match, so the reader looks again', () => {
+    // A first reading that caught only the burger: 14.00 is not the bill, and nothing says so.
+    const partial = parseReceipt('Diner\nBurger 14.00', { currency: 'USD' })
+    expect(partial.totalCents).toBe(1400)
+    expect(partial.totalDerived).toBe(true)
+    expect(partial.itemsMatch).toBe('unconfirmed')
+    const read = parseReceipt('Diner\nBurger 14.00\nFries 5.00\nTOTAL 19.00', { currency: 'USD' })
+    expect([read.totalDerived, read.itemsMatch]).toEqual([false, 'exact'])
+  })
+
+  it.each([
+    // The receipts' own TOTAL lines (31.85, 30.30, 82.00) are what the card paid.
+    ['a UK pub, VAT included', UK_PUB, 3185, null],
+    ['a French café, dont TVA', FR_CAFE, 3030, null],
+    ['a Spanish bill, IVA incluido and a tip', ES_RESTAURANT, 8200, 500],
+  ])(
+    'takes the card line for the bill when the total line is lost: %s',
+    (_, receipt, total, tip) => {
+      const lines = receipt.split('\n')
+      const lost = lines.filter((line) => !/^total/i.test(line))
+      expect(lost).toHaveLength(lines.length - 1)
+      const scan = parseReceipt(lost.join('\n'), { currency: 'EUR' })
+      expect(scan.totalCents).toBe(total)
+      expect(scan.taxCents).toBeNull()
+      expect(scan.tipCents).toBe(tip)
+      expect(scan.totalDerived).toBe(true)
+    },
+  )
+
+  it('adds tax on top of a subtotal when the total line is lost', () => {
+    // Burger 14.00 and Fries 5.00 make 19.00, with 1.52 tax: 20.52. The fries were not read.
+    const scan = parseReceipt('Diner\nBurger 14.00\nSubtotal 19.00\nTax 1.52', {
+      currency: 'USD',
+    })
+    expect(scan.totalCents).toBe(2052)
+    expect(scan.taxCents).toBe(152)
+    expect(scan.itemsMatch).toBe('unconfirmed')
+  })
+
+  it('works the bill out from cash less change, and leaves it empty with nothing to go on', () => {
+    expect(parseReceipt('Shop\nCash 10.00\nChange 1.00', { currency: 'USD' }).totalCents).toBe(900)
+    expect(parseReceipt('Shop\nCash 10.00', { currency: 'USD' }).totalCents).toBeNull()
   })
 
   it('drops a line dearer than the whole bill', () => {

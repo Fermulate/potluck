@@ -24,6 +24,7 @@ import {
   bestScan,
   defaultChoice,
   fillFromScan,
+  readingsEnough,
   scanFoundSomething,
   scanItemsTotal,
   type ScanChoice,
@@ -102,12 +103,8 @@ export function ScanReceipt({
         signal: controller.signal,
         onProgress: ({ stage, progress }) =>
           setState((s) => (s.phase === 'reading' ? { ...s, stage, progress } : s)),
-        // One reading that adds up is enough; after two, anything close is. Only a reading that
-        // is still far off tries the plain colour photo too.
-        enough: (texts) => {
-          const best = bestScan(texts.map(parse)).itemsMatch
-          return best === 'exact' || (texts.length > 1 && best === 'close')
-        },
+        // Only a reading that is still far off tries the plain colour photo too.
+        enough: (texts) => readingsEnough(texts.map(parse)),
       })
       const scan = bestScan((texts.length > 0 ? texts : ['']).map(parse))
       const photo = await upload
@@ -480,7 +477,7 @@ function Review({
                 price(
                   t('expenses.scan.total'),
                   scan.totalCents,
-                  (cents) => edit({ totalCents: cents }),
+                  (cents) => edit({ totalCents: cents, totalDerived: false }),
                   'text-lg font-extrabold',
                 ),
                 true,
@@ -494,23 +491,35 @@ function Review({
             </p>
           )}
         </div>
-        {scan.itemsMatch !== null && scan.itemsMatch !== 'exact' && scan.totalCents !== null && (
+        {scan.totalDerived && scan.totalCents !== null && (
           <div
             role="status"
             className="flex gap-2.5 rounded-card bg-saffron-soft px-3 py-2.5 text-sm text-saffron-ink"
           >
             <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-            <p>
-              <span className="font-semibold">
-                {t('expenses.scan.itemsOff', {
-                  items: formatMoney(itemsTotal, currency),
-                  total: formatMoney(scan.totalCents, currency),
-                })}
-              </span>{' '}
-              {t('expenses.scan.checkPrices')}
-            </p>
+            <p className="font-semibold">{t('expenses.scan.totalDerived')}</p>
           </div>
         )}
+        {scan.itemsMatch !== null &&
+          scan.itemsMatch !== 'exact' &&
+          scan.itemsMatch !== 'unconfirmed' &&
+          scan.totalCents !== null && (
+            <div
+              role="status"
+              className="flex gap-2.5 rounded-card bg-saffron-soft px-3 py-2.5 text-sm text-saffron-ink"
+            >
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <p>
+                <span className="font-semibold">
+                  {t('expenses.scan.itemsOff', {
+                    items: formatMoney(itemsTotal, currency),
+                    total: formatMoney(scan.totalCents, currency),
+                  })}
+                </span>{' '}
+                {t('expenses.scan.checkPrices')}
+              </p>
+            </div>
+          )}
         {canAttach && (
           <Checkbox
             label={t('expenses.scan.attach')}

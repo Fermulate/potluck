@@ -459,6 +459,8 @@ export const expenses = {
     items_other: '{count} articles',
     itemsHint: 'Partagé par article, avec tout le monde sur chaque ligne pour commencer.',
     itemsOff: 'Les articles font {items} ; le reçu dit {total}.',
+    totalDerived:
+      'Aucune ligne de total trouvée : le total a été calculé à partir du reçu. Vérifie-le sur la photo.',
     rest: 'Tout le reste',
     quantity: '{count}× {name}',
     attach: 'Joindre la photo',

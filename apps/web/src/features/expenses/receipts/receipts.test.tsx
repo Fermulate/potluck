@@ -124,6 +124,14 @@ describe('ScanReceipt', () => {
     ).toBeInTheDocument()
   })
 
+  it('says when no total line was read and the total was worked out', async () => {
+    ocr.text = 'Cafe\nTea 3.00\nCake 4.00'
+    const { pick } = renderScan()
+    await pick()
+    const sheet = await screen.findByRole('dialog', { name: t('expenses.scan.reviewTitle') })
+    expect(within(sheet).getByText(t('expenses.scan.totalDerived'))).toBeInTheDocument()
+  })
+
   it('offers to attach the photo when nothing reads as prices', async () => {
     ocr.text = 'a blurry thumb'
     const { onApply, pick } = renderScan()

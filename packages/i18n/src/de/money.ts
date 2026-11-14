@@ -458,6 +458,8 @@ export const expenses = {
     items_other: '{count} Posten',
     itemsHint: 'Nach Posten geteilt, am Anfang mit allen auf jeder Zeile.',
     itemsOff: 'Die Posten ergeben {items}, der Beleg sagt {total}.',
+    totalDerived:
+      'Keine Summenzeile gefunden, die Summe wurde aus dem Beleg berechnet. Prüfe sie am Foto.',
     rest: 'Alles andere',
     quantity: '{count}× {name}',
     attach: 'Foto anhängen',

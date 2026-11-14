@@ -456,6 +456,8 @@ export const expenses = {
     items_other: '{count} items',
     itemsHint: 'Splits by item, with everyone on every line to start.',
     itemsOff: 'The items come to {items}; the receipt says {total}.',
+    totalDerived:
+      'No total line was found, so the total was worked out from the receipt. Check it against the photo.',
     rest: 'Everything else',
     quantity: '{count}× {name}',
     attach: 'Attach the photo',

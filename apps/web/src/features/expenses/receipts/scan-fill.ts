@@ -30,18 +30,27 @@ export function defaultChoice(scan: ReceiptScan, description: string): ScanChoic
   }
 }
 
-const RANK = { exact: 3, close: 2, off: 1 } as const
+const RANK = { exact: 3, close: 2, off: 1, unconfirmed: 0 } as const
 
 /**
- * The best of several readings of one photo: the one whose items come closest to its total,
- * then the one that found the most, then the first.
+ * The best of several readings of one photo: the one whose items come closest to the total it
+ * read, then one that read a total line at all, then the one that found the most, then the first.
  */
 export function bestScan(scans: ReceiptScan[]): ReceiptScan {
   const score = (s: ReceiptScan) =>
     (s.itemsMatch ? RANK[s.itemsMatch] : 0) * 1000 +
-    (s.totalCents !== null ? 100 : 0) +
+    (s.totalCents !== null && !s.totalDerived ? 100 : 0) +
     s.items.length
   return scans.reduce((best, s) => (score(s) > score(best) ? s : best))
+}
+
+/**
+ * Whether the reader can stop: one reading whose items add up to a total line it read is
+ * enough; after two, anything close is. A total worked out without a total line never is.
+ */
+export function readingsEnough(scans: ReceiptScan[]): boolean {
+  const best = bestScan(scans).itemsMatch
+  return best === 'exact' || (scans.length > 1 && best === 'close')
 }
 
 /** Whether the scan found anything the form could use. */

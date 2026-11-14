@@ -450,6 +450,8 @@ export const expenses = {
     items_other: '{count} artículos',
     itemsHint: 'Se reparte por artículo, con todos en cada línea para empezar.',
     itemsOff: 'Los artículos suman {items}; el recibo dice {total}.',
+    totalDerived:
+      'No se encontró la línea del total, así que se calculó a partir del recibo. Compruébalo con la foto.',
     rest: 'Todo lo demás',
     quantity: '{count}× {name}',
     attach: 'Adjuntar la foto',

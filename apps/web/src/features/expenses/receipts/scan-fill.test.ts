@@ -5,6 +5,7 @@ import {
   bestScan,
   defaultChoice,
   fillFromScan,
+  readingsEnough,
   scanFoundSomething,
   scanItemsTotal,
 } from './scan-fill'
@@ -22,6 +23,7 @@ const scan = (over: Partial<ReceiptScan> = {}): ReceiptScan => ({
     { description: 'Cheeseburger', amountCents: 2500, quantity: 2 },
     { description: 'Fries', amountCents: 1950, quantity: 1 },
   ],
+  totalDerived: false,
   itemsMatch: 'exact',
   ...over,
 })
@@ -50,6 +52,30 @@ describe('scan review defaults', () => {
     expect(bestScan([off, exact]).merchant).toBe('Second look')
     expect(bestScan([off, empty])).toBe(off)
     expect(bestScan([empty])).toBe(empty)
+  })
+
+  it('ranks a total worked out without a total line below one the receipt printed', () => {
+    const usd = { currency: 'USD' }
+    // The first reading caught only the burger and no total line; the second read TOTAL 19.00
+    // with the fries misread as 4.90.
+    const partial = parseReceipt(['Diner', 'Burger 14.00'].join('\n'), usd)
+    const printed = parseReceipt(
+      ['Diner', 'Burger 14.00', 'Fries 4.90', 'TOTAL 19.00'].join('\n'),
+      usd,
+    )
+    expect(printed.itemsMatch).toBe('close')
+    expect(bestScan([partial, printed])).toBe(printed)
+    expect(bestScan([printed, partial])).toBe(printed)
+  })
+
+  it('keeps reading while the only total was worked out', () => {
+    const usd = { currency: 'USD' }
+    const partial = parseReceipt(['Diner', 'Burger 14.00'].join('\n'), usd)
+    const derived = parseReceipt(['Diner', 'Burger 14.00', 'Fries 5.00'].join('\n'), usd)
+    const printed = parseReceipt(['Diner', 'Burger 14.00', 'TOTAL 14.00'].join('\n'), usd)
+    expect(readingsEnough([partial])).toBe(false)
+    expect(readingsEnough([partial, derived])).toBe(false)
+    expect(readingsEnough([printed])).toBe(true)
   })
 
   it('knows when a scan found nothing usable', () => {

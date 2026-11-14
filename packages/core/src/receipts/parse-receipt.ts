@@ -26,11 +26,17 @@ export interface ReceiptScan {
   discountCents: number | null
   items: ReceiptItem[]
   /**
-   * Whether the items (with tax, tip and discount) come to the total: `exact`, `close` (within
-   * 5%), `off`, or null when there is no total or no item to compare. Anything but `exact` means
-   * a line was misread or missed, and the review says so.
+   * True when no total line was read and the total was worked out from the card line, the cash
+   * and change lines, the subtotal or the items. The person should check it.
    */
-  itemsMatch: 'exact' | 'close' | 'off' | null
+  totalDerived: boolean
+  /**
+   * Whether the items (with tax, tip and discount) come to the total: `exact`, `close` (within
+   * 5%), `off`, `unconfirmed` when the total was worked out rather than read (so it cannot
+   * confirm the items), or null when there is no total or no item to compare. Anything but
+   * `exact` means a line was misread or missed, and the review says so.
+   */
+  itemsMatch: 'exact' | 'close' | 'off' | 'unconfirmed' | null
 }
 
 export interface ParseReceiptOptions {
@@ -170,7 +176,7 @@ function trailingPrice(line: string, currency: string): Priced | null {
 
 const SUBTOTAL =
   /\b(sub\s*-?\s*total|subtot|sous\s*-?\s*total|zwischensumme|zw\.?\s*summe|total\s+ht|net\s+total|total\s+parcial|base\s+imponible|netto(betrag)?)\b/
-const INCLUSIVE = /\b(incl|inkl|incluse?|incluido|included|ttc|inc)\b/
+const INCLUSIVE = /\b(incl|inkl|incluse?|incluido|included|ttc|inc|dont)\b/
 const TAX =
   /\b(tax|taxes|vat|tva|iva|mwst|mw\.?\s?st|ust|gst|hst|pst|qst|impuesto|imposto|steuer|tasse)\b/
 const TIP =
@@ -181,6 +187,13 @@ const TOTAL =
   /\b(total|totale|totaal|gesamt\w*|summe|betrag|amount\s+due|balance\s+due|to\s+pay|a\s+pagar|zu\s+zahlen|montant|net\s+a\s+payer)\b/
 const PAYMENT =
   /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b|\bbar\s+(eur|chf)\b/
+// Which payment line it is: the change given back, a card, or cash handed over.
+const CHANGE_GIVEN = /\b(change|rendu|rendue|monnaie|wechselgeld|ruckgeld|cambio|troco)\b/
+const CARD_PAID =
+  /\b(card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|paypal|carte|cb|karte|kartenzahlung|kontaktlos|girocard|tarjeta|debito|credito|cartao|pix)\b|^ec\b/
+const CASH_PAID =
+  /\b(cash|tendered|tend|especes|gegeben|geg|efectivo|dinheiro)\b|^bar\b|\bbar\s+(eur|chf)\b/
+
 const NOT_AN_ITEM =
   /\b(tel|phone|fax|www|http|order|table|server|guest|guests|cashier|kasse|receipt|invoice|facture|rechnung|ticket|recibo|qty|items|articles|artikel|anzahl)\b/
 
@@ -370,10 +383,14 @@ function itemOf(rest: string): { description: string; quantity: number } {
  * after the person corrects a price.
  */
 export function receiptItemsMatch(
-  scan: Pick<ReceiptScan, 'totalCents' | 'taxCents' | 'tipCents' | 'discountCents' | 'items'>,
+  scan: Pick<
+    ReceiptScan,
+    'totalCents' | 'totalDerived' | 'taxCents' | 'tipCents' | 'discountCents' | 'items'
+  >,
 ): ReceiptScan['itemsMatch'] {
   const total = scan.totalCents
   if (total === null || total <= 0 || scan.items.length === 0) return null
+  if (scan.totalDerived) return 'unconfirmed'
   const sum =
     scan.items.reduce((a, i) => a + i.amountCents, 0) +
     (scan.taxCents ?? 0) +
@@ -413,6 +430,11 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   let pendingQty: { count: number | null; unit: number } | null = null
   // What the card or cash lines say was paid.
   const paid: number[] = []
+  const card: number[] = []
+  const cash: number[] = []
+  const change: number[] = []
+  // Tax printed on top of the prices, not VAT they already include ("dont TVA", "IVA incluido").
+  let addedTax = 0
 
   for (const [index, line] of lines.entries()) {
     const key = keys[index]!
@@ -439,6 +461,7 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         break
       case 'tax':
         tax = (tax ?? 0) + price.cents
+        if (!INCLUSIVE.test(key)) addedTax += price.cents
         break
       case 'tip':
         tip = (tip ?? 0) + price.cents
@@ -448,6 +471,9 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
         break
       case 'payment':
         paid.push(price.cents)
+        if (CHANGE_GIVEN.test(key)) change.push(price.cents)
+        else if (CARD_PAID.test(key)) card.push(price.cents)
+        else if (CASH_PAID.test(key)) cash.push(price.cents)
         itemsEnd = Math.min(itemsEnd, index)
         break
       case 'item': {
@@ -489,11 +515,21 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     pending = null
   }
 
+  // No total line read: what the card paid, the cash handed over less the change, the subtotal
+  // with tax and tip on top, or else the items. Never one item or the cash handed over alone.
+  const totalDerived = total === null
+  if (total === null) {
+    const handedOver = cash[0] !== undefined && change[0] !== undefined ? cash[0] - change[0] : 0
+    if (card[0] !== undefined) total = card[0]
+    else if (handedOver > 0) total = handedOver
+    else if (subtotal !== null) total = subtotal + addedTax + (tip ?? 0)
+  }
   // A line dearer than the whole bill is a misread (a smudge read as 81.89).
   const offered = items
     .filter((i) => total === null || i.amountCents <= total)
     .slice(0, MAX_RECEIPT_ITEMS)
   const itemsSum = offered.reduce((a, i) => a + i.amountCents, 0)
+  if (total === null && offered.length > 0) total = itemsSum
   const base = subtotal ?? itemsSum
   // Tax, tip and discount are kept only when they make the receipt add up the way the expense
   // form adds it (items + tax + tip - discount). VAT already inside the prices is left out.
@@ -512,9 +548,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // card line was the bill ("TOTAL $76.59" over "VISA $76.50" on a blurred photo).
   const formSum = itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0)
   if (offered.length > 0 && total !== formSum && paid.includes(formSum)) total = formSum
-  // No total line read: the items make the bill. Neither a single line nor the cash handed over
-  // is the total, and with no items either the review asks for it.
-  if (total === null && offered.length > 0) total = formSum
 
   return {
     merchant: findMerchant(lines),
@@ -532,8 +565,10 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     tipCents: tip,
     discountCents: discount,
     items: offered,
+    totalDerived: totalDerived && total !== null,
     itemsMatch: receiptItemsMatch({
       totalCents: total,
+      totalDerived,
       taxCents: tax,
       tipCents: tip,
       discountCents: discount,
