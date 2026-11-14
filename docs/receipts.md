@@ -20,7 +20,7 @@ How a receipt photo becomes an expense, and how files are kept on expenses. The 
 ## Rules
 
 - Only `ocr.ts` imports `tesseract.js`, and only with a dynamic `import()`, so it never lands in the app bundle or the precache. Its worker, core and model come from `/ocr/<version>/` on our origin.
-- OCR reads a lossless grayscale copy of the original photo with its contrast stretched (`ocrImage`), never the JPEG that is uploaded. When the items do not come to the total, a second pass reads an upscaled copy; when the best so far is still far off, a third reads the plain colour photo (which suits some long receipts better). The best reading wins (`bestScan`).
+- OCR reads a lossless grayscale copy of the original photo with its contrast stretched (`ocrImage`), never the JPEG that is uploaded. When the items do not come to the total, or there was no total line and the total had to be worked out (that never counts as enough), a second pass reads an upscaled copy; when the best so far is still far off, a third reads the plain colour photo (which suits some long receipts better). The best reading wins (`bestScan`).
 - The upload copy (`prepareImage`) is at most 2000 px, JPEG on white. Re-encoding drops the photo's metadata, location included. HEIC outside Safari and PDFs go up as they are.
 - A scan only fills the form. The review sheet shows the photo and lets each price be corrected; the person saves the expense.
 - The parser is heuristics with no SQL twin. A receipt it misreads becomes a case in `parse-receipt.test.ts`. It skips unit price lines ("2 Stk x 0,90"), payment lines and VAT summary rows, and reports `itemsMatch` (exact, close, off).

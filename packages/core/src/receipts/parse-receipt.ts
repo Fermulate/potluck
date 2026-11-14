@@ -185,8 +185,10 @@ const DISCOUNT =
   /\b(discount|remise|rabatt|descuento|desconto|coupon|savings|you\s+saved|reduction|promo)\b/
 const TOTAL =
   /\b(total|totale|totaal|gesamt\w*|summe|betrag|amount\s+due|balance\s+due|to\s+pay|a\s+pagar|zu\s+zahlen|montant|net\s+a\s+payer)\b/
+// A payment line starts with the payment word ("VISA 14.77", "Geg. BAR EUR 10,00"); one inside a
+// name ("Birthday Card 4.99", "Bar snacks 4.00") is an item.
 const PAYMENT =
-  /\b(cash|change|card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty)\b|^(bar|ec)\b|\bbar\s+(eur|chf)\b/
+  /^[^a-z\d]*((cash|change|card|gift\s*card|visa|mastercard|master\s*card|amex|maestro|debit|credit|contactless|tendered|tend|payment|paid|paypal|rendu|rendue|monnaie|especes|carte|cb|wechselgeld|ruckgeld|gegeben|geg|karte|kartenzahlung|kontaktlos|girocard|cambio|efectivo|tarjeta|debito|credito|troco|dinheiro|cartao|pix|auth|approval|balance|points|loyalty|ec)\b|bar\s*((eur|chf)\s*)?[\d-])/
 // Which payment line it is: the change given back, a card, or cash handed over.
 const CHANGE_GIVEN = /\b(change|rendu|rendue|monnaie|wechselgeld|ruckgeld|cambio|troco)\b/
 const CARD_PAID =
@@ -515,18 +517,21 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     pending = null
   }
 
-  // No total line read: what the card paid, the cash handed over less the change, the subtotal
-  // with tax and tip on top, or else the items. Never one item or the cash handed over alone.
+  // No total line read: what was paid (every card line, as a bill can be split, and the cash
+  // handed over less the change), else the subtotal with tax and tip on top, else the items.
+  // Never one item or the cash handed over alone.
   const totalDerived = total === null
   if (total === null) {
-    const handedOver = cash[0] !== undefined && change[0] !== undefined ? cash[0] - change[0] : 0
-    if (card[0] !== undefined) total = card[0]
-    else if (handedOver > 0) total = handedOver
+    const sum = (amounts: number[]) => amounts.reduce((a, c) => a + c, 0)
+    const handedOver = cash.length > 0 && change.length > 0 ? sum(cash) - sum(change) : 0
+    const paidOut = sum(card) + Math.max(handedOver, 0)
+    if (paidOut > 0) total = paidOut
     else if (subtotal !== null) total = subtotal + addedTax + (tip ?? 0)
   }
-  // A line dearer than the whole bill is a misread (a smudge read as 81.89).
+  // A line dearer than a printed total is a misread (a smudge read as 81.89). A total worked out
+  // here cannot tell.
   const offered = items
-    .filter((i) => total === null || i.amountCents <= total)
+    .filter((i) => total === null || totalDerived || i.amountCents <= total)
     .slice(0, MAX_RECEIPT_ITEMS)
   const itemsSum = offered.reduce((a, i) => a + i.amountCents, 0)
   if (total === null && offered.length > 0) total = itemsSum

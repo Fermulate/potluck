@@ -558,6 +558,46 @@ describe('do the items match the total', () => {
     expect(parseReceipt('Shop\nCash 10.00', { currency: 'USD' }).totalCents).toBeNull()
   })
 
+  it('keeps an item named after a payment, and takes the card line under it for the bill', () => {
+    // 6.49 + 4.99 + 3.29 is 14.77, what the VISA line says was paid.
+    const scan = parseReceipt(
+      'CVS\nShampoo 6.49\nBirthday Card 4.99\nToothpaste 3.29\nVISA 14.77',
+      {
+        currency: 'USD',
+      },
+    )
+    expect(scan.totalCents).toBe(1477)
+    expect(items(scan.items)).toEqual([
+      ['Shampoo', 649, 1],
+      ['Birthday Card', 499, 1],
+      ['Toothpaste', 329, 1],
+    ])
+    const snacks = parseReceipt('Pub\nBar snacks 4.00\nCider 5.00\nTotal 9.00', { currency: 'GBP' })
+    expect(snacks.items.map((i) => i.description)).toEqual(['Bar snacks', 'Cider'])
+    expect(snacks.itemsMatch).toBe('exact')
+  })
+
+  it('adds up a bill paid in parts when the total line is lost', () => {
+    // A 5.00 gift card and 14.00 on VISA paid for 12.00 + 7.00.
+    const scan = parseReceipt('Shop\nShirt 12.00\nSocks 7.00\nGIFT CARD 5.00\nVISA 14.00', {
+      currency: 'USD',
+    })
+    expect(scan.totalCents).toBe(1900)
+    expect(items(scan.items)).toEqual([
+      ['Shirt', 1200, 1],
+      ['Socks', 700, 1],
+    ])
+  })
+
+  it('never drops an item as dearer than a total it worked out', () => {
+    // A subtotal misread as 25.00 and no total line: the 30.00 steak is still an item.
+    const scan = parseReceipt('Grill\nSteak 30.00\nSalad 8.00\nSubtotal 25.00', {
+      currency: 'USD',
+    })
+    expect(scan.items.map((i) => i.description)).toEqual(['Steak', 'Salad'])
+    expect(scan.totalDerived).toBe(true)
+  })
+
   it('drops a line dearer than the whole bill', () => {
     const scan = parseReceipt('Shop\nGarlic 81.89\nRice 2.99\nTotal 76.50', { currency: 'USD' })
     expect(scan.items.map((i) => i.description)).toEqual(['Rice'])
