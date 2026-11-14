@@ -31,7 +31,7 @@ import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
 import { payersOf, settlementText } from './expense-math'
 import { ExpenseRow, SettlementRow } from './expense-row'
-import { categoryEmoji, categoryLabel, dayLabel, groupByDay, todayIn } from './format'
+import { categoryEmoji, categoryLabel, dayLabel, groupByDay, groupTitle, todayIn } from './format'
 import {
   useGroupExpenses,
   useGroupMoneyRealtime,
@@ -124,6 +124,8 @@ export function ExpensesTab({
   }, [expenseData, settlementData, search, filters, nameOf, timeZone])
 
   const myRole = group.data?.members.find((m) => m.id === me)?.role
+  // An archived group is read only: nothing here offers to add to it.
+  const archived = !!group.data?.archived_at
   // Payments count too: wait for them before calling the tab empty.
   const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
@@ -190,13 +192,19 @@ export function ExpensesTab({
         <EmptyState
           illustration="🧾"
           title={t('empty.expenses.title')}
-          description={t('empty.expenses.body')}
+          description={
+            archived && group.data
+              ? t('expenses.form.archived', { group: groupTitle(group.data, me) })
+              : t('empty.expenses.body')
+          }
           action={
-            <Button asChild leadingIcon={<Plus />}>
-              <Link to="/new/expense" search={{ groupId }}>
-                {t('empty.expenses.action')}
-              </Link>
-            </Button>
+            archived ? undefined : (
+              <Button asChild leadingIcon={<Plus />}>
+                <Link to="/new/expense" search={{ groupId }}>
+                  {t('empty.expenses.action')}
+                </Link>
+              </Button>
+            )
           }
         />
       </div>
@@ -228,11 +236,13 @@ export function ExpensesTab({
           disabled={loading || exporting || !expenses.data?.length}
         />
         <ActivityIconLink groupId={groupId} />
-        <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
-          <Link to="/new/expense" search={{ groupId }}>
-            {t('expenses.add')}
-          </Link>
-        </Button>
+        {!archived && (
+          <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
+            <Link to="/new/expense" search={{ groupId }}>
+              {t('expenses.add')}
+            </Link>
+          </Button>
+        )}
       </div>
 
       {categories.length > 1 && filters.kind !== 'payment' && (

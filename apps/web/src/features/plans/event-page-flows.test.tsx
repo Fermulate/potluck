@@ -1,5 +1,7 @@
 import type * as AuthModule from '@/lib/auth'
+import { moneyKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { QueryClient } from '@tanstack/react-query'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -247,6 +249,33 @@ describe('EventPage once decided', () => {
     fireEvent.click(screen.getByRole('link', { name: new RegExp(t('events.addExpense')) }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/new/expense'))
     expect(router.state.location.search).toEqual({ groupId: 'g-hike', eventId: 'ev-1' })
+  })
+
+  it('offers no expense, lock or cancel for a plan in an archived group', async () => {
+    seed(
+      planEvent({
+        status: 'scheduled',
+        starts_at: '2026-11-11T19:00:00+00:00',
+        ends_at: '2026-11-11T21:00:00+00:00',
+      }),
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    client.setQueryData(moneyKeys.groupInfo('g-hike'), {
+      id: 'g-hike',
+      archived_at: '2026-11-01T00:00:00Z',
+    })
+    renderWithProviders(<EventPage eventId="ev-1" />, {
+      path: '/plans/$eventId',
+      url: '/plans/ev-1',
+      client,
+    })
+    expect(await screen.findByText(t('events.errors.group_archived'))).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: new RegExp(t('events.addExpense')) }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('events.cancel') })).not.toBeInTheDocument()
   })
 
   it('marks cancelled and finished plans', async () => {

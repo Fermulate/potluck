@@ -12,6 +12,7 @@ import { Link, Outlet, useParams, useRouterState } from '@tanstack/react-router'
 import { Bell, BookOpen, CalendarHeart, House, Plus, Search, User, Users } from 'lucide-react'
 import { useState } from 'react'
 import { useProfileLanguage } from '@/features/account/use-profile-language'
+import { useMoneyGroup } from '@/features/expenses/money-data'
 import {
   useNotificationsRealtime,
   useUnreadCount,
@@ -75,6 +76,8 @@ export function AppLayout() {
   const active = useActiveTab()
   const [addOpen, setAddOpen] = useState(false)
   const { groupId } = useParams({ strict: false }) as { groupId?: string }
+  // Adding from inside an archived group starts without a group: that one takes nothing new.
+  const groupArchived = !!useMoneyGroup(groupId).data?.archived_at
   const { data: unread = 0 } = useUnreadCount()
   useNotificationsRealtime()
   useSessionCheck()
@@ -156,7 +159,11 @@ export function AppLayout() {
           />
         }
       />
-      <QuickAddSheet open={addOpen} onOpenChange={setAddOpen} groupId={groupId} />
+      <QuickAddSheet
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        groupId={groupArchived ? undefined : groupId}
+      />
     </div>
   )
 }

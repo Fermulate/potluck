@@ -62,11 +62,14 @@ export function GroupTotals({ groupId }: { groupId: string }) {
           title={t('insights.empty.title')}
           description={t('insights.empty.body')}
           action={
-            <Button asChild leadingIcon={<Plus />}>
-              <Link to="/new/expense" search={{ groupId }}>
-                {t('empty.expenses.action')}
-              </Link>
-            </Button>
+            // An archived group takes no new expenses.
+            group.data?.archived_at ? undefined : (
+              <Button asChild leadingIcon={<Plus />}>
+                <Link to="/new/expense" search={{ groupId }}>
+                  {t('empty.expenses.action')}
+                </Link>
+              </Button>
+            )
           }
         />
         {links}

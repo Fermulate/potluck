@@ -31,6 +31,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AvailabilityHeatmap, type HeatRow } from '@/features/availability/availability-heatmap'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
+import { useMoneyGroup } from '@/features/expenses/money-data'
 import { GuestLinksPanel } from '@/features/guests/guest-links-panel'
 import { GuestAnswers } from '@/features/guests/guest-list'
 import { buildGridModel, busySlots, slotKey, type GridModel } from '@/features/availability/grid'
@@ -135,8 +136,10 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
   const [cancelOpen, setCancelOpen] = useState(false)
   const me = members.find((m) => m.userId === viewerId)
   const isCreator = event.created_by === viewerId
-  const canManage = can(me?.role, 'event.lock', { isCreator })
-  const canCancel = can(me?.role, 'event.cancel', { isCreator })
+  // An archived group's plans are read only: no locking, cancelling or new expenses.
+  const archived = !!useMoneyGroup(event.group_id).data?.archived_at
+  const canManage = !archived && can(me?.role, 'event.lock', { isCreator })
+  const canCancel = !archived && can(me?.role, 'event.cancel', { isCreator })
   const organizer = members.find((m) => m.userId === event.created_by)
 
   const lock = useMutation({
@@ -198,6 +201,11 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
   return (
     <Shell>
       <EventHeader event={event} />
+      {archived && (
+        <p role="note" className="mt-4 rounded-card bg-sunken px-4 py-3 text-sm text-mute">
+          {t('events.errors.group_archived')}
+        </p>
+      )}
 
       {event.status === 'polling' ? (
         <PollingBody
@@ -256,7 +264,7 @@ function EventBody({ event, members, viewerId, timeZone }: BodyProps) {
             )}
             <GuestAnswers eventId={event.id} />
             <PlanExpenses groupId={event.group_id} eventId={event.id} />
-            {event.status !== 'cancelled' && (
+            {event.status !== 'cancelled' && !archived && (
               <a
                 href={expenseHref}
                 onClick={(e) => {

@@ -1,5 +1,7 @@
 import type * as AuthModule from '@/lib/auth'
+import { moneyKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { QueryClient } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
@@ -77,6 +79,24 @@ describe('AppLayout', () => {
     expect(within(sheet).getByRole('link', { name: /Add expense/ })).toHaveAttribute(
       'href',
       '/new/expense?groupId=g-hike',
+    )
+  })
+
+  it('opens quick add without an archived group, which takes nothing new', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    client.setQueryData(moneyKeys.groupInfo('g-old'), {
+      id: 'g-old',
+      archived_at: '2026-11-01T00:00:00Z',
+    })
+    renderWithProviders(<AppLayout />, { path: '/groups/$groupId', url: '/groups/g-old', client })
+    await navs()
+    fireEvent.click(screen.getAllByRole('button', { name: t('nav.add') })[0]!)
+    const sheet = await screen.findByRole('dialog', { name: t('nav.quickAdd.title') })
+    expect(within(sheet).getByRole('link', { name: /Add expense/ })).toHaveAttribute(
+      'href',
+      '/new/expense',
     )
   })
 

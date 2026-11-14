@@ -116,11 +116,13 @@ export function BalancesTab({ groupId }: { groupId: string }) {
           title={t('empty.balances.title')}
           description={t('empty.balances.body')}
           action={
-            <Button asChild variant="secondary" leadingIcon={<Plus />}>
-              <Link to="/new/expense" search={{ groupId }}>
-                {t('empty.balances.action')}
-              </Link>
-            </Button>
+            open ? (
+              <Button asChild variant="secondary" leadingIcon={<Plus />}>
+                <Link to="/new/expense" search={{ groupId }}>
+                  {t('empty.balances.action')}
+                </Link>
+              </Button>
+            ) : undefined
           }
         />
       ) : (

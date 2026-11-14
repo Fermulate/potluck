@@ -1,5 +1,7 @@
 import type * as AuthModule from '@/lib/auth'
+import { moneyKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { QueryClient } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
@@ -99,6 +101,35 @@ describe('GroupPlansPage', () => {
     seed([])
     renderWithProviders(<GroupPlansPage groupId="g-hike" />, { path: '/groups/g-hike/plans' })
     expect(await screen.findByText(t('events.emptyGroup.title'))).toBeInTheDocument()
+  })
+
+  it('offers no new plan in an archived group and says why', async () => {
+    const archived = () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      })
+      client.setQueryData(moneyKeys.groupInfo('g-hike'), {
+        id: 'g-hike',
+        archived_at: '2026-11-01T00:00:00Z',
+      })
+      return client
+    }
+    const full = renderWithProviders(<GroupPlansPage groupId="g-hike" />, {
+      path: '/groups/g-hike/plans',
+      client: archived(),
+    })
+    await screen.findByRole('link', { name: /Quiz night/ })
+    expect(screen.getByRole('note')).toHaveTextContent(t('events.errors.group_archived'))
+    expect(screen.queryByRole('link', { name: t('events.new') })).toBeNull()
+    full.unmount()
+
+    seed([])
+    renderWithProviders(<GroupPlansPage groupId="g-hike" />, {
+      path: '/groups/g-hike/plans',
+      client: archived(),
+    })
+    expect(await screen.findByText(t('events.errors.group_archived'))).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('events.new') })).toBeNull()
   })
 
   it('shows an empty calendar line when nothing is scheduled', async () => {
