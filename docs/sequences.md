@@ -416,7 +416,8 @@ sequenceDiagram
     W->>App: open paypal.me/ben/42.50USD (built by paymentAction)
     P->>W: "Did it go through?" yes
   end
-  W->>DB: rpc settle_up_v2(group_id, from_user, to_user,<br/>amount_cents, currency, note, settled_on)
+  W->>DB: rpc settle_up_v3(group_id, from_user, to_user,<br/>amount_cents, currency, note, settled_on, request_id)
+  DB->>DB: private.claim_request: a repeated request_id<br/>returns the first payment; otherwise settle_up_v2 runs
   DB->>DB: share lock the group row, require_member, require_unarchived
   DB->>DB: private.check_payment: amount, two people,<br/>members only for themselves, both in group
   DB->>DB: fx = private.fx_rate(currency, group currency, settled_on or today)
