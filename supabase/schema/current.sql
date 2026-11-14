@@ -546,6 +546,12 @@ CREATE OR REPLACE FUNCTION "private"."check_request"() RETURNS "void"
     SET "search_path" TO ''
     AS $$
 begin
+  if not private.session_active() then
+    raise exception using
+      message = 'session_ended',
+      detail = 'This session was signed out',
+      errcode = '42501';
+  end if;
   if not private.mfa_satisfied() then
     raise exception using
       message = 'mfa_required',
@@ -1548,14 +1554,19 @@ begin
       'paid_by', new.paid_by,
       'is_refund', new.is_refund,
       'share_cents', s.share_cents,
+      'paid_cents', s.paid_cents,
       'actor_id', actor
     )
   from (
-    select x.user_id, x.share_cents from public.expense_splits x where x.expense_id = new.id
-    union all
-    select y.user_id, 0 from public.expense_payers y
-    where y.expense_id = new.id
-      and not exists (select 1 from public.expense_splits x where x.expense_id = new.id and x.user_id = y.user_id)
+    select u.user_id, sum(u.share_cents)::bigint as share_cents, sum(u.paid_cents)::bigint as paid_cents
+    from (
+      select x.user_id, x.share_cents, 0::bigint as paid_cents
+      from public.expense_splits x where x.expense_id = new.id
+      union all
+      select y.user_id, 0::bigint, y.paid_cents
+      from public.expense_payers y where y.expense_id = new.id
+    ) u
+    group by u.user_id
   ) s
   join public.profiles p on p.id = s.user_id
   where p.deleted_at is null
@@ -4960,6 +4971,23 @@ $$;
 
 
 ALTER FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."session_active"() RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+  select case
+    when coalesce((select auth.jwt() ->> 'session_id'), '') !~ '^[0-9a-fA-F-]{36}$' then true
+    else exists (
+      select 1 from auth.sessions s
+      where s.id = ((select auth.jwt() ->> 'session_id'))::uuid
+    )
+  end;
+$_$;
+
+
+ALTER FUNCTION "private"."session_active"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."set_updated_at"() RETURNS "trigger"
@@ -13605,6 +13633,13 @@ REVOKE ALL ON FUNCTION "private"."send_monthly_summaries"("month" "date") FROM P
 
 
 REVOKE ALL ON FUNCTION "private"."send_recurring_heads_ups"("run_at" timestamp with time zone) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."session_active"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."session_active"() TO "anon";
+GRANT ALL ON FUNCTION "private"."session_active"() TO "authenticated";
+GRANT ALL ON FUNCTION "private"."session_active"() TO "service_role";
 
 
 
