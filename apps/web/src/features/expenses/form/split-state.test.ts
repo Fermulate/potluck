@@ -9,13 +9,14 @@ import {
   itemsPayload,
   matchesDefault,
   moveBoundary,
+  percentLeft,
   previewSplit,
   roundingExtras,
   sameSplit,
-  setPercent,
   splitsPayload,
   tipFor,
   toggleParticipant,
+  typePercent,
   withTip,
 } from './split-state'
 
@@ -23,7 +24,6 @@ const A = 'aaaaaaaa-0000-4000-8000-000000000001'
 const B = 'bbbbbbbb-0000-4000-8000-000000000002'
 const C = 'cccccccc-0000-4000-8000-000000000003'
 const ids = [A, B, C]
-const sum = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0)
 
 describe('tip shortcuts', () => {
   it('works out a tip from the subtotal, to the cent', () => {
@@ -46,26 +46,77 @@ describe('tip shortcuts', () => {
   })
 })
 
-describe('percent rebalancing', () => {
-  it('starts even and always totals 100%', () => {
+describe('typed percentages', () => {
+  const percentDraft = (percent: Record<string, number>) => ({
+    ...initialDraft(ids),
+    mode: 'percent' as const,
+    percent,
+  })
+  // Each step types one person's value, the way the fields pass on every keystroke.
+  const typeAll = (steps: Array<[string, number]>) =>
+    steps.reduce((p, [id, bp]) => typePercent(p, id, bp), evenPercent(ids))
+
+  it('starts even and totals 100%', () => {
     expect(evenPercent(ids)).toEqual({ [A]: 3334, [B]: 3333, [C]: 3333 })
   })
 
-  it('takes what one person gains from the others in proportion', () => {
-    const next = setPercent({ [A]: 2500, [B]: 2500, [C]: 5000 }, ids, A, 5000)
-    expect(next).toEqual({ [A]: 5000, [B]: 1667, [C]: 3333 })
-    expect(sum(next)).toBe(FULL)
+  it('keeps 50, 30, 20 exactly as typed and saves those weights', () => {
+    const percent = typeAll([
+      [A, 500],
+      [A, 5000],
+      [B, 300],
+      [B, 3000],
+      [C, 200],
+      [C, 2000],
+    ])
+    expect(percent).toEqual({ [A]: 5000, [B]: 3000, [C]: 2000 })
+    const draft = percentDraft(percent)
+    expect(percentLeft(draft)).toBe(0)
+    expect(splitsPayload(draft, 20000)).toEqual([
+      { user_id: A, weight: 50 },
+      { user_id: B, weight: 30 },
+      { user_id: C, weight: 20 },
+    ])
   })
 
-  it('clamps out of range values', () => {
-    const next = setPercent(evenPercent(ids), ids, B, 15_000)
-    expect(next[B]).toBe(FULL)
-    expect(sum(next)).toBe(FULL)
+  it('never moves anyone else, so fields filled one after another all stay', () => {
+    // Fast filling: the first field is typed while the others still hold the even split.
+    const afterFirst = typePercent(evenPercent(ids), A, 5000)
+    expect(afterFirst).toEqual({ [A]: 5000, [B]: 3333, [C]: 3333 })
+    expect(percentLeft(percentDraft(afterFirst))).toBe(-1666)
+    const afterSecond = typePercent(afterFirst, B, 3000)
+    expect(afterSecond).toEqual({ [A]: 5000, [B]: 3000, [C]: 3333 })
+    const afterThird = typePercent(afterSecond, C, 2000)
+    expect(afterThird).toEqual({ [A]: 5000, [B]: 3000, [C]: 2000 })
   })
 
-  it('spreads evenly when everyone else was at zero', () => {
-    const next = setPercent({ [A]: FULL, [B]: 0, [C]: 0 }, ids, A, 6000)
-    expect(next).toEqual({ [A]: 6000, [B]: 2000, [C]: 2000 })
+  it('says how much is left or too much, and the preview fails until it makes 100%', () => {
+    const under = percentDraft({ [A]: 5000, [B]: 3000, [C]: 0 })
+    expect(percentLeft(under)).toBe(2000)
+    expect(previewSplit(under, 20000)).toMatchObject({ ok: false, error: { code: 'percent_sum' } })
+    const over = percentDraft({ [A]: 5000, [B]: 3000, [C]: 3000 })
+    expect(percentLeft(over)).toBe(-1000)
+    expect(previewSplit(over, 20000)).toMatchObject({ ok: false, error: { code: 'percent_sum' } })
+  })
+
+  it('counts only the people in the split', () => {
+    const draft = toggleParticipant(percentDraft({ [A]: 5000, [B]: 5000, [C]: 0 }), C, ids)
+    expect(percentLeft({ ...draft, percent: { [A]: 5000, [B]: 4000, [C]: 9000 } })).toBe(1000)
+  })
+
+  it('clamps a typed value to 0 to 100%', () => {
+    expect(typePercent(evenPercent(ids), B, 15_000)[B]).toBe(FULL)
+    expect(typePercent(evenPercent(ids), B, -5)[B]).toBe(0)
+  })
+
+  it('rounds to cents only when working out amounts, the leftover cent by largest remainder', () => {
+    // 33.33 / 33.33 / 33.34 of 100.01 is 33.3333, 33.3333 and 33.3433 (and a bit): the cent
+    // left over goes to the largest remainder, the third.
+    const draft = percentDraft({ [A]: 3333, [B]: 3333, [C]: 3334 })
+    expect(previewSplit(draft, 10001)).toEqual({
+      ok: true,
+      shares: { [A]: 3333, [B]: 3333, [C]: 3335 },
+    })
   })
 
   it('moves only the two neighbours when a handle is dragged', () => {

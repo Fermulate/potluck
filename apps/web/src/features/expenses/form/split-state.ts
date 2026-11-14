@@ -23,7 +23,10 @@ export function splitErrorText(result: SplitResult): string | null {
   return t(`errors.split.${result.error.code}`)
 }
 
-/** Percentages are edited in basis points (1% = 100) so they always add up to exactly 100%. */
+/**
+ * 100% in basis points. Percentages are edited in basis points (1% = 100), so a typed 33.33 stays
+ * exactly 33.33; cents are only worked out from them by core `splitPercent`.
+ */
 export const FULL = 10_000
 
 export interface ItemDraft {
@@ -39,7 +42,10 @@ export interface SplitDraft {
   participants: string[]
   /** Exact amounts in minor units. Missing means empty. */
   exact: Record<string, number | null>
-  /** Basis points per participant, always summing to FULL. */
+  /**
+   * Basis points per participant, exactly as typed or dragged. Typing never moves anyone else's
+   * value, so they can add up to more or less than FULL; the split only saves once they make FULL.
+   */
   percent: Record<string, number>
   /** Share counts per participant. */
   shares: Record<string, number>
@@ -281,44 +287,32 @@ export function toggleParticipant(
   }
 }
 
-/** Largest remainder spread of `total` over `weights` (all integers, non-negative). */
-function spread(total: number, ids: string[], weights: number[]): Record<string, number> {
-  const sum = weights.reduce((a, b) => a + b, 0)
-  const w = sum === 0 ? ids.map(() => 1) : weights
-  const wSum = sum === 0 ? ids.length : sum
-  const rows = ids.map((id, i) => {
-    const exact = (total * w[i]!) / wSum
-    return { id, value: Math.floor(exact), rem: exact - Math.floor(exact) }
-  })
-  let left = total - rows.reduce((a, r) => a + r.value, 0)
-  for (const row of [...rows].sort((a, b) => b.rem - a.rem)) {
-    if (left <= 0) break
-    row.value += 1
-    left -= 1
+const percentText = new Map<string, Intl.NumberFormat>()
+/** Basis points as a percent number in `locale`, up to two decimals and without the sign. */
+export function formatPercent(basisPoints: number, locale: string): string {
+  let f = percentText.get(locale)
+  if (!f) {
+    f = new Intl.NumberFormat(locale, { maximumFractionDigits: 2, useGrouping: false })
+    percentText.set(locale, f)
   }
-  return Object.fromEntries(rows.map((r) => [r.id, r.value]))
+  return f.format(Math.round(basisPoints) / 100)
 }
 
 /**
- * Set one person's percentage (in basis points) and rebalance everyone else in proportion to
- * what they had, so the total stays at exactly 100%.
+ * One person's percentage (in basis points), exactly as typed: nobody else's changes, so what
+ * was typed for them stays too. Clamped to 0 to 100%.
  */
-export function setPercent(
+export function typePercent(
   percent: Record<string, number>,
-  order: readonly string[],
   id: string,
   value: number,
 ): Record<string, number> {
-  const ids = order.filter((x) => x in percent)
-  if (ids.length <= 1) return { ...percent, [id]: FULL }
-  const next = Math.max(0, Math.min(FULL, Math.round(value)))
-  const others = ids.filter((x) => x !== id)
-  const rest = spread(
-    FULL - next,
-    others,
-    others.map((x) => percent[x] ?? 0),
-  )
-  return { ...rest, [id]: next }
+  return { ...percent, [id]: Math.max(0, Math.min(FULL, Math.round(value))) }
+}
+
+/** Basis points still to give out: positive is what is left, negative is how much too much. */
+export function percentLeft(draft: Pick<SplitDraft, 'participants' | 'percent'>): number {
+  return FULL - draft.participants.reduce((sum, id) => sum + (draft.percent[id] ?? 0), 0)
 }
 
 /**

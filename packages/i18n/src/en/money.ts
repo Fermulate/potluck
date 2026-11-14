@@ -36,7 +36,7 @@ export const expenses = {
   remaining: '{amount} left to assign',
   overBy: '{amount} too much',
   allAssigned: 'Everything adds up',
-  percentRemaining: '{percent}% left',
+  percentRemaining: '{percent}% left to assign',
   percentOver: '{percent}% too much',
   shareCount_one: '{count} share',
   shareCount_other: '{count} shares',

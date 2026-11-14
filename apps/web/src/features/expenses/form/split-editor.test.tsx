@@ -52,9 +52,10 @@ describe('SplitEditor locale', () => {
     render(<Harness mode="percent" />)
     const you = screen.getByRole('textbox', { name: 'You, percent' })
     fireEvent.change(you, { target: { value: '12,5' } })
-    fireEvent.blur(you)
     expect(draft().percent[ME]).toBe(1250)
-    expect(draft().percent[BEN]! + draft().percent[CLEO]!).toBe(8750)
+    // Nobody else moves; what is left shows with the same decimal mark.
+    expect(draft().percent[BEN]! + draft().percent[CLEO]!).toBe(6666)
+    expect(screen.getByText('20,84% left to assign')).toBeInTheDocument()
   })
 
   it('reads item prices, tax and tip in the given locale', () => {

@@ -23,7 +23,9 @@ function pct(bp: number): string {
 /**
  * Signature moment: one bar, one colored segment per person. Drag a handle (or use the arrow
  * keys on it) to move share between the two neighbours; everyone else stays put, so the total
- * is always exactly 100%. Avatars ride on top of their segment and hop as it changes.
+ * never changes. Typed percents can add up to less than 100% (the rest of the bar stays empty)
+ * or more (the bar is drawn to the total). Avatars ride on top of their segment and hop as it
+ * changes.
  */
 export function PercentSlider({
   people,
@@ -38,6 +40,9 @@ export function PercentSlider({
   const reduced = usePrefersReducedMotion()
   const [dragging, setDragging] = useState<number | null>(null)
   const order = people.map((p) => p.id)
+  const total = people.reduce((sum, p) => sum + (percent[p.id] ?? 0), 0)
+  // What the full width of the bar stands for.
+  const scale = Math.max(FULL, total)
 
   const segments = people.map((p, i) => ({
     ...p,
@@ -55,7 +60,7 @@ export function PercentSlider({
   const fromPointer = (e: PointerEvent) => {
     const rect = trackRef.current?.getBoundingClientRect()
     if (!rect || rect.width === 0) return null
-    return ((e.clientX - rect.left) / rect.width) * FULL
+    return ((e.clientX - rect.left) / rect.width) * scale
   }
 
   const onPointerDown = (index: number) => (e: PointerEvent<HTMLDivElement>) => {
@@ -98,7 +103,7 @@ export function PercentSlider({
             className="absolute top-0 -translate-x-1/2"
             initial={false}
             animate={{
-              left: `${((s.start + s.value / 2) / FULL) * 100}%`,
+              left: `${((s.start + s.value / 2) / scale) * 100}%`,
               // A bigger slice gets a slightly bigger face.
               scale: s.value === 0 ? 0.7 : 0.9 + 0.35 * (s.value / FULL),
               opacity: s.value === 0 ? 0 : 1,
@@ -120,7 +125,7 @@ export function PercentSlider({
             className="flex h-full min-w-0 items-center justify-center overflow-hidden"
             style={{ backgroundColor: s.color.bg, color: s.color.fg }}
             initial={false}
-            animate={{ width: `${(s.value / FULL) * 100}%` }}
+            animate={{ width: `${(s.value / scale) * 100}%` }}
             transition={dragging !== null || reduced ? { duration: 0 } : springs.snappy}
           >
             {s.value >= 1200 && (
@@ -153,7 +158,7 @@ export function PercentSlider({
             className={cn(
               'group absolute top-12 z-10 flex h-12 w-8 -translate-x-1/2 cursor-ew-resize touch-none items-center justify-center outline-none',
             )}
-            style={{ left: `${(boundary / FULL) * 100}%` }}
+            style={{ left: `${(boundary / scale) * 100}%` }}
           >
             <span
               className={cn(

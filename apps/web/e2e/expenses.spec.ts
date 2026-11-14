@@ -105,17 +105,23 @@ test.describe('expenses', () => {
 
     await startExpense(page, group, '200', description)
     await page.getByRole('radio', { name: t('splitTypes.percent.short') }).click()
-    const mine = page.getByRole('textbox', {
-      name: t('expenses.splitEditor.percentOf', { name: t('common.you') }),
-    })
-    await mine.fill('50')
-    await mine.press('Tab')
-    await expect(page.getByText('100% / 100%')).toBeVisible()
+    const percentOf = (name: string) =>
+      page.getByRole('textbox', { name: t('expenses.splitEditor.percentOf', { name }) })
+    // Each typed value stays as typed; nothing rebalances, the status says what is left.
+    await percentOf(t('common.you')).fill('50')
+    await percentOf(ben.name).fill('30')
+    // Cleo still has her third: 113.33% (or .34) until her value is typed.
+    const over = t('expenses.percentOver', { percent: '13.3' })
+    await expect(page.getByText(over.slice(0, over.indexOf('%')), { exact: false })).toBeVisible()
+    await percentOf(cleo.name).fill('20')
+    await expect(percentOf(t('common.you'))).toHaveValue('50')
+    await expect(percentOf(ben.name)).toHaveValue('30')
+    await expect(page.getByText(t('expenses.allAssigned'))).toBeVisible()
     await saveAndOpen(page, group, description)
     await expectShares(page, me, [
       [me, 10000],
-      [ben, 5000],
-      [cleo, 5000],
+      [ben, 6000],
+      [cleo, 4000],
     ])
   })
 

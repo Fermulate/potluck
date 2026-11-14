@@ -1,5 +1,6 @@
 import { cn, parseDecimalInput, sanitizeDecimalInput, useMoneyText } from '@potluck/ui'
 import { useState, type InputHTMLAttributes } from 'react'
+import { formatPercent } from './split-state'
 
 const inputClass =
   'h-11 w-full rounded-input border border-line-strong bg-card px-3 text-right text-base font-semibold tabular text-ink ' +
@@ -37,50 +38,41 @@ export function CompactMoneyInput({
   )
 }
 
-const percentText = new Map<string, Intl.NumberFormat>()
-function formatPercent(basisPoints: number, locale: string): string {
-  let f = percentText.get(locale)
-  if (!f) {
-    f = new Intl.NumberFormat(locale, { maximumFractionDigits: 2, useGrouping: false })
-    percentText.set(locale, f)
-  }
-  return f.format(Math.round(basisPoints) / 100)
-}
-
-/** Percent typed with up to two decimals, committed on blur or Enter (so others rebalance once). */
+/**
+ * Percent typed with up to two decimals. Every keystroke is passed on as it reads, so the value
+ * is always what is on screen, however fast the fields are filled; nothing else rebalances.
+ */
 export function PercentInput({
   basisPoints,
-  onCommit,
+  onValueChange,
   locale,
   className,
   ...props
 }: {
   basisPoints: number
-  onCommit: (basisPoints: number) => void
+  onValueChange: (basisPoints: number) => void
   locale: string
 } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
-  const shown = formatPercent(basisPoints, locale)
-  const [draft, setDraft] = useState<string | null>(null)
-  const commit = () => {
-    if (draft === null) return
-    setDraft(null)
-    // Percent is two decimals, so the parsed units are basis points. Empty means 0%.
-    onCommit(parseDecimalInput(draft, 2, locale) ?? 0)
-  }
+  // Percent is two decimals, so the parsed units are basis points. Empty means 0%.
+  const parse = (text: string) => parseDecimalInput(text, 2, locale) ?? 0
+  const [text, setText] = useState<string | null>(null)
+  // The text as typed ("50.", "" or "07") while it still means the value; a value set from
+  // elsewhere (the slider, even it out) shows formatted instead.
+  const shown =
+    text !== null && parse(text) === basisPoints ? text : formatPercent(basisPoints, locale)
   return (
     <span className={cn('relative block', className)}>
       <input
         inputMode="decimal"
         autoComplete="off"
-        value={draft ?? shown}
-        onChange={(e) => setDraft(sanitizeDecimalInput(e.target.value, 2, locale))}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            commit()
-          }
+        placeholder="0"
+        value={shown}
+        onChange={(e) => {
+          const next = sanitizeDecimalInput(e.target.value, 2, locale)
+          setText(next)
+          onValueChange(parse(next))
         }}
+        onBlur={() => setText(null)}
         className={cn(inputClass, 'pr-7')}
         {...props}
       />

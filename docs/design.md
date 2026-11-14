@@ -47,7 +47,7 @@ Heat scale for availability (0 to max): `#f1e9db`, `#f9dccf`, `#f4ab95`, `#ee7a5
 1. Settle-up: amount ticks to $0.00, confetti burst in palette colors, short haptic (`navigator.vibrate`) on mobile.
 2. Live heatmap: cells warm up in real time as friends paint availability (Supabase Realtime).
 3. Availability painter: press and drag to paint, works with touch, mouse, and keyboard (arrow keys + space).
-4. Split slider: drag to rebalance percentages; avatars nudge as shares change; total always reconciles.
+4. Split slider: drag a handle to move share between two neighbours; avatars nudge as shares change. Typed percents stay as typed and the status says how much is left or too much.
 5. Lock-in: the chosen slot "stamps" onto the timeline with a scale-and-settle animation.
 6. Invite page: big group emoji, stacked member faces, one-tap join.
 7. Skeletons and optimistic updates everywhere; no spinner visible longer than 300ms.

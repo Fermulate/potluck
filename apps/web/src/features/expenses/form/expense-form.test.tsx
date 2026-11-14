@@ -119,7 +119,7 @@ describe('ExpenseForm', () => {
     expect(percentOf('You').value).toBe('38')
     expect(percentOf('Ben').value).toBe('28.67')
     expect(percentOf('Cleo').value).toBe('33.33')
-    expect(screen.getByText('100% / 100%')).toBeInTheDocument()
+    expect(screen.getByText('Everything adds up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
@@ -130,13 +130,73 @@ describe('ExpenseForm', () => {
     ])
   })
 
-  it('rebalances everyone else when a percent is typed', () => {
+  // Like a person at a keyboard: one change per keystroke, then on to the next field.
+  const typeKeys = (input: HTMLInputElement, text: string) => {
+    fireEvent.focus(input)
+    for (let i = 1; i <= text.length; i++) {
+      fireEvent.change(input, { target: { value: text.slice(0, i) } })
+    }
+    fireEvent.blur(input)
+  }
+
+  it('keeps typed percents exactly as typed and saves them', async () => {
     setup()
     fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    typeKeys(percentOf('You'), '50')
+    expect(percentOf('Ben').value).toBe('33.33')
+    expect(percentOf('Cleo').value).toBe('33.33')
+    expect(screen.getByText('16.66% too much')).toBeInTheDocument()
+    typeKeys(percentOf('Ben'), '30')
+    expect(screen.getByText('13.33% too much')).toBeInTheDocument()
+    typeKeys(percentOf('Cleo'), '20')
+
+    expect([percentOf('You').value, percentOf('Ben').value, percentOf('Cleo').value]).toEqual([
+      '50',
+      '30',
+      '20',
+    ])
+    expect(screen.getByText('Everything adds up')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].splits).toEqual([
+      { user_id: ME, weight: 50 },
+      { user_id: BEN, weight: 30 },
+      { user_id: CLEO, weight: 20 },
+    ])
+  })
+
+  it('keeps every field when they are filled fast, without a blur in between', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    // A whole value per change and no blur, the way autofill or a test runner fills fields.
     fireEvent.change(percentOf('You'), { target: { value: '50' } })
-    fireEvent.blur(percentOf('You'))
-    expect(percentOf('Ben').value).toBe('25')
-    expect(percentOf('Cleo').value).toBe('25')
+    fireEvent.change(percentOf('Ben'), { target: { value: '30' } })
+    fireEvent.change(percentOf('Cleo'), { target: { value: '20' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1].splits).toEqual([
+      { user_id: ME, weight: 50 },
+      { user_id: BEN, weight: 30 },
+      { user_id: CLEO, weight: 20 },
+    ])
+  })
+
+  it('does not save percents that do not add up to 100%', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    typeKeys(percentOf('You'), '50')
+    typeKeys(percentOf('Ben'), '30')
+    typeKeys(percentOf('Cleo'), '10')
+    expect(screen.getByText('10% left to assign')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Percentages need to add up to 100%.',
+    )
+    expect(create).not.toHaveBeenCalled()
+    // Typed values are left alone by a failed save.
+    expect(percentOf('Cleo').value).toBe('10')
   })
 
   it('does not save exact amounts that do not add up', async () => {
