@@ -1,5 +1,5 @@
 import type * as Api from '@potluck/api'
-import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
+import { createExpense, moneyKeys, peopleKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -549,6 +549,33 @@ describe('ExpenseForm offline', () => {
     // Changing the split is the fix, so the message goes until the next save.
     fireEvent.click(screen.getByRole('radio', { name: 'Shares' }))
     expect(screen.queryByText(t('expenses.errors.blocked_person'))).toBeNull()
+  })
+
+  it('tells whoever blocked someone in the split before they save, by name', async () => {
+    const onDone = vi.fn()
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
+      seededClient((c) =>
+        c.setQueryData(peopleKeys.blocks(ME), [
+          { user_id: BEN, display_name: 'Ben Okafor', avatar_path: null, blocked_at: 'x' },
+        ]),
+      ),
+    )
+    const note = t('expenses.form.youBlocked', { names: 'Ben' })
+    expect(await screen.findByRole('alert')).toHaveTextContent(note)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Cabin deposit' },
+    })
+    fireEvent.click(saveButton())
+    expect(create).not.toHaveBeenCalled()
+
+    // Taking Ben out is the fix: the note goes and the save goes through.
+    const between = screen.getByRole('group', { name: t('expenses.fields.splitBetween') })
+    fireEvent.click(within(between).getByRole('button', { name: /Ben/ }))
+    expect(screen.queryByText(note)).toBeNull()
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   })
 
   it('still reports a refused save as an error, not as the connection', async () => {

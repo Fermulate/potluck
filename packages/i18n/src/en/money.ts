@@ -111,6 +111,8 @@ export const expenses = {
     formerNote:
       '{names} left the group. Their share stays as it is while the split and amount do not change.',
     formerInSplit: 'Take {names} out of the split to change it.',
+    /** Only the person who blocked sees this, before saving (from their own block list). */
+    youBlocked: 'You blocked {names}, so you two cannot share an expense. Take them out first.',
     departedLocked: "Someone in this expense has left the group, so the amounts can't change.",
     archivedTitle: 'This group is archived',
     archived: '{group} is archived, so its expenses can be read but not added or changed.',
@@ -266,7 +268,8 @@ export const expenses = {
     split_member_not_in_group:
       'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',
     payer_not_in_group: 'The payer has to be in the group.',
-    blocked_person: 'Two of these people cannot share an expense. Take one of them out.',
+    /** Never names anyone or says who blocked whom: in a group of two that would tell. */
+    blocked_person: "This expense can't include everyone you picked. Take someone out.",
     fx_rate_unavailable: 'No exchange rate for that currency yet. Try the group currency.',
     invalid_amount: 'Enter an amount greater than zero.',
     invalid_currency: 'Pick a currency.',

@@ -115,6 +115,8 @@ export const expenses = {
     formerNote:
       '{names} hat die Gruppe verlassen. Der Anteil bleibt, solange Aufteilung und Betrag gleich bleiben.',
     formerInSplit: 'Nimm {names} aus der Aufteilung, um sie zu ändern.',
+    youBlocked:
+      'Du hast {names} blockiert, darum könnt ihr keine Ausgabe teilen. Nimm sie zuerst heraus.',
     departedLocked:
       'Jemand aus dieser Ausgabe hat die Gruppe verlassen, deshalb lassen sich die Beträge nicht ändern.',
     archivedTitle: 'Diese Gruppe ist archiviert',
@@ -272,7 +274,8 @@ export const expenses = {
     split_member_not_in_group:
       'Jemand aus dieser Ausgabe ist nicht mehr in der Gruppe, deshalb bleiben Betrag, Zahler und Aufteilung, wie sie sind.',
     payer_not_in_group: 'Wer bezahlt, muss in der Gruppe sein.',
-    blocked_person: 'Zwei dieser Personen können keine Ausgabe teilen. Nimm eine von ihnen heraus.',
+    blocked_person:
+      'Diese Ausgabe kann nicht alle enthalten, die du ausgewählt hast. Nimm jemanden heraus.',
     fx_rate_unavailable: 'Für diese Währung gibt es noch keinen Kurs. Versuch die Gruppenwährung.',
     invalid_amount: 'Gib einen Betrag über null ein.',
     invalid_currency: 'Wähle eine Währung.',

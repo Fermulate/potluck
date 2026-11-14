@@ -255,6 +255,13 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
     .fill(unique('Brunch'))
   await owenPage.getByRole('button', { name: t('expenses.form.save') }).click()
   await expect(owenPage.getByText(t('expenses.errors.blocked_person'))).toBeVisible()
+
+  // Jules, who blocked Ava, is told by name before saving; nobody else ever is.
+  const julesPage = await openAs(jules)
+  await julesPage.goto(`/new/expense?groupId=${group.id}`)
+  await expect(
+    julesPage.getByText(t('expenses.form.youBlocked', { names: ava.name })),
+  ).toBeVisible()
 })
 
 test('a long group name never widens a phone page, archived or not', async ({

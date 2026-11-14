@@ -7,6 +7,7 @@ import {
   MAX_ATTACHMENTS,
   moneyKeys,
   moneyQueries,
+  myBlocksQueryOptions,
   removeReceiptFiles,
   setDefaultSplit,
   updateExpense,
@@ -71,6 +72,7 @@ import {
   usePeople,
   useTimeZone,
 } from '../money-data'
+import { blockedOnExpense } from './block-conflict'
 import { CategoryPicker } from './category-picker'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
@@ -98,6 +100,7 @@ import { SplitEditor } from './split-editor'
 import {
   defaultFromDraft,
   draftFromExpense,
+  draftPeople,
   effectiveAmount,
   formerParticipants,
   initialDraft,
@@ -371,6 +374,32 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const canSaveDefault =
     !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
+  // Someone the viewer blocked, on this expense with them: the server would refuse it, so say so
+  // (by name, from the viewer's own block list) before the save instead of after.
+  const myBlocks = useQuery(myBlocksQueryOptions(supabase, me))
+  const [peopleBefore] = useState(() =>
+    editing ? [...payerIds(payersFromExpense(editing)), ...draftPeople(savedDraft)] : null,
+  )
+  const blockedHere = locked
+    ? []
+    : blockedOnExpense(
+        me,
+        [...payerIds(payers), ...draftPeople(draft)],
+        peopleBefore,
+        new Set((myBlocks.data ?? []).map((b) => b.user_id)),
+      )
+  const blockNote =
+    blockedHere.length > 0
+      ? t('expenses.form.youBlocked', {
+          names: joinNames(
+            blockedHere.map((id) =>
+              firstName((group.members.find((m) => m.id === id) ?? formerMember(id)).display_name),
+            ),
+            3,
+          ),
+        })
+      : null
+
   const [unreached, setUnreached] = useState(false)
   // The server refused these people together (a block between two of them; it never says who).
   // The message stays by the save button until the people or payers change.
@@ -592,6 +621,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     setSubmitted(true)
     if (!description.trim()) return
     if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
+    if (blockNote) return
     if (template) {
       if (!nextError) saveTemplate.mutate(template)
       return
@@ -619,9 +649,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
             </p>
           ) : (
-            peopleError && (
+            (blockNote ?? peopleError) && (
               <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
-                {peopleError}
+                {blockNote ?? peopleError}
               </p>
             )
           )}
