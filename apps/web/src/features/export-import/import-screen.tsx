@@ -47,7 +47,7 @@ import {
 } from '@potluck/ui'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, Upload } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, FileSpreadsheet, RotateCw, Upload } from 'lucide-react'
 import {
   useEffect,
   useId,
@@ -592,7 +592,10 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       if (!check || check.unsupported || !m.typed) return true
       return check.outlier && !confirmedRates.has(m.currency)
     })
-  const blocked = !plan || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
+  const existingReady = expenses.isSuccess && settlements.isSuccess
+  const existingError = expenses.error ?? settlements.error
+  const blocked =
+    !plan || !existingReady || issues.length > 0 || ratesOpen || plan.ratesPending || total === 0
   const leftOut = (['person', 'rate', 'duplicate'] as const).some((r) =>
     plan?.skipped.some((s) => s.reason === r),
   )
@@ -863,7 +866,32 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             </Step>
           )}
 
-          {duplicates.length > 0 && (
+          {!existingReady &&
+            (existingError ? (
+              <div
+                role="alert"
+                className="grid justify-items-start gap-3 rounded-card bg-tomato-soft p-4 text-sm text-tomato-ink"
+              >
+                {moneyErrorMessage(existingError)}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leadingIcon={<RotateCw />}
+                  onClick={() => {
+                    if (expenses.isError) void expenses.refetch()
+                    if (settlements.isError) void settlements.refetch()
+                  }}
+                >
+                  {t('common.retry')}
+                </Button>
+              </div>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-mute">
+                <LoadingDots /> {t('transfer.import.checkingExisting', { group: group.name })}
+              </p>
+            ))}
+
+          {existingReady && duplicates.length > 0 && (
             <Card padding="default" className="grid gap-3 bg-saffron-soft text-saffron-ink">
               <p className="flex items-start gap-2 text-sm">
                 <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -885,7 +913,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
             </Card>
           )}
 
-          {plan && plan.rows.length > 0 && (
+          {existingReady && plan && plan.rows.length > 0 && (
             <Step title={t('transfer.import.preview')} headingRef={previewHeading}>
               <div className="flex flex-wrap gap-2">
                 {plan.counts.expenses > 0 && (

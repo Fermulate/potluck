@@ -162,6 +162,7 @@ export const transfer = {
     justNow: 'just now',
     submitBlocked: 'Import',
     nothingNew: 'Nothing new to import',
+    checkingExisting: 'Checking what is already in {group}',
     errors: {
       left: 'Row {line}: someone in it has left the group. Leave their rows out, or invite them back, then import again.',
       timeout: 'That took too long, so this import was not saved. Try again in a moment.',

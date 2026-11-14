@@ -9,7 +9,19 @@ describe('currencies in use', () => {
   })
 
   it('keeps the money people pay with, X codes that are money included', () => {
-    for (const code of ['USD', 'EUR', 'GBP', 'JPY', 'SLE', 'XAF', 'XOF', 'XPF', 'XCD', 'ZWG']) {
+    for (const code of [
+      'USD',
+      'EUR',
+      'GBP',
+      'JPY',
+      'SLE',
+      'VED',
+      'XAF',
+      'XOF',
+      'XPF',
+      'XCD',
+      'ZWG',
+    ]) {
       expect(CURRENCIES_IN_USE, code).toContain(code)
     }
   })

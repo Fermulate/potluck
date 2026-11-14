@@ -148,6 +148,7 @@ export const CURRENCIES_IN_USE: readonly string[] = [
   'USD',
   'UYU',
   'UZS',
+  'VED',
   'VES',
   'VND',
   'VUV',

@@ -167,6 +167,7 @@ export const transfer = {
     justNow: 'hace un momento',
     submitBlocked: 'Importar',
     nothingNew: 'Nada nuevo que importar',
+    checkingExisting: 'Comprobando lo que ya está en {group}',
     errors: {
       left: 'Fila {line}: alguien en ella dejó el grupo. Deja fuera sus filas, o invítale de nuevo, y vuelve a importar.',
       timeout:

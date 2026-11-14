@@ -1,9 +1,10 @@
 import type * as Api from '@potluck/api'
-import { importExpenses, moneyKeys, transferKeys } from '@potluck/api'
+import { importExpenses, moneyKeys, moneyQueries, transferKeys } from '@potluck/api'
 import { ledgerCsv } from '@potluck/core'
 import { formatMoney, setLocale, t } from '@potluck/i18n'
+import { queryOptions } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderInRouter } from '@/features/expenses/router-test-utils'
 import {
   BEN,
@@ -48,9 +49,24 @@ interface Seed {
   people?: Api.MoneyPerson[]
   /** Stored rates per currency into USD. */
   rates?: Record<string, Api.FxHistory>
+  /** How the group's payments load; seeded as none when missing. */
+  loadSettlements?: () => Promise<Api.Settlement[]>
 }
 
 function renderScreen(seed: Seed = {}) {
+  const load = seed.loadSettlements
+  vi.spyOn(moneyQueries, 'expenses').mockImplementation((_client, groupId) =>
+    queryOptions({
+      queryKey: moneyKeys.expenses(groupId),
+      queryFn: async () => seed.expenses ?? [],
+    }),
+  )
+  vi.spyOn(moneyQueries, 'settlements').mockImplementation((_client, groupId) =>
+    queryOptions({
+      queryKey: moneyKeys.settlements(groupId),
+      queryFn: load ?? (async () => []),
+    }),
+  )
   return renderInRouter(
     <ImportScreen groupId={GROUP_ID} />,
     seededClient((c) => {
@@ -60,7 +76,7 @@ function renderScreen(seed: Seed = {}) {
         { user_id: BEN, net_cents: -1000 },
       ])
       c.setQueryData(moneyKeys.expenses(GROUP_ID), seed.expenses ?? [])
-      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+      if (!load) c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
       c.setQueryData(transferKeys.imports(GROUP_ID), seed.imports ?? [])
       if (seed.people) c.setQueryData(moneyKeys.people(), seed.people)
       for (const [from, history] of Object.entries(seed.rates ?? {})) {
@@ -86,6 +102,7 @@ async function pick(label: string, option: string) {
 
 describe('ImportScreen', () => {
   beforeEach(() => save.mockClear())
+  afterEach(() => vi.restoreAllMocks())
 
   it('reads a Splitwise export, matches people and previews everyone after the import', async () => {
     renderScreen()
@@ -567,6 +584,32 @@ describe('ImportScreen', () => {
       screen.getByRole('checkbox', { name: t('transfer.import.duplicates.bringIn', { count: 3 }) }),
     )
     expect(await submitButton(3)).toBeEnabled()
+  })
+
+  it('holds the import until the rows already in the group have loaded', async () => {
+    renderScreen({ loadSettlements: () => new Promise(() => {}) })
+    await upload(SPLITWISE)
+    expect(
+      screen.getByText(t('transfer.import.checkingExisting', { group: group.name })),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { name: t('transfer.import.preview') }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+  })
+
+  it('says when the rows already in the group cannot load, and tries again', async () => {
+    const load = vi
+      .fn<() => Promise<Api.Settlement[]>>()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([])
+    renderScreen({ loadSettlements: load })
+    await upload(SPLITWISE)
+    const problem = await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: t('transfer.import.submitBlocked') })).toBeDisabled()
+    fireEvent.click(within(problem).getByRole('button', { name: t('common.retry') }))
+    expect(await submitButton(4)).toBeEnabled()
+    expect(load).toHaveBeenCalledTimes(2)
   })
 
   it('reads dates a spreadsheet rewrote, and can read them the other way round', async () => {

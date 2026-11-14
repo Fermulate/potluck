@@ -168,6 +168,7 @@ export const transfer = {
     justNow: 'à l’instant',
     submitBlocked: 'Importer',
     nothingNew: 'Rien de nouveau à importer',
+    checkingExisting: 'Vérification de ce qui est déjà dans {group}',
     errors: {
       left: 'Ligne {line} : quelqu’un dans cette ligne a quitté le groupe. Écarte ses lignes, ou réinvite cette personne, puis importe à nouveau.',
       timeout:
