@@ -1,4 +1,4 @@
-import { moneyKeys } from '@potluck/api'
+import { moneyKeys, peopleKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -15,19 +15,29 @@ function renderTab({
   simplify = true,
   expenses = [] as ReturnType<typeof expense>[],
   seats = [] as string[],
+  blockedTab = false,
 }: {
   nets: [string, number][]
   simplified?: { from_user: string; to_user: string; amount_cents: number }[]
   simplify?: boolean
   expenses?: ReturnType<typeof expense>[]
   seats?: string[]
+  /** A 1:1 tab with Ben across a block: no new expense can go in. */
+  blockedTab?: boolean
 }) {
   const client = seededClient((c) => {
     c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
       ...group,
       simplify_debts: simplify,
-      members: group.members.map((m) => ({ ...m, is_placeholder: seats.includes(m.id) })),
+      is_direct: blockedTab,
+      members: group.members
+        .filter((m) => !blockedTab || m.id !== CLEO)
+        .map((m) => ({ ...m, is_placeholder: seats.includes(m.id) })),
     })
+    if (blockedTab) {
+      c.setQueryData(peopleKeys.blocks(ME), [])
+      c.setQueryData(peopleKeys.canSplit(BEN), false)
+    }
     c.setQueryData(
       moneyKeys.balances(GROUP_ID),
       nets.map(([user_id, net_cents]) => ({ group_id: GROUP_ID, user_id, net_cents })),
@@ -221,6 +231,20 @@ describe('BalancesTab', () => {
       'href',
       `/new/expense?groupId=${GROUP_ID}`,
     )
+  })
+
+  it('says why an all square 1:1 tab across a block offers no Add expense', async () => {
+    renderTab({
+      nets: [
+        [ME, 0],
+        [BEN, 0],
+      ],
+      blockedTab: true,
+    })
+    expect(await screen.findByText(t('empty.balances.title'))).toBeInTheDocument()
+    expect(screen.getByText(t('errors.codes.not_a_friend'))).toBeInTheDocument()
+    expect(screen.queryByText(t('empty.balances.body'))).toBeNull()
+    expect(screen.queryByRole('link', { name: t('empty.balances.action') })).toBeNull()
   })
 
   it('offers settling with the whole group when you owe several people', async () => {

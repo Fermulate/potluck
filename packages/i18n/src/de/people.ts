@@ -126,9 +126,10 @@ export const people = {
       '{name} aus deinen Freunden entfernen? Gemeinsame Gruppen bleiben, wie sie sind.',
     removed: '{name} ist nicht mehr in deiner Freundesliste.',
     block: '{name} blockieren',
-    blockHint: 'Die Person erfährt es nicht, und du hörst nichts mehr von ihr.',
+    blockHint:
+      'Die Person erfährt es nicht. Keine neuen gemeinsamen Ausgaben, und du hörst nur noch von Zahlungen.',
     blockConfirm:
-      '{name} erfährt es nicht. Ihr seid keine Freunde mehr, du bekommst keine Benachrichtigungen über ihr Tun, und sie kann deinen Gruppen nicht beitreten und keinen Zweiertab mit dir öffnen. Gemeinsame Gruppen funktionieren weiter.',
+      '{name} erfährt es nicht. Ihr seid keine Freunde mehr, keine neue Ausgabe kann euch beide enthalten, und sie kann deinen Gruppen nicht beitreten und keinen Zweiertab mit dir öffnen. Du bekommst keine Benachrichtigungen über ihr Tun, außer zu Zahlungen, damit ein Tab noch ausgeglichen werden kann. Gemeinsame Gruppen funktionieren weiter.',
     blocked: '{name} ist blockiert.',
     report: '{name} melden',
     reportHint: 'Sag uns, wenn etwas nicht stimmt.',
@@ -146,7 +147,7 @@ export const people = {
     sent: 'Danke. Wir sehen es uns an.',
   },
   blocked: {
-    hint: 'Niemand erfährt, dass du blockierst oder freigibst. Solange jemand blockiert ist, benachrichtigt dich nichts von ihm.',
+    hint: 'Niemand erfährt, dass du blockierst oder freigibst. Solange jemand blockiert ist, kann keine neue Ausgabe euch beide enthalten, und nur seine Zahlungen benachrichtigen dich.',
     unblockName: '{name} freigeben',
     unblocked: '{name} ist freigegeben.',
   },

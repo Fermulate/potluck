@@ -121,9 +121,10 @@ export const people = {
     removeConfirm: 'Remover {name} dos seus amigos? Os grupos em comum continuam iguais.',
     removed: '{name} não está mais na sua lista de amigos.',
     block: 'Bloquear {name}',
-    blockHint: 'A pessoa não é avisada, e você para de ouvir falar dela.',
+    blockHint:
+      'A pessoa não é avisada. Nada de novas despesas em comum, e só os pagamentos dela notificam você.',
     blockConfirm:
-      '{name} não é avisado. Vocês deixam de ser amigos, você não recebe notificações do que ele faz, e ele não pode entrar nos seus grupos nem abrir uma conta a dois com você. Os grupos que vocês já dividem continuam funcionando.',
+      '{name} não é avisado. Vocês deixam de ser amigos, nenhuma despesa nova pode incluir vocês dois, e ele não pode entrar nos seus grupos nem abrir uma conta a dois com você. Você não recebe notificações do que ele faz, exceto pagamentos, para que uma conta ainda possa ser acertada. Os grupos que vocês já dividem continuam funcionando.',
     blocked: '{name} está bloqueado.',
     report: 'Denunciar {name}',
     reportHint: 'Conte para a gente se algo estiver errado.',
@@ -141,7 +142,7 @@ export const people = {
     sent: 'Obrigado. Vamos dar uma olhada.',
   },
   blocked: {
-    hint: 'Ninguém é avisado quando você bloqueia ou desbloqueia. Enquanto estiver bloqueado, nada do que a pessoa fizer notifica você.',
+    hint: 'Ninguém é avisado quando você bloqueia ou desbloqueia. Enquanto estiver bloqueado, nenhuma despesa nova pode incluir vocês dois, e só os pagamentos da pessoa notificam você.',
     unblockName: 'Desbloquear {name}',
     unblocked: '{name} foi desbloqueado.',
   },

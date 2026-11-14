@@ -117,7 +117,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
         <EmptyState
           illustration="🤝"
           title={t('empty.balances.title')}
-          description={t('empty.balances.body')}
+          description={splitNote ?? t('empty.balances.body')}
           action={
             open && !splitNote ? (
               <Button asChild variant="secondary" leadingIcon={<Plus />}>
