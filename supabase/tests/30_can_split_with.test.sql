@@ -1,8 +1,8 @@
 -- can_split_with(person) (20261114060521_can_split_with): the friend page asks it before offering
 -- "Add expense". It says yes exactly when the write would go in (get_or_create_direct_group for a
--- new tab, private.freeze_blocked_direct_money in an existing one) and never says why it is no.
+-- new tab, no block either way in an existing one) and never says why it is no.
 begin;
-select plan(14);
+select plan(16);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -54,7 +54,7 @@ select throws_ok(
 select tests.login('ben');
 select is(public.can_split_with(tests.uid('ava')), false, 'and so is the side who blocked');
 
--- A tab that already exists: the blocked side is frozen, the blocker still writes ---------------
+-- A tab that already exists: a block either way stops new expenses ---------------------------
 
 reset role;
 delete from public.blocks where blocker_id = tests.uid('ben');
@@ -68,13 +68,29 @@ select tests.login('ava');
 select is(public.can_split_with(tests.uid('cleo')), false, 'the blocked side of a tab cannot add');
 select throws_ok(
   format(
+    $$ select public.create_expense_v2(jsonb_build_object('group_id', %L, 'description', 'Lunch',
+      'amount_cents', 800, 'paid_by', %L, 'splits', %L::jsonb)) $$,
+    tests.id('tab'), tests.uid('ava'), tests.people('ava', 'cleo')
+  ),
+  '42501', 'not_a_friend', '...as the tab itself refuses their expense'
+);
+select lives_ok(
+  format(
     $$ select public.settle_up_v2(%L, %L, %L, 100) $$,
     tests.id('tab'), tests.uid('ava'), tests.uid('cleo')
   ),
-  '42501', 'not_a_friend', '...as the tab itself refuses their money'
+  'can_split_with is about expenses: a payment there still goes in'
 );
 select tests.login('cleo');
-select is(public.can_split_with(tests.uid('ava')), true, 'the blocker still can, as the tab allows');
+select is(public.can_split_with(tests.uid('ava')), false, 'nor can the blocker (20261114154849_block_shared_expenses)');
+select throws_ok(
+  format(
+    $$ select public.create_expense_v2(jsonb_build_object('group_id', %L, 'description', 'Lunch',
+      'amount_cents', 800, 'paid_by', %L, 'splits', %L::jsonb)) $$,
+    tests.id('tab'), tests.uid('cleo'), tests.people('ava', 'cleo')
+  ),
+  '42501', 'not_a_friend', '...as the tab refuses a new expense from either side'
+);
 
 select * from finish();
 rollback;

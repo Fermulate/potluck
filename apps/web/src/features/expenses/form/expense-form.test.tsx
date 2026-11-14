@@ -528,6 +528,20 @@ describe('ExpenseForm offline', () => {
     expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
   })
 
+  it('says by the save button when two of the people cannot share an expense', async () => {
+    const { onDone } = setup()
+    create.mockRejectedValueOnce({ message: 'blocked_person', code: '23514' })
+    fireEvent.click(saveButton())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(t('expenses.errors.blocked_person'))
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
+
+    // Changing the split is the fix, so the message goes until the next save.
+    fireEvent.click(screen.getByRole('radio', { name: 'Shares' }))
+    expect(screen.queryByText(t('expenses.errors.blocked_person'))).toBeNull()
+  })
+
   it('still reports a refused save as an error, not as the connection', async () => {
     setup()
     create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })

@@ -266,6 +266,7 @@ export const expenses = {
     split_member_not_in_group:
       'Someone in this expense is no longer in the group, so the amount, payer and split stay as they are.',
     payer_not_in_group: 'The payer has to be in the group.',
+    blocked_person: 'Two of these people cannot share an expense. Take one of them out.',
     fx_rate_unavailable: 'No exchange rate for that currency yet. Try the group currency.',
     invalid_amount: 'Enter an amount greater than zero.',
     invalid_currency: 'Pick a currency.',

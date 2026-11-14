@@ -49,6 +49,9 @@ repeating expenses, guests, two-step sign in, seats, notifications):
   warning is expected.
 - Balances and departed checks read `expense_payers`, not `expenses.paid_by` (ADR 12).
 - Repeating expense edits go through `update_recurring_expense`, never new direct grants.
+- Any new path that puts people on an expense (payers or shares) calls
+  `private.require_no_blocked_pair(gid, people, fresh)`: a block either way keeps two people off
+  any new expense; payments are never checked (ADR 19, `20261114154849_block_shared_expenses`).
 - Availability reads (`best_slots`, heat) count `event_guest_availability` too.
 - Any per-request rule goes in `private.check_request()` (PostgREST runs one pre-request function). A
   table added to `supabase_realtime` needs the restrictive "two-step sign in done" `select` policy.
