@@ -75,10 +75,14 @@ export function AttachmentsField({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <span id={`${id}-label`} className="text-sm font-semibold text-ink">
-          {t('expenses.attachments.label')}
+        {/* The label names the field; the count is its own text (and the list's description),
+            so neither reads as "Receipts and photos1 of 5". */}
+        <span className="flex items-baseline gap-2 text-sm">
+          <span id={`${id}-label`} className="font-semibold text-ink">
+            {t('expenses.attachments.label')}
+          </span>{' '}
           {value.length > 0 && (
-            <span className="ml-2 tabular font-normal text-mute">
+            <span id={`${id}-count`} className="tabular text-mute">
               {t('expenses.attachments.count', { count: value.length, max: MAX_ATTACHMENTS })}
             </span>
           )}
@@ -110,7 +114,11 @@ export function AttachmentsField({
               void pick(files)
             }}
           />
-          <ul aria-labelledby={`${id}-label`} className="flex flex-wrap gap-2.5">
+          <ul
+            aria-labelledby={`${id}-label`}
+            aria-describedby={value.length > 0 ? `${id}-count` : undefined}
+            className="flex flex-wrap gap-2.5"
+          >
             {value.map((draft, index) => (
               <Tile
                 key={draft.key}
