@@ -324,6 +324,7 @@ describe('FriendPage', () => {
 
   it('blocks someone, who is not told', async () => {
     const { router } = renderPage()
+    await waitFor(() => expect(db().rpcArgs('can_split_with')).toHaveLength(1))
     fireEvent.click(
       await screen.findByRole('button', {
         name: t('people.friendPage.menu', { name: 'Ben Ortiz' }),
@@ -340,6 +341,8 @@ describe('FriendPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: t('members.block') }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/friends'))
     expect(db().rpcArgs('block_user')).toEqual([{ user_id: BEN }])
+    // Whether you can split with them is asked again, not read from before the block.
+    expect(db().rpcArgs('can_split_with')).toHaveLength(2)
   })
 
   it('reports someone', async () => {

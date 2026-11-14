@@ -61,6 +61,12 @@ describe('ActivityFeed', () => {
         data: {},
         group: direct,
       }),
+      activity('a5', '2026-11-03T09:00:00Z', {
+        verb: 'member.left',
+        actor_id: BEN,
+        data: { user_id: BEN },
+        group: direct,
+      }),
     ])
     const tacos = await screen.findByRole('link', { name: /Ben added "Tacos"/ })
     expect(tacos).toHaveAttribute('href', '/expenses/x-a1')
@@ -70,8 +76,11 @@ describe('ActivityFeed', () => {
     expect(paid).toHaveTextContent('Ben Okafor')
     expect(paid).not.toHaveTextContent('Direct')
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2)
-    // Opening a hidden one-to-one tab, and joining it, is not news.
-    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    // Opening a hidden one-to-one tab, and joining it, is not news; leaving it is.
+    const left = screen.getByText(t('activity.member.left', { actor: 'Ben' })).closest('li')
+    expect(left).toHaveTextContent('Ben Okafor')
+    expect(left).not.toHaveTextContent('Direct')
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
   })
 
   it('loads older pages on request', async () => {

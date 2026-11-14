@@ -368,6 +368,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: groupKeys.friends(me) }),
         queryClient.invalidateQueries({ queryKey: peopleKeys.blocks(me) }),
+        queryClient.invalidateQueries({ queryKey: peopleKeys.canSplit(friendId) }),
       ])
       await navigate({ to: '/friends', replace: true })
     } catch (error) {

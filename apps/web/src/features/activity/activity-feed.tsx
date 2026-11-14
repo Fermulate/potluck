@@ -66,12 +66,12 @@ export function ActivityFeed({ groupId, person }: { groupId?: string; person?: s
 
   const sections = useMemo(() => {
     // The hidden 1:1 groups are an implementation detail: opening one (the group and its two
-    // members) is not news.
+    // members joining) is not news. Anything later, like someone leaving, still is.
     const items = (feed.data?.pages.flat() ?? []).filter(
       (item) =>
         !(
           item.group?.is_direct &&
-          (item.verb === 'group.created' || item.verb.startsWith('member.'))
+          (item.verb === 'group.created' || item.verb === 'member.joined')
         ),
     )
     return groupByDay(items, (item) => dayKey(item.created_at, timeZone))

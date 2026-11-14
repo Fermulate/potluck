@@ -1,6 +1,8 @@
 import type * as AuthModule from '@/lib/auth'
+import { peopleKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
+import { QueryClient } from '@tanstack/react-query'
 import { fireEvent, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
@@ -14,13 +16,13 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   useUserId: () => VIEWER,
 }))
 
-function renderSection() {
+function renderSection(client?: QueryClient) {
   return renderWithProviders(
     <>
       <BlockedPeopleSection />
       <Toaster label="Notifications" />
     </>,
-    { path: '/me' },
+    { path: '/me', client },
   )
 }
 
@@ -52,6 +54,28 @@ describe('BlockedPeopleSection', () => {
     ).toBeInTheDocument()
     const [unblock] = db().queries('blocks')
     expect(unblock?.ops.map((op) => op.method)).toContain('delete')
+  })
+
+  it('forgets that you could not split with someone once they are unblocked', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },
+    })
+    client.setQueryData(peopleKeys.canSplit('u-dan'), false)
+    db().respond(
+      'rpc:my_blocks',
+      {
+        data: [{ user_id: 'u-dan', display_name: 'Dan Ross', avatar_path: null, blocked_at: 't' }],
+      },
+      { data: [] },
+    )
+    renderSection(client)
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: t('people.blocked.unblockName', { name: 'Dan Ross' }),
+      }),
+    )
+    await screen.findByText(t('people.blocked.unblocked', { name: 'Dan Ross' }))
+    expect(client.getQueryState(peopleKeys.canSplit('u-dan'))?.isInvalidated).toBe(true)
   })
 
   it('explains a failed unblock', async () => {
