@@ -1,4 +1,4 @@
-import type { ReceiptScan } from '@potluck/core'
+import { parseReceipt, type ReceiptScan } from '@potluck/core'
 import { describe, expect, it } from 'vitest'
 import { initialDraft, itemsTotal } from '../form/split-state'
 import {
@@ -83,6 +83,22 @@ describe('fillFromScan', () => {
       null,
     ])
     expect(fill.amount).toBe(5617)
+  })
+
+  it('fills the bill the items make when the receipt has no total line', () => {
+    // 14.00 + 5.00 is 19.00; 20.00 was handed over and 1.00 came back.
+    const lines = ['Diner', 'Burger 14.00', 'Fries 5.00', 'CASH 20.00', 'CHANGE 1.00']
+    const read = parseReceipt(lines.join('\n'), {
+      currency: 'USD',
+    })
+    const choice = defaultChoice(read, '')
+    expect([choice.total, choice.items]).toEqual([true, true])
+    const fill = fillFromScan(read, choice, { draft, currency: 'USD', memberIds: people })
+    expect(fill.amount).toBe(1900)
+    expect(fill.draft?.items.map((i) => [i.name, i.amountCents])).toEqual([
+      ['Burger', 1400],
+      ['Fries', 500],
+    ])
   })
 
   it('adds a line for whatever the receipt total has beyond its items', () => {

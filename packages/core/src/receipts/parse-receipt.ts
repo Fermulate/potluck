@@ -405,7 +405,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   let tax: number | null = null
   let tip: number | null = null
   let discount: number | null = null
-  let largest: number | null = null
   let itemsEnd = lines.length
   const items: ReceiptItem[] = []
   let pending: string | null = null
@@ -428,8 +427,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       pending = null
       continue
     }
-    // Cash handed over is not the bill: a payment line can only confirm a total (below).
-    if (kind !== 'payment') largest = Math.max(largest ?? 0, price.cents)
     switch (kind) {
       case 'subtotal':
         subtotal ??= price.cents
@@ -492,7 +489,6 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
     pending = null
   }
 
-  if (total === null && largest !== null) total = largest
   // A line dearer than the whole bill is a misread (a smudge read as 81.89).
   const offered = items
     .filter((i) => total === null || i.amountCents <= total)
@@ -516,6 +512,9 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
   // card line was the bill ("TOTAL $76.59" over "VISA $76.50" on a blurred photo).
   const formSum = itemsSum + (tax ?? 0) + (tip ?? 0) - (discount ?? 0)
   if (offered.length > 0 && total !== formSum && paid.includes(formSum)) total = formSum
+  // No total line read: the items make the bill. Neither a single line nor the cash handed over
+  // is the total, and with no items either the review asks for it.
+  if (total === null && offered.length > 0) total = formSum
 
   return {
     merchant: findMerchant(lines),

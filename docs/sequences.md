@@ -334,7 +334,7 @@ The service worker shows the message. The PWA is built with `vite-plugin-pwa` in
 
 ## Scan a receipt and attach files
 
-Scanning happens on the device and only fills the form; the expense is saved by the same `create_expense_v2` call as above ([ADR 21](adr/0021-receipt-scanning-and-attachments.md)).
+Scanning happens on the device and only fills the form; the expense is saved by `create_expense_with_attachments` when it has files, otherwise by the same `create_expense_v2` call as above ([ADR 21](adr/0021-receipt-scanning-and-attachments.md)).
 
 ```mermaid
 sequenceDiagram

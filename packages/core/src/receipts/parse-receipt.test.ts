@@ -220,7 +220,7 @@ describe('parseReceipt', () => {
     ])
   })
 
-  it('falls back to the largest amount when no line says total', () => {
+  it('adds up the items when no line says total', () => {
     const scan = parseReceipt('Corner Shop\nMilk 1.20\nBread 2.10\n3.30', { currency: 'USD' })
     expect(scan.totalCents).toBe(330)
     expect(items(scan.items)).toEqual([
@@ -491,17 +491,25 @@ describe('do the items match the total', () => {
     expect(cash.totalCents).toBe(408)
   })
 
-  it('never takes the cash handed over for the bill when no line says total', () => {
+  it('takes neither the cash handed over nor the dearest item for the bill when no line says total', () => {
+    // 14.00 + 5.00 is 19.00; 20.00 was handed over and 1.00 came back.
     const tendered = parseReceipt('Diner\nBurger 14.00\nFries 5.00\nCASH 20.00\nCHANGE 1.00', {
       currency: 'USD',
     })
-    expect(tendered.totalCents).not.toBe(2000)
-    expect(tendered.itemsMatch).not.toBe('exact')
-    expect(tendered.itemsMatch).not.toBe('close')
+    expect(tendered.totalCents).toBe(1900)
+    expect(tendered.itemsMatch).toBe('exact')
+    expect(items(tendered.items)).toEqual([
+      ['Burger', 1400, 1],
+      ['Fries', 500, 1],
+    ])
     // A card line for exactly what the items add up to is the bill.
     const card = parseReceipt('Diner\nBurger 14.00\nFries 5.00\nVISA 19.00', { currency: 'USD' })
     expect(card.totalCents).toBe(1900)
     expect(card.itemsMatch).toBe('exact')
+  })
+
+  it('leaves the total empty when no line says total and no items were read', () => {
+    expect(parseReceipt('Shop\nCash 10.00\nChange 1.00', { currency: 'USD' }).totalCents).toBeNull()
   })
 
   it('drops a line dearer than the whole bill', () => {
