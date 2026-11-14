@@ -101,6 +101,31 @@ describe('AppLayout', () => {
     )
   })
 
+  it('lights no tab on search, which has none on phones', async () => {
+    renderWithProviders(<AppLayout />, { path: '/search' })
+    const [rail, tabs] = await navs()
+    expect(within(rail!).getByRole('link', { name: t('search.title') })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    for (const link of within(tabs!).getAllByRole('link')) {
+      expect(link).not.toHaveAttribute('aria-current')
+    }
+  })
+
+  it('caps the unread count on Me the same way as the inbox bell', async () => {
+    seed(12)
+    renderWithProviders(<AppLayout />, { path: '/home' })
+    const [rail, tabs] = await navs()
+    const me = await within(tabs!).findByRole('link', {
+      name: `${t('nav.me')} (${t('nav.unreadNotifications', { count: 12 })})`,
+    })
+    expect(me).toHaveTextContent('9+')
+    expect(
+      within(rail!).getByRole('link', { name: `${t('nav.notifications')} (12)` }),
+    ).toHaveTextContent('9+')
+  })
+
   it('marks plans and home as you move around', async () => {
     renderWithProviders(<AppLayout />, { path: '/plans' })
     const [, tabs] = await navs()

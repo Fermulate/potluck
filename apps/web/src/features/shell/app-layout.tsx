@@ -162,7 +162,8 @@ export function AppLayout() {
             badgeLabel: t('nav.unreadNotifications', { count: unread }),
           },
         ]}
-        activeId={active === 'notifications' ? 'me' : active === 'search' ? 'home' : active}
+        // Search has no tab on phones (Home and Me open it from a button), so none is lit there.
+        activeId={active === 'notifications' ? 'me' : active}
         renderLink={renderLink}
         label={t('nav.main')}
         centerAction={

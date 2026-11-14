@@ -29,7 +29,7 @@ export type { ListRowProps } from './list-row'
 export { formatDecimalInput, parseDecimalInput, sanitizeDecimalInput } from './decimal-input'
 export { formatMoneyInput, MoneyInput, parseMoneyInput, useMoneyText } from './money-input'
 export type { MoneyInputProps, MoneyTextOptions } from './money-input'
-export { AddButton, BottomTabBar, SideRail } from './nav'
+export { AddButton, BADGE_CAP, badgeCount, BottomTabBar, SideRail } from './nav'
 export type {
   AddButtonProps,
   BottomTabBarProps,

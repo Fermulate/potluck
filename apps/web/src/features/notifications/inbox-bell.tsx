@@ -1,5 +1,5 @@
 import { t } from '@potluck/i18n'
-import { cn } from '@potluck/ui'
+import { badgeCount, cn } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { Bell } from 'lucide-react'
 import { useUnreadCount } from './use-notifications'
@@ -28,7 +28,7 @@ export function InboxBell({ className }: { className?: string }) {
           aria-hidden
           className="absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-pill bg-tomato-strong px-1 tabular text-[0.6875rem] font-bold text-on-tomato ring-2 ring-paper"
         >
-          {unread > 9 ? '9+' : unread}
+          {badgeCount(unread)}
         </span>
       )}
     </Link>

@@ -36,6 +36,14 @@ export type RenderNavLink = (props: NavLinkRenderProps) => ReactNode
 
 const defaultLink: RenderNavLink = ({ children, ...props }) => <a {...props}>{children}</a>
 
+/** Counts above this show as "9+": the one cap for every count badge, the inbox bell included. */
+export const BADGE_CAP = 9
+
+/** The visible text of a count badge ("3", "9+"). Screen readers get the full number. */
+export function badgeCount(value: number): string {
+  return value > BADGE_CAP ? `${BADGE_CAP}+` : String(value)
+}
+
 function Badge({ value, icon }: { value: number | boolean; icon?: ReactNode }) {
   if (value === false || value === 0) return null
   return (
@@ -48,7 +56,7 @@ function Badge({ value, icon }: { value: number | boolean; icon?: ReactNode }) {
       )}
     >
       {value !== true && icon}
-      {value === true ? null : value > 99 ? '99+' : value}
+      {value === true ? null : badgeCount(value)}
     </span>
   )
 }
@@ -217,7 +225,7 @@ export function SideRail({
                           aria-hidden
                           className="rounded-pill bg-tomato-strong px-1.5 text-xs leading-5 font-bold text-on-tomato tabular"
                         >
-                          {item.badge}
+                          {badgeCount(item.badge)}
                         </span>
                       )}
                       {item.badge === true && (
