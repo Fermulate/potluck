@@ -1,8 +1,10 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { onlineManager } from '@tanstack/react-query'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { goOffline, goOnline } from '@/test/network'
 import {
   BEN,
   CLEO,
@@ -465,5 +467,54 @@ describe('ExpenseForm', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
       expect(create.mock.calls[0]![1]).toMatchObject({ category: 'rent', recurrence: 'monthly' })
     })
+  })
+})
+
+describe('ExpenseForm offline', () => {
+  beforeEach(() => create.mockClear())
+  afterEach(() => {
+    goOnline()
+    onlineManager.setOnline(true)
+  })
+  const saveButton = () => screen.getByRole('button', { name: 'Save expense' })
+
+  it('keeps the entry and holds the save until the connection is back', async () => {
+    const { onDone } = setup()
+    act(() => goOffline())
+
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+    expect(saveButton()).toBeDisabled()
+    // Enter in a field does not sneak a save through either.
+    fireEvent.submit(document.querySelector('form')!)
+    expect(create).not.toHaveBeenCalled()
+    // Closing the tab now would lose what was typed, so the browser asks first.
+    const leave = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leave)
+    expect(leave.defaultPrevented).toBe(true)
+
+    act(() => goOnline())
+    expect(screen.queryByText(t('app.offline.form'))).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(create.mock.calls[0]![1]).toMatchObject({
+      description: 'Cabin deposit',
+      amount_cents: 9000,
+    })
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+  })
+
+  it('says a save caught by the connection dropping will go through, then saves it', async () => {
+    const { onDone } = setup()
+    // The save leaves just as the connection goes: React Query pauses it instead of failing.
+    onlineManager.setOnline(false)
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText(t('app.offline.paused'))).toBeInTheDocument()
+    expect(create).not.toHaveBeenCalled()
+
+    act(() => onlineManager.setOnline(true))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
   })
 })

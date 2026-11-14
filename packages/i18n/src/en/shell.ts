@@ -56,6 +56,11 @@ export const app = {
       source: 'Source code',
     },
   },
+  offline: {
+    banner: 'You are offline. Some things wait until you are back.',
+    form: 'You are offline. What you entered stays here; save it once you are back.',
+    paused: 'You went offline mid-save. Keep this page open: it saves as soon as you are back.',
+  },
 } as const
 
 export const toast = {

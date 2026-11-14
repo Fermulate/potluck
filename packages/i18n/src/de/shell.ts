@@ -59,6 +59,12 @@ export const app = {
       source: 'Quellcode',
     },
   },
+  offline: {
+    banner: 'Du bist offline. Manches wartet, bis du zurück bist.',
+    form: 'Du bist offline. Deine Eingaben bleiben hier; speichere, sobald du wieder online bist.',
+    paused:
+      'Beim Speichern ging die Verbindung weg. Lass die Seite offen: Es wird gespeichert, sobald du zurück bist.',
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {

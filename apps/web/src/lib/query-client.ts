@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query'
+import { onlineManager, QueryClient } from '@tanstack/react-query'
 import { isNotFoundError } from './errors'
 
 const MAX_RETRIES = 3
@@ -13,3 +13,8 @@ export const queryClient = new QueryClient({
     queries: { staleTime: 30_000, retry: shouldRetry },
   },
 })
+
+// React Query assumes it starts online and only learns otherwise from the next offline event.
+// Opening the app with no connection should pause queries and saves from the start, the same
+// as `useOnline()` reads it.
+if (typeof navigator !== 'undefined') onlineManager.setOnline(navigator.onLine)

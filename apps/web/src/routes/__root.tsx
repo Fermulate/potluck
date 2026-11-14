@@ -3,6 +3,7 @@ import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import { t } from '@potluck/i18n'
 import { Toaster, useMediaQuery } from '@potluck/ui'
 import { Fragment } from 'react'
+import { OfflineBanner } from '@/features/shell/offline'
 import { RouteError } from '@/features/shell/route-error'
 import { useAuthRedirects } from '@/features/shell/use-auth-redirects'
 import { useLocale } from '@/lib/language'
@@ -30,6 +31,7 @@ function RootLayout() {
     <>
       <Fragment key={locale}>
         <Outlet />
+        <OfflineBanner />
       </Fragment>
       {/* Bottom right on desktop, clear of page titles and section tabs. */}
       <Toaster

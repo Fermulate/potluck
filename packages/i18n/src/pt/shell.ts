@@ -59,6 +59,11 @@ export const app = {
       source: 'Código-fonte',
     },
   },
+  offline: {
+    banner: 'Você está offline. Algumas coisas esperam você voltar.',
+    form: 'Você está offline. O que você preencheu fica aqui; salve quando voltar.',
+    paused: 'A conexão caiu ao salvar. Deixe esta página aberta: salva assim que você voltar.',
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {

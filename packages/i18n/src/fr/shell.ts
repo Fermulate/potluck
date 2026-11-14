@@ -59,6 +59,12 @@ export const app = {
       source: 'Code source',
     },
   },
+  offline: {
+    banner: 'Tu es hors ligne. Certaines choses attendront ton retour.',
+    form: 'Tu es hors ligne. Ce que tu as saisi reste ici ; enregistre dès que tu es de retour.',
+    paused:
+      "La connexion a coupé pendant l'enregistrement. Garde cette page ouverte : tout sera enregistré dès ton retour.",
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {

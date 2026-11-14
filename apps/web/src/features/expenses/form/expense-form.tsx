@@ -54,6 +54,8 @@ import { Link } from '@tanstack/react-router'
 import { CalendarHeart, Repeat } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
+import { useOnline, useWarnBeforeUnload } from '@/lib/online'
+import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
@@ -549,8 +551,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     />
   )
 
+  // Offline, saving waits: the button is off and the entry stays in the form (and the tab asks
+  // before closing). A save already out when the connection drops is paused, not lost.
+  const online = useOnline()
+  const paused = save.isPaused || saveTemplate.isPaused
+  const typed = !!editing || amount !== null || description.trim() !== '' || notes.trim() !== ''
+  useWarnBeforeUnload(paused || (!online && typed))
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
+    if (!online) return
     setSubmitted(true)
     if (!description.trim()) return
     if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
@@ -581,11 +591,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
               </p>
             )}
+          <OfflineSaveNote paused={paused} />
           <Button
             type="submit"
             form={formId}
             size="lg"
             loading={saving}
+            disabled={!online && !saving}
             className="w-full sm:w-auto"
           >
             {editing ? t('expenses.form.saveChanges') : t('expenses.form.save')}

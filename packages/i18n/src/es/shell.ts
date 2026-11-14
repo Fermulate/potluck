@@ -59,6 +59,12 @@ export const app = {
       source: 'Código fuente',
     },
   },
+  offline: {
+    banner: 'Estás sin conexión. Algunas cosas esperan a que vuelvas.',
+    form: 'Estás sin conexión. Lo que escribiste se queda aquí; guárdalo cuando vuelvas.',
+    paused:
+      'Te quedaste sin conexión al guardar. Deja esta página abierta: se guarda en cuanto vuelvas.',
+  },
 } satisfies Translation<typeof en.app>
 
 export const toast = {

@@ -7,8 +7,9 @@ import {
   type Settlement,
 } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { goOffline, goOnline } from '@/test/network'
 import {
   BEN,
   CLEO,
@@ -70,6 +71,7 @@ describe('SettleFlow', () => {
     pay.mockClear()
     update.mockClear()
   })
+  afterEach(() => goOnline())
 
   it('lists who you owe and who owes you, with the amounts', () => {
     const { onPickPerson } = setup()
@@ -104,6 +106,19 @@ describe('SettleFlow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to Hike crew' }))
     expect(onFinish).toHaveBeenCalled()
+  })
+
+  it('holds a payment while offline and records it once back', async () => {
+    setup({ to: BEN })
+    act(() => goOffline())
+    const record = screen.getByRole('button', { name: 'Record payment' })
+    expect(record).toBeDisabled()
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+
+    act(() => goOnline())
+    fireEvent.click(record)
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(1))
+    expect(pay.mock.calls[0]![1]).toMatchObject({ toUser: BEN, amountCents: 4750 })
   })
 
   it('says what is left after a partial payment', async () => {
