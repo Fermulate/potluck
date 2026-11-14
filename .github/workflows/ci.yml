@@ -88,10 +88,22 @@ jobs:
           supabase status -o env | grep -E '^(API_URL|PUBLISHABLE_KEY)=' > /tmp/sb.env
           . /tmp/sb.env
           printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_PUBLISHABLE_KEY=%s\nVITE_APP_URL=http://localhost:4173\n' "$API_URL" "$PUBLISHABLE_KEY" > .env.local
+      # The local Realtime tenant allows 100 Postgres change messages a second and drops the rest
+      # (MessagePerSecondRateLimitReached), which parallel journeys pass. Raise it, then restart
+      # Realtime so it rereads the tenant.
+      - name: Raise Realtime limits
+        run: |
+          docker exec supabase_db_potluck psql -U postgres -v ON_ERROR_STOP=1 -c             "update _realtime.tenants set max_events_per_second = 1000, max_joins_per_second = 500 where external_id = 'realtime-dev'"
+          docker restart supabase_realtime_potluck
+          for i in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' supabase_realtime_potluck)" = healthy ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' supabase_realtime_potluck
       - run: pnpm --filter @potluck/web exec playwright install --with-deps chromium webkit
       - run: pnpm e2e
-      # Live updates are silent when Realtime drops a change (a policy that errors or times out
-      # for the subscriber), so keep its log when a journey fails.
+      # Live updates are silent when Realtime drops a change (a rate limit, or a policy that errors
+      # or times out for the subscriber), so keep its log when a journey fails.
       - name: Realtime log
         if: failure()
         run: docker logs supabase_realtime_potluck 2>&1 | tail -n 400

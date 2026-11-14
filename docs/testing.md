@@ -130,7 +130,7 @@ pnpm --filter @potluck/web exec playwright test e2e/expenses.spec.ts --project=d
 pnpm --filter @potluck/web exec playwright show-report               # after a failure
 ```
 
-Locally, a server already listening on :4173 is reused, even if another checkout or worktree started it, so the tests may run another branch's build. If you change app code while one is running, rebuild with `VITE_APP_URL=http://localhost:4173 pnpm --filter @potluck/web build` or stop it first. `E2E_PORT=4174` runs on another port beside it. `E2E_WORKERS` sets the local worker count (default 2).
+Locally, a server already listening on :4173 is reused, even if another checkout or worktree started it, so the tests may run another branch's build. If you change app code while one is running, rebuild with `VITE_APP_URL=http://localhost:4173 pnpm --filter @potluck/web build` or stop it first. `E2E_PORT=4174` runs on another port beside it. `E2E_WORKERS` sets the local worker count (default 2). The local Realtime tenant drops Postgres changes past 100 a second (`MessagePerSecondRateLimitReached` in `docker logs supabase_realtime_potluck`), which looks like a live update that never arrives. CI raises it in the e2e job; locally, run the same `update _realtime.tenants` from `ci.yml` and restart the Realtime container if live journeys fail only under load.
 
 Projects (`apps/web/playwright.config.ts`):
 
