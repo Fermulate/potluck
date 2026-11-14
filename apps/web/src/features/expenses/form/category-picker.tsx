@@ -9,7 +9,7 @@ import { t } from '@potluck/i18n'
 import { cn, usePrefersReducedMotion } from '@potluck/ui'
 import { AnimatePresence, motion } from 'motion/react'
 import { Sparkles } from 'lucide-react'
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, type KeyboardEvent } from 'react'
 import { categoryLabel } from '../format'
 
 export interface CategoryPickerProps {
@@ -23,10 +23,22 @@ export interface CategoryPickerProps {
 const chip =
   'inline-flex shrink-0 items-center gap-1.5 rounded-pill border font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]'
 
+/** The chip an arrow key, Home or End moves to from `index`, wrapping around; null for other keys. */
+function arrowTarget(key: string, index: number, count: number): number | null {
+  if (key === 'ArrowRight' || key === 'ArrowDown') return (index + 1) % count
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return (index - 1 + count) % count
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  return null
+}
+
 /**
  * Category chips as a radio group, with a second row of subcategories under the picked one.
  * Tapping the picked category again clears it; tapping it while one of its subcategories is
  * picked goes back to the category itself.
+ *
+ * Each row is one Tab stop (the picked chip, else the first) and the arrow keys move along it
+ * and pick, like any radio group, so the form is not sixteen Tab presses long.
  */
 export function CategoryPicker({ value, onChange, suggested = false }: CategoryPickerProps) {
   const reduced = usePrefersReducedMotion()
@@ -37,6 +49,25 @@ export function CategoryPicker({ value, onChange, suggested = false }: CategoryP
   const subs = parent ? subcategoriesOf(parent) : []
   const showSuggested = suggested && known !== null
   const rowRef = useRef<HTMLDivElement>(null)
+  const mainStop = Math.max(
+    0,
+    CATEGORIES.findIndex((c) => c.id === parent),
+  )
+  const subStop = Math.max(
+    0,
+    subs.findIndex((c) => c.id === known),
+  )
+  const onArrow =
+    (index: number, ids: readonly CategoryId[]) => (e: KeyboardEvent<HTMLButtonElement>) => {
+      const next = arrowTarget(e.key, index, ids.length)
+      if (next === null) return
+      e.preventDefault()
+      onChange(ids[next]!)
+      // The chips of this row, in order; the picked one becomes the row's Tab stop.
+      e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus()
+    }
+  const mainIds = CATEGORIES.map((c) => c.id)
+  const subIds = subs.map((c) => c.id)
 
   // On a phone the chips scroll sideways: bring the picked one into view when it changes,
   // so a suggestion never lands off screen.
@@ -85,7 +116,7 @@ export function CategoryPicker({ value, onChange, suggested = false }: CategoryP
         aria-label={t('categories.label')}
         className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
       >
-        {CATEGORIES.map((c) => {
+        {CATEGORIES.map((c, index) => {
           const checked = parent === c.id
           return (
             <button
@@ -93,6 +124,8 @@ export function CategoryPicker({ value, onChange, suggested = false }: CategoryP
               type="button"
               role="radio"
               aria-checked={checked}
+              tabIndex={index === mainStop ? 0 : -1}
+              onKeyDown={onArrow(index, mainIds)}
               aria-controls={checked && subs.length > 0 ? subRowId : undefined}
               onClick={() => onChange(checked && known === c.id ? null : c.id)}
               className={cn(
@@ -131,7 +164,7 @@ export function CategoryPicker({ value, onChange, suggested = false }: CategoryP
             <span className="mr-1 shrink-0 text-xs font-semibold text-mute">
               {t('categories.subLabel')}
             </span>
-            {subs.map((s) => {
+            {subs.map((s, index) => {
               const checked = known === s.id
               return (
                 <button
@@ -139,6 +172,8 @@ export function CategoryPicker({ value, onChange, suggested = false }: CategoryP
                   type="button"
                   role="radio"
                   aria-checked={checked}
+                  tabIndex={index === subStop ? 0 : -1}
+                  onKeyDown={onArrow(index, subIds)}
                   onClick={() => onChange(checked ? parent : s.id)}
                   className={cn(
                     chip,

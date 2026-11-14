@@ -65,6 +65,14 @@ export function newItem(userIds: string[] = []): ItemDraft {
   return { id: `item-${itemSeq}`, name: '', amountCents: null, userIds }
 }
 
+/**
+ * The order people are shown in, the same in every split type: you first (your chip is always
+ * in the same spot), then everyone else in member order. Payloads keep member order.
+ */
+export function viewerFirst<T extends { id: string }>(people: readonly T[], viewerId: string): T[] {
+  return [...people].sort((a, b) => Number(b.id === viewerId) - Number(a.id === viewerId))
+}
+
 /** Splits `FULL` evenly; the leftover basis points go to the first people. */
 export function evenPercent(ids: readonly string[]): Record<string, number> {
   const out: Record<string, number> = {}

@@ -31,6 +31,7 @@ import {
   splitErrorText,
   toggleParticipant,
   typePercent,
+  viewerFirst,
   type SplitDraft,
 } from './split-state'
 
@@ -93,9 +94,9 @@ export function SplitEditor({
   const byId = new Map(members.map((m) => [m.id, m]))
   const result = previewSplit(draft, amountCents)
   const shares = result.ok ? result.shares : null
-  const participants = draft.participants
-    .map((id) => byId.get(id))
-    .filter((m): m is MoneyMember => !!m)
+  // Chips, rows and the slider all list people the same way, in every split type.
+  const shown = viewerFirst(members, viewerId)
+  const participants = shown.filter((m) => draft.participants.includes(m.id))
 
   const money = (cents: number) => formatMoney(cents, currency)
   const extras = amountCents > 0 ? roundingExtras(draft, result) : []
@@ -356,7 +357,7 @@ export function SplitEditor({
             aria-label={t('expenses.fields.splitBetween')}
             className="flex flex-wrap gap-2"
           >
-            {members.map((m) => {
+            {shown.map((m) => {
               const on = draft.participants.includes(m.id)
               return (
                 <button
