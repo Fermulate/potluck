@@ -147,6 +147,26 @@ describe('YourDataSection', () => {
     expect(success).toHaveBeenCalledWith(t('transfer.saved', { file: name }))
   })
 
+  it('names a one-on-one tab after the friend in the backup, and keeps is_direct', async () => {
+    const tab = {
+      ...backup.groups[0]!,
+      id: 'd0000000-0000-4000-8000-000000000001',
+      name: 'Direct',
+      is_direct: true,
+      members: [ME, BEN].map((user_id) => ({ user_id, role: 'member', joined_at: at })),
+    }
+    vi.mocked(exportMyData).mockResolvedValueOnce({ ...backup, groups: [...backup.groups, tab] })
+    renderSection()
+    fireEvent.click(await screen.findByRole('button', { name: t('transfer.yourData.backup') }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    const written = JSON.parse(save.mock.calls[0]![1]) as Backup
+    expect(written.groups.map((g) => [g.name, g.is_direct])).toEqual([
+      ['Hike crew', false],
+      ['Ben Okafor', true],
+    ])
+    expect(save.mock.calls[0]![1]).not.toContain('"Direct"')
+  })
+
   it('exports every group as one spreadsheet that ends on the balances', async () => {
     renderSection()
     fireEvent.click(await screen.findByRole('button', { name: t('transfer.yourData.everything') }))

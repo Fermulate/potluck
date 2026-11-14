@@ -181,6 +181,33 @@ export type BackupExpense = BackupGroup['expenses'][number]
 export type BackupPayment = BackupGroup['payments'][number]
 
 /**
+ * The backup as it goes into the file: a one-on-one tab is stored under a name nobody picked
+ * ("Direct"), so it takes the name people see for it, the other person's (`groupDisplayName`, as
+ * everywhere else), or `oneOnOne` when they are unknown. `is_direct` stays, so a reader still
+ * knows it is a tab. Nothing else changes, and a backup written before this (with "Direct") still
+ * reads the same: `backupSchema` takes any name and `backupLedger` names tabs either way.
+ */
+export function backupForFile(backup: Backup, oneOnOne: string): Backup {
+  const names = new Map(backup.people.map((p) => [p.id, p.display_name]))
+  return {
+    ...backup,
+    groups: backup.groups.map((g) =>
+      g.is_direct
+        ? {
+            ...g,
+            name: groupDisplayName(
+              { name: g.name, isDirect: true, memberIds: g.members.map((m) => m.user_id) },
+              backup.profile.id,
+              (id) => names.get(id),
+              oneOnOne,
+            ),
+          }
+        : g,
+    ),
+  }
+}
+
+/**
  * The live expenses and payments of a backup, ready for `ledgerCsv`, and a name for everyone.
  * Payments are dated in `timeZone` (the viewer's), the day `settle_up_v2` and `import_expenses`
  * took their rate for.
@@ -205,6 +232,7 @@ export function backupLedger(
       oneOnOne ?? unknown ?? g.name,
     ),
     currency: g.currency,
+    simplify: g.simplify_debts,
     expenses: g.expenses
       .filter((e) => !e.deleted_at)
       .map((e) => ({

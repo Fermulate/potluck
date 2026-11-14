@@ -1,4 +1,4 @@
-import { expenseBetween, expenseEffect, type BalanceExpense } from '../balances'
+import { expenseBetween, expenseEffect, simplifyDebts, type BalanceExpense } from '../balances'
 import { convert } from '../currency'
 import { compareIds } from '../money/allocate'
 import { isBlankRow, toCsv, unguardCell, type CsvValue } from './csv'
@@ -50,6 +50,11 @@ export interface LedgerLabels {
   balance: string
   /** Friend export: what the row does between the two of you; contains `{name}`. */
   between: string
+  /**
+   * Friend export, in the notes of a simplifying group's balance row: the balance is the
+   * simplified debt, and the rows above are the history behind it.
+   */
+  simplifiedBalance?: string
   kinds: Record<EntryKind | 'balance', string>
   /** Item list extras. */
   tax: string
@@ -93,6 +98,11 @@ export interface CsvPayment {
 export interface LedgerGroup {
   name: string
   currency: string
+  /**
+   * The group simplifies debts (`groups.simplify_debts`). A friend export's balance row is then
+   * the simplified debt between the two, as the friend page shows it, not the sum of the rows.
+   */
+  simplify?: boolean
   expenses: readonly CsvExpense[]
   payments: readonly CsvPayment[]
 }
@@ -295,7 +305,13 @@ export function ledgerCsv(groups: readonly LedgerGroup[], options: LedgerOptions
       })
     }
 
-    if (lines.length === 0) continue
+    // Where the two stand, as the friend page shows it (`friend_balances`): in a group that
+    // simplifies debts that is the simplified debt between them, which can move money between
+    // people, so it need not be the sum of the rows above (they are the history behind it), and
+    // can be there with no row between them at all.
+    const simplified = !!friend && !!group.simplify
+    const standing = friend && group.simplify ? simplifiedBetween(totals, friend) : between
+    if (lines.length === 0 && !(simplified && standing !== 0)) continue
     lines.sort((a, b) => a.day.localeCompare(b.day) || a.at.localeCompare(b.at))
     for (const line of lines) rows.push(line.cells)
     rows.push([
@@ -315,13 +331,29 @@ export function ledgerCsv(groups: readonly LedgerGroup[], options: LedgerOptions
         const total = totals.get(p.id)
         return ['', '', total === undefined ? '' : formatMinor(total, gc)]
       }),
-      ...(friend ? [formatMinor(between, gc)] : []),
-      '',
+      ...(friend ? [formatMinor(standing, gc)] : []),
+      simplified ? (labels.simplifiedBalance ?? '') : '',
       '',
     ])
   }
 
   return toCsv(rows)
+}
+
+/**
+ * What `friend` owes `me` (negative: what `me` owes) once the group's balances are simplified:
+ * the same greedy payments as `simplifyDebts` and SQL `simplified_debts`.
+ */
+function simplifiedBetween(
+  totals: ReadonlyMap<string, number>,
+  { me, friend }: { me: string; friend: string },
+): number {
+  let net = 0
+  for (const t of simplifyDebts(Object.fromEntries(totals))) {
+    if (t.fromUser === friend && t.toUser === me) net += t.amountCents
+    else if (t.fromUser === me && t.toUser === friend) net -= t.amountCents
+  }
+  return net
 }
 
 // Reading it back ------------------------------------------------------------------------------
