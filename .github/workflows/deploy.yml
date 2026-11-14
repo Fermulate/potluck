@@ -41,7 +41,7 @@ jobs:
         with:
           # The commit CI just tested, not whatever main points at now.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: 3.0.0
       - name: Push migrations and auth config
@@ -91,7 +91,7 @@ jobs:
           VITE_DOCS_URL: ${{ vars.VITE_DOCS_URL }}
       - name: Deploy production
         if: env.HAS_CLOUDFLARE == 'true' && github.event_name != 'pull_request'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -100,7 +100,7 @@ jobs:
       - name: Upload preview
         id: preview
         if: env.HAS_CLOUDFLARE == 'true' && github.event_name == 'pull_request'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
