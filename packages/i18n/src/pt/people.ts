@@ -127,6 +127,10 @@ export const people = {
     blocked: '{name} está bloqueado.',
     report: 'Denunciar {name}',
     reportHint: 'Conte para a gente se algo estiver errado.',
+    nothingBetween: 'nada entre vocês',
+    export: 'Exportar como planilha',
+    youBlocked:
+      'Você bloqueou {name}, então nada novo entra entre vocês. Desbloqueie em Eu para dividir de novo.',
   },
   report: {
     title: 'Denunciar {name}',

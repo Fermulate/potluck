@@ -132,6 +132,10 @@ export const people = {
     blocked: '{name} ist blockiert.',
     report: '{name} melden',
     reportHint: 'Sag uns, wenn etwas nicht stimmt.',
+    nothingBetween: 'nichts zwischen euch',
+    export: 'Als Tabelle exportieren',
+    youBlocked:
+      'Du hast {name} blockiert, also kommt zwischen euch nichts Neues dazu. Heb die Blockierung unter Ich auf, um wieder zu teilen.',
   },
   report: {
     title: '{name} melden',

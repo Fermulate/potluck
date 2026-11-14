@@ -5,7 +5,13 @@ import { Money } from './money'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, Repeat } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { paidSummary, settlementText, viewerLine, type NameOf } from './expense-math'
+import {
+  paidSummary,
+  settlementText,
+  viewerLine,
+  type NameOf,
+  type ViewerLine,
+} from './expense-math'
 import { categoryEmoji } from './format'
 
 export function CategoryTile({
@@ -67,6 +73,8 @@ export function ExpenseRow({
   nameOf,
   groupCurrency,
   locale,
+  line: given,
+  noneLabel,
 }: {
   expense: ExpenseWithSplits
   viewerId: string
@@ -75,8 +83,15 @@ export function ExpenseRow({
   /** The group's currency: the right side is the viewer's change in the group balance. */
   groupCurrency: string
   locale?: string
+  /**
+   * The right side instead of the viewer's change in the group balance, in the group currency:
+   * the friend page shows what the expense left between the viewer and that friend.
+   */
+  line?: ViewerLine
+  /** Shown on the right when `line` moves nothing; "not involved" by default. */
+  noneLabel?: string
 }) {
-  const line = viewerLine(expense, viewerId, groupCurrency)
+  const line = given ?? viewerLine(expense, viewerId, groupCurrency)
   const subtitle = paidSummary(expense, viewerId, nameOf, locale)
   const refund = expense.is_refund
   const lineAmount = line.kind === 'none' ? '' : formatMoney(line.cents, groupCurrency, { locale })
@@ -109,7 +124,7 @@ export function ExpenseRow({
         subtitle={subtitle}
         right={
           line.kind === 'none' ? (
-            <span className="text-xs text-mute">{t('expenses.notInvolved')}</span>
+            <span className="text-xs text-mute">{noneLabel ?? t('expenses.notInvolved')}</span>
           ) : (
             <>
               <span

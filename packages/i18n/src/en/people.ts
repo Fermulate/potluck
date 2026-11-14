@@ -128,6 +128,10 @@ export const people = {
     blocked: '{name} is blocked.',
     report: 'Report {name}',
     reportHint: 'Tell us if something is wrong.',
+    nothingBetween: 'nothing between you',
+    export: 'Export as a spreadsheet',
+    youBlocked:
+      'You blocked {name}, so nothing new goes in between you. Unblock them in Me to split again.',
   },
   report: {
     title: 'Report {name}',

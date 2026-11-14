@@ -128,6 +128,10 @@ export const people = {
     blocked: '{name} est bloqué.',
     report: 'Signaler {name}',
     reportHint: 'Dis-nous si quelque chose ne va pas.',
+    nothingBetween: 'rien entre vous',
+    export: 'Exporter en tableur',
+    youBlocked:
+      "Tu as bloqué {name}, donc rien de nouveau n'entre entre vous. Débloque cette personne dans Moi pour partager à nouveau.",
   },
   report: {
     title: 'Signaler {name}',

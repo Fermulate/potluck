@@ -1,9 +1,11 @@
 import {
   blockUser,
+  canSplitWithQueryOptions,
   friendsQueryOptions,
   getOrCreateDirectGroup,
   groupKeys,
   moneyKeys,
+  myBlocksQueryOptions,
   paymentKeys,
   paymentQueries,
   peopleKeys,
@@ -14,7 +16,7 @@ import {
   type GroupDetail,
   type Settlement,
 } from '@potluck/api'
-import { dayKey, expenseInvolvesBoth, friendTotals, settlementBetween } from '@potluck/core'
+import { dayKey, expenseBetween, friendTotals, settlementBetween } from '@potluck/core'
 import { formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
   Amount,
@@ -36,6 +38,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowRightLeft,
   ChevronLeft,
+  FileSpreadsheet,
   Flag,
   MoreHorizontal,
   Plus,
@@ -44,9 +47,10 @@ import {
 } from 'lucide-react'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { ExpenseRow, SettlementRow } from '@/features/expenses/expense-row'
-import { toBalanceExpense } from '@/features/expenses/expense-math'
+import { toBalanceExpense, type ViewerLine } from '@/features/expenses/expense-math'
 import { dayLabel, groupByDay } from '@/features/expenses/format'
 import { useNameOf, useTimeZone } from '@/features/expenses/money-data'
+import { useAccountExports } from '@/features/export-import/use-exports'
 import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { toBalanceSettlement, useLedgers } from './friend-ledger'
@@ -57,7 +61,15 @@ import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
 
 type HistoryItem =
-  | { kind: 'expense'; day: string; at: string; group: GroupDetail; expense: ExpenseWithSplits }
+  | {
+      kind: 'expense'
+      day: string
+      at: string
+      group: GroupDetail
+      expense: ExpenseWithSplits
+      /** What this expense left between the viewer and the friend (`expenseBetween`). */
+      line: ViewerLine
+    }
   | { kind: 'settlement'; day: string; at: string; group: GroupDetail; settlement: Settlement }
 
 interface Standing {
@@ -70,6 +82,12 @@ interface Standing {
  * Everything the viewer and a friend share: where they stand in each group, from the same
  * `friend_balances` rows as the friends list (so the two always agree), and every expense and
  * payment between them.
+ *
+ * Each expense row shows only what it left between the two of them (core `expenseBetween`, the
+ * per expense step of `pairwiseDebts` and the one-friend export's between column), never the
+ * viewer's whole lead in it. In a group that does not simplify debts the rows and payments add
+ * up to the standing there; in one that simplifies, the standing is the simplified debt, which
+ * can move money between people, so the rows show the history behind it rather than its sum.
  */
 function useSharedLedger(friendId: string) {
   const me = useUserId()
@@ -95,9 +113,23 @@ function useSharedLedger(friendId: string) {
     for (const group of shared) {
       const ledger = byGroup.get(group.id)!
       for (const e of ledger.expenses) {
-        if (expenseInvolvesBoth(toBalanceExpense(e), me, friendId)) {
-          items.push({ kind: 'expense', day: e.spent_at, at: e.created_at, group, expense: e })
-        }
+        const between = expenseBetween(toBalanceExpense(e), me, friendId, {
+          groupCurrency: group.currency,
+        })
+        if (between === null) continue
+        items.push({
+          kind: 'expense',
+          day: e.spent_at,
+          at: e.created_at,
+          group,
+          expense: e,
+          line:
+            between > 0
+              ? { kind: 'lent', cents: between }
+              : between < 0
+                ? { kind: 'borrowed', cents: -between }
+                : { kind: 'none' },
+        })
       }
       for (const s of ledger.settlements) {
         if (!s.deleted_at && settlementBetween(toBalanceSettlement(s), me, friendId)) {
@@ -266,6 +298,9 @@ export function FriendPage({ friendId }: { friendId: string }) {
   const profile = useQuery(profilesByIdsQueryOptions(supabase, [friendId]))
   const friends = useQuery(friendsQueryOptions(supabase, me))
   const ledger = useSharedLedger(friendId)
+  const blocks = useQuery(myBlocksQueryOptions(supabase, me))
+  const canSplit = useQuery(canSplitWithQueryOptions(supabase, friendId))
+  const exports = useAccountExports()
   const [menuOpen, setMenuOpen] = useState(false)
   const [pending, setPending] = useState<Pending>(null)
   const [reporting, setReporting] = useState(false)
@@ -283,6 +318,13 @@ export function FriendPage({ friendId }: { friendId: string }) {
   const overall = (ledger.total?.byCurrency ?? []).map((c) => [c.currency, c.netCents] as const)
   const friend = friends.data?.find((f) => f.id === friendId)
   const [settling, setSettling] = useState(false)
+  // A block either way stops new expenses (the server refuses them), so say so up front. Which
+  // side blocked is only told to the person who did it.
+  const splitNote = blocks.data?.some((b) => b.user_id === friendId)
+    ? t('people.friendPage.youBlocked', { name })
+    : canSplit.data === false
+      ? t('errors.codes.not_a_friend')
+      : null
 
   if (profile.isPending || ledger.pending) return <FriendSkeleton />
   if (!person || person.id === me || person.is_placeholder) {
@@ -368,7 +410,13 @@ export function FriendPage({ friendId }: { friendId: string }) {
           )}
         </div>
         <div className="flex flex-wrap justify-center gap-2">
-          <Button leadingIcon={<Plus />} loading={opening} onClick={() => void addExpense()}>
+          <Button
+            leadingIcon={<Plus />}
+            loading={opening}
+            disabled={splitNote !== null}
+            aria-describedby={splitNote ? 'friend-split-note' : undefined}
+            onClick={() => void addExpense()}
+          >
             {t('people.friendPage.addExpense')}
           </Button>
           {friend && ledger.total && ledger.total.settleable.length > 0 && (
@@ -387,6 +435,11 @@ export function FriendPage({ friendId }: { friendId: string }) {
             onClick={() => setMenuOpen(true)}
           />
         </div>
+        {splitNote && (
+          <p id="friend-split-note" className="max-w-sm text-sm text-pretty text-mute">
+            {splitNote}
+          </p>
+        )}
       </header>
 
       {ledger.standings.length > 0 && (
@@ -463,6 +516,8 @@ export function FriendPage({ friendId }: { friendId: string }) {
                             nameOf={nameOf}
                             groupCurrency={item.group.currency}
                             locale={intlLocale()}
+                            line={item.line}
+                            noneLabel={t('people.friendPage.nothingBetween')}
                           />
                         ) : (
                           <SettlementRow
@@ -485,6 +540,15 @@ export function FriendPage({ friendId }: { friendId: string }) {
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent title={name} closeLabel={t('common.close')} size="sm">
           <div className="grid gap-1">
+            <MenuRow
+              icon={<FileSpreadsheet />}
+              label={t('people.friendPage.export')}
+              hint={t('transfer.yourData.friendHint')}
+              onClick={() => {
+                setMenuOpen(false)
+                void exports.friend(person.id, person.display_name)
+              }}
+            />
             {isFriend && (
               <MenuRow
                 icon={<UserMinus />}
