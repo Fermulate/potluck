@@ -29,6 +29,7 @@ import {
   usePeople,
   useTimeZone,
 } from '@/features/expenses/money-data'
+import { useBlockedInTab } from '@/features/friends/split-note'
 import { useDeletePayment, useRestorePayment } from './use-delete-payment'
 
 /** One payment: who paid whom, when, the note, and its comments. Deleted ones can be restored. */
@@ -46,6 +47,7 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
   const group = useMoneyGroup(groupId)
   useGroupMoneyRealtime(groupId)
   usePaymentRealtime(paymentId, groupId)
+  const blockedInTab = useBlockedInTab(groupId)
 
   if (payment.isError) {
     return (
@@ -69,9 +71,13 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
   const p = payment.data
   const role = group.data?.members.find((m) => m.id === me)?.role
   const isParty = [p.from_user, p.to_user, p.created_by].includes(me)
-  const mayEdit = can(role, 'settlement.edit', { isParty })
-  const mayDelete = can(role, 'settlement.delete', { isParty })
-  const mayRestore = can(role, 'settlement.restore', { isParty })
+  // The blocked side of a 1:1 tab may change only the payments they recorded (the server's
+  // rule); until that is known, no controls, so none appear and then vanish.
+  const recorderOnly = blockedInTab === true && p.created_by !== me
+  const settledRule = blockedInTab !== undefined && !recorderOnly
+  const mayEdit = settledRule && can(role, 'settlement.edit', { isParty })
+  const mayDelete = settledRule && can(role, 'settlement.delete', { isParty })
+  const mayRestore = settledRule && can(role, 'settlement.restore', { isParty })
   const deleted = !!p.deleted_at
   const archived = !!group.data?.archived_at
   const memberIds = group.data?.members.map((m) => m.id) ?? []
@@ -132,6 +138,12 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
           className="mt-4 rounded-card bg-sunken px-4 py-3 text-sm font-medium text-mute"
         >
           {t('settle.detail.archived', { group: groupTitle(group.data, me) })}
+        </p>
+      )}
+
+      {!archived && recorderOnly && (
+        <p role="note" className="mt-4 text-sm font-medium text-mute">
+          {t('settle.detail.onlyRecorder')}
         </p>
       )}
 

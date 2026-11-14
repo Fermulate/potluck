@@ -1,4 +1,4 @@
-import { moneyKeys, paymentKeys, type Settlement } from '@potluck/api'
+import { moneyKeys, paymentKeys, peopleKeys, type Settlement } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -144,6 +144,63 @@ describe('PaymentDetail', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: t('settle.delete') }))
     await waitFor(() => expect(router.state.location.pathname).toBe(`/groups/${GROUP_ID}`))
     expect(db().rpcArgs('delete_settlement')).toEqual([{ id: 's1' }])
+  })
+
+  describe('in a one-on-one tab across a block', () => {
+    const tabMembers = group.members.filter((m) => m.id === ME || m.id === BEN)
+    function renderTab(p: Settlement, { iBlocked }: { iBlocked: boolean }) {
+      const client = seededClient((c) => {
+        c.setQueryData(paymentKeys.settlement(p.id), p)
+        c.setQueryData(paymentKeys.comments(p.id), [])
+        c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+          ...group,
+          is_direct: true,
+          members: tabMembers,
+        })
+        c.setQueryData(peopleKeys.canSplit(BEN), false)
+        c.setQueryData(
+          peopleKeys.blocks(ME),
+          iBlocked
+            ? [{ user_id: BEN, display_name: 'Ben', avatar_path: null, blocked_at: 'x' }]
+            : [],
+        )
+      })
+      return renderWithProviders(<PaymentDetail paymentId={p.id} />, {
+        path: '/payments/$paymentId',
+        url: `/payments/${p.id}`,
+        client,
+      })
+    }
+
+    it('shows the blocked person no controls on a payment the other person recorded', async () => {
+      renderTab(payment({ created_by: BEN }), { iBlocked: false })
+      expect(await screen.findByRole('note')).toHaveTextContent(t('settle.detail.onlyRecorder'))
+      expect(screen.queryByRole('link', { name: t('common.edit') })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: t('settle.delete') })).not.toBeInTheDocument()
+    })
+
+    it('still lets them change a payment they recorded', async () => {
+      renderTab(payment({ created_by: ME, from_user: ME, to_user: BEN }), { iBlocked: false })
+      expect(await screen.findByRole('link', { name: t('common.edit') })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: t('settle.delete') })).toBeInTheDocument()
+      expect(screen.queryByText(t('settle.detail.onlyRecorder'))).not.toBeInTheDocument()
+    })
+
+    it('leaves the person who blocked free to change any payment there', async () => {
+      renderTab(payment({ created_by: BEN }), { iBlocked: true })
+      expect(await screen.findByRole('link', { name: t('common.edit') })).toBeInTheDocument()
+      expect(screen.queryByText(t('settle.detail.onlyRecorder'))).not.toBeInTheDocument()
+    })
+  })
+
+  it('words a refusal on a payment as a payment, not a split', async () => {
+    db().respond('rpc:delete_settlement', { error: { message: 'not_a_friend', code: '42501' } })
+    renderPayment(payment())
+    fireEvent.click(await screen.findByRole('button', { name: t('settle.delete') }))
+    const dialog = await screen.findByRole('dialog', { name: t('settle.delete') })
+    fireEvent.click(within(dialog).getByRole('button', { name: t('settle.delete') }))
+    expect(await screen.findByText(t('settle.detail.onlyRecorder'))).toBeInTheDocument()
+    expect(screen.queryByText(t('errors.codes.not_a_friend'))).not.toBeInTheDocument()
   })
 
   it('says when the payment cannot be found', async () => {

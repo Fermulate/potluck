@@ -45,7 +45,7 @@ import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { GoodToKnow } from '@/features/help/help'
 import {
   invalidateMoney,
-  moneyErrorMessage,
+  paymentErrorMessage,
   useMoneyGroup,
   usePeople,
   useTimeZone,
@@ -371,7 +371,7 @@ export function PaymentForm({
       const network = isNetworkError(e)
       setUnreached(network)
       if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
-      else toast.error(moneyErrorMessage(e))
+      else toast.error(paymentErrorMessage(e))
     },
   })
 

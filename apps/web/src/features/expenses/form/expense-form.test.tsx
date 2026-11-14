@@ -526,7 +526,9 @@ describe('ExpenseForm offline', () => {
     expect(create).toHaveBeenCalledTimes(2)
     // The same request id both times, so the server hands back the first save if it landed.
     const firstKey = (create.mock.calls[0]![1] as { request_id?: string }).request_id
-    expect(firstKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(firstKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
     expect(create.mock.calls[1]![1]).toEqual(create.mock.calls[0]![1])
     expect(create.mock.calls[1]![1]).toMatchObject({
       description: 'Cabin deposit',

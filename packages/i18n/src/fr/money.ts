@@ -636,6 +636,7 @@ export const settle = {
   partial: 'Encore {amount} à régler.',
   youPaid: 'Tu as payé {amount} à {name}',
   paidYou: "{name} t'a payé {amount}",
+  paymentShort: 'paiement',
   paid: '{from} a payé {amount} à {to}',
   pickGroup: 'Tu règles quel groupe ?',
   pickPersonHint: "Paie ce que tu dois, ou note ce qu'on t'a payé.",
@@ -715,6 +716,7 @@ export const settle = {
     notFound: 'Ce paiement a disparu. Il a peut-être été supprimé.',
     deletedBanner: 'Ce paiement a été supprimé.',
     recordedBy: 'Enregistré par {name} {when}',
+    onlyRecorder: 'Seule la personne qui a enregistré ce paiement peut le modifier.',
     converted: '{amount} en {currency} à {rate}',
     departedLocked:
       "Quelqu'un de ce paiement a quitté le groupe, seuls la note et la date peuvent changer.",

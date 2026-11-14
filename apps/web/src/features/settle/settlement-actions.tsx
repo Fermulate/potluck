@@ -17,12 +17,18 @@ export function SettlementActions({
   viewerId,
   viewerRole,
   label,
+  blockedInTab = false,
 }: {
   settlement: Settlement
   viewerId: string
   viewerRole: GroupRole | undefined
   /** What the payment says in the list, e.g. "You paid Kai $20.00". */
   label: string
+  /**
+   * The viewer is the blocked side of this 1:1 tab (`useBlockedInTab`; undefined while it is
+   * being checked): they may change only the payments they recorded, so the menu waits.
+   */
+  blockedInTab?: boolean | undefined
 }) {
   const deletePayment = useDeletePayment()
   const [menu, setMenu] = useState(false)
@@ -30,6 +36,7 @@ export function SettlementActions({
   const isParty = [settlement.from_user, settlement.to_user, settlement.created_by].includes(
     viewerId,
   )
+  if (blockedInTab !== false && settlement.created_by !== viewerId) return null
   if (!can(viewerRole, 'settlement.delete', { isParty })) return null
 
   return (

@@ -623,6 +623,7 @@ export const settle = {
   partial: 'Aún faltan {amount}.',
   youPaid: 'Le pagaste {amount} a {name}',
   paidYou: '{name} te pagó {amount}',
+  paymentShort: 'pago',
   paid: '{from} le pagó {amount} a {to}',
   pickGroup: '¿Qué grupo estás saldando?',
   pickPersonHint: 'Paga lo que debes, o marca lo que alguien te pagó.',
@@ -701,6 +702,7 @@ export const settle = {
     notFound: 'Ese pago se perdió. Puede que lo hayan eliminado.',
     deletedBanner: 'Este pago se eliminó.',
     recordedBy: 'Registrado por {name} {when}',
+    onlyRecorder: 'Solo quien registró este pago puede cambiarlo.',
     converted: '{amount} en {currency} a {rate}',
     departedLocked:
       'Alguien de este pago dejó el grupo, así que solo se pueden cambiar la nota y la fecha.',

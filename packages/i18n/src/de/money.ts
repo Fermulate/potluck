@@ -631,6 +631,7 @@ export const settle = {
   partial: 'Noch {amount} offen.',
   youPaid: 'Du hast {name} {amount} gezahlt',
   paidYou: '{name} hat dir {amount} gezahlt',
+  paymentShort: 'Zahlung',
   paid: '{from} hat {to} {amount} gezahlt',
   pickGroup: 'Welche Gruppe begleichst du?',
   pickPersonHint: 'Zahl, was du schuldest, oder trag ein, was dir jemand gezahlt hat.',
@@ -710,6 +711,7 @@ export const settle = {
     notFound: 'Diese Zahlung ist verschwunden. Vielleicht wurde sie gelöscht.',
     deletedBanner: 'Diese Zahlung wurde gelöscht.',
     recordedBy: 'Erfasst von {name} {when}',
+    onlyRecorder: 'Nur wer diese Zahlung erfasst hat, kann sie ändern.',
     converted: '{amount} in {currency} zu {rate}',
     departedLocked:
       'Jemand aus dieser Zahlung hat die Gruppe verlassen, daher lassen sich nur Notiz und Datum ändern.',

@@ -625,6 +625,8 @@ export const settle = {
   partial: '{amount} still to go.',
   youPaid: 'You paid {name} {amount}',
   paidYou: '{name} paid you {amount}',
+  /** Under a payment in a list when it has no note and the two are not square. */
+  paymentShort: 'payment',
   paid: '{from} paid {to} {amount}',
   pickGroup: 'Which group are you settling?',
   pickPersonHint: 'Pay what you owe, or mark what someone paid you.',
@@ -703,6 +705,8 @@ export const settle = {
     notFound: 'That payment wandered off. It may have been deleted.',
     deletedBanner: 'This payment was deleted.',
     recordedBy: 'Recorded by {name} {when}',
+    /** A payment in a one-on-one tab that only the person who recorded it may change. */
+    onlyRecorder: 'Only whoever recorded this payment can change it.',
     converted: '{amount} in {currency} at {rate}',
     departedLocked:
       'Someone in this payment has left the group, so only the note and date can change.',
