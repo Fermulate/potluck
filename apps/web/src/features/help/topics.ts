@@ -70,9 +70,10 @@ export const SPLIT_HELP: Record<SplitTypeValue, HelpTopic> = {
   itemized: 'splitItemized',
 }
 
-/** Pages linked from the Help section on Me. */
+/** Whole guide pages the app links to: the Help section on Me, and privacy from sign up. */
 export const HELP_PAGES = {
   gettingStarted: '/getting-started/',
+  privacy: '/privacy-and-security/',
   faq: '/faq/',
   troubleshooting: '/troubleshooting/',
   guide: '/',

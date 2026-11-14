@@ -1,27 +1,26 @@
+import { CURRENCIES_IN_USE } from '@potluck/core'
 import { intlLocale } from '@potluck/i18n'
 
-/** Currencies offered first in pickers. Anything else from Intl follows. */
+/** Currencies offered first in pickers. The rest of the ones in use follow. */
 const COMMON = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'INR', 'MXN', 'CHF', 'SEK', 'NZD', 'SGD']
 
-let cachedCurrencies: string[] | null = null
-
+/**
+ * Currencies a picker offers: the common ones, then every ISO 4217 currency in use. Not
+ * `Intl.supportedValuesOf`, which also lists withdrawn currencies and codes like XDR.
+ */
 export function currencyCodes(): string[] {
-  if (cachedCurrencies) return cachedCurrencies
-  let all: string[]
-  try {
-    all = Intl.supportedValuesOf('currency')
-  } catch {
-    all = []
-  }
-  const rest = all.filter((c) => !COMMON.includes(c))
-  cachedCurrencies = [...COMMON, ...rest]
-  return cachedCurrencies
+  return [...COMMON, ...CURRENCIES_IN_USE.filter((c) => !COMMON.includes(c))]
 }
+
+/** Dash characters some browsers put in names ("Leone (1964\u20142022)"); copy uses none. */
+const DASHES = /[\u2010-\u2015\u2212]/g
 
 /** "EUR (Euro)", with the name in the app's language. */
 export function currencyLabel(code: string): string {
   try {
-    const name = new Intl.DisplayNames([intlLocale()], { type: 'currency' }).of(code)
+    const name = new Intl.DisplayNames([intlLocale()], { type: 'currency' })
+      .of(code)
+      ?.replace(DASHES, '-')
     return name && name !== code ? `${code} (${name})` : code
   } catch {
     return code
