@@ -1,5 +1,6 @@
 import { avatarSrc } from '@/lib/queries'
 import {
+  moneyKeys,
   paymentKeys,
   recordPayment,
   updateSettlement,
@@ -327,7 +328,9 @@ export function PaymentForm({
         ? t(`expenses.errors.${problem}`)
         : undefined
 
+  const [unreached, setUnreached] = useState(false)
   const pay = useMutation({
+    onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
       const trimmed = note.trim() || null
       if (editing) {
@@ -360,13 +363,15 @@ export function PaymentForm({
       onDone({ from: payer, to: payee, owedBefore: owed, paid: cents, currency })
     },
     onError: (e) => {
-      if (!isNetworkError(e)) toast.error(moneyErrorMessage(e))
+      const network = isNetworkError(e)
+      setUnreached(network)
+      if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
+      else toast.error(moneyErrorMessage(e))
     },
   })
 
   // Offline, recording waits with the form filled in, as in the expense form.
   const online = useOnline()
-  const unreached = pay.isError && isNetworkError(pay.error)
   useWarnBeforeUnload(unreached || (!online && amount !== null))
 
   const submit = (e?: FormEvent) => {

@@ -37,14 +37,14 @@ const update = vi.mocked(updateExpense)
 
 function setup() {
   const onDone = vi.fn()
-  renderWithClient(
+  const { client } = renderWithClient(
     <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
   )
   fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
     target: { value: 'Cabin deposit' },
   })
-  return { onDone }
+  return { onDone, client }
 }
 
 const percentOf = (name: string) =>
@@ -501,12 +501,15 @@ describe('ExpenseForm offline', () => {
   })
 
   it('keeps the entry when the connection drops during a save, and Try again saves it once', async () => {
-    const { onDone } = setup()
+    const { onDone, client } = setup()
+    client.setQueryData(moneyKeys.expenses(GROUP_ID), [])
     // What supabase-js hands back when fetch never got an answer.
     create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
     fireEvent.click(saveButton())
 
     expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    // The save may have landed anyway, so the group's expenses are fetched again.
+    expect(client.getQueryState(moneyKeys.expenses(GROUP_ID))?.isInvalidated).toBe(true)
     expect(create).toHaveBeenCalledTimes(1)
     expect(onDone).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
@@ -530,6 +533,12 @@ describe('ExpenseForm offline', () => {
     create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
     fireEvent.click(saveButton())
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
+
+    // Losing the connection afterwards does not turn the refusal into a lost connection.
+    act(() => goOffline())
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
     expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
     expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
   })

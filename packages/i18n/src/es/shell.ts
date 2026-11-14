@@ -63,7 +63,7 @@ export const app = {
     banner: 'Sin conexión. Algunas cosas esperarán.',
     form: 'Estás sin conexión. Lo que escribiste se queda aquí; guárdalo cuando vuelvas.',
     failed:
-      'No pudimos conectar con Potluck. Lo que escribiste sigue aquí; vuelve a intentarlo cuando tengas conexión.',
+      'Potluck no pudo confirmar el guardado. Lo que escribiste sigue aquí: revisa el grupo para ver si se guardó antes de volver a intentarlo.',
   },
 } satisfies Translation<typeof en.app>
 

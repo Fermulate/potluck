@@ -63,7 +63,7 @@ function setup(props: { from?: string; to?: string; amount?: number; role?: 'adm
     />,
     client,
   )
-  return { onPickPerson, onFinish }
+  return { onPickPerson, onFinish, client }
 }
 
 describe('SettleFlow', () => {
@@ -122,12 +122,15 @@ describe('SettleFlow', () => {
   })
 
   it('keeps the payment when the connection drops while recording, and Try again records it once', async () => {
-    setup({ to: BEN })
+    const { client } = setup({ to: BEN })
+    client.setQueryData(moneyKeys.recurring(GROUP_ID), [])
     fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'Venmo' } })
     pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
     fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
 
     expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    // The payment may have landed anyway, so the group's money is fetched again.
+    expect(client.getQueryState(moneyKeys.recurring(GROUP_ID))?.isInvalidated).toBe(true)
     expect(pay).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('47.50')
     expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('Venmo')
@@ -136,6 +139,18 @@ describe('SettleFlow', () => {
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
     expect(pay).toHaveBeenCalledTimes(2)
     expect(pay.mock.calls[1]![1]).toMatchObject({ toUser: BEN, amountCents: 4750, note: 'Venmo' })
+  })
+
+  it('keeps a refused payment a refusal after the connection goes', async () => {
+    setup({ to: BEN })
+    pay.mockRejectedValueOnce({ message: 'member_not_in_group', code: '23514' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(1))
+
+    act(() => goOffline())
+    expect(screen.getByText(t('app.offline.form'))).toBeInTheDocument()
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
   })
 
   it('says what is left after a partial payment', async () => {

@@ -63,7 +63,7 @@ export const app = {
     banner: 'Hors ligne. Certaines choses attendront.',
     form: 'Tu es hors ligne. Ce que tu as saisi reste ici ; enregistre dès que tu es de retour.',
     failed:
-      'Impossible de joindre Potluck. Ce que tu as saisi est toujours là ; réessaie quand tu es de retour.',
+      "Potluck n'a pas pu confirmer l'enregistrement. Ce que tu as saisi est toujours là : regarde dans le groupe si c'est passé avant de réessayer.",
   },
 } satisfies Translation<typeof en.app>
 

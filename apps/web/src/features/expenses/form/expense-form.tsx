@@ -367,7 +367,16 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const canSaveDefault =
     !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
+  const [unreached, setUnreached] = useState(false)
+  const failSave = (error: unknown) => {
+    const network = isNetworkError(error)
+    setUnreached(network)
+    if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
+    else toast.error(moneyErrorMessage(error))
+  }
+
   const saveTemplate = useMutation({
+    onMutate: () => setUnreached(false),
     mutationFn: async (current: RecurringExpense) => {
       const payload: RecurringUpdate = {
         description: description.trim(),
@@ -397,14 +406,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       toast.success(t('expenses.recurring.savedToast', { description: saved.description }))
       props.onDone(saved.id)
     },
-    onError: (error) => {
-      if (!isNetworkError(error)) toast.error(moneyErrorMessage(error))
-    },
+    onError: failSave,
   })
 
   const save = useMutation({
     onMutate: () => {
       saveRunning.current = true
+      setUnreached(false)
     },
     onSettled: () => {
       saveRunning.current = false
@@ -510,9 +518,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
     onError: (error) => {
       if (error instanceof Error && error.message === 'receipt_upload_failed') {
+        setUnreached(false)
         toast.error(t('expenses.receiptUpload.failed'))
-      } else if (!isNetworkError(error)) {
-        toast.error(moneyErrorMessage(error))
+      } else {
+        failSave(error)
       }
     },
   })
@@ -557,7 +566,6 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   // Offline, saving waits: the button is off and the entry stays in the form (and the tab asks
   // before closing). A save the network dropped leaves the form as typed, with a Try again.
   const online = useOnline()
-  const unreached = [save, saveTemplate].some((m) => m.isError && isNetworkError(m.error))
   const typed = !!editing || amount !== null || description.trim() !== '' || notes.trim() !== ''
   useWarnBeforeUnload(unreached || (!online && typed))
 

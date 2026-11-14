@@ -63,7 +63,7 @@ export const app = {
     banner: 'Sem conexão. Algumas coisas vão esperar.',
     form: 'Você está offline. O que você preencheu fica aqui; salve quando voltar.',
     failed:
-      'Não deu para falar com o Potluck. O que você preencheu continua aqui; tente de novo quando voltar.',
+      'O Potluck não conseguiu confirmar o salvamento. O que você preencheu continua aqui: veja no grupo se foi salvo antes de tentar de novo.',
   },
 } satisfies Translation<typeof en.app>
 
