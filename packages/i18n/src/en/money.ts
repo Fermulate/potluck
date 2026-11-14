@@ -590,6 +590,12 @@ export const balances = {
   isOwedShort: 'is owed',
   owesShort: 'owes',
   settledShort: 'settled up',
+  /** The viewer's own row in a balance list, never "You is owed". */
+  youAreOwed: 'You are owed {amount}',
+  youOweNet: 'You owe {amount} in total',
+  youAreSettled: 'You are settled up',
+  areOwedShort: 'are owed',
+  oweShort: 'owe',
   totalSpent: 'Group spending',
   yourSpending: 'Your share of spending',
   remind: 'Remind',

@@ -69,6 +69,7 @@ import {
   useTimeZone,
 } from '@/features/expenses/money-data'
 import { Help } from '@/features/help/help'
+import { netLabel } from '@/features/balances/net-label'
 import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
@@ -255,6 +256,7 @@ function rowLine(row: ImportRow, me: string, nameOf: ReturnType<typeof useNameOf
 
 /** Everyone's balance after the import, in the group currency, drawn like the balances tab. */
 function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup }) {
+  const me = useUserId()
   const nameOf = useNameOf()
   const people = usePeople()
   const balances = useQuery(moneyQueries.balances(supabase, group.id))
@@ -273,6 +275,11 @@ function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup })
       <ul className="divide-y divide-line">
         {rows.map((r) => {
           const person = people.get(r.id)
+          const label = netLabel(r.after, {
+            name: nameOf(r.id),
+            isViewer: r.id === me,
+            amount: formatMoney(Math.abs(r.after), group.currency),
+          })
           return (
             <li key={r.id} className="flex flex-col gap-2 px-4 py-3">
               <div className="flex items-center gap-3">
@@ -288,14 +295,9 @@ function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup })
                     {t('transfer.import.now', { amount: formatMoney(r.now, group.currency) })}
                   </span>
                 </span>
-                <span className="flex flex-col items-end">
-                  <span className="text-xs text-mute">
-                    {r.after > 0
-                      ? t('balances.isOwedShort')
-                      : r.after < 0
-                        ? t('balances.owesShort')
-                        : t('balances.settledShort')}
-                  </span>
+                <span className="sr-only">{label.full}</span>
+                <span aria-hidden className="flex flex-col items-end">
+                  <span className="text-xs text-mute">{label.short}</span>
                   {r.after !== 0 && (
                     <Money
                       cents={Math.abs(r.after)}
