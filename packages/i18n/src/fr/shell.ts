@@ -227,6 +227,7 @@ export const errors = {
       'Les alertes de sécurité arrivent toujours, on ne peut pas les couper.',
     invalid_unsubscribe_link:
       'Ce lien de désabonnement ne marche pas. Change plutôt tes réglages e-mail sur la page Moi.',
+    session_ended: 'Tu as été déconnecté sur cet appareil. Reconnecte-toi pour continuer.',
     mfa_required: "Termine d'abord la connexion en deux étapes.",
     invalid_payment_handle: 'Ça ne ressemble pas à un identifiant pour cette appli.',
     already_member: "Quelqu'un avec cet e-mail est déjà dans ce groupe.",

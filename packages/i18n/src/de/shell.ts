@@ -227,6 +227,8 @@ export const errors = {
       'Sicherheitshinweise kommen immer an, sie lassen sich nicht abschalten.',
     invalid_unsubscribe_link:
       'Dieser Abmeldelink funktioniert nicht. Ändere deine E-Mail-Einstellungen stattdessen auf der Ich-Seite.',
+    session_ended:
+      'Du wurdest auf diesem Gerät abgemeldet. Melde dich wieder an, um weiterzumachen.',
     mfa_required: 'Schließ zuerst die Anmeldung in zwei Schritten ab.',
     invalid_payment_handle: 'Das sieht nicht nach einem Namen für diese App aus.',
     already_member: 'Jemand mit dieser E-Mail ist schon in der Gruppe.',

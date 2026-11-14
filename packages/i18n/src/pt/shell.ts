@@ -226,6 +226,7 @@ export const errors = {
       'Avisos de segurança sempre chegam, por isso não dá para desligá-los.',
     invalid_unsubscribe_link:
       'Este link de cancelamento não funciona. Altere as configurações de e-mail na página Eu.',
+    session_ended: 'Sua sessão foi encerrada neste aparelho. Entre de novo para continuar.',
     mfa_required: 'Conclua primeiro a entrada em duas etapas.',
     invalid_payment_handle: 'Isso não parece um usuário para este app.',
     already_member: 'Alguém com esse e-mail já está neste grupo.',

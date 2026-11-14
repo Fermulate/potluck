@@ -37,13 +37,27 @@ export function attachAuth(client: PotluckClient) {
     current = session
     if (session) lastUserId = session.user.id
     emit()
+    if (event === 'SIGNED_OUT' && eventListeners.size === 0) unheardSignOut = true
     for (const listener of eventListeners) listener(event)
   })
 }
 
+/**
+ * A sign out that happened before anything listened: a page opened with a session that the
+ * server had already ended is signed out by its first requests, while the router is still
+ * loading. The first listener hears it late rather than never.
+ */
+let unheardSignOut = false
+
 /** Auth events (sign out in another tab, password recovery) without loading the client. */
 export function onAuthEvent(listener: (event: AuthChangeEvent) => void): () => void {
   eventListeners.add(listener)
+  if (unheardSignOut && !current) {
+    unheardSignOut = false
+    queueMicrotask(() => {
+      if (eventListeners.has(listener)) listener('SIGNED_OUT')
+    })
+  }
   return () => eventListeners.delete(listener)
 }
 
@@ -131,6 +145,35 @@ export async function signOut(scope: 'local' | 'global' = 'local') {
     return
   }
   await supabase.auth.signOut()
+}
+
+/**
+ * Signs this device out without asking the server. Used once the server has said the session is
+ * gone ("Sign out everywhere" or a password change on another device): the `SIGNED_OUT` event
+ * then clears the cache and leaves the app.
+ */
+export async function endEndedSession() {
+  const supabase = await loadSupabase()
+  const { data } = await supabase.auth.getSession()
+  if (data.session) await supabase.auth.signOut({ scope: 'local' })
+}
+
+/**
+ * Asks Supabase Auth whether this device's session still exists (`getUser` goes to the server,
+ * unlike `getSession`). A session ended elsewhere answers `session_not_found` (or 401/403 for a
+ * deleted account), and this device signs out. Network trouble changes nothing.
+ */
+export async function confirmSession(): Promise<void> {
+  const supabase = await loadSupabase()
+  const { data } = await supabase.auth.getSession()
+  if (!data.session) return
+  const { error } = await supabase.auth.getUser()
+  if (!error) return
+  const status = (error as { status?: number }).status
+  const gone =
+    error.name === 'AuthSessionMissingError' ||
+    (error.name === 'AuthApiError' && (status === 401 || status === 403))
+  if (gone) await endEndedSession()
 }
 
 /**

@@ -225,6 +225,7 @@ export const errors = {
       'Los avisos de seguridad siempre llegan, así que no se pueden desactivar.',
     invalid_unsubscribe_link:
       'Este enlace para darte de baja no funciona. Cambia los ajustes de correo en la página Yo.',
+    session_ended: 'Se cerró tu sesión en este dispositivo. Vuelve a entrar para seguir.',
     mfa_required: 'Termina primero el inicio de sesión en dos pasos.',
     invalid_payment_handle: 'Eso no parece un usuario para esta app.',
     already_member: 'Alguien con ese correo ya está en este grupo.',

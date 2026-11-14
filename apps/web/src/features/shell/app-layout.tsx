@@ -22,6 +22,7 @@ import { docsUrl } from '@/lib/docs'
 import { profileAvatar, useMyProfile } from '@/lib/queries'
 import { Wordmark } from './brand'
 import { QuickAddSheet } from './quick-add-sheet'
+import { useSessionCheck } from './use-session-check'
 
 const renderLink: RenderNavLink = ({ href, children, ...props }) => (
   <Link to={href} viewTransition {...props}>
@@ -76,6 +77,7 @@ export function AppLayout() {
   const { groupId } = useParams({ strict: false }) as { groupId?: string }
   const { data: unread = 0 } = useUnreadCount()
   useNotificationsRealtime()
+  useSessionCheck()
   useProfileLanguage()
   useSearchShortcut()
 
