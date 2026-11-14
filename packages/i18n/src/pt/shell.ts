@@ -60,7 +60,7 @@ export const app = {
     },
   },
   offline: {
-    banner: 'Você está offline. Algumas coisas esperam você voltar.',
+    banner: 'Sem conexão. Algumas coisas vão esperar.',
     form: 'Você está offline. O que você preencheu fica aqui; salve quando voltar.',
     paused: 'A conexão caiu ao salvar. Deixe esta página aberta: salva assim que você voltar.',
   },

@@ -57,7 +57,7 @@ export const app = {
     },
   },
   offline: {
-    banner: 'You are offline. Some things wait until you are back.',
+    banner: 'Offline for now. Some things will wait.',
     form: 'You are offline. What you entered stays here; save it once you are back.',
     paused: 'You went offline mid-save. Keep this page open: it saves as soon as you are back.',
   },
