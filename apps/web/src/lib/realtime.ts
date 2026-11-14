@@ -78,6 +78,7 @@ export function useRealtime(
     joined.current = onSubscribed
   })
   const key = JSON.stringify(subscriptions)
+  const catchUp = onSubscribed !== undefined
 
   useEffect(() => {
     if (!channel) return
@@ -96,20 +97,22 @@ export function useRealtime(
           handler.current(payload),
       )
     }
-    ch = ch.on(
-      'system' as never,
-      {} as never,
-      (message: { extension?: string; status?: string }) => {
-        if (message.extension === 'postgres_changes' && message.status === 'ok') {
-          joined.current?.()
-        }
-      },
-    )
+    if (catchUp) {
+      ch = ch.on(
+        'system' as never,
+        {} as never,
+        (message: { extension?: string; status?: string }) => {
+          if (message.extension === 'postgres_changes' && message.status === 'ok') {
+            joined.current?.()
+          }
+        },
+      )
+    }
     ch.subscribe((status) => {
       if (status === 'SUBSCRIBED') joined.current?.()
     })
     return () => {
       void supabase.removeChannel(ch)
     }
-  }, [channel, key])
+  }, [channel, key, catchUp])
 }
