@@ -90,6 +90,11 @@ jobs:
           printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_PUBLISHABLE_KEY=%s\nVITE_APP_URL=http://localhost:4173\n' "$API_URL" "$PUBLISHABLE_KEY" > .env.local
       - run: pnpm --filter @potluck/web exec playwright install --with-deps chromium webkit
       - run: pnpm e2e
+      # Live updates are silent when Realtime drops a change (a policy that errors or times out
+      # for the subscriber), so keep its log when a journey fails.
+      - name: Realtime log
+        if: failure()
+        run: docker logs supabase_realtime_potluck 2>&1 | tail -n 400
       - uses: actions/upload-artifact@v5
         if: failure()
         with:
