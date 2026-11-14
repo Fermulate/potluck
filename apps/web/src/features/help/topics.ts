@@ -21,6 +21,7 @@ export const HELP_TOPICS = {
   recurring: '/expenses/recurring/#make-an-expense-repeat',
   recurringEdit: '/expenses/recurring/#see-and-manage-repeating-expenses',
   receipts: '/expenses/receipts/#who-can-see-a-receipt',
+  receiptScan: '/expenses/receipts/#scan-a-receipt',
   simplifiedDebts: '/balances/#simplified-debts',
   settleUp: '/balances/settle-up/#settle-up',
   paymentLinks: '/balances/settle-up/#pay-with-an-app',

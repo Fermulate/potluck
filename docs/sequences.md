@@ -19,6 +19,7 @@ Participants used throughout:
 - [Delete and restore a group](#delete-and-restore-a-group)
 - [Group notes](#group-notes)
 - [Add an expense](#add-an-expense)
+- [Scan a receipt and attach files](#scan-a-receipt-and-attach-files)
 - [Settle up](#settle-up)
 - [Settle with a friend across groups](#settle-with-a-friend-across-groups)
 - [Remind someone who owes you](#remind-someone-who-owes-you)
@@ -330,6 +331,69 @@ sequenceDiagram
 ```
 
 The service worker shows the message. The PWA is built with `vite-plugin-pwa` in `generateSW` mode, and `apps/web/public/push-sw.js` (pulled in through `workbox.importScripts` in `apps/web/vite.config.ts`) handles `push` by showing a notification and `notificationclick` by focusing or opening the app at the payload's `url`, same origin only. The browser subscribes from the Me page, which stores the endpoint in `push_tokens`; sign out drops that row and the subscription first so the next account on the device does not inherit it.
+
+## Scan a receipt and attach files
+
+Scanning happens on the device and only fills the form; the expense is saved by `create_expense_with_attachments` when it has files, otherwise by the same `create_expense_v2` call as above ([ADR 21](adr/0021-receipt-scanning-and-attachments.md)).
+
+```mermaid
+sequenceDiagram
+  actor P as Person
+  participant W as Web (expense form)
+  participant SW as Service worker
+  participant O as OCR worker (tesseract.js)
+  participant C as core
+  participant S as Storage (receipts)
+  participant DB as DB
+
+  P->>W: Scan a receipt, pick or take a photo
+  W->>W: preview and OCR from the original photo,<br/>prepareImage (2000 px JPEG) only for upload
+  W->>W: import("tesseract.js") (lazy chunk)
+  W->>O: createWorker(eng, LSTM only) from /ocr/<version>/
+  O->>SW: worker.min.js, core .wasm.js, eng.traineddata.gz
+  alt first scan
+    SW->>SW: fetch from our origin, keep in cache potluck-ocr
+  else later scans, online or not
+    SW-->>O: from cache
+  end
+  O-->>W: text from a lossless grayscale copy (ocrImage pass 1)
+  W->>C: parseReceipt(text): itemsMatch?
+  opt items do not come to the total
+    W->>O: read again from an enlarged copy (pass 2)
+    opt still far off
+      W->>O: read the plain colour photo (pass 3)
+    end
+    W->>C: bestScan: the reading that comes closest
+  end
+  O-->>W: worker terminated
+  C-->>W: merchant, date, currency, total, items, tax, tip, discount, itemsMatch
+  W->>P: review sheet: the photo, one box per part, editable prices, a warning if off
+  P->>W: Fill in the expense
+  W->>W: description, date, amount, by-item draft (everyone on every line),<br/>photo added to the attachments (nothing saved)
+  P->>W: pick who had what, add more files, Save
+  par each new file
+    W->>S: upload receipts/:groupId/:file (policy: member, two-step done)
+  end
+  alt a new expense with files
+    W->>DB: rpc create_expense_with_attachments(payload, paths in order)
+    DB->>DB: save_expense, then the same file checks, in one transaction:<br/>one expense.created entry, nothing created if a file is refused
+  else a new expense without files
+    W->>DB: rpc create_expense_v2(payload)
+  end
+  opt an edit changed the files
+    W->>DB: rpc set_expense_attachments(id, paths in order)
+    DB->>DB: group share lock, member, own expense or admin,<br/>paths in the group folder and uploaded, five at most
+    DB->>DB: rewrite expense_attachments, receipt_path = first,<br/>activity expense.updated {attachments: {from, to}}
+    W->>S: remove files that left the list, and unused uploads (uploader or admin only)
+  end
+  Note over W,S: a failed save keeps its uploads for the retry;<br/>closing the form deletes them
+  DB-->>W: Realtime: expenses change
+  W->>W: invalidate the expense (its attachments key sits under it)
+```
+
+Daily, `receipts-sweep` (pg_cron, then the edge function with the shared secret) deletes files older than a day that no expense or attachment names, through the Storage API.
+
+On the expense page each photo opens full screen through a signed URL (one hour), with pinch, double tap and button zoom and a swipe to the next one. Members of other groups get no rows from `expense_attachments` and no object from the bucket.
 
 ## Settle up
 

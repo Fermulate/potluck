@@ -9,7 +9,7 @@ How Potluck protects its data, what it stores, and where the known weak spots ar
 - **Money history.** Who paid whom, how much, and when. Tampering with it moves real debts between friends.
 - **The social graph.** Who is in which group, who is friends with whom, who blocked whom.
 - **Plans.** Availability grids and event locations say where people will be and when.
-- **Receipts.** Photos can carry addresses, card digits and location metadata.
+- **Receipts.** Photos can carry addresses, card digits and location metadata. An expense holds up to five (photos and PDFs), all in the private `receipts` bucket.
 - **Account data.** Email addresses and display names.
 
 ### Who we defend against
@@ -40,6 +40,7 @@ Out of scope: a compromised Supabase or Cloudflare account, a malicious maintain
 These are real today. Each should become an issue.
 
 - **Closed accounts keep their calendar feed.** `delete_my_account()` does not delete the `calendar_feed_tokens` row, and `ics-feed` does not check `profiles.deleted_at`. A closed account that still has an open balance in a group keeps that group's membership, so its old feed URL keeps listing that group's events.
+- **Removed attachments can linger.** Taking a file off an expense deletes it only when the person removing it uploaded it or is an admin (the bucket's delete rule); otherwise the file stays in the group folder, readable by members with nothing pointing at it, until the daily `receipts-sweep` deletes it once it is a day old. Deleting an expense keeps its files (it can be restored).
 - **Avatar files outlive the account.** The profile's `avatar_path` is cleared, but the file stays in the public `avatars` bucket, at a URL anyone who saw it can still open.
 - **Admin invite rule mismatch.** `can()` in core lets admins create admin invites. The server refuses, so this is a UI bug, not a hole.
 - **Previews use production data.** PR preview builds point at the production Supabase project. Anyone who can open a PR that gets a preview deploy can ship code that runs against real accounts. Today previews only build for branches in this repository, because fork PRs do not get the Cloudflare secret.
@@ -79,7 +80,7 @@ These are real today. Each should become an issue.
 | Busy blocks, calendar links                               | `busy_blocks`, `calendar_connections`            | only you. OAuth tokens would live in Vault (feature is off)                                                                                              |
 | Notifications, push subscriptions                         | `notifications`, `push_tokens`                   | only you                                                                                                                                                 |
 | Notification settings                                     | `notification_prefs`                             | only you                                                                                                                                                 |
-| Receipts                                                  | private `receipts` bucket                        | members of the group (authenticated download or signed URL)                                                                                              |
+| Receipts and other attachments (up to five per expense)   | private `receipts` bucket, `expense_attachments` | members of the group (authenticated download or signed URL)                                                                                              |
 | Avatars, group covers                                     | public buckets                                   | anyone with the URL                                                                                                                                      |
 | Authenticator secrets, recovery code hashes               | `auth.mfa_factors`, `private.mfa_recovery_codes` | nobody through the API. Supabase operators                                                                                                               |
 
@@ -88,6 +89,7 @@ There is no analytics or tracking code in the app.
 ### What leaves the system
 
 - **Push messages** go through the browser vendor's push service (Google, Mozilla, Apple). Web push payloads are encrypted for the subscribing browser, so the service cannot read the title and body, which may include an expense description or a comment.
+- **Receipt scanning** sends nothing anywhere. The photo is read in a web worker on the device (tesseract.js); the reader's code and English model are downloaded from Potluck's own origin, not a CDN. The photo leaves the device only if the person keeps it attached and saves. Photos are re-encoded to JPEG before upload, which drops their EXIF metadata (location included); HEIC photos the browser cannot decode, and PDFs, are uploaded as they are.
 - **FX sync** sends nothing about users to Frankfurter. It requests public reference rates.
 - **Exports and backups** (Me, Your data; group settings) are built in the browser and saved to the person's device; nothing is sent elsewhere. `export_my_data()` returns only groups the caller is in now, with the names of everyone those groups mention, and the caller's own sign in email; anon cannot call it. Imports run as the importing member with every check `create_expense_v2` makes ([ADR 18](adr/0018-export-backup-and-import.md)).
 - **Calendar feeds** contain event titles, descriptions, locations and group names for whoever has the URL.

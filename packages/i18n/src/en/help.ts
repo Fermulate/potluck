@@ -15,6 +15,7 @@ export const help = {
     exchangeRates: 'Where the rate comes from',
     recurring: 'How repeating works',
     receipts: 'Who can see a receipt',
+    receiptScan: 'How scanning works',
     simplifiedDebts: 'About who pays whom',
     settleUp: 'About recording a payment',
     paymentLinks: 'How paying with an app works',

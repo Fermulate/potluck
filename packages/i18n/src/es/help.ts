@@ -17,6 +17,7 @@ export const help = {
     exchangeRates: 'De dónde sale el tipo de cambio',
     recurring: 'Cómo funcionan los gastos que se repiten',
     receipts: 'Quién puede ver un recibo',
+    receiptScan: 'Cómo funciona el escaneo',
     simplifiedDebts: 'Sobre quién paga a quién',
     settleUp: 'Sobre registrar un pago',
     roles: 'Quién puede hacer qué',

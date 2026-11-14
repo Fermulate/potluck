@@ -732,6 +732,59 @@ export type Database = {
           },
         ]
       }
+      expense_attachments: {
+        Row: {
+          content_type: string
+          created_at: string
+          expense_id: string
+          group_id: string
+          path: string
+          position: number
+          uploaded_by: string | null
+        }
+        ComputedFields: never
+        Insert: {
+          content_type: string
+          created_at?: string
+          expense_id: string
+          group_id: string
+          path: string
+          position: number
+          uploaded_by?: string | null
+        }
+        Update: {
+          content_type?: string
+          created_at?: string
+          expense_id?: string
+          group_id?: string
+          path?: string
+          position?: number
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'expense_attachments_expense_id_fkey'
+            columns: ['expense_id']
+            isOneToOne: false
+            referencedRelation: 'expenses'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expense_attachments_group_id_fkey'
+            columns: ['group_id']
+            isOneToOne: false
+            referencedRelation: 'groups'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'expense_attachments_uploaded_by_fkey'
+            columns: ['uploaded_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       expense_items: {
         Row: {
           amount_cents: number
@@ -1903,6 +1956,39 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_expense_with_attachments: {
+        Args: { attachments: Json; payload: Json }
+        Returns: {
+          amount_cents: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          description: string
+          discount_cents: number | null
+          event_id: string | null
+          fx_rate: number
+          group_id: string
+          id: string
+          is_refund: boolean
+          notes: string | null
+          paid_by: string
+          receipt_path: string | null
+          recurring_id: string | null
+          spent_at: string
+          split_type: Database['public']['Enums']['split_type']
+          tax_cents: number | null
+          tip_cents: number | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'expenses'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_friend_invite: {
         Args: { email: string }
         Returns: {
@@ -2324,6 +2410,7 @@ export type Database = {
         }[]
       }
       notify_mfa_recovered: { Args: { target: string }; Returns: undefined }
+      orphan_receipts: { Args: { max_count?: number }; Returns: string[] }
       record_mfa_recover_attempt: { Args: { target: string }; Returns: boolean }
       remind_debt: {
         Args: { group_id: string; note?: string; user_id: string }
@@ -2546,6 +2633,24 @@ export type Database = {
       }
       set_availability: { Args: { event_id: string; slots: Json }; Returns: number }
       set_default_split: { Args: { group_id: string; split: Json }; Returns: Json }
+      set_expense_attachments: {
+        Args: { attachments: Json; id: string }
+        Returns: {
+          content_type: string
+          created_at: string
+          expense_id: string
+          group_id: string
+          path: string
+          position: number
+          uploaded_by: string | null
+        }[]
+        SetofOptions: {
+          from: '*'
+          to: 'expense_attachments'
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       set_guest_availability: {
         Args: { code: string; name: string; slots: Json; token: string }
         Returns: {

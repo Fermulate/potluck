@@ -138,6 +138,99 @@ $$;
 ALTER FUNCTION "private"."add_pair_debt"("owed" "jsonb", "debtor" "uuid", "creditor" "uuid", "cents" numeric) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."apply_attachments"("eid" "uuid", "attachments" "jsonb", "log_edit" boolean) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  uid uuid := private.require_user();
+  my_role public.group_role;
+  gid uuid;
+  prev public.expenses;
+  old_list jsonb;
+  new_list jsonb := '[]'::jsonb;
+  entry jsonb;
+  item jsonb;
+  file_path text;
+begin
+  if attachments is null or jsonb_typeof(attachments) <> 'array' then
+    raise exception using message = 'invalid_payload', detail = 'Attachments must be a list', errcode = '22023';
+  end if;
+
+  select e.group_id into gid from public.expenses e where e.id = eid;
+  if gid is null then
+    raise exception using message = 'expense_not_found', detail = 'Expense not found', errcode = 'PT404';
+  end if;
+  perform 1 from public.groups g where g.id = gid for share;
+  my_role := private.require_member(gid);
+  perform private.require_group_open(gid);
+
+  select * into prev from public.expenses e where e.id = eid for update;
+  if my_role = 'member' and uid is distinct from prev.created_by and uid <> prev.paid_by
+     and not exists (select 1 from public.expense_payers y where y.expense_id = eid and y.user_id = uid) then
+    raise exception using message = 'not_allowed', detail = 'You can only edit your own expenses', errcode = '42501';
+  end if;
+  if prev.deleted_at is not null then
+    raise exception using message = 'expense_deleted', detail = 'Restore this expense before editing it', errcode = '23514';
+  end if;
+  if jsonb_array_length(attachments) > 5 then
+    raise exception using message = 'too_many_attachments', detail = 'An expense holds up to five attachments', errcode = '22023';
+  end if;
+
+  old_list := private.attachment_list(eid);
+  for entry in select x.v from jsonb_array_elements(attachments) as x (v) loop
+    file_path := case jsonb_typeof(entry)
+      when 'string' then entry #>> '{}'
+    end;
+    if file_path is null or file_path not like gid::text || '/%' or file_path like '%..%'
+       or char_length(file_path) > 300
+       or exists (select 1 from jsonb_array_elements(new_list) as n (v) where n.v ->> 'path' = file_path) then
+      raise exception using message = 'invalid_receipt_path', detail = 'Receipts must be stored under the group folder', errcode = '22023';
+    end if;
+    -- A file already on the expense keeps who added it and when; a new one must be uploaded.
+    select o.v into item from jsonb_array_elements(old_list) as o (v) where o.v ->> 'path' = file_path;
+    if item is null then
+      if not exists (
+        select 1 from storage.objects o where o.bucket_id = 'receipts' and o.name = file_path
+      ) then
+        raise exception using message = 'attachment_not_found', detail = 'That file has not been uploaded', errcode = 'PT404';
+      end if;
+      item := private.attachment_item(file_path, uid);
+    end if;
+    new_list := new_list || jsonb_build_array(item);
+  end loop;
+
+  if (select coalesce(jsonb_agg(x.v ->> 'path'), '[]'::jsonb) from jsonb_array_elements(new_list) as x (v))
+     is distinct from
+     (select coalesce(jsonb_agg(x.v ->> 'path'), '[]'::jsonb) from jsonb_array_elements(old_list) as x (v)) then
+    perform private.write_attachments(eid, gid, new_list);
+    -- The first file is the receipt older clients show. The row is touched even when it stays
+    -- the same, so realtime tells everyone looking at the expense. This function logs the edit.
+    perform set_config('potluck.expense_logged', eid::text, true);
+    update public.expenses e set receipt_path = new_list -> 0 ->> 'path' where e.id = eid;
+    if not log_edit then
+      return;
+    end if;
+    perform private.log_activity(gid, uid, 'expense.updated', eid, jsonb_build_object(
+      'description', prev.description,
+      'amount_cents', prev.amount_cents,
+      'currency', prev.currency,
+      'paid_by', prev.paid_by,
+      'is_refund', prev.is_refund,
+      'changes', jsonb_build_object('attachments', jsonb_build_object(
+        'from', jsonb_array_length(old_list),
+        'to', jsonb_array_length(new_list)
+      ))
+    ));
+  end if;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."apply_attachments"("eid" "uuid", "attachments" "jsonb", "log_edit" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."ascii_lower"("value" "text") RETURNS "text"
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO ''
@@ -147,6 +240,51 @@ $$;
 
 
 ALTER FUNCTION "private"."ascii_lower"("value" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."attachment_item"("file_path" "text", "who" "uuid") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select jsonb_build_object(
+    'path', file_path,
+    'content_type', private.receipt_content_type(file_path),
+    'uploaded_by', (
+      select p.id from public.profiles p
+      where p.id = coalesce(
+        (select private.try_uuid(o.owner_id) from storage.objects o
+         where o.bucket_id = 'receipts' and o.name = file_path),
+        who
+      )
+    ),
+    'created_at', now()
+  );
+$$;
+
+
+ALTER FUNCTION "private"."attachment_item"("file_path" "text", "who" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."attachment_list"("eid" "uuid") RETURNS "jsonb"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'path', a.path, 'content_type', a.content_type,
+        'uploaded_by', a.uploaded_by, 'created_at', a.created_at
+      )
+      order by a.position
+    ),
+    '[]'::jsonb
+  )
+  from public.expense_attachments a
+  where a.expense_id = eid;
+$$;
+
+
+ALTER FUNCTION "private"."attachment_list"("eid" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."befriend"("a" "uuid", "b" "uuid") RETURNS "void"
@@ -3522,6 +3660,32 @@ $$;
 ALTER FUNCTION "private"."random_code"("bytes" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."receipt_content_type"("file_path" "text") RETURNS "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $_$
+  select coalesce(
+    (
+      select o.metadata ->> 'mimetype' from storage.objects o
+      where o.bucket_id = 'receipts' and o.name = file_path
+        and o.metadata ->> 'mimetype' in
+          ('image/png', 'image/jpeg', 'image/webp', 'image/heic', 'application/pdf')
+    ),
+    case lower(substring(file_path from '\.([A-Za-z0-9]+)$'))
+      when 'pdf' then 'application/pdf'
+      when 'png' then 'image/png'
+      when 'webp' then 'image/webp'
+      when 'heic' then 'image/heic'
+      when 'heif' then 'image/heic'
+      else 'image/jpeg'
+    end
+  );
+$_$;
+
+
+ALTER FUNCTION "private"."receipt_content_type"("file_path" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."recovery_code_hash"("code" "text") RETURNS "text"
     LANGUAGE "sql" IMMUTABLE
     SET "search_path" TO ''
@@ -5017,6 +5181,51 @@ $$;
 ALTER FUNCTION "private"."sync_account_email"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."sync_receipt_attachment"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  list jsonb;
+  kept jsonb;
+begin
+  if tg_op = 'INSERT' then
+    if new.receipt_path is not null then
+      perform private.write_attachments(new.id, new.group_id,
+        jsonb_build_array(private.attachment_item(new.receipt_path, new.created_by)));
+    end if;
+    return null;
+  end if;
+
+  if new.receipt_path is not distinct from old.receipt_path then
+    return new;
+  end if;
+  list := private.attachment_list(new.id);
+  if new.receipt_path is not distinct from (list -> 0 ->> 'path') then
+    return new;
+  end if;
+
+  select coalesce(jsonb_agg(x.item order by x.ord), '[]'::jsonb) into kept
+  from jsonb_array_elements(list) with ordinality as x (item, ord)
+  where (x.item ->> 'path') is distinct from old.receipt_path
+    and (x.item ->> 'path') is distinct from new.receipt_path;
+  if new.receipt_path is not null then
+    kept := jsonb_build_array(private.attachment_item(new.receipt_path, auth.uid())) || kept;
+  end if;
+  select coalesce(jsonb_agg(x.item order by x.ord), '[]'::jsonb) into kept
+  from jsonb_array_elements(kept) with ordinality as x (item, ord)
+  where x.ord <= 5;
+
+  perform private.write_attachments(new.id, new.group_id, kept);
+  new.receipt_path := kept -> 0 ->> 'path';
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."sync_receipt_attachment"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."sync_single_payer"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -5145,6 +5354,24 @@ $_$;
 
 
 ALTER FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."write_attachments"("eid" "uuid", "gid" "uuid", "list" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  delete from public.expense_attachments a where a.expense_id = eid;
+  insert into public.expense_attachments
+    (expense_id, position, group_id, path, content_type, uploaded_by, created_at)
+  select eid, (x.ord - 1)::smallint, gid, x.item ->> 'path', x.item ->> 'content_type',
+         (x.item ->> 'uploaded_by')::uuid, coalesce((x.item ->> 'created_at')::timestamptz, now())
+  from jsonb_array_elements(coalesce(list, '[]'::jsonb)) with ordinality as x (item, ord);
+end;
+$$;
+
+
+ALTER FUNCTION "private"."write_attachments"("eid" "uuid", "gid" "uuid", "list" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."accept_friend_invite"("code" "text") RETURNS "uuid"
@@ -5585,6 +5812,24 @@ $$;
 
 
 ALTER FUNCTION "public"."create_expense_v2"("payload" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_expense_with_attachments"("payload" "jsonb", "attachments" "jsonb") RETURNS "public"."expenses"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  created public.expenses;
+begin
+  select * into created from private.save_expense(null, payload);
+  perform private.apply_attachments(created.id, attachments, false);
+  select * into created from public.expenses e where e.id = created.id;
+  return created;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_expense_with_attachments"("payload" "jsonb", "attachments" "jsonb") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."friend_invites" (
@@ -7783,6 +8028,23 @@ $$;
 ALTER FUNCTION "public"."notify_mfa_recovered"("target" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."orphan_receipts"("max_count" integer DEFAULT 500) RETURNS SETOF "text"
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select o.name from storage.objects o
+  where o.bucket_id = 'receipts'
+    and o.created_at < now() - interval '1 day'
+    and not exists (select 1 from public.expenses e where e.receipt_path = o.name)
+    and not exists (select 1 from public.expense_attachments a where a.path = o.name)
+  order by o.created_at
+  limit greatest(1, least(coalesce(max_count, 500), 1000));
+$$;
+
+
+ALTER FUNCTION "public"."orphan_receipts"("max_count" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -8837,6 +9099,45 @@ $$;
 
 
 ALTER FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."expense_attachments" (
+    "expense_id" "uuid" NOT NULL,
+    "position" smallint NOT NULL,
+    "group_id" "uuid" NOT NULL,
+    "path" "text" NOT NULL,
+    "content_type" "text" NOT NULL,
+    "uploaded_by" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "expense_attachments_content_type_check" CHECK (("content_type" = ANY (ARRAY['image/png'::"text", 'image/jpeg'::"text", 'image/webp'::"text", 'image/heic'::"text", 'application/pdf'::"text"]))),
+    CONSTRAINT "expense_attachments_in_group_folder" CHECK (("path" ~~ (("group_id")::"text" || '/%'::"text"))),
+    CONSTRAINT "expense_attachments_path_check" CHECK (("char_length"("path") <= 300)),
+    CONSTRAINT "expense_attachments_position_check" CHECK ((("position" >= 0) AND ("position" < 5)))
+);
+
+
+ALTER TABLE "public"."expense_attachments" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."expense_attachments" IS 'Receipts, photos and PDFs on an expense, in order (files in the receipts bucket). The first is also expenses.receipt_path.';
+
+
+
+CREATE OR REPLACE FUNCTION "public"."set_expense_attachments"("id" "uuid", "attachments" "jsonb") RETURNS SETOF "public"."expense_attachments"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  perform private.apply_attachments(set_expense_attachments.id, attachments, true);
+  return query
+  select a.* from public.expense_attachments a
+  where a.expense_id = set_expense_attachments.id
+  order by a.position;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_expense_attachments"("id" "uuid", "attachments" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."set_guest_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") RETURNS TABLE("guest_token" "text", "saved" integer)
@@ -11062,6 +11363,16 @@ ALTER TABLE ONLY "public"."events"
 
 
 
+ALTER TABLE ONLY "public"."expense_attachments"
+    ADD CONSTRAINT "expense_attachments_expense_id_path_key" UNIQUE ("expense_id", "path");
+
+
+
+ALTER TABLE ONLY "public"."expense_attachments"
+    ADD CONSTRAINT "expense_attachments_pkey" PRIMARY KEY ("expense_id", "position");
+
+
+
 ALTER TABLE ONLY "public"."expense_items"
     ADD CONSTRAINT "expense_items_pkey" PRIMARY KEY ("expense_id", "position");
 
@@ -11332,6 +11643,14 @@ CREATE INDEX "events_starts_at_idx" ON "public"."events" USING "btree" ("starts_
 
 
 
+CREATE INDEX "expense_attachments_group_idx" ON "public"."expense_attachments" USING "btree" ("group_id");
+
+
+
+CREATE INDEX "expense_attachments_uploaded_by_idx" ON "public"."expense_attachments" USING "btree" ("uploaded_by");
+
+
+
 CREATE INDEX "expense_payers_user_id_idx" ON "public"."expense_payers" USING "btree" ("user_id");
 
 
@@ -11593,6 +11912,14 @@ CREATE CONSTRAINT TRIGGER "expenses_notify_update" AFTER UPDATE ON "public"."exp
 
 
 CREATE CONSTRAINT TRIGGER "expenses_payers_sum_check" AFTER INSERT OR UPDATE OF "amount_cents" ON "public"."expenses" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "private"."check_expense_payers"();
+
+
+
+CREATE OR REPLACE TRIGGER "expenses_receipt_attachment_insert" AFTER INSERT ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."sync_receipt_attachment"();
+
+
+
+CREATE OR REPLACE TRIGGER "expenses_receipt_attachment_update" BEFORE UPDATE OF "receipt_path" ON "public"."expenses" FOR EACH ROW EXECUTE FUNCTION "private"."sync_receipt_attachment"();
 
 
 
@@ -11991,6 +12318,21 @@ ALTER TABLE ONLY "public"."events"
 
 ALTER TABLE ONLY "public"."events"
     ADD CONSTRAINT "events_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_attachments"
+    ADD CONSTRAINT "expense_attachments_expense_id_fkey" FOREIGN KEY ("expense_id") REFERENCES "public"."expenses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_attachments"
+    ADD CONSTRAINT "expense_attachments_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."expense_attachments"
+    ADD CONSTRAINT "expense_attachments_uploaded_by_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
 
 
@@ -12411,6 +12753,13 @@ CREATE POLICY "events: two-step sign in done" ON "public"."events" AS RESTRICTIV
 
 
 
+ALTER TABLE "public"."expense_attachments" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "expense_attachments: members read" ON "public"."expense_attachments" FOR SELECT TO "authenticated" USING (("group_id" = ANY (ARRAY( SELECT "private"."my_group_ids"() AS "my_group_ids"))));
+
+
+
 ALTER TABLE "public"."expense_items" ENABLE ROW LEVEL SECURITY;
 
 
@@ -12666,7 +13015,19 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "private"."apply_attachments"("eid" "uuid", "attachments" "jsonb", "log_edit" boolean) FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."ascii_lower"("value" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."attachment_item"("file_path" "text", "who" "uuid") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."attachment_list"("eid" "uuid") FROM PUBLIC;
 
 
 
@@ -13097,6 +13458,10 @@ REVOKE ALL ON FUNCTION "private"."queue_email"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."receipt_content_type"("file_path" "text") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."recovery_code_hash"("code" "text") FROM PUBLIC;
 
 
@@ -13245,6 +13610,10 @@ GRANT ALL ON FUNCTION "private"."valid_payment_handle"("kind" "text", "handle" "
 
 
 
+REVOKE ALL ON FUNCTION "private"."write_attachments"("eid" "uuid", "gid" "uuid", "list" "jsonb") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."accept_friend_invite"("code" "text") TO "service_role";
@@ -13308,6 +13677,12 @@ GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "service_r
 REVOKE ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_expense_v2"("payload" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."create_expense_with_attachments"("payload" "jsonb", "attachments" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_expense_with_attachments"("payload" "jsonb", "attachments" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_expense_with_attachments"("payload" "jsonb", "attachments" "jsonb") TO "service_role";
 
 
 
@@ -13624,6 +13999,11 @@ GRANT ALL ON FUNCTION "public"."notify_mfa_recovered"("target" "uuid") TO "servi
 
 
 
+REVOKE ALL ON FUNCTION "public"."orphan_receipts"("max_count" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."orphan_receipts"("max_count" integer) TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") TO "service_role";
 
@@ -13786,6 +14166,44 @@ GRANT ALL ON FUNCTION "public"."set_availability"("event_id" "uuid", "slots" "js
 REVOKE ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_default_split"("group_id" "uuid", "split" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."expense_attachments" TO "service_role";
+
+
+
+GRANT SELECT("expense_id") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("position") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("group_id") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("path") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("content_type") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("uploaded_by") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+GRANT SELECT("created_at") ON TABLE "public"."expense_attachments" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."set_expense_attachments"("id" "uuid", "attachments" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_expense_attachments"("id" "uuid", "attachments" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_expense_attachments"("id" "uuid", "attachments" "jsonb") TO "service_role";
 
 
 
@@ -14253,4 +14671,5 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- cron purge-deleted-groups '20 3 * * *': select private.purge_deleted_groups()
 -- cron purge-import-batches '*/15 * * * *': delete from private.import_batches where created_at < now() - interval '1 hour'
 -- cron purge-invite-sends '20 3 * * *': delete from private.invite_sends where sent_at < now() - interval '7 days'
+-- cron receipts-sweep '40 3 * * *': select private.invoke_edge_function('receipts-sweep')
 -- cron recurring-heads-up '5,35 * * * *': select private.send_recurring_heads_ups()

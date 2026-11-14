@@ -347,24 +347,91 @@ describe('ExpenseDetail', () => {
     expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
   })
 
-  it('links the receipt, as an image or a PDF', async () => {
-    db().respond('storage:receipts.createSignedUrl', {
-      data: { signedUrl: 'https://files.test/r.jpg' },
+  it('shows every attachment, opens photos full screen and links PDFs', async () => {
+    const file = (position: number, path: string, content_type: string) => ({
+      expense_id: ID,
+      position,
+      path: `${GROUP_ID}/${path}`,
+      content_type,
+      uploaded_by: ME,
+      created_at: '2026-11-05T00:00:00Z',
+    })
+    resetDb({
+      tables: {
+        expense_attachments: [
+          file(0, 'a.jpg', 'image/jpeg'),
+          file(1, 'b.pdf', 'application/pdf'),
+          file(2, 'c.png', 'image/png'),
+        ],
+      },
+    })
+    db().respond('storage:receipts.createSignedUrl', (call) => ({
+      data: { signedUrl: `https://files.test/${String((call as { args: unknown[] }).args[0])}` },
+    }))
+    renderDetail({ receipt_path: `${GROUP_ID}/a.jpg` })
+
+    expect(
+      await screen.findByRole('heading', { name: t('expenses.attachments.label') }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('link', {
+        name: t('expenses.attachments.open', {
+          name: t('expenses.attachments.pdf', { number: 2 }),
+        }),
+      }),
+    ).toHaveAttribute('href', `https://files.test/${GROUP_ID}/b.pdf`)
+
+    const photo = t('expenses.attachments.photo', { number: 1 })
+    fireEvent.click(
+      await screen.findByRole('button', { name: t('expenses.attachments.open', { name: photo }) }),
+    )
+    const viewer = await screen.findByRole('dialog', {
+      name: t('expenses.attachments.position', { number: 1, count: 3 }),
+    })
+    expect(
+      within(viewer).getByRole('link', { name: t('expenses.attachments.openOriginal') }),
+    ).toHaveAttribute('href', `https://files.test/${GROUP_ID}/a.jpg`)
+    fireEvent.click(
+      within(viewer).getByRole('button', { name: t('expenses.attachments.previous') }),
+    )
+    expect(
+      await screen.findByRole('dialog', {
+        name: t('expenses.attachments.position', { number: 3, count: 3 }),
+      }),
+    ).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'ArrowRight' })
+    expect(
+      await screen.findByRole('dialog', {
+        name: t('expenses.attachments.position', { number: 1, count: 3 }),
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('calls a single file the receipt, and shows nothing without one', async () => {
+    resetDb({
+      tables: {
+        expense_attachments: [
+          {
+            expense_id: ID,
+            position: 0,
+            path: `${GROUP_ID}/r.jpg`,
+            content_type: 'image/jpeg',
+            uploaded_by: ME,
+            created_at: '2026-11-05T00:00:00Z',
+          },
+        ],
+      },
     })
     const first = renderDetail({ receipt_path: `${GROUP_ID}/r.jpg` })
     expect(
-      await screen.findByRole('link', { name: t('expenses.receiptUpload.open') }),
-    ).toHaveAttribute('href', 'https://files.test/r.jpg')
+      await screen.findByRole('heading', { name: t('expenses.detail.receipt') }),
+    ).toBeInTheDocument()
     first.unmount()
 
     resetDb()
-    db().respond('storage:receipts.createSignedUrl', {
-      data: { signedUrl: 'https://files.test/r.pdf' },
-    })
-    renderDetail({ receipt_path: `${GROUP_ID}/r.PDF` })
-    expect(
-      await screen.findByRole('link', { name: t('expenses.receiptUpload.pdf') }),
-    ).toHaveAttribute('href', 'https://files.test/r.pdf')
+    renderDetail()
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('heading', { name: t('expenses.detail.receipt') })).toBeNull()
   })
 
   it('says when the expense cannot be found', async () => {

@@ -36,6 +36,7 @@ const ORDER = [
   'notes',
   'is_refund',
   'receipt',
+  'attachments',
   'event_id',
 ] as const
 
@@ -237,6 +238,18 @@ export function describeChanges(
             : t('expenses.history.change.receiptRemoved'),
         )
         break
+      case 'attachments': {
+        const from = num(change.from) ?? 0
+        const to = num(change.to) ?? 0
+        lines.push(
+          to > from
+            ? t('expenses.history.change.attachmentsAdded', { count: to - from })
+            : to < from
+              ? t('expenses.history.change.attachmentsRemoved', { count: from - to })
+              : t('expenses.history.change.attachments'),
+        )
+        break
+      }
       case 'event_id':
         lines.push(t('expenses.history.change.plan'))
         break

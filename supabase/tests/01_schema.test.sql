@@ -10,12 +10,12 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(126);
+select plan(130);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
   'groups', 'group_members', 'group_invites',
-  'expenses', 'expense_splits', 'expense_payers', 'expense_items', 'recurring_expenses', 'settlements', 'fx_rates',
+  'expenses', 'expense_splits', 'expense_payers', 'expense_items', 'expense_attachments', 'recurring_expenses', 'settlements', 'fx_rates',
   'payment_methods', 'debt_reminders',
   'events', 'availability', 'availability_requests', 'event_rsvps', 'busy_blocks',
   'calendar_connections',
@@ -76,6 +76,9 @@ select has_function('public', 'make_expense_recurring', array['uuid', 'recurrenc
 select has_function('public', 'import_expenses', array['uuid', 'jsonb', 'text', 'uuid', 'text'], 'import_expenses(group_id, rows, source, batch_id, fingerprint)');
 select has_function('public', 'import_stage', array['uuid', 'uuid', 'jsonb'], 'import_stage(batch_id, group_id, rows)');
 select has_function('public', 'export_my_data', array[]::text[], 'export_my_data');
+select has_function('public', 'set_expense_attachments', array['uuid', 'jsonb'], 'set_expense_attachments');
+select has_function('public', 'orphan_receipts', array['integer'], 'orphan_receipts');
+select has_function('public', 'create_expense_with_attachments', array['jsonb', 'jsonb'], 'create_expense_with_attachments');
 select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text', 'text'], 'settle_up');
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
@@ -265,6 +268,10 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'purge-import-batches' and schedule = '*/15 * * * *'),
   'unfinished imports are cleared every quarter hour'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'receipts-sweep' and schedule = '40 3 * * *'),
+  'orphaned receipt files are swept daily'
 );
 
 -- Grants: clients never write money tables directly.
