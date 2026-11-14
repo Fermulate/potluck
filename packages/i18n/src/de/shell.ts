@@ -169,6 +169,11 @@ export const errors = {
   updateRequired: 'Diese Version ist veraltet. Lade neu, um die aktuelle zu bekommen.',
   groupNotFound:
     'Diese Gruppe steht nicht auf deiner Liste. Vielleicht bist du ausgetreten oder der Link stimmt nicht.',
+  screen: {
+    title: 'Na, da ist was übergelaufen.',
+    body: 'Auf dieser Seite ist etwas kaputtgegangen. Versuch es nochmal oder fang auf der Startseite neu an.',
+    home: 'Zur Startseite',
+  },
   codes: {
     not_authenticated: 'Melde dich dafür an.',
     account_deleted: 'Dieses Konto wurde geschlossen.',

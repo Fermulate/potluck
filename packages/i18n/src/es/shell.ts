@@ -168,6 +168,11 @@ export const errors = {
   rateLimited: 'Con calma. Inténtalo de nuevo en un momento.',
   updateRequired: 'Esta versión está desactualizada. Recarga para tener la última.',
   groupNotFound: 'Ese grupo no está en tu lista. Quizá saliste, o el enlace no es correcto.',
+  screen: {
+    title: 'Vaya, algo se derramó.',
+    body: 'Algo falló en esta página. Inténtalo de nuevo o vuelve al inicio.',
+    home: 'Ir al inicio',
+  },
   codes: {
     not_authenticated: 'Inicia sesión para hacer eso.',
     account_deleted: 'Esta cuenta se ha cerrado.',

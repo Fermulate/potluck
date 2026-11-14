@@ -6,8 +6,9 @@ interface PlanSearch {
 }
 
 export const Route = createFileRoute('/_app/new/plan')({
-  validateSearch: (search: Record<string, unknown>): PlanSearch =>
-    typeof search.groupId === 'string' && search.groupId ? { groupId: search.groupId } : {},
+  validateSearch: (search: Record<string, unknown>): PlanSearch => ({
+    groupId: typeof search.groupId === 'string' && search.groupId ? search.groupId : undefined,
+  }),
   component: NewPlanRoute,
 })
 

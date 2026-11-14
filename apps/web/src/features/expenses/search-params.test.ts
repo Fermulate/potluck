@@ -24,7 +24,8 @@ describe('search params', () => {
       preset: 'rent',
     })
     expect(validateNewExpenseSearch({ preset: 'utilities' }).preset).toBe('utilities')
-    expect(validateNewExpenseSearch({ preset: 'yacht' })).not.toHaveProperty('preset')
+    expect(validateNewExpenseSearch({ preset: 'yacht' }).preset).toBeUndefined()
+    expect(validateNewExpenseSearch({ preset: 5 }).preset).toBeUndefined()
   })
 
   it('accepts a positive whole amount for settling, as a number or a string', () => {

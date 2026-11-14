@@ -1,7 +1,9 @@
 /**
  * Search params for /search and /activity. Imported by route files, so nothing heavy here.
- * Anything malformed is dropped.
+ * Anything malformed is dropped, and every key is returned (undefined when dropped) so the raw
+ * value can never show through (see `src/lib/search.ts`).
  */
+import { textValue } from '@/lib/search'
 import type { MoneyFilters } from './filter-state'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -23,22 +25,24 @@ export interface MoneySearch {
 }
 
 export function validateMoneySearch(search: Record<string, unknown>): MoneySearch {
-  const out: MoneySearch = {}
-  if (typeof search.q === 'string' && search.q.trim()) out.q = search.q.slice(0, 200)
-  const groupId = uuid(search.groupId)
-  if (groupId) out.groupId = groupId
-  const person = uuid(search.person)
-  if (person) out.person = person
-  const from = day(search.from)
-  if (from) out.from = from
-  const to = day(search.to)
-  if (to) out.to = to
-  if (typeof search.cats === 'string') {
-    const cats = search.cats.split(',').filter((c) => CATEGORY.test(c))
-    if (cats.length) out.cats = cats.join(',')
+  // `?q=30` is read as the number 30: it was typed as text, so search for "30".
+  const q = textValue(search.q)
+  const cats =
+    typeof search.cats === 'string'
+      ? search.cats
+          .split(',')
+          .filter((c) => CATEGORY.test(c))
+          .join(',')
+      : ''
+  return {
+    q: q?.trim() ? q.slice(0, 200) : undefined,
+    groupId: uuid(search.groupId),
+    person: uuid(search.person),
+    from: day(search.from),
+    to: day(search.to),
+    cats: cats || undefined,
+    kind: search.kind === 'expense' || search.kind === 'payment' ? search.kind : undefined,
   }
-  if (search.kind === 'expense' || search.kind === 'payment') out.kind = search.kind
-  return out
 }
 
 export interface ActivitySearch {
@@ -47,12 +51,7 @@ export interface ActivitySearch {
 }
 
 export function validateActivitySearch(search: Record<string, unknown>): ActivitySearch {
-  const out: ActivitySearch = {}
-  const groupId = uuid(search.groupId)
-  if (groupId) out.groupId = groupId
-  const person = uuid(search.person)
-  if (person) out.person = person
-  return out
+  return { groupId: uuid(search.groupId), person: uuid(search.person) }
 }
 
 /** A group's expense list filters, in the Expenses tab's address. */
@@ -60,13 +59,7 @@ export type GroupListSearch = Pick<MoneySearch, 'person' | 'from' | 'to' | 'cats
 
 export function validateGroupListSearch(search: Record<string, unknown>): GroupListSearch {
   const { person, from, to, cats, kind } = validateMoneySearch(search)
-  const out: GroupListSearch = {}
-  if (person) out.person = person
-  if (from) out.from = from
-  if (to) out.to = to
-  if (cats) out.cats = cats
-  if (kind) out.kind = kind
-  return out
+  return { person, from, to, cats, kind }
 }
 
 export function filtersFromSearch(search: GroupListSearch): MoneyFilters {
