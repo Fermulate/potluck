@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CURRENCIES_IN_USE, isCurrencyInUse } from './in-use'
+import { CURRENCIES_IN_USE } from './in-use'
 
 describe('currencies in use', () => {
   it('lists each code once, three capital letters, in order', () => {
@@ -10,9 +10,8 @@ describe('currencies in use', () => {
 
   it('keeps the money people pay with, X codes that are money included', () => {
     for (const code of ['USD', 'EUR', 'GBP', 'JPY', 'SLE', 'XAF', 'XOF', 'XPF', 'XCD', 'ZWG']) {
-      expect(isCurrencyInUse(code), code).toBe(true)
+      expect(CURRENCIES_IN_USE, code).toContain(code)
     }
-    expect(isCurrencyInUse(' eur ')).toBe(true)
   })
 
   it('leaves out withdrawn currencies, fund codes and X codes that are not money', () => {
@@ -30,7 +29,7 @@ describe('currencies in use', () => {
       'XTS',
       'XXX',
     ]) {
-      expect(isCurrencyInUse(code), code).toBe(false)
+      expect(CURRENCIES_IN_USE, code).not.toContain(code)
     }
   })
 })

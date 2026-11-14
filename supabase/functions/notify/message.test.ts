@@ -54,11 +54,8 @@ test("a new expense push says the reader's part, like Splitwise", () => {
     message(dinner({ share_cents: 3000, paid_cents: 6000 })).body,
     'Dinner: you get back $30.00',
   )
-  // Rows from before paid_cents count the single payer.
-  assert.equal(
-    message(dinner({ share_cents: 3000, paid_by: 'u1' })).body,
-    'Dinner: you get back $60.00',
-  )
+  // Rows from before paid_cents cannot tell who paid what: just the expense.
+  assert.equal(message(dinner({ share_cents: 3000, paid_by: 'u1' })).body, 'Dinner')
   assert.equal(message(dinner({ share_cents: 0, paid_cents: 0 })).body, 'Dinner')
   // In the reader's language and number format.
   assert.match(

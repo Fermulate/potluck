@@ -4,9 +4,10 @@ import { Button, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { History, Plus, Trash2 } from 'lucide-react'
-import { todayIn } from '@/features/expenses/format'
+import { groupTitle, todayIn } from '@/features/expenses/format'
 import { useGroupMoneyRealtime, useMoneyGroup, useTimeZone } from '@/features/expenses/money-data'
 import { Help } from '@/features/help/help'
+import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { LoadProblem } from './load-problem'
 import { hasLoadProblem } from './load-state'
@@ -28,6 +29,7 @@ export function GroupTotals({ groupId }: { groupId: string }) {
   useGroupMoneyRealtime(groupId)
   const timeZone = useTimeZone()
   const group = useMoneyGroup(groupId)
+  const me = useUserId()
   const summary = useQuery(insightsQueries.groupSpending(supabase, groupId))
   const thisMonth = `${todayIn(timeZone).slice(0, 7)}-01`
 
@@ -55,15 +57,19 @@ export function GroupTotals({ groupId }: { groupId: string }) {
   if (summary.isPending || group.isPending) return <TotalsSkeleton />
 
   if (!summary.data?.length || !group.data) {
+    const archived = !!group.data?.archived_at
     return (
       <div className="flex flex-col gap-5">
         <EmptyState
           illustration="📊"
           title={t('insights.empty.title')}
-          description={t('insights.empty.body')}
+          description={
+            archived && group.data
+              ? t('expenses.form.archived', { group: groupTitle(group.data, me) })
+              : t('insights.empty.body')
+          }
           action={
-            // An archived group takes no new expenses.
-            group.data?.archived_at ? undefined : (
+            archived ? undefined : (
               <Button asChild leadingIcon={<Plus />}>
                 <Link to="/new/expense" search={{ groupId }}>
                   {t('empty.expenses.action')}

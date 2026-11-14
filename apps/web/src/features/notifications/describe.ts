@@ -98,12 +98,12 @@ function summaryLine(groups: unknown, ctx: DescribeContext): string {
 /**
  * What a new expense does to the reader's balance, in its own currency: what they paid minus
  * their share, turned around for a refund (core `expenseEffect`). Positive means they get money
- * back. Rows from before `paid_cents` was stored count the single payer (`paid_by`).
+ * back. Zero for rows from before `paid_cents` was stored.
  */
-function viewerNet(viewerId: string, d: Data, amountCents: number | undefined): number {
+function viewerNet(d: Data): number {
   const share = num(d.share_cents)
-  if (share === undefined) return 0
-  const paid = num(d.paid_cents) ?? (str(d.paid_by) === viewerId ? (amountCents ?? 0) : 0)
+  const paid = num(d.paid_cents)
+  if (share === undefined || paid === undefined) return 0
   return (d.is_refund === true ? -1 : 1) * (paid - share)
 }
 
@@ -139,7 +139,7 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
 
   switch (n.type) {
     case 'expense.created': {
-      const net = viewerNet(n.user_id, d, amountCents)
+      const net = viewerNet(d)
       const yours = net ? formatMoney(Math.abs(net), currency) : ''
       return {
         title: isRefund

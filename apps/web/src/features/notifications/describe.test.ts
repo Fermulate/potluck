@@ -63,13 +63,13 @@ describe('describeNotification', () => {
         ctx,
       ).body,
     ).toBe('Ben added Dinner: $90.00. You get back $30.00.')
-    // Older rows without paid_cents count the single payer.
+    // Older rows without paid_cents cannot tell who paid what: just the expense.
     expect(
       describeNotification(
         row('expense.created', { ...dinner, paid_by: 'me', share_cents: 3000 }),
         ctx,
       ).body,
-    ).toBe('Ben added Dinner: $90.00. You get back $60.00.')
+    ).toBe('Ben added Dinner: $90.00')
     // Square, or no share at all: just the expense.
     expect(
       describeNotification(

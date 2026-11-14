@@ -48,12 +48,13 @@ const int = (value: unknown): number | undefined =>
 /**
  * What a new expense does to the recipient's balance, in its own currency: what they paid minus
  * their share, turned around for a refund (core `expenseEffect`). Positive means money back.
+ * Zero for rows from before `paid_cents` was stored.
  */
 export function recipientNet(n: NotificationRow): number {
   const d = n.data
   const share = int(d.share_cents)
-  if (share === undefined) return 0
-  const paid = int(d.paid_cents) ?? (d.paid_by === n.user_id ? (int(d.amount_cents) ?? 0) : 0)
+  const paid = int(d.paid_cents)
+  if (share === undefined || paid === undefined) return 0
   return (d.is_refund === true ? -1 : 1) * (paid - share)
 }
 

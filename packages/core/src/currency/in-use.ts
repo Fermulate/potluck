@@ -162,10 +162,3 @@ export const CURRENCIES_IN_USE: readonly string[] = [
   'ZMW',
   'ZWG',
 ]
-
-const IN_USE = new Set(CURRENCIES_IN_USE)
-
-/** Whether `code` is a currency people pay with today (see `CURRENCIES_IN_USE`). */
-export function isCurrencyInUse(code: string): boolean {
-  return IN_USE.has(code.trim().toUpperCase())
-}

@@ -3,7 +3,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { db, resetDb } from '@/test/supabase'
-import { GROUP_ID, ME, seededClient } from '../expenses/test-utils'
+import { moneyKeys } from '@potluck/api'
+import { GROUP_ID, group, ME, seededClient } from '../expenses/test-utils'
 import { GroupTotals } from './group-totals'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -43,12 +44,12 @@ const flat = [
   row({ month: '2026-04-01', payments_received_cents: 3000 }),
 ]
 
-function renderTotals(rows: object[] = flat) {
+function renderTotals(rows: object[] = flat, client = seededClient()) {
   resetDb().respond('rpc:spending_summary', { data: rows })
   return renderWithProviders(<GroupTotals groupId={GROUP_ID} />, {
     path: '/groups/$groupId/totals',
     url: `/groups/${GROUP_ID}/totals`,
-    client: seededClient(),
+    client,
   })
 }
 
@@ -153,5 +154,23 @@ describe('GroupTotals', () => {
       `/new/expense?groupId=${GROUP_ID}`,
     )
     expect(ME).toBeTruthy()
+  })
+
+  it('shows the archived note instead of a first expense in an archived group', async () => {
+    renderTotals(
+      [],
+      seededClient((c) =>
+        c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+          ...group,
+          archived_at: '2026-11-01T00:00:00Z',
+        }),
+      ),
+    )
+    expect(await screen.findByText(t('insights.empty.title'))).toBeInTheDocument()
+    expect(
+      screen.getByText(t('expenses.form.archived', { group: 'Hike crew' })),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(t('insights.empty.body'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('empty.expenses.action') })).not.toBeInTheDocument()
   })
 })
