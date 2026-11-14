@@ -2750,6 +2750,38 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      settle_up_v3: {
+        Args: {
+          amount_cents: number
+          currency?: string
+          from_user: string
+          group_id: string
+          note?: string
+          request_id?: string
+          settled_on?: string
+          to_user: string
+        }
+        Returns: {
+          amount_cents: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          deleted_at: string | null
+          from_user: string
+          fx_rate: number
+          group_id: string
+          id: string
+          note: string | null
+          settled_at: string
+          to_user: string
+        }
+        SetofOptions: {
+          from: '*'
+          to: 'settlements'
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       settle_with_friend: {
         Args: { amounts?: Json; friend_id: string; note?: string; settled_on?: string }
         Returns: {

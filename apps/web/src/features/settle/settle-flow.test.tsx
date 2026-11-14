@@ -99,6 +99,7 @@ describe('SettleFlow', () => {
         currency: undefined,
         note: 'Venmo',
         settledOn: null,
+        requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       }),
     )
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
@@ -135,10 +136,17 @@ describe('SettleFlow', () => {
     expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('47.50')
     expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('Venmo')
 
+    // One action: Record payment itself turns into Try again.
+    expect(screen.getAllByRole('button', { name: t('common.retry') })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Record payment' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
     expect(pay).toHaveBeenCalledTimes(2)
     expect(pay.mock.calls[1]![1]).toMatchObject({ toUser: BEN, amountCents: 4750, note: 'Venmo' })
+    // The same request id both times, so a payment that did land is not recorded twice.
+    const key = (pay.mock.calls[0]![1] as { requestId?: string }).requestId
+    expect(key).toMatch(/^[0-9a-f-]{36}$/)
+    expect((pay.mock.calls[1]![1] as { requestId?: string }).requestId).toBe(key)
   })
 
   it('keeps a refused payment a refusal after the connection goes', async () => {

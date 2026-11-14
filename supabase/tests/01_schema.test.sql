@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(131);
+select plan(132);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -83,6 +83,7 @@ select has_function('public', 'settle_up', array['uuid', 'uuid', 'bigint', 'text
 select has_function('public', 'delete_settlement', array['uuid'], 'delete_settlement');
 select has_function('public', 'simplified_debts', array['uuid'], 'simplified_debts');
 select has_function('public', 'settle_up_v2', array['uuid', 'uuid', 'uuid', 'bigint', 'text', 'text', 'date'], 'settle_up_v2');
+select has_function('public', 'settle_up_v3', array['uuid', 'uuid', 'uuid', 'bigint', 'text', 'text', 'date', 'uuid'], 'settle_up_v3');
 select has_function('public', 'update_settlement', array['uuid', 'jsonb'], 'update_settlement');
 select has_function('public', 'restore_settlement', array['uuid'], 'restore_settlement');
 select has_function('public', 'settle_all', array['uuid', 'date', 'text'], 'settle_all');

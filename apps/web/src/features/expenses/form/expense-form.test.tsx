@@ -73,6 +73,7 @@ describe('ExpenseForm', () => {
       notes: null,
       spent_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       receipt_path: null,
+      request_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     })
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
   })
@@ -517,9 +518,15 @@ describe('ExpenseForm offline', () => {
     window.dispatchEvent(leave)
     expect(leave.defaultPrevented).toBe(true)
 
+    // One action: the save button itself turns into Try again.
+    expect(screen.getAllByRole('button', { name: t('common.retry') })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: t('expenses.form.save') })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
     expect(create).toHaveBeenCalledTimes(2)
+    // The same request id both times, so the server hands back the first save if it landed.
+    const firstKey = (create.mock.calls[0]![1] as { request_id?: string }).request_id
+    expect(firstKey).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(create.mock.calls[1]![1]).toEqual(create.mock.calls[0]![1])
     expect(create.mock.calls[1]![1]).toMatchObject({
       description: 'Cabin deposit',

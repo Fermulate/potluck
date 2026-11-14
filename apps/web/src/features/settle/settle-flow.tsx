@@ -34,6 +34,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { useUserId } from '@/lib/auth'
 import { isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
+import { newRequestId } from '@/lib/request-id'
 import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
 import { useDebts } from '@/features/balances/use-debts'
@@ -329,6 +330,9 @@ export function PaymentForm({
         : undefined
 
   const [unreached, setUnreached] = useState(false)
+  // One id per payment, sent with every try: a retry after a lost reply returns the payment the
+  // first try recorded instead of recording it twice.
+  const [requestId] = useState(newRequestId)
   const pay = useMutation({
     onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
@@ -351,6 +355,7 @@ export function PaymentForm({
         currency: currency === group.currency ? undefined : currency,
         note: trimmed,
         settledOn: day === today ? null : day,
+        requestId,
       })
     },
     onSuccess: (_row, cents) => {
@@ -430,7 +435,9 @@ export function PaymentForm({
               {error}
             </p>
           )}
-          <OfflineSaveNote failed={unreached} onRetry={submit} />
+          {/* After a lost reply the button itself becomes Try again (one action; the request id
+              makes it safe). */}
+          <OfflineSaveNote failed={unreached} />
           <Button
             type="submit"
             form={formId}
@@ -440,7 +447,11 @@ export function PaymentForm({
             disabled={!online && !pay.isPending}
             leadingIcon={<Check />}
           >
-            {editing ? t('settle.saveChanges') : t('settle.recordPayment')}
+            {unreached
+              ? t('common.retry')
+              : editing
+                ? t('settle.saveChanges')
+                : t('settle.recordPayment')}
           </Button>
         </div>
       }

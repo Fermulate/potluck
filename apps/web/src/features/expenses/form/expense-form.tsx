@@ -57,6 +57,7 @@ import { useUserId } from '@/lib/auth'
 import { errorCode, isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
 import { OfflineSaveNote } from '@/features/shell/offline'
+import { newRequestId } from '@/lib/request-id'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
@@ -321,6 +322,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const [saveDefault, setSaveDefault] = useState(false)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  // One id per new expense, sent with every try: a retry after a lost reply returns the expense
+  // the first try saved instead of adding it twice.
+  const [requestId] = useState(newRequestId)
 
   const total = effectiveAmount(draft, amount)
   const preview = previewSplit(draft, total)
@@ -491,6 +495,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         group_id: group.id,
         ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
         ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
+        request_id: requestId,
       }
       return withFiles(
         paths.length > 0
@@ -620,7 +625,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               </p>
             )
           )}
-          <OfflineSaveNote failed={unreached} onRetry={onSubmit} />
+          {/* After a lost reply the save button itself becomes Try again: one action, and the
+              request id makes it safe to press. */}
+          <OfflineSaveNote failed={unreached} />
           <Button
             type="submit"
             form={formId}
@@ -629,7 +636,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             disabled={!online && !saving}
             className="w-full sm:w-auto"
           >
-            {editing ? t('expenses.form.saveChanges') : t('expenses.form.save')}
+            {unreached
+              ? t('common.retry')
+              : editing
+                ? t('expenses.form.saveChanges')
+                : t('expenses.form.save')}
           </Button>
         </div>
       }
