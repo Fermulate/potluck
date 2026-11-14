@@ -62,8 +62,8 @@ export const app = {
   offline: {
     banner: 'Sin conexión. Algunas cosas esperarán.',
     form: 'Estás sin conexión. Lo que escribiste se queda aquí; guárdalo cuando vuelvas.',
-    paused:
-      'Te quedaste sin conexión al guardar. Deja esta página abierta: se guarda en cuanto vuelvas.',
+    failed:
+      'No pudimos conectar con Potluck. Lo que escribiste sigue aquí; vuelve a intentarlo cuando tengas conexión.',
   },
 } satisfies Translation<typeof en.app>
 

@@ -62,8 +62,8 @@ export const app = {
   offline: {
     banner: 'Hors ligne. Certaines choses attendront.',
     form: 'Tu es hors ligne. Ce que tu as saisi reste ici ; enregistre dès que tu es de retour.',
-    paused:
-      "La connexion a coupé pendant l'enregistrement. Garde cette page ouverte : tout sera enregistré dès ton retour.",
+    failed:
+      'Impossible de joindre Potluck. Ce que tu as saisi est toujours là ; réessaie quand tu es de retour.',
   },
 } satisfies Translation<typeof en.app>
 

@@ -48,7 +48,7 @@ const FETCH_FAILURES = [
   'Network request failed',
 ]
 
-function isNetworkError(error: unknown): boolean {
+export function isNetworkError(error: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
   if (!error || typeof error !== 'object' || errorCode(error)) return false
   const message = (error as { message?: unknown }).message

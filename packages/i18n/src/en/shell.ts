@@ -59,7 +59,7 @@ export const app = {
   offline: {
     banner: 'Offline for now. Some things will wait.',
     form: 'You are offline. What you entered stays here; save it once you are back.',
-    paused: 'You went offline mid-save. Keep this page open: it saves as soon as you are back.',
+    failed: 'Could not reach Potluck. What you typed is still here; try again when you are back.',
   },
 } as const
 

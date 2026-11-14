@@ -62,8 +62,8 @@ export const app = {
   offline: {
     banner: 'Offline. Manches muss kurz warten.',
     form: 'Du bist offline. Deine Eingaben bleiben hier; speichere, sobald du wieder online bist.',
-    paused:
-      'Beim Speichern ging die Verbindung weg. Lass die Seite offen: Es wird gespeichert, sobald du zurück bist.',
+    failed:
+      'Potluck war nicht erreichbar. Deine Eingaben sind noch da; versuch es nochmal, sobald du wieder online bist.',
   },
 } satisfies Translation<typeof en.app>
 

@@ -121,6 +121,23 @@ describe('SettleFlow', () => {
     expect(pay.mock.calls[0]![1]).toMatchObject({ toUser: BEN, amountCents: 4750 })
   })
 
+  it('keeps the payment when the connection drops while recording, and Try again records it once', async () => {
+    setup({ to: BEN })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), { target: { value: 'Venmo' } })
+    pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    expect(pay).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('47.50')
+    expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('Venmo')
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
+    expect(pay).toHaveBeenCalledTimes(2)
+    expect(pay.mock.calls[1]![1]).toMatchObject({ toUser: BEN, amountCents: 4750, note: 'Venmo' })
+  })
+
   it('says what is left after a partial payment', async () => {
     setup({ to: BEN, amount: 2000 })
     fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))

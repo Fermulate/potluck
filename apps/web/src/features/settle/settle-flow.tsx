@@ -31,6 +31,7 @@ import { ArrowLeftRight, Check, ChevronRight } from 'lucide-react'
 import { animate, motion } from 'motion/react'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
+import { isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
 import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
@@ -358,12 +359,15 @@ export function PaymentForm({
       }
       onDone({ from: payer, to: payee, owedBefore: owed, paid: cents, currency })
     },
-    onError: (e) => toast.error(moneyErrorMessage(e)),
+    onError: (e) => {
+      if (!isNetworkError(e)) toast.error(moneyErrorMessage(e))
+    },
   })
 
   // Offline, recording waits with the form filled in, as in the expense form.
   const online = useOnline()
-  useWarnBeforeUnload(pay.isPaused || (!online && amount !== null))
+  const unreached = pay.isError && isNetworkError(pay.error)
+  useWarnBeforeUnload(unreached || (!online && amount !== null))
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
@@ -421,7 +425,7 @@ export function PaymentForm({
               {error}
             </p>
           )}
-          <OfflineSaveNote paused={pay.isPaused} />
+          <OfflineSaveNote failed={unreached} onRetry={submit} />
           <Button
             type="submit"
             form={formId}

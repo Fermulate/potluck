@@ -1,7 +1,6 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { onlineManager } from '@tanstack/react-query'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { goOffline, goOnline } from '@/test/network'
@@ -472,10 +471,7 @@ describe('ExpenseForm', () => {
 
 describe('ExpenseForm offline', () => {
   beforeEach(() => create.mockClear())
-  afterEach(() => {
-    goOnline()
-    onlineManager.setOnline(true)
-  })
+  afterEach(() => goOnline())
   const saveButton = () => screen.getByRole('button', { name: 'Save expense' })
 
   it('keeps the entry and holds the save until the connection is back', async () => {
@@ -504,17 +500,37 @@ describe('ExpenseForm offline', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
   })
 
-  it('says a save caught by the connection dropping will go through, then saves it', async () => {
+  it('keeps the entry when the connection drops during a save, and Try again saves it once', async () => {
     const { onDone } = setup()
-    // The save leaves just as the connection goes: React Query pauses it instead of failing.
-    onlineManager.setOnline(false)
+    // What supabase-js hands back when fetch never got an answer.
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
     fireEvent.click(saveButton())
 
-    expect(await screen.findByText(t('app.offline.paused'))).toBeInTheDocument()
-    expect(create).not.toHaveBeenCalled()
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toHaveValue('Cabin deposit')
+    const leave = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(leave)
+    expect(leave.defaultPrevented).toBe(true)
 
-    act(() => onlineManager.setOnline(true))
-    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[1]![1]).toEqual(create.mock.calls[0]![1])
+    expect(create.mock.calls[1]![1]).toMatchObject({
+      description: 'Cabin deposit',
+      amount_cents: 9000,
+    })
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+  })
+
+  it('still reports a refused save as an error, not as the connection', async () => {
+    setup()
+    create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('common.retry') })).toBeNull()
   })
 })

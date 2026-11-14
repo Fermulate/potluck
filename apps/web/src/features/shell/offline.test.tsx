@@ -1,6 +1,6 @@
 import { t } from '@potluck/i18n'
-import { act, render, renderHook, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { goOffline, goOnline } from '@/test/network'
 import { useWarnBeforeUnload } from '@/lib/online'
 import { OfflineBanner, OfflineSaveNote } from './offline'
@@ -27,13 +27,26 @@ describe('OfflineBanner', () => {
 })
 
 describe('OfflineSaveNote', () => {
-  it('says the entry waits while offline, and that a paused save goes through later', () => {
-    const { rerender } = render(<OfflineSaveNote />)
+  it('says the entry waits while offline', () => {
+    render(<OfflineSaveNote />)
     expect(screen.getByRole('status')).toHaveTextContent('')
     act(() => goOffline())
     expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.form'))
-    rerender(<OfflineSaveNote paused />)
-    expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.paused'))
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('after a failed save, offers Try again once the connection is back', () => {
+    const onRetry = vi.fn()
+    goOffline()
+    render(<OfflineSaveNote failed onRetry={onRetry} />)
+    expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.failed'))
+    const retry = screen.getByRole('button', { name: t('common.retry') })
+    expect(retry).toBeDisabled()
+
+    act(() => goOnline())
+    expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.failed'))
+    fireEvent.click(retry)
+    expect(onRetry).toHaveBeenCalledTimes(1)
   })
 })
 
