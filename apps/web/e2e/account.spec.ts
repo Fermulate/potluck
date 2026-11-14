@@ -116,9 +116,10 @@ test('sign out everywhere ends every session', async ({ newUser, openAs }) => {
   expect(refused.ok).toBe(false)
   expect(((await refused.json()) as { message?: string }).message).toBe('session_ended')
 
-  // And the device itself leaves on its next look at the app.
+  // And the device itself leaves on its next look at the app, saying why.
   await phone.goto('/groups')
   await expect(phone).toHaveURL(/\/sign-in/)
+  await expect(phone.getByText(t('auth.signIn.sessionEnded'))).toBeVisible()
 })
 
 test('two-step sign in: set up, asked at sign in, wrong code refused, off with a code', async ({

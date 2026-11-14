@@ -5,9 +5,10 @@ import { confirmSession } from '@/lib/auth'
 export const SESSION_CHECK_INTERVAL_MS = 30_000
 
 /**
- * Checks with the server that this device's session still exists when the app opens and each
- * time it comes back to the front, so "Sign out everywhere" on another device ends this one
- * even before it makes a request. The database refuses such a session too (`session_ended`).
+ * Checks with the server that this device's session still exists when the app opens, each time
+ * it comes back to the front (focus or becoming visible), and every 30 seconds while it stays on
+ * screen, so "Sign out everywhere" on another device ends this one without waiting for a click.
+ * All of them share one throttle. The database refuses such a session too (`session_ended`).
  */
 export function useSessionCheck() {
   useEffect(() => {
@@ -22,9 +23,11 @@ export function useSessionCheck() {
     check()
     window.addEventListener('focus', check)
     document.addEventListener('visibilitychange', check)
+    const timer = window.setInterval(check, SESSION_CHECK_INTERVAL_MS)
     return () => {
       window.removeEventListener('focus', check)
       document.removeEventListener('visibilitychange', check)
+      window.clearInterval(timer)
     }
   }, [])
 }

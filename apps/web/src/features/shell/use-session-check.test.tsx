@@ -1,5 +1,6 @@
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearSessionEnded, sessionEndedHere } from '@/lib/auth'
 import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
 import { SESSION_CHECK_INTERVAL_MS, useSessionCheck } from './use-session-check'
 
@@ -66,6 +67,33 @@ describe('useSessionCheck', () => {
     vi.advanceTimersByTime(SESSION_CHECK_INTERVAL_MS + 1)
     act(() => document.dispatchEvent(new Event('visibilitychange')))
     await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(2))
+  })
+
+  it('checks every 30 seconds while the app stays on screen, never while it is hidden', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    respondAuth('getUser', { data: { user: { id: 'u-1' } }, error: null })
+    render(<Probe />)
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(1))
+
+    // No focus or visibility event: the open tab still notices.
+    await act(async () => vi.advanceTimersByTime(SESSION_CHECK_INTERVAL_MS + 1))
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(2))
+
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    await act(async () => vi.advanceTimersByTime(SESSION_CHECK_INTERVAL_MS + 1))
+    await act(async () => {})
+    expect(authCallsTo('getUser')).toHaveLength(2)
+    visibility.mockRestore()
+  })
+
+  it('leaves a note for the sign-in page when the session ended elsewhere', async () => {
+    respondAuth('getUser', authError('AuthSessionMissingError', 400))
+    clearSessionEnded()
+    render(<Probe />)
+    await waitFor(() => expect(authCallsTo('signOut')).toEqual([[{ scope: 'local' }]]))
+    expect(sessionEndedHere()).toBe(true)
+    clearSessionEnded()
+    expect(sessionEndedHere()).toBe(false)
   })
 
   it('does not ask the server without a session', async () => {

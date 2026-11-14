@@ -2,6 +2,7 @@ import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { endEndedSession } from '@/lib/auth'
 import { renderWithProviders } from '@/test/render'
 import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
 import { SignInPage } from './sign-in-page'
@@ -44,6 +45,18 @@ describe('SignInPage', () => {
     expect(authCallsTo('signInWithPassword')).toEqual([
       [{ email: 'ava@example.test', password: 'hunter22' }],
     ])
+  })
+
+  it('says why once, after the session ended on another device', async () => {
+    respondAuth('getSession', { data: { session: { user: { id: 'u-1' }, access_token: 'x' } } })
+    await endEndedSession()
+    const first = renderPage()
+    expect(await screen.findByText(t('auth.signIn.sessionEnded'))).toBeInTheDocument()
+    first.unmount()
+    // Only that once: coming back to sign in later shows the plain page.
+    renderPage()
+    expect(await screen.findByRole('button', { name: t('auth.signIn.submit') })).toBeVisible()
+    expect(screen.queryByText(t('auth.signIn.sessionEnded'))).not.toBeInTheDocument()
   })
 
   it('never redirects off site after signing in', async () => {

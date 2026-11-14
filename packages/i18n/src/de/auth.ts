@@ -10,6 +10,8 @@ export const auth = {
     noAccount: 'Neu hier?',
     createAccount: 'Konto erstellen',
     usePassword: 'Lieber mit Passwort',
+    sessionEnded:
+      'Du wurdest hier abgemeldet, weil dein Konto überall abgemeldet wurde oder sich das Passwort geändert hat. Melde dich wieder an, um weiterzumachen.',
   },
   signUp: {
     title: 'Setz dich dazu',
