@@ -42,6 +42,28 @@ function renderFeed(rows: Record<string, unknown>[]) {
   return renderWithProviders(<ActivityFeed />, { path: '/activity', client: seededClient() })
 }
 
+describe('ActivityFeed, starting a group', () => {
+  it('says the creator started it, not that they also joined it', async () => {
+    const at = '2026-11-03T10:00:00Z'
+    const mine = { actor_id: ME, actor: { id: ME, display_name: 'Ava Chen', avatar_path: null } }
+    renderFeed([
+      activity('a1', '2026-11-03T12:00:00Z', {
+        verb: 'member.joined',
+        data: {},
+        subject_id: BEN,
+      }),
+      activity('a2', at, { verb: 'group.created', data: { name: 'Hike crew' }, ...mine }),
+      activity('a3', at, { verb: 'member.joined', data: {}, subject_id: ME, ...mine }),
+    ])
+    expect(
+      await screen.findByText(t('activity.self.group.created', { group: 'Hike crew' })),
+    ).toBeInTheDocument()
+    // Ben joining later is news; the creator's own join is not.
+    expect(screen.getByText(t('activity.member.joined', { actor: 'Ben' }))).toBeInTheDocument()
+    expect(screen.queryByText(t('activity.self.member.joined'))).not.toBeInTheDocument()
+  })
+})
+
 describe('ActivityFeed', () => {
   beforeEach(() => vi.clearAllMocks())
 
