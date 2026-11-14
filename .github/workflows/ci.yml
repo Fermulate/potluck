@@ -93,7 +93,7 @@ jobs:
       # Realtime so it rereads the tenant.
       - name: Raise Realtime limits
         run: |
-          docker exec supabase_db_potluck psql -U postgres -v ON_ERROR_STOP=1 -c             "update _realtime.tenants set max_events_per_second = 1000, max_joins_per_second = 500 where external_id = 'realtime-dev'"
+          docker exec supabase_db_potluck psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c             "update _realtime.tenants set max_events_per_second = 1000, max_joins_per_second = 500 where external_id = 'realtime-dev'"
           docker restart supabase_realtime_potluck
           for i in $(seq 1 30); do
             [ "$(docker inspect -f '{{.State.Health.Status}}' supabase_realtime_potluck)" = healthy ] && break
