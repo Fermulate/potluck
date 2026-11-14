@@ -57,6 +57,7 @@ export const app = {
     footer: {
       license: 'Software libre bajo la AGPL-3.0.',
       source: 'Código fuente',
+      madeBy: 'Un proyecto de Fermulate',
     },
   },
   offline: {

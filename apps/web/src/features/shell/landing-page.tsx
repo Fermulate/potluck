@@ -149,6 +149,13 @@ export function LandingPage() {
           >
             {t('help.guide')} <span className="sr-only">({t('help.newTab')})</span>
           </a>
+          {'. '}
+          <a
+            href="https://fermulate.com"
+            className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+          >
+            {t('app.landing.footer.madeBy')}
+          </a>
         </p>
       </footer>
     </div>
