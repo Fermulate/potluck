@@ -5,8 +5,8 @@ import { Bell } from 'lucide-react'
 import { useUnreadCount } from './use-notifications'
 
 /**
- * A bell that opens the inbox, with the unread count. Phones only show the inbox as a badge on
- * Me, so Home carries this too.
+ * A bell that opens the inbox, with the unread count. Phones have no inbox tab (the count rides
+ * on Me with a small bell), so Home and Me carry this.
  */
 export function InboxBell({ className }: { className?: string }) {
   const { data: unread = 0 } = useUnreadCount()

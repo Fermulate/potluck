@@ -116,6 +116,8 @@ export const nav = {
   main: 'Principal',
   friends: 'Amigos',
   notifications: 'Notificações',
+  unreadNotifications_one: '{count} notificação não lida',
+  unreadNotifications_other: '{count} notificações não lidas',
   quickAdd: {
     title: 'O que vamos fazer?',
     expense: 'Adicionar despesa',

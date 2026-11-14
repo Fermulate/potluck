@@ -173,6 +173,12 @@ describe('MePage', () => {
     )
     expect(screen.getByRole('switch', { name: t('settings.notifications.push') })).toBeDisabled()
     expect(screen.getByText(t('settings.notifications.pushUnsupported'))).toBeInTheDocument()
+    // The bell at the top, where the tab bar's count on Me leads.
+    const bell = screen.getByRole('link', {
+      name: `${t('nav.notifications')} (${t('notifications.unread', { count: 3 })})`,
+    })
+    expect(bell).toHaveAttribute('href', '/notifications')
+    expect(screen.getByRole('banner')).toContainElement(bell)
   })
 
   it('shows the calendar feed, copies it and resets the link', async () => {

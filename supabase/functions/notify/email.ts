@@ -1,7 +1,7 @@
 // Notification email copy and markup. No Deno APIs, so the tests run under Node too.
 // private.send_email_notifications builds each job: recipient, category, the
 // notification data enriched with names, current amounts and unsubscribe tokens.
-import { message, postingDay } from './message.ts'
+import { formatMoneyIn, message, postingDay } from './message.ts'
 
 type Data = Record<string, unknown>
 
@@ -55,24 +55,9 @@ const str = (value: unknown): string | undefined =>
 const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isSafeInteger(value) ? value : undefined
 
-/** Minor units to a display string, using the currency's own number of digits. */
+/** Minor units to a display string in English (the emails' language). */
 export function formatMoney(amountMinor: number, currency: string): string {
-  const code = currency.trim().toUpperCase()
-  let format: Intl.NumberFormat
-  try {
-    format = new Intl.NumberFormat('en-US', { style: 'currency', currency: code })
-  } catch {
-    return `${amountMinor} ${code}`
-  }
-  const digits = format.resolvedOptions().maximumFractionDigits ?? 2
-  const negative = amountMinor < 0
-  const abs = Math.abs(amountMinor)
-    .toString()
-    .padStart(digits + 1, '0')
-  const whole = digits > 0 ? abs.slice(0, -digits) : abs
-  const frac = digits > 0 ? `.${abs.slice(-digits)}` : ''
-  // A decimal string keeps exact digits; Intl accepts it in Node 22 and Deno 2.
-  return format.format(`${negative ? '-' : ''}${whole}${frac}` as unknown as number)
+  return formatMoneyIn(amountMinor, currency, 'en-US')
 }
 
 function formatWhen(iso: string, timeZone: string): string {

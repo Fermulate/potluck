@@ -146,7 +146,19 @@ export function AppLayout() {
         <Outlet />
       </main>
       <BottomTabBar
-        items={[home, groups, plans, { ...me, badge: unread }]}
+        // Phones have no inbox tab: Me carries the unread count, with a bell so it reads as
+        // notifications, and the Me page opens with the inbox bell on top.
+        items={[
+          home,
+          groups,
+          plans,
+          {
+            ...me,
+            badge: unread,
+            badgeIcon: <Bell aria-hidden />,
+            badgeLabel: t('nav.unreadNotifications', { count: unread }),
+          },
+        ]}
         activeId={active === 'notifications' ? 'me' : active === 'search' ? 'home' : active}
         renderLink={renderLink}
         label={t('nav.main')}

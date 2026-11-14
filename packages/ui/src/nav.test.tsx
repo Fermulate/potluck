@@ -54,6 +54,23 @@ describe('BottomTabBar', () => {
     expect(screen.getByRole('link', { name: 'Groups (3)' })).toHaveTextContent('3')
   })
 
+  it('says what a badge counts and shows its icon when it is about something else', () => {
+    const inbox = items.map((i) =>
+      i.id === 'me'
+        ? {
+            ...i,
+            badge: 4,
+            badgeIcon: <svg data-testid="bell" />,
+            badgeLabel: '4 unread notifications',
+          }
+        : i,
+    )
+    render(<BottomTabBar label="Main" items={inbox} activeId="home" />)
+    const me = screen.getByRole('link', { name: 'Me (4 unread notifications)' })
+    expect(within(me).getByTestId('bell')).toBeInTheDocument()
+    expect(within(me).getByText('4')).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('places the center action between the two halves', () => {
     render(
       <BottomTabBar

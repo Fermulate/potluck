@@ -56,17 +56,18 @@ describe('AppLayout', () => {
     expect(await screen.findByRole('link', { name: /Ava Chen/ })).toHaveAttribute('href', '/me')
   })
 
-  it('counts unread notifications on the inbox and on Me in the tab bar', async () => {
+  it('counts unread notifications on the inbox, and on Me in the tab bar as notifications', async () => {
     seed(3)
     renderWithProviders(<AppLayout />, { path: '/notifications' })
     const [rail, tabs] = await navs()
     expect(
       await within(rail!).findByRole('link', { name: `${t('nav.notifications')} (3)` }),
     ).toHaveAttribute('aria-current', 'page')
-    expect(within(tabs!).getByRole('link', { name: `${t('nav.me')} (3)` })).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
+    expect(
+      within(tabs!).getByRole('link', {
+        name: `${t('nav.me')} (${t('nav.unreadNotifications', { count: 3 })})`,
+      }),
+    ).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens quick add for the group on screen', async () => {

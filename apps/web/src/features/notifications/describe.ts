@@ -95,6 +95,18 @@ function summaryLine(groups: unknown, ctx: DescribeContext): string {
   return more > 0 ? `${line} ${t('notifications.types.summary.more', { count: more })}` : line
 }
 
+/**
+ * What a new expense does to the reader's balance, in its own currency: what they paid minus
+ * their share, turned around for a refund (core `expenseEffect`). Positive means they get money
+ * back. Rows from before `paid_cents` was stored count the single payer (`paid_by`).
+ */
+function viewerNet(viewerId: string, d: Data, amountCents: number | undefined): number {
+  const share = num(d.share_cents)
+  if (share === undefined) return 0
+  const paid = num(d.paid_cents) ?? (str(d.paid_by) === viewerId ? (amountCents ?? 0) : 0)
+  return (d.is_refund === true ? -1 : 1) * (paid - share)
+}
+
 /** Turns a notification row into copy and a deep link. Unknown types fall back gracefully. */
 export function describeNotification(n: NotificationRow, ctx: DescribeContext): NotificationView {
   const d = (n.data ?? {}) as Data
@@ -123,17 +135,31 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
   const toPayment = (): NotificationTarget =>
     paymentId ? { to: '/payments/$paymentId', params: { paymentId } } : toGroup('balances')
 
+  const isRefund = d.is_refund === true
+
   switch (n.type) {
-    case 'expense.created':
+    case 'expense.created': {
+      const net = viewerNet(n.user_id, d, amountCents)
+      const yours = net ? formatMoney(Math.abs(net), currency) : ''
       return {
-        title: t('notifications.types.expense.created.title', { group }),
-        body: t('notifications.types.expense.created.body', { actor, description, amount }),
+        title: isRefund
+          ? t('notifications.types.expense.refund.created', { group })
+          : t('notifications.types.expense.created.title', { group }),
+        body:
+          net < 0
+            ? t('notifications.types.expense.yours.owe', { actor, description, amount, yours })
+            : net > 0
+              ? t('notifications.types.expense.yours.back', { actor, description, amount, yours })
+              : t('notifications.types.expense.created.body', { actor, description, amount }),
         kind: 'money',
         target: toExpense(),
       }
+    }
     case 'expense.updated':
       return {
-        title: t('notifications.types.expense.updated.title'),
+        title: isRefund
+          ? t('notifications.types.expense.refund.updated')
+          : t('notifications.types.expense.updated.title'),
         body: t('notifications.types.expense.updated.body', { actor, description, group }),
         kind: 'money',
         target: toExpense(),
@@ -269,14 +295,18 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
       }
     case 'expense.deleted':
       return {
-        title: t('notifications.types.expense.deleted.title'),
+        title: isRefund
+          ? t('notifications.types.expense.refund.deleted')
+          : t('notifications.types.expense.deleted.title'),
         body: t('notifications.types.expense.deleted.body', { actor, description, group }),
         kind: 'money',
         target: toExpense(),
       }
     case 'expense.restored':
       return {
-        title: t('notifications.types.expense.restored.title'),
+        title: isRefund
+          ? t('notifications.types.expense.refund.restored')
+          : t('notifications.types.expense.restored.title'),
         body: t('notifications.types.expense.restored.body', { actor, description, group }),
         kind: 'money',
         target: toExpense(),
