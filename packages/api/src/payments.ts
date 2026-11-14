@@ -35,6 +35,11 @@ export interface RecordPaymentInput {
   note?: string | null
   /** `YYYY-MM-DD`. Leave out for today (the payment keeps the current time). */
   settledOn?: string | null
+  /**
+   * One random id per payment form. Sent again with a retry, the server returns the payment the
+   * first try recorded instead of a second one (`settle_up_v3`, ADR 8 note on request keys).
+   */
+  requestId?: string
 }
 
 /** `update_settlement` takes only the keys that change. `note: null` clears the note. */
@@ -142,7 +147,7 @@ export async function recordPayment(
   input: RecordPaymentInput,
 ): Promise<SettlementRow> {
   return unwrap(
-    await client.rpc('settle_up_v2', {
+    await client.rpc('settle_up_v3', {
       group_id: input.groupId,
       from_user: input.fromUser,
       to_user: input.toUser,
@@ -150,6 +155,7 @@ export async function recordPayment(
       ...(input.currency ? { currency: input.currency } : {}),
       ...(input.note ? { note: input.note } : {}),
       ...(input.settledOn ? { settled_on: input.settledOn } : {}),
+      ...(input.requestId ? { request_id: input.requestId } : {}),
     }),
   )
 }

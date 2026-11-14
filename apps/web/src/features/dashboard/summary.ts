@@ -15,7 +15,12 @@ export interface BalanceSummary {
    * client), by currency code. Only currencies with something on either side.
    */
   otherCurrencies: { currency: string; owed: number; owe: number }[]
+  /** Groups with a balance row, as Groups lists them: one-on-one tabs are counted apart. */
   groupCount: number
+  /** One-on-one tabs (friends) with a balance row. */
+  friendCount: number
+  /** Anything owed either way, in any currency. */
+  open: boolean
 }
 
 /**
@@ -59,6 +64,8 @@ export function summarizeBalances(
     oweGroups,
     owedGroups,
     otherCurrencies,
-    groupCount: balances.length,
+    groupCount: balances.filter((b) => !b.isDirect).length,
+    friendCount: balances.filter((b) => b.isDirect).length,
+    open: balances.some((b) => b.netCents !== 0),
   }
 }

@@ -23,6 +23,7 @@ function build(csv: CsvStrings, categories: Record<string, string>): LedgerLabel
     share: csv.share,
     balance: csv.balance,
     between: csv.between,
+    simplifiedBalance: csv.simplifiedBalance,
     kinds: { ...csv.kinds },
     tax: csv.tax,
     tip: csv.tip,
@@ -54,6 +55,7 @@ export function ledgerLabels(): LedgerLabels {
       share: t('transfer.csv.share', keep),
       balance: t('transfer.csv.balance', keep),
       between: t('transfer.csv.between', keep),
+      simplifiedBalance: t('transfer.csv.simplifiedBalance'),
       kinds: {
         expense: t('transfer.csv.kinds.expense'),
         refund: t('transfer.csv.kinds.refund'),

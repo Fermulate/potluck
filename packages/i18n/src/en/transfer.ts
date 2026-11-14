@@ -19,6 +19,9 @@ export const transfer = {
     share: '{name} share',
     balance: '{name} balance',
     between: 'Between you and {name}',
+    /** Notes of a friend export's balance row in a group that simplifies debts. */
+    simplifiedBalance:
+      'Simplified debts: this is where you two stand, as Potluck shows it. The rows above are the history behind it.',
     kinds: {
       expense: 'Expense',
       refund: 'Refund',

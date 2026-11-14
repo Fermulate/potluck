@@ -155,7 +155,45 @@ export async function signOut(scope: 'local' | 'global' = 'local') {
 export async function endEndedSession() {
   const supabase = await loadSupabase()
   const { data } = await supabase.auth.getSession()
-  if (data.session) await supabase.auth.signOut({ scope: 'local' })
+  if (!data.session) return
+  markSessionEnded()
+  await supabase.auth.signOut({ scope: 'local' })
+}
+
+const ENDED_KEY = 'potluck.session-ended'
+let endedHere = false
+
+/** Remembers, for the sign-in page, that the session ended elsewhere (survives its reload). */
+function markSessionEnded() {
+  endedHere = true
+  try {
+    sessionStorage.setItem(ENDED_KEY, '1')
+  } catch {
+    // Storage blocked: the in-memory flag still covers the redirect to sign in.
+  }
+}
+
+/**
+ * Whether this device was signed out because its session ended elsewhere ("Sign out
+ * everywhere", a new password), so the sign-in page can say why. Read it once, then
+ * `clearSessionEnded()`.
+ */
+export function sessionEndedHere(): boolean {
+  if (endedHere) return true
+  try {
+    return sessionStorage.getItem(ENDED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function clearSessionEnded() {
+  endedHere = false
+  try {
+    sessionStorage.removeItem(ENDED_KEY)
+  } catch {
+    // Nothing stored.
+  }
 }
 
 /**

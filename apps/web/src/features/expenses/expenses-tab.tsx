@@ -26,7 +26,7 @@ import { ActivityIconLink } from '@/features/activity/activity-link'
 import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
 import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
 import { useGroupExport } from '@/features/export-import/use-exports'
-import { useTabSplitNote } from '@/features/friends/split-note'
+import { useBlockedInTab, useTabSplitNote } from '@/features/friends/split-note'
 import { HomeStarters } from '@/features/groups/home-starters'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
@@ -64,6 +64,7 @@ export function ExpensesTab({
   const group = useMoneyGroup(groupId)
   const expenses = useGroupExpenses(groupId)
   const settlements = useGroupSettlements(groupId)
+  const blockedInTab = useBlockedInTab(groupId)
   const [query, setQuery] = useState('')
   const [sheetOpen, setSheetOpen] = useState(false)
   const search = useDeferredValue(query.trim().toLocaleLowerCase())
@@ -373,6 +374,7 @@ export function ExpensesTab({
                                 settlement={item.settlement}
                                 viewerId={me}
                                 viewerRole={myRole}
+                                blockedInTab={blockedInTab}
                                 label={settlementText(item.settlement, me, nameOf)}
                               />
                             }

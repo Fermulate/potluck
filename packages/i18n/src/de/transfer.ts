@@ -20,6 +20,8 @@ export const transfer = {
     share: 'Anteil {name}',
     balance: 'Saldo {name}',
     between: 'Zwischen dir und {name}',
+    simplifiedBalance:
+      'Vereinfachte Schulden: So steht ihr beide, wie Potluck es zeigt. Die Zeilen darüber sind der Verlauf dahinter.',
     kinds: {
       expense: 'Ausgabe',
       refund: 'Erstattung',

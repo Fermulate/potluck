@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupLedger, backupSchema } from './backup'
+import { backupForFile, backupLedger, backupSchema } from './backup'
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
 const at = '2026-03-01T12:00:00+00:00'
@@ -150,6 +150,35 @@ describe('backupSchema', () => {
   })
 })
 
+describe('backupForFile', () => {
+  it('names a one-on-one tab after the other person, keeps is_direct, and changes nothing else', () => {
+    const backup = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
+    const trip = backup.groups[0]!
+    backup.people.push({ id: id(2), display_name: 'Jules', deleted: false, placeholder: false })
+    const tab = {
+      ...trip,
+      id: id(11),
+      name: 'Direct',
+      is_direct: true,
+      members: [
+        { user_id: id(1), role: 'owner', joined_at: at },
+        { user_id: id(2), role: 'admin', joined_at: at },
+      ],
+    }
+    backup.groups.push(tab, { ...trip, id: id(12), name: 'Direct', is_direct: true })
+    const file = backupForFile(backup, 'One-on-one')
+    expect(file.groups.map((g) => [g.name, g.is_direct])).toEqual([
+      ['Trip', false],
+      ['Jules', true],
+      ['One-on-one', true],
+    ])
+    expect(file.groups[1]).toEqual({ ...tab, name: 'Jules' })
+    expect(file.groups[0]).toBe(trip)
+    // Still a version 1 backup.
+    expect(backupSchema.parse(JSON.parse(JSON.stringify(file)))).toEqual(file)
+  })
+})
+
 describe('backupLedger', () => {
   it('keeps live rows only and names everyone', () => {
     const backup = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
@@ -196,6 +225,28 @@ describe('backupLedger', () => {
     backup.groups.push({ ...trip, id: id(12), name: 'Direct', is_direct: true })
     const { groups } = backupLedger(backup, 'UTC', 'Someone', 'One-on-one')
     expect(groups.map((g) => g.name)).toEqual(['Trip', 'Jules', 'One-on-one'])
+  })
+
+  it('reads a backup written before tabs were named, and one written after, the same way', () => {
+    const older = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
+    older.people.push({ id: id(2), display_name: 'Jules', deleted: false, placeholder: false })
+    older.groups.push({
+      ...older.groups[0]!,
+      id: id(11),
+      name: 'Direct',
+      is_direct: true,
+      members: [
+        { user_id: id(1), role: 'owner', joined_at: at },
+        { user_id: id(2), role: 'admin', joined_at: at },
+      ],
+    })
+    const newer = backupSchema.parse(
+      JSON.parse(JSON.stringify(backupForFile(older, 'One-on-one'))) as unknown,
+    )
+    expect(newer.groups[1]!.name).toBe('Jules')
+    expect(backupLedger(older, 'UTC').groups.map((g) => g.name)).toEqual(
+      backupLedger(newer, 'UTC').groups.map((g) => g.name),
+    )
   })
 
   it("dates a payment on the viewer's day, as settle_up_v2 stored it", () => {

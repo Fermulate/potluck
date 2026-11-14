@@ -1,6 +1,7 @@
 import type * as Api from '@potluck/api'
-import { createExpense, moneyKeys, updateExpense } from '@potluck/api'
+import { createExpense, moneyKeys, peopleKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { Toaster } from '@potluck/ui'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { goOffline, goOnline } from '@/test/network'
@@ -19,18 +20,39 @@ import { ExpenseForm } from './expense-form'
 
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
-vi.mock('@potluck/api', async (importOriginal) => ({
-  ...(await importOriginal<typeof Api>()),
-  createExpense: vi.fn(async () => ({ id: 'new-expense' })),
-  // Like the server: a rewritten split may only name current members.
-  updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
-    const current = new Set(members.map((m) => m.id))
-    if (payload.splits?.some((s) => !current.has(s.user_id))) {
-      throw { message: 'split_member_not_in_group', code: '23514' }
-    }
-    return { id }
+// What the server has stored under an expense id, split and all.
+const storedExpense = vi.hoisted(() =>
+  vi.fn(async (_id: string): Promise<unknown> => {
+    throw new Error('not stored')
   }),
-}))
+)
+
+vi.mock('@potluck/api', async (importOriginal) => {
+  const api = await importOriginal<typeof Api>()
+  return {
+    ...api,
+    moneyQueries: {
+      ...api.moneyQueries,
+      expense: (_c: unknown, id: string) => ({
+        queryKey: api.moneyKeys.expense(id),
+        queryFn: () => storedExpense(id),
+      }),
+    },
+    // Like the server: the expense it saved.
+    createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+      id: 'new-expense',
+      ...payload,
+    })),
+    // Like the server: a rewritten split may only name current members.
+    updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
+      const current = new Set(members.map((m) => m.id))
+      if (payload.splits?.some((s) => !current.has(s.user_id))) {
+        throw { message: 'split_member_not_in_group', code: '23514' }
+      }
+      return { id }
+    }),
+  }
+})
 
 const create = vi.mocked(createExpense)
 const update = vi.mocked(updateExpense)
@@ -73,6 +95,7 @@ describe('ExpenseForm', () => {
       notes: null,
       spent_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       receipt_path: null,
+      request_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
     })
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
   })
@@ -517,14 +540,103 @@ describe('ExpenseForm offline', () => {
     window.dispatchEvent(leave)
     expect(leave.defaultPrevented).toBe(true)
 
+    // One action: the save button itself turns into Try again.
+    expect(screen.getAllByRole('button', { name: t('common.retry') })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: t('expenses.form.save') })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
     expect(create).toHaveBeenCalledTimes(2)
+    // The same request id both times, so the server hands back the first save if it landed.
+    const firstKey = (create.mock.calls[0]![1] as { request_id?: string }).request_id
+    expect(firstKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
     expect(create.mock.calls[1]![1]).toEqual(create.mock.calls[0]![1])
     expect(create.mock.calls[1]![1]).toMatchObject({
       description: 'Cabin deposit',
       amount_cents: 9000,
     })
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+  })
+
+  it('holds the draft after a lost reply and reports the expense the server returned', async () => {
+    const onDone = vi.fn()
+    renderWithClient(
+      <>
+        <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />
+        <Toaster label="Notifications" />
+      </>,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Cabin deposit' },
+    })
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    // A retry sends the same request id, so it can only ever repeat what was sent.
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Shares' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: t('common.retry') })).toBeEnabled()
+
+    // The first try had landed, split between you and Ben only: the server hands that expense
+    // back, and the toast describes it, your share from its stored split.
+    create.mockResolvedValueOnce({
+      id: 'new-expense',
+      description: 'Cabin deposit (first try)',
+      amount_cents: 9000,
+      currency: 'USD',
+      is_refund: false,
+    } as Awaited<ReturnType<typeof createExpense>>)
+    storedExpense.mockResolvedValueOnce(
+      expense({
+        id: 'new-expense',
+        description: 'Cabin deposit (first try)',
+        amount_cents: 9000,
+        expense_splits: [
+          { user_id: ME, share_cents: 4500, weight: null, adjustment_cents: null },
+          { user_id: BEN, share_cents: 4500, weight: null, adjustment_cents: null },
+        ],
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    expect(
+      await screen.findByText('Added "Cabin deposit (first try)". Your share: $45.00.'),
+    ).toBeInTheDocument()
+  })
+
+  it('holds the percent slider too while a save is unconfirmed', async () => {
+    setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'Percent' }))
+    const handle = screen.getByRole('slider', {
+      name: t('expenses.splitEditor.handle', { left: 'You', right: 'Ben' }),
+    })
+    const before = handle.getAttribute('aria-valuenow')
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    expect(handle).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.pointerDown(handle, { pointerId: 1 })
+    expect(handle).toHaveAttribute('aria-valuenow', before)
+  })
+
+  it('lets the draft change again once a retry is refused', async () => {
+    setup()
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeDisabled()
+
+    // A refusal means nothing was saved under the request id, so the draft is free again.
+    create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeEnabled())
     expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
   })
 
@@ -540,6 +652,33 @@ describe('ExpenseForm offline', () => {
     // Changing the split is the fix, so the message goes until the next save.
     fireEvent.click(screen.getByRole('radio', { name: 'Shares' }))
     expect(screen.queryByText(t('expenses.errors.blocked_person'))).toBeNull()
+  })
+
+  it('tells whoever blocked someone in the split before they save, by name', async () => {
+    const onDone = vi.fn()
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />,
+      seededClient((c) =>
+        c.setQueryData(peopleKeys.blocks(ME), [
+          { user_id: BEN, display_name: 'Ben Okafor', avatar_path: null, blocked_at: 'x' },
+        ]),
+      ),
+    )
+    const note = t('expenses.form.youBlocked', { names: 'Ben' })
+    expect(await screen.findByRole('alert')).toHaveTextContent(note)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Cabin deposit' },
+    })
+    fireEvent.click(saveButton())
+    expect(create).not.toHaveBeenCalled()
+
+    // Taking Ben out is the fix: the note goes and the save goes through.
+    const between = screen.getByRole('group', { name: t('expenses.fields.splitBetween') })
+    fireEvent.click(within(between).getByRole('button', { name: /Ben/ }))
+    expect(screen.queryByText(note)).toBeNull()
+    fireEvent.click(saveButton())
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   })
 
   it('still reports a refused save as an error, not as the connection', async () => {

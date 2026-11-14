@@ -25,7 +25,14 @@ vi.mock('@/lib/supabase', () => import('../expenses/fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
-  recordPayment: vi.fn(async () => ({ id: 's1' })),
+  // Like the server: the payment it recorded.
+  recordPayment: vi.fn(async (_c: unknown, input: Api.RecordPaymentInput) => ({
+    id: 's1',
+    from_user: input.fromUser,
+    to_user: input.toUser,
+    amount_cents: input.amountCents,
+    currency: input.currency ?? 'USD',
+  })),
   updateSettlement: vi.fn(async () => ({ id: 's1' })),
 }))
 
@@ -99,6 +106,7 @@ describe('SettleFlow', () => {
         currency: undefined,
         note: 'Venmo',
         settledOn: null,
+        requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       }),
     )
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
@@ -135,10 +143,61 @@ describe('SettleFlow', () => {
     expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('47.50')
     expect(screen.getByRole('textbox', { name: 'Note' })).toHaveValue('Venmo')
 
+    // One action: Record payment itself turns into Try again.
+    expect(screen.getAllByRole('button', { name: t('common.retry') })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Record payment' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     expect(await screen.findByRole('heading', { name: 'All square with Ben' })).toBeInTheDocument()
     expect(pay).toHaveBeenCalledTimes(2)
     expect(pay.mock.calls[1]![1]).toMatchObject({ toUser: BEN, amountCents: 4750, note: 'Venmo' })
+    // The same request id both times, so a payment that did land is not recorded twice.
+    const key = (pay.mock.calls[0]![1] as { requestId?: string }).requestId
+    expect(key).toMatch(/^[0-9a-f-]{36}$/)
+    expect((pay.mock.calls[1]![1] as { requestId?: string }).requestId).toBe(key)
+  })
+
+  it('holds the payment after a lost reply and shows the one the server recorded', async () => {
+    setup({ to: BEN })
+    pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    // A retry sends the same request id, so it can only ever repeat what was sent.
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Note' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: t('settle.swap') })).toBeDisabled()
+
+    // The server hands back an earlier $20 payment under that id: that is what was recorded.
+    pay.mockResolvedValueOnce({
+      id: 's0',
+      from_user: ME,
+      to_user: BEN,
+      amount_cents: 2000,
+      currency: 'USD',
+    } as Awaited<ReturnType<typeof recordPayment>>)
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'Payment recorded' })).toBeInTheDocument()
+    expect(within(screen.getByRole('status')).getByText('You still owe $27.50')).toBeInTheDocument()
+  })
+
+  it('works out what is left from the debt before the payment, even once the debts count it', async () => {
+    const { client } = setup({ to: BEN, amount: 3000 })
+    pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    // The lost try had landed: the debts come back with the $30 already off the $47.50.
+    act(() =>
+      client.setQueryData(moneyKeys.simplified(GROUP_ID), [
+        { from_user: ME, to_user: BEN, amount_cents: 1750 },
+        { from_user: CLEO, to_user: ME, amount_cents: 1000 },
+      ]),
+    )
+    expect(await screen.findByText('You owe Ben $17.50')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'Payment recorded' })).toBeInTheDocument()
+    expect(within(screen.getByRole('status')).getByText('You still owe $17.50')).toBeInTheDocument()
   })
 
   it('keeps a refused payment a refusal after the connection goes', async () => {

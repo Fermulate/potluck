@@ -763,6 +763,35 @@ $$;
 ALTER FUNCTION "private"."claim_placeholders_for_email"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."claim_request"("kind" "text", "rid" "uuid") RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  uid uuid;
+  saved uuid;
+begin
+  if rid is null then
+    return null;
+  end if;
+  uid := private.require_user();
+  insert into private.request_keys (user_id, kind, request_id)
+  values (uid, claim_request.kind, rid)
+  on conflict do nothing;
+  if found then
+    return null;
+  end if;
+  select coalesce(r.expense_id, r.settlement_id) into saved
+  from private.request_keys r
+  where r.user_id = uid and r.kind = claim_request.kind and r.request_id = rid;
+  return saved;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."claim_request"("kind" "text", "rid" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."claiming"() RETURNS boolean
     LANGUAGE "sql" STABLE
     SET "search_path" TO ''
@@ -1871,6 +1900,25 @@ $$;
 
 
 ALTER FUNCTION "private"."finish_past_events"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."finish_request"("kind" "text", "rid" "uuid", "row_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+begin
+  if rid is null then
+    return;
+  end if;
+  update private.request_keys r
+  set expense_id = case when finish_request.kind = 'expense' then row_id end,
+      settlement_id = case when finish_request.kind = 'payment' then row_id end
+  where r.user_id = (select auth.uid()) and r.kind = finish_request.kind and r.request_id = rid;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."finish_request"("kind" "text", "rid" "uuid", "row_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."forget_closed_account"() RETURNS "trigger"
@@ -5959,10 +6007,25 @@ ALTER FUNCTION "public"."create_expense"("payload" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."create_expense_v2"("payload" "jsonb") RETURNS "public"."expenses"
-    LANGUAGE "sql" SECURITY DEFINER
+    LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
-  select * from private.save_expense(null, payload);
+declare
+  rid uuid := private.try_uuid(payload ->> 'request_id');
+  saved uuid := private.claim_request('expense', rid);
+  created public.expenses;
+begin
+  if saved is not null then
+    select * into created from public.expenses e
+    where e.id = saved and e.group_id = any (array(select private.my_group_ids()));
+    if found then
+      return created;
+    end if;
+  end if;
+  select * into created from private.save_expense(null, payload);
+  perform private.finish_request('expense', rid, created.id);
+  return created;
+end;
 $$;
 
 
@@ -5974,11 +6037,21 @@ CREATE OR REPLACE FUNCTION "public"."create_expense_with_attachments"("payload" 
     SET "search_path" TO ''
     AS $$
 declare
+  rid uuid := private.try_uuid(payload ->> 'request_id');
+  saved uuid := private.claim_request('expense', rid);
   created public.expenses;
 begin
+  if saved is not null then
+    select * into created from public.expenses e
+    where e.id = saved and e.group_id = any (array(select private.my_group_ids()));
+    if found then
+      return created;
+    end if;
+  end if;
   select * into created from private.save_expense(null, payload);
   perform private.apply_attachments(created.id, attachments, false);
   select * into created from public.expenses e where e.id = created.id;
+  perform private.finish_request('expense', rid, created.id);
   return created;
 end;
 $$;
@@ -9623,6 +9696,34 @@ $$;
 ALTER FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."settle_up_v3"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text" DEFAULT NULL::"text", "note" "text" DEFAULT NULL::"text", "settled_on" "date" DEFAULT NULL::"date", "request_id" "uuid" DEFAULT NULL::"uuid") RETURNS "public"."settlements"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  saved uuid := private.claim_request('payment', settle_up_v3.request_id);
+  result public.settlements;
+begin
+  if saved is not null then
+    select * into result from public.settlements s
+    where s.id = saved and s.group_id = any (array(select private.my_group_ids()));
+    if found then
+      return result;
+    end if;
+  end if;
+  select * into result from public.settle_up_v2(
+    settle_up_v3.group_id, settle_up_v3.from_user, settle_up_v3.to_user, settle_up_v3.amount_cents,
+    settle_up_v3.currency, settle_up_v3.note, settle_up_v3.settled_on
+  );
+  perform private.finish_request('payment', settle_up_v3.request_id, result.id);
+  return result;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."settle_up_v3"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date", "request_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date" DEFAULT NULL::"date", "note" "text" DEFAULT NULL::"text", "amounts" "jsonb" DEFAULT NULL::"jsonb") RETURNS SETOF "public"."settlements"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -10738,6 +10839,24 @@ CREATE TABLE IF NOT EXISTS "private"."recurring_heads_ups" (
 ALTER TABLE "private"."recurring_heads_ups" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "private"."request_keys" (
+    "user_id" "uuid" NOT NULL,
+    "kind" "text" NOT NULL,
+    "request_id" "uuid" NOT NULL,
+    "expense_id" "uuid",
+    "settlement_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "request_keys_kind_check" CHECK (("kind" = ANY (ARRAY['expense'::"text", 'payment'::"text"])))
+);
+
+
+ALTER TABLE "private"."request_keys" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."request_keys" IS 'Client request ids of saved expenses and payments, so a retried save returns the first row (ADR 8 note on request keys).';
+
+
+
 CREATE TABLE IF NOT EXISTS "private"."signing_keys" (
     "name" "text" NOT NULL,
     "secret" "bytea" DEFAULT "extensions"."gen_random_bytes"(32) NOT NULL,
@@ -11448,6 +11567,11 @@ ALTER TABLE ONLY "private"."recurring_heads_ups"
 
 
 
+ALTER TABLE ONLY "private"."request_keys"
+    ADD CONSTRAINT "request_keys_pkey" PRIMARY KEY ("user_id", "kind", "request_id");
+
+
+
 ALTER TABLE ONLY "private"."signing_keys"
     ADD CONSTRAINT "signing_keys_pkey" PRIMARY KEY ("name");
 
@@ -11723,6 +11847,14 @@ CREATE INDEX "notification_types_category_idx" ON "private"."notification_types"
 
 
 CREATE INDEX "recurring_heads_ups_user_id_idx" ON "private"."recurring_heads_ups" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "request_keys_expense_id_idx" ON "private"."request_keys" USING "btree" ("expense_id");
+
+
+
+CREATE INDEX "request_keys_settlement_id_idx" ON "private"."request_keys" USING "btree" ("settlement_id");
 
 
 
@@ -12356,6 +12488,21 @@ ALTER TABLE ONLY "private"."recurring_heads_ups"
 
 
 
+ALTER TABLE ONLY "private"."request_keys"
+    ADD CONSTRAINT "request_keys_expense_id_fkey" FOREIGN KEY ("expense_id") REFERENCES "public"."expenses"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."request_keys"
+    ADD CONSTRAINT "request_keys_settlement_id_fkey" FOREIGN KEY ("settlement_id") REFERENCES "public"."settlements"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "private"."request_keys"
+    ADD CONSTRAINT "request_keys_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."activity"
     ADD CONSTRAINT "activity_actor_id_fkey" FOREIGN KEY ("actor_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
@@ -12758,6 +12905,9 @@ ALTER TABLE "private"."notification_types" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."recurring_heads_ups" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "private"."request_keys" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "private"."signing_keys" ENABLE ROW LEVEL SECURITY;
@@ -13268,6 +13418,10 @@ REVOKE ALL ON FUNCTION "private"."claim_placeholders_for_email"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."claim_request"("kind" "text", "rid" "uuid") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."claiming"() FROM PUBLIC;
 
 
@@ -13391,6 +13545,10 @@ REVOKE ALL ON FUNCTION "private"."export_group"("gid" "uuid") FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."finish_past_events"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."finish_request"("kind" "text", "rid" "uuid", "row_id" "uuid") FROM PUBLIC;
 
 
 
@@ -14464,6 +14622,12 @@ GRANT ALL ON FUNCTION "public"."settle_up_v2"("group_id" "uuid", "from_user" "uu
 
 
 
+REVOKE ALL ON FUNCTION "public"."settle_up_v3"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date", "request_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."settle_up_v3"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date", "request_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."settle_up_v3"("group_id" "uuid", "from_user" "uuid", "to_user" "uuid", "amount_cents" bigint, "currency" "text", "note" "text", "settled_on" "date", "request_id" "uuid") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."settle_with_friend"("friend_id" "uuid", "settled_on" "date", "note" "text", "amounts" "jsonb") TO "service_role";
@@ -14553,6 +14717,10 @@ GRANT ALL ON TABLE "private"."notification_types" TO "service_role";
 
 
 GRANT ALL ON TABLE "private"."recurring_heads_ups" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "private"."request_keys" TO "service_role";
 
 
 

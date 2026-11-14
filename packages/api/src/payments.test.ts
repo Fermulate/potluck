@@ -23,7 +23,7 @@ const boom = { message: 'not_allowed' }
 
 describe('recordPayment', () => {
   it('sends only the arguments given', async () => {
-    const fake = fakeSupabase().respond('rpc:settle_up_v2', { data: { id: 's1' } })
+    const fake = fakeSupabase().respond('rpc:settle_up_v3', { data: { id: 's1' } })
     expect(
       await recordPayment(fake.client, {
         groupId: 'g1',
@@ -40,8 +40,9 @@ describe('recordPayment', () => {
       currency: 'EUR',
       note: 'cash',
       settledOn: '2026-10-13',
+      requestId: 'r1',
     })
-    expect(fake.rpcArgs('settle_up_v2')).toEqual([
+    expect(fake.rpcArgs('settle_up_v3')).toEqual([
       { group_id: 'g1', from_user: 'b', to_user: 'a', amount_cents: 2000 },
       {
         group_id: 'g1',
@@ -51,12 +52,13 @@ describe('recordPayment', () => {
         currency: 'EUR',
         note: 'cash',
         settled_on: '2026-10-13',
+        request_id: 'r1',
       },
     ])
   })
 
   it('throws the server error as is', async () => {
-    const fake = fakeSupabase().respond('rpc:settle_up_v2', { error: boom })
+    const fake = fakeSupabase().respond('rpc:settle_up_v3', { error: boom })
     await expect(
       recordPayment(fake.client, { groupId: 'g1', fromUser: 'b', toUser: 'a', amountCents: 1 }),
     ).rejects.toBe(boom)

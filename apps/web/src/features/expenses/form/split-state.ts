@@ -242,11 +242,14 @@ export function draftFromExpense(
 /** People in the split who are no longer in the group (only an older expense can have them). */
 export function formerParticipants(draft: SplitDraft, memberIds: readonly string[]): string[] {
   const members = new Set(memberIds)
-  const people =
-    draft.mode === 'itemized'
-      ? [...new Set(billedItems(draft.items).flatMap((i) => i.userIds))]
-      : draft.participants
-  return people.filter((id) => !members.has(id))
+  return draftPeople(draft).filter((id) => !members.has(id))
+}
+
+/** Everyone with a share in the draft: the participants, or on a by-item bill whoever has an item. */
+export function draftPeople(draft: SplitDraft): string[] {
+  return draft.mode === 'itemized'
+    ? [...new Set(billedItems(draft.items).flatMap((i) => i.userIds))]
+    : draft.participants
 }
 
 /**

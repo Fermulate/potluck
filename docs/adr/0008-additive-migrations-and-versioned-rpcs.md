@@ -24,3 +24,28 @@ The web app updates within minutes of a deploy, but a service worker can keep an
 - Rolling back the web app is safe, because the schema it expects is still there (see [deployment.md](../deployment.md#rollback)).
 - Old functions and columns pile up. Cleanup needs a planned migration once the minimum client version allows it.
 - Some designs get awkward, for example a column kept only for old clients. We take that over breaking someone's app in the middle of a trip.
+
+## Request keys
+
+- Date: 2026-11-14
+
+A save whose reply is lost (the connection drops after the server committed) used to come back
+as a second expense or payment when the person pressed Try again. Each expense and payment form
+now makes one random id per draft and sends it with every try, and the server keeps it per person
+(`private.request_keys`, primary key `(user_id, kind, request_id)`), answering a repeat with the
+row the first try made.
+
+How it stays additive:
+
+- `create_expense_v2` and `create_expense_with_attachments` take the key inside their `payload`
+  (`request_id`). A new optional key in a JSON payload changes nothing for a client that does not
+  send it, so their bodies are redefined in place.
+- `settle_up_v2` takes positional arguments, and a new defaulted argument would make a second
+  overload that PostgREST cannot tell apart from the first. So the key comes with a new
+  `settle_up_v3(..., request_id uuid default null)`, which calls `settle_up_v2`; v2 stays for older
+  clients.
+
+The key wins over the payload: a retry with a changed draft would still return the first save.
+So the form holds its fields read only while a save is out and after a lost reply, until a try
+gets an answer, and reports what the server returned, never its own fields. Details:
+[architecture](../architecture.md) (Request keys).

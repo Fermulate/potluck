@@ -294,6 +294,7 @@ export const home = {
     none: "Rien ne t'attend pour le moment.",
     some_one: "{count} chose t'attend.",
     some_other: "{count} choses t'attendent.",
+    balancesOpen: 'Aucun plan ne t’attend. Tes soldes sont plus bas.',
   },
   balance: {
     title: 'Ton solde',
@@ -311,6 +312,9 @@ export const home = {
     otherOwe: 'tu dois {amount}',
     acrossGroups_one: 'sur {count} groupe',
     acrossGroups_other: 'sur {count} groupes',
+    withFriends_one: 'avec {count} ami',
+    withFriends_other: 'avec {count} amis',
+    acrossGroupsAndFriends: 'sur tes groupes et avec tes amis',
   },
   upNext: 'Ensuite',
   needsYou: "T'attend",

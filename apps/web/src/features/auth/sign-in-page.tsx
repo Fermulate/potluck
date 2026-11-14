@@ -1,8 +1,8 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { currentLocale, t } from '@potluck/i18n'
 import { Button, Field, Input, toast } from '@potluck/ui'
-import { useState, type FormEvent } from 'react'
-import { authCallbackUrl, safeRedirect } from '@/lib/auth'
+import { useEffect, useState, type FormEvent } from 'react'
+import { authCallbackUrl, clearSessionEnded, safeRedirect, sessionEndedHere } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { supabase } from '@/lib/supabase'
@@ -19,6 +19,9 @@ type Mode = 'password' | 'magic' | 'sent'
 
 export function SignInPage({ redirect, notice }: AuthPageProps) {
   const navigate = useNavigate()
+  // Signed out because the session ended on another device: say so once, here.
+  const [ended] = useState(sessionEndedHere)
+  useEffect(() => clearSessionEnded(), [])
   const [mode, setMode] = useState<Mode>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -67,7 +70,7 @@ export function SignInPage({ redirect, notice }: AuthPageProps) {
     <AuthLayout
       title={t('auth.signIn.title')}
       subtitle={t('auth.signIn.subtitle')}
-      notice={notice}
+      notice={notice ?? (ended ? t('auth.signIn.sessionEnded') : undefined)}
       footer={
         <p>
           {t('auth.signIn.noAccount')}{' '}

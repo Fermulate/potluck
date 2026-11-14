@@ -25,7 +25,7 @@ Top level:
 | `friends`         | ids of everyone you share or shared a group with                                                                                                                                                                                   |
 | `groups`          | every group you are in, archived ones too, oldest first                                                                                                                                                                            |
 
-Each group: `id`, `name`, `emoji`, `color`, `currency`, `is_direct` (a 1:1 tab), `simplify_debts`, `members_can_invite`, `default_split` (as stored, see [architecture](architecture.md)), `created_by`, `created_at`, `archived_at`, and:
+Each group: `id`, `name` (a 1:1 tab is written under the friend's name, as the app shows it; backups from before 2026-11-14 say "Direct" there, and readers name a tab by `is_direct` and its members either way), `emoji`, `color`, `currency`, `is_direct` (a 1:1 tab), `simplify_debts`, `members_can_invite`, `default_split` (as stored, see [architecture](architecture.md)), `created_by`, `created_at`, `archived_at`, and:
 
 - `members`: `user_id`, `role` (`owner`, `admin`, `member`), `joined_at`.
 - `expenses`, by day: `id`, `description`, `amount_cents`, `currency`, `fx_rate` (into the group currency, taken on the expense day), `is_refund`, `split_type`, `category`, `notes`, `spent_at`, `tax_cents`, `tip_cents`, `discount_cents`, `event_id`, `recurring_id`, `receipt_path` (a path in the private receipts bucket; the image itself is not in the file), `created_by`, `created_at`, `updated_at`, `deleted_at` (deleted expenses are kept and marked, as they can be restored), and

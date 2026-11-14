@@ -10,7 +10,7 @@ import { toast } from '@potluck/ui'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { invalidateMoney, moneyErrorMessage } from '@/features/expenses/money-data'
+import { invalidateMoney, paymentErrorMessage } from '@/features/expenses/money-data'
 
 function refreshPayment(queryClient: QueryClient, payment: Pick<Settlement, 'id' | 'group_id'>) {
   invalidateMoney(queryClient, payment.group_id)
@@ -26,7 +26,7 @@ export function useRestorePayment() {
       try {
         await restoreSettlement(supabase, payment.id)
       } catch (error) {
-        toast.error(moneyErrorMessage(error))
+        toast.error(paymentErrorMessage(error))
         return false
       }
       toast.success(t('settle.restored'))
@@ -56,7 +56,7 @@ export function useDeletePayment() {
         await deleteSettlement(supabase, payment.id)
       } catch (error) {
         if (previous) queryClient.setQueryData(listKey, previous)
-        toast.error(moneyErrorMessage(error))
+        toast.error(paymentErrorMessage(error))
         return false
       }
       refreshPayment(queryClient, payment)

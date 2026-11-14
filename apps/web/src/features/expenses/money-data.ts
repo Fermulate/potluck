@@ -12,7 +12,7 @@ import { t } from '@potluck/i18n'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { useUserId } from '@/lib/auth'
-import { errorMessage } from '@/lib/errors'
+import { errorCode, errorMessage } from '@/lib/errors'
 import { resolveTimeZone } from '@/lib/locale'
 import { useBatchedInvalidate, useRealtime } from '@/lib/realtime'
 import { supabase } from '@/lib/supabase'
@@ -108,4 +108,14 @@ export function useNameOf() {
 /** Turns an RPC failure into a sentence for a toast or field error. */
 export function moneyErrorMessage(error: unknown): string {
   return errorMessage(error, 'expenses.errors')
+}
+
+/**
+ * The same for a payment. In a one-on-one tab across a block the server refuses a change to a
+ * payment the other person recorded with `not_a_friend`, whose usual wording is about splitting:
+ * here it says who may change the payment instead (and never who blocked whom).
+ */
+export function paymentErrorMessage(error: unknown): string {
+  if (errorCode(error) === 'not_a_friend') return t('settle.detail.onlyRecorder')
+  return moneyErrorMessage(error)
 }

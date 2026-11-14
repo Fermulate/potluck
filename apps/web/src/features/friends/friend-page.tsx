@@ -334,6 +334,18 @@ export function FriendPage({ friendId }: { friendId: string }) {
     )
   }
 
+  // "Settled up" only on the newest payment in a group where the two are square now; every
+  // other payment (a partial one included) just says it is a payment.
+  const squaring = new Set<string>()
+  const seenGroups = new Set<string>()
+  for (const item of ledger.sections.flatMap((s) => s.items)) {
+    if (item.kind !== 'settlement' || seenGroups.has(item.group.id)) continue
+    seenGroups.add(item.group.id)
+    if (ledger.standings.find((s) => s.group.id === item.group.id)?.net === 0) {
+      squaring.add(item.settlement.id)
+    }
+  }
+
   async function addExpense() {
     setOpening(true)
     try {
@@ -371,8 +383,8 @@ export function FriendPage({ friendId }: { friendId: string }) {
     <Frame>
       <header className="mt-2 flex flex-col items-center gap-3 text-center [--avatar-ring:var(--pl-paper)]">
         <Avatar name={name} seed={person.id} src={avatarSrc(person.avatar_path)} size="xl" />
-        <div className="grid gap-1">
-          <h1 className="font-display text-4xl leading-tight">{name}</h1>
+        <div className="grid max-w-full gap-1">
+          <h1 className="font-display text-4xl leading-tight wrap-anywhere">{name}</h1>
           {overall.length === 0 ? (
             <p className="flourish text-xl text-mute">{t('people.friendPage.allSettled')}</p>
           ) : (
@@ -442,13 +454,15 @@ export function FriendPage({ friendId }: { friendId: string }) {
           <h2 id="friend-standing" className="px-1 text-sm font-bold tracking-tight text-mute">
             {t('people.friendPage.sharedGroups')}
           </h2>
-          <ul className="grid gap-2">
+          {/* A grid track sized minmax(0, 1fr) and min-w-0 rows: a long group name truncates
+              inside its row instead of widening the page (and the sheets with it) on a phone. */}
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-2">
             {ledger.standings.map(({ group, net }) => (
-              <li key={group.id}>
+              <li key={group.id} className="min-w-0">
                 <Link
                   to="/groups/$groupId"
                   params={{ groupId: group.id }}
-                  className="flex items-center gap-3 rounded-card border border-line bg-card p-3 transition-colors hover:border-ink/25"
+                  className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-card p-3 transition-colors hover:border-ink/25"
                 >
                   {group.is_direct ? (
                     <Avatar
@@ -496,7 +510,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
                   {section.items.map((item) => {
                     return (
                       <li key={item.kind === 'expense' ? item.expense.id : item.settlement.id}>
-                        <p className="-mb-1.5 flex items-center gap-1.5 px-4 pt-2.5 text-xs font-semibold text-mute">
+                        <p className="-mb-1.5 truncate px-4 pt-2.5 text-xs font-semibold text-mute">
                           {item.group.is_direct
                             ? t('people.friendPage.oneOnOne')
                             : t('people.friendPage.inGroup', { group: item.group.name })}
@@ -517,6 +531,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
                             viewerId={me}
                             nameOf={nameOf}
                             locale={intlLocale()}
+                            square={squaring.has(item.settlement.id)}
                           />
                         )}
                       </li>

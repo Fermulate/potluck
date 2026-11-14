@@ -52,6 +52,10 @@ repeating expenses, guests, two-step sign in, seats, notifications):
 - Any new path that puts people on an expense (payers or shares) calls
   `private.require_no_blocked_pair(gid, people, fresh)`: a block either way keeps two people off
   any new expense; payments are never checked (ADR 19, `20261114154849_block_shared_expenses`).
+- A create RPC a client may retry after a lost reply takes a request key: `private.claim_request(kind, id)`
+  first, `private.finish_request(kind, id, row_id)` after (`20261114193218_request_keys`, ADR 8 note;
+  a new kind needs the table's check and a column).
+  A JSON payload takes it as `request_id`; positional arguments need a `_vN` with a defaulted `request_id`.
 - Availability reads (`best_slots`, heat) count `event_guest_availability` too.
 - Any per-request rule goes in `private.check_request()` (PostgREST runs one pre-request function). A
   table added to `supabase_realtime` needs the restrictive "two-step sign in done" `select` policy.

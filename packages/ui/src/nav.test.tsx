@@ -2,7 +2,15 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { AddButton, BottomTabBar, SideRail, type NavItem, type RenderNavLink } from './nav'
+import {
+  AddButton,
+  BADGE_CAP,
+  badgeCount,
+  BottomTabBar,
+  SideRail,
+  type NavItem,
+  type RenderNavLink,
+} from './nav'
 
 const items: NavItem[] = [
   {
@@ -44,9 +52,15 @@ describe('BottomTabBar', () => {
     const many = items.map((i) => (i.id === 'groups' ? { ...i, badge: 120 } : i))
     render(<BottomTabBar label="Main" items={many} activeId="home" />)
     expect(screen.getByRole('link', { name: 'Groups (120)' })).toBeInTheDocument()
-    expect(screen.getByText('99+')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByText('9+')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('link', { name: 'Plans' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Me' })).toBeInTheDocument()
+  })
+
+  it('caps every count badge the same way', () => {
+    expect(badgeCount(9)).toBe('9')
+    expect(badgeCount(10)).toBe('9+')
+    expect(badgeCount(BADGE_CAP + 1)).toBe(`${BADGE_CAP}+`)
   })
 
   it('shows small counts as they are', () => {

@@ -294,6 +294,7 @@ export const home = {
     none: 'Nada precisa de você agora.',
     some_one: '{count} coisa precisa de você.',
     some_other: '{count} coisas precisam de você.',
+    balancesOpen: 'Nenhum plano esperando por você. Seus saldos estão abaixo.',
   },
   balance: {
     title: 'Seu saldo',
@@ -311,6 +312,9 @@ export const home = {
     otherOwe: 'você deve {amount}',
     acrossGroups_one: 'em {count} grupo',
     acrossGroups_other: 'em {count} grupos',
+    withFriends_one: 'com {count} amigo',
+    withFriends_other: 'com {count} amigos',
+    acrossGroupsAndFriends: 'nos seus grupos e com amigos',
   },
   upNext: 'A seguir',
   needsYou: 'Precisa de você',

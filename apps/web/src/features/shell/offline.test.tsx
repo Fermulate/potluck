@@ -1,6 +1,6 @@
 import { t } from '@potluck/i18n'
-import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, render, renderHook, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { goOffline, goOnline } from '@/test/network'
 import { useWarnBeforeUnload } from '@/lib/online'
 import { OfflineBanner, OfflineSaveNote } from './offline'
@@ -35,18 +35,15 @@ describe('OfflineSaveNote', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('after a failed save, offers Try again once the connection is back', () => {
-    const onRetry = vi.fn()
+  it('after a failed save, says the entry is still there, online or not, with no button of its own', () => {
     goOffline()
-    render(<OfflineSaveNote failed onRetry={onRetry} />)
+    render(<OfflineSaveNote failed />)
     expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.failed'))
-    const retry = screen.getByRole('button', { name: t('common.retry') })
-    expect(retry).toBeDisabled()
 
     act(() => goOnline())
     expect(screen.getByRole('status')).toHaveTextContent(t('app.offline.failed'))
-    fireEvent.click(retry)
-    expect(onRetry).toHaveBeenCalledTimes(1)
+    // The form's own save button turns into Try again, so there is one action, not two.
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })
 

@@ -10,6 +10,8 @@ export const auth = {
     noAccount: '¿Eres nuevo?',
     createAccount: 'Crea una cuenta',
     usePassword: 'Usar una contraseña',
+    sessionEnded:
+      'Se cerró tu sesión aquí porque tu cuenta se cerró en todas partes o cambió su contraseña. Vuelve a entrar para seguir donde lo dejaste.',
   },
   signUp: {
     title: 'Únete a la mesa',

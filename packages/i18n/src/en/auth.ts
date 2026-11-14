@@ -7,6 +7,9 @@ export const auth = {
     noAccount: 'New here?',
     createAccount: 'Create an account',
     usePassword: 'Use a password instead',
+    /** After this device's session ended elsewhere ("Sign out everywhere", a new password). */
+    sessionEnded:
+      'You were signed out here because your account was signed out everywhere or its password changed. Sign in again to pick up where you left off.',
   },
   signUp: {
     title: 'Join the table',

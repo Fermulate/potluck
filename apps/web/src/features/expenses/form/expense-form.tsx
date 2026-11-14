@@ -7,6 +7,7 @@ import {
   MAX_ATTACHMENTS,
   moneyKeys,
   moneyQueries,
+  myBlocksQueryOptions,
   removeReceiptFiles,
   setDefaultSplit,
   updateExpense,
@@ -57,6 +58,7 @@ import { useUserId } from '@/lib/auth'
 import { errorCode, isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
 import { OfflineSaveNote } from '@/features/shell/offline'
+import { newRequestId } from '@/lib/request-id'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
 import { departedMembers } from '../expense-math'
@@ -70,6 +72,7 @@ import {
   usePeople,
   useTimeZone,
 } from '../money-data'
+import { blockedOnExpense } from './block-conflict'
 import { CategoryPicker } from './category-picker'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
@@ -97,6 +100,7 @@ import { SplitEditor } from './split-editor'
 import {
   defaultFromDraft,
   draftFromExpense,
+  draftPeople,
   effectiveAmount,
   formerParticipants,
   initialDraft,
@@ -295,10 +299,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const fileDrafts = attachments ?? draftsFromStored(storedFiles.data ?? [])
   // Files uploaded for a save that has not gone through yet: reused on a retry, deleted if the
   // form closes without saving. A save still running when the form closes cleans up after itself.
+  // After a save whose reply was lost they stay: that save may have kept them.
   const uploaded = useRef(new Map<string, string>())
   const closed = useRef(false)
   const saveRunning = useRef(false)
+  const unconfirmed = useRef(false)
   const dropUploads = () => {
+    if (unconfirmed.current) return
     const unused = [...uploaded.current.values()]
     uploaded.current.clear()
     if (unused.length > 0) void removeReceiptFiles(supabase, unused)
@@ -321,6 +328,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const [saveDefault, setSaveDefault] = useState(false)
   const [pickingCurrency, setPickingCurrency] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  // One id per new expense, sent with every try: a retry after a lost reply returns the expense
+  // the first try saved instead of adding it twice.
+  const [requestId] = useState(newRequestId)
 
   const total = effectiveAmount(draft, amount)
   const preview = previewSplit(draft, total)
@@ -367,6 +377,32 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const canSaveDefault =
     !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
+  // Someone the viewer blocked, on this expense with them: the server would refuse it, so say so
+  // (by name, from the viewer's own block list) before the save instead of after.
+  const myBlocks = useQuery(myBlocksQueryOptions(supabase, me))
+  const [peopleBefore] = useState(() =>
+    editing ? [...payerIds(payersFromExpense(editing)), ...draftPeople(savedDraft)] : null,
+  )
+  const blockedHere = locked
+    ? []
+    : blockedOnExpense(
+        me,
+        [...payerIds(payers), ...draftPeople(draft)],
+        peopleBefore,
+        new Set((myBlocks.data ?? []).map((b) => b.user_id)),
+      )
+  const blockNote =
+    blockedHere.length > 0
+      ? t('expenses.form.youBlocked', {
+          names: joinNames(
+            blockedHere.map((id) =>
+              firstName((group.members.find((m) => m.id === id) ?? formerMember(id)).display_name),
+            ),
+            3,
+          ),
+        })
+      : null
+
   const [unreached, setUnreached] = useState(false)
   // The server refused these people together (a block between two of them; it never says who).
   // The message stays by the save button until the people or payers change.
@@ -380,6 +416,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   const failSave = (error: unknown) => {
     const network = isNetworkError(error)
     setUnreached(network)
+    unconfirmed.current = network
     const code = errorCode(error)
     if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
     else if (code === 'blocked_person' || code === 'not_a_friend') {
@@ -491,6 +528,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         group_id: group.id,
         ...(props.mode === 'create' && props.eventId ? { event_id: props.eventId } : {}),
         ...(recurrence !== 'none' && !refund ? { recurrence } : {}),
+        request_id: requestId,
       }
       return withFiles(
         paths.length > 0
@@ -500,23 +538,33 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     },
     onSuccess: async (saved) => {
       invalidateMoney(queryClient, group.id, saved.id)
-      // Say what was added and what it means for you, not just that something happened.
-      const mine = preview.ok ? (preview.shares[me] ?? 0) : 0
-      toast.success(
-        editing
-          ? t('expenses.updated', { description: description.trim() })
-          : refund
-            ? t('expenses.refund.savedToast', { description: description.trim() })
-            : mine > 0
-              ? t('expenses.saved', {
-                  description: description.trim(),
-                  share: formatMoney(mine, currency),
-                })
-              : t('expenses.savedNotIn', {
-                  description: description.trim(),
-                  amount: formatMoney(total, currency),
-                }),
-      )
+      // Say what was saved and what it means for you, from what the server stored (a retry gets
+      // the first try's expense back), never from the form. Your share comes from the stored
+      // split; without it the toast gives the amount.
+      if (editing) toast.success(t('expenses.updated', { description: saved.description }))
+      else if (saved.is_refund) {
+        toast.success(t('expenses.refund.savedToast', { description: saved.description }))
+      } else {
+        void queryClient
+          .fetchQuery(moneyQueries.expense(supabase, saved.id))
+          .then(
+            (stored) => stored.expense_splits.find((s) => s.user_id === me)?.share_cents ?? 0,
+            () => 0,
+          )
+          .then((mine) =>
+            toast.success(
+              mine > 0
+                ? t('expenses.saved', {
+                    description: saved.description,
+                    share: formatMoney(mine, saved.currency),
+                  })
+                : t('expenses.savedNotIn', {
+                    description: saved.description,
+                    amount: formatMoney(saved.amount_cents, saved.currency),
+                  }),
+            ),
+          )
+      }
       if (saveDefault && canSaveDefault && defaultSplit) {
         try {
           await setDefaultSplit(supabase, group.id, plainEqual ? null : defaultSplit)
@@ -587,6 +635,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     setSubmitted(true)
     if (!description.trim()) return
     if (!locked && (total <= 0 || !preview.ok || !payersCheck.ok || formerError)) return
+    if (blockNote) return
     if (template) {
       if (!nextError) saveTemplate.mutate(template)
       return
@@ -594,6 +643,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     save.mutate()
   }
   const saving = save.isPending || saveTemplate.isPending
+  // While a save is out, and after one whose reply was lost, the draft is held as sent: a retry
+  // repeats exactly that save (same request id), so nothing typed meanwhile could be dropped.
+  const held = saving || unreached
 
   return (
     <MoneyPageShell
@@ -614,13 +666,15 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
             </p>
           ) : (
-            peopleError && (
+            (blockNote ?? peopleError) && (
               <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
-                {peopleError}
+                {blockNote ?? peopleError}
               </p>
             )
           )}
-          <OfflineSaveNote failed={unreached} onRetry={onSubmit} />
+          {/* After a lost reply the save button itself becomes Try again: one action, and the
+              request id makes it safe to press. */}
+          <OfflineSaveNote failed={unreached} />
           <Button
             type="submit"
             form={formId}
@@ -629,7 +683,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             disabled={!online && !saving}
             className="w-full sm:w-auto"
           >
-            {editing ? t('expenses.form.saveChanges') : t('expenses.form.save')}
+            {unreached
+              ? t('common.retry')
+              : editing
+                ? t('expenses.form.saveChanges')
+                : t('expenses.form.save')}
           </Button>
         </div>
       }
@@ -640,317 +698,323 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
         noValidate
         className="grid grid-cols-[minmax(0,1fr)] gap-x-10 gap-y-8 px-4 py-6 md:px-8 md:py-8 lg:grid-cols-2 lg:grid-rows-[auto_1fr]"
       >
-        <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
-          <div
-            className={cn(
-              'flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5 transition-colors',
-              refund && 'bg-olive-soft/60',
-            )}
-          >
-            {refund && (
-              <span className="inline-flex items-center rounded-pill bg-olive px-3 py-1 text-xs font-bold text-on-olive">
-                {t('expenses.refund.badge')}
-              </span>
-            )}
-            {locked ? (
-              <>
-                <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
-                  <Money cents={total} currency={currency} tone="neutral" split />
+        <fieldset disabled={held} className="contents">
+          <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
+            <div
+              className={cn(
+                'flex flex-col items-center gap-3 rounded-card bg-paper px-4 pt-6 pb-5 transition-colors',
+                refund && 'bg-olive-soft/60',
+              )}
+            >
+              {refund && (
+                <span className="inline-flex items-center rounded-pill bg-olive px-3 py-1 text-xs font-bold text-on-olive">
+                  {t('expenses.refund.badge')}
                 </span>
-                <p className="text-sm text-mute">{t('expenses.fields.amount')}</p>
-              </>
-            ) : draft.mode === 'itemized' ? (
-              <>
-                <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
-                  <Money cents={total} currency={currency} tone="neutral" split />
-                </span>
-                <p className="text-sm text-mute">{t('expenses.form.itemizedTotal')}</p>
-              </>
-            ) : (
-              <Field
-                label={t('expenses.fields.amount')}
-                hideLabel
-                error={amountError}
-                className="w-full items-center"
-              >
-                <MoneyInput
-                  locale={intlLocale()}
-                  value={amount}
-                  onValueChange={setAmount}
+              )}
+              {locked ? (
+                <>
+                  <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
+                    <Money cents={total} currency={currency} tone="neutral" split />
+                  </span>
+                  <p className="text-sm text-mute">{t('expenses.fields.amount')}</p>
+                </>
+              ) : draft.mode === 'itemized' ? (
+                <>
+                  <span className="text-[3.5rem] leading-none font-extrabold tracking-tight">
+                    <Money cents={total} currency={currency} tone="neutral" split />
+                  </span>
+                  <p className="text-sm text-mute">{t('expenses.form.itemizedTotal')}</p>
+                </>
+              ) : (
+                <Field
+                  label={t('expenses.fields.amount')}
+                  hideLabel
+                  error={amountError}
+                  className="w-full items-center"
+                >
+                  <MoneyInput
+                    locale={intlLocale()}
+                    value={amount}
+                    onValueChange={setAmount}
+                    currency={currency}
+                    onCurrencyPress={() => setPickingCurrency(true)}
+                    currencyButtonLabel={`${t('expenses.fields.currency')}, ${currency}`}
+                    autoFocus={!editing}
+                    className="w-full"
+                  />
+                </Field>
+              )}
+              {total > 0 && (
+                <ConversionPreview
+                  amountCents={total}
                   currency={currency}
-                  onCurrencyPress={() => setPickingCurrency(true)}
-                  currencyButtonLabel={`${t('expenses.fields.currency')}, ${currency}`}
-                  autoFocus={!editing}
-                  className="w-full"
+                  groupCurrency={group.currency}
+                  spentAt={spentAt}
+                  savedRate={expense && expense.currency === currency ? expense.fx_rate : undefined}
+                />
+              )}
+              {template && (
+                // Up top, where the amount is changed: what a change here does and does not touch.
+                <p className="flex max-w-sm items-start gap-2 text-sm text-plum-ink">
+                  <Repeat aria-hidden className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
+                  {t('expenses.recurring.futureOnly')}
+                </p>
+              )}
+              {!locked && !template && (
+                <ScanReceipt
+                  currency={currency}
+                  description={description}
+                  draft={draft}
+                  memberIds={memberIds}
+                  timeZone={timeZone}
+                  canAttach={filesReady && fileDrafts.length < MAX_ATTACHMENTS}
+                  onApply={applyScan}
+                />
+              )}
+            </div>
+
+            <Field label={t('expenses.fields.description')} error={descriptionError}>
+              <Input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('expenses.fields.descriptionPlaceholder')}
+                maxLength={120}
+                autoComplete="off"
+                className="text-lg font-semibold"
+              />
+            </Field>
+
+            <CategoryPicker
+              value={category}
+              onChange={pickCategory}
+              suggested={!categoryTouched && category !== null}
+            />
+
+            <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3 sm:gap-4">
+              <Field
+                label={refund ? t('expenses.payers.receivedBy') : t('expenses.fields.paidBy')}
+                error={payersError ?? undefined}
+              >
+                <PayersField
+                  members={payerMembers}
+                  viewerId={me}
+                  value={payers}
+                  onChange={setPayers}
+                  totalCents={total}
+                  currency={currency}
+                  locale={intlLocale()}
+                  refund={refund}
+                  disabled={locked}
                 />
               </Field>
-            )}
-            {total > 0 && (
-              <ConversionPreview
-                amountCents={total}
-                currency={currency}
-                groupCurrency={group.currency}
-                spentAt={spentAt}
-                savedRate={expense && expense.currency === currency ? expense.fx_rate : undefined}
-              />
-            )}
-            {template && (
-              // Up top, where the amount is changed: what a change here does and does not touch.
-              <p className="flex max-w-sm items-start gap-2 text-sm text-plum-ink">
-                <Repeat aria-hidden className="mt-0.5 size-4 shrink-0" strokeWidth={2.5} />
-                {t('expenses.recurring.futureOnly')}
-              </p>
-            )}
-            {!locked && !template && (
-              <ScanReceipt
-                currency={currency}
-                description={description}
-                draft={draft}
-                memberIds={memberIds}
-                timeZone={timeZone}
-                canAttach={filesReady && fileDrafts.length < MAX_ATTACHMENTS}
-                onApply={applyScan}
-              />
-            )}
-          </div>
-
-          <Field label={t('expenses.fields.description')} error={descriptionError}>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('expenses.fields.descriptionPlaceholder')}
-              maxLength={120}
-              autoComplete="off"
-              className="text-lg font-semibold"
-            />
-          </Field>
-
-          <CategoryPicker
-            value={category}
-            onChange={pickCategory}
-            suggested={!categoryTouched && category !== null}
-          />
-
-          <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3 sm:gap-4">
-            <Field
-              label={refund ? t('expenses.payers.receivedBy') : t('expenses.fields.paidBy')}
-              error={payersError ?? undefined}
-            >
-              <PayersField
-                members={payerMembers}
-                viewerId={me}
-                value={payers}
-                onChange={setPayers}
-                totalCents={total}
-                currency={currency}
-                locale={intlLocale()}
-                refund={refund}
-                disabled={locked}
-              />
-            </Field>
-            <Field
-              label={template ? t('expenses.recurring.nextLabel') : t('expenses.fields.date')}
-              error={submitted && nextError ? nextError : undefined}
-            >
-              <Input
-                type="date"
-                value={spentAt}
-                min={template ? today : undefined}
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  setDateTouched(true)
-                  setSpentAt(e.target.value)
-                }}
-              />
-            </Field>
-          </div>
-          {!template && (
-            <div className="-mt-2 flex items-start justify-between gap-3">
-              <Switch
-                label={t('expenses.refund.label')}
-                description={refund ? t('expenses.refund.hint') : undefined}
-                checked={refund}
-                onCheckedChange={setRefund}
-                disabled={locked}
-                className="flex-1"
-              />
-              <Help topic="refunds" className="mt-0.5" />
-            </div>
-          )}
-          {/* On a phone the shortcuts sit right under "Paid by", above the fold; on a wide
-              screen they join the split editor. */}
-          {!locked && !wide && quickSplit}
-          {props.mode === 'create' && props.eventId && (
-            <p className="inline-flex items-center gap-2 text-sm font-medium text-plum-ink">
-              <CalendarHeart aria-hidden className="size-4" />
-              {t('expenses.form.eventLinked')}
-            </p>
-          )}
-        </div>
-
-        <section
-          aria-labelledby={`${formId}-split`}
-          className="flex flex-col gap-3 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l lg:border-line lg:pl-10"
-        >
-          <h2 id={`${formId}-split`} className="font-display text-2xl leading-tight">
-            {t('expenses.fields.splitBetween')}
-          </h2>
-          {editing?.split_type === 'itemized' && editing.expense_items.length === 0 && (
-            <p className="text-sm text-mute">{t('expenses.form.itemizedEditNote')}</p>
-          )}
-          {locked && editing ? (
-            <>
-              <p role="note" className="text-sm font-medium text-saffron-ink">
-                {t('expenses.form.departedLocked')}
-              </p>
-              <ul aria-label={t('expenses.fields.splitBetween')} className="divide-y divide-line">
-                {editing.expense_splits.map((s) => {
-                  const person =
-                    splitMembers.find((m) => m.id === s.user_id) ?? formerMember(s.user_id)
-                  return (
-                    <li key={s.user_id} className="flex items-center gap-3 py-2">
-                      <Avatar
-                        name={person.display_name}
-                        seed={person.id}
-                        src={avatarSrc(person.avatar_path)}
-                        size="sm"
-                      />
-                      <span className="min-w-0 flex-1 truncate font-semibold">
-                        {person.id === me ? t('common.you') : person.display_name}
-                      </span>
-                      <Money cents={s.share_cents} currency={editing.currency} tone="neutral" />
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          ) : (
-            <>
-              {formerInDraft.length > 0 && (
-                <p className="text-sm text-mute">
-                  {template
-                    ? t('expenses.recurring.formerNote', { names: formerNames })
-                    : t('expenses.form.formerNote', { names: formerNames })}
-                </p>
-              )}
-              {wide && group.members.length === 2 && (
-                <div className="flex flex-col gap-2 pb-2">
-                  <h3 className="text-sm font-semibold text-mute">{t('expenses.quick.label')}</h3>
-                  {quickSplit}
-                </div>
-              )}
-              <SplitEditor
-                members={splitMembers}
-                viewerId={me}
-                draft={draft}
-                onChange={setDraft}
-                amountCents={total}
-                currency={currency}
-                locale={intlLocale()}
-                onAddPerson={canAddPerson ? () => setAddingPerson(true) : undefined}
-              />
-              {canAddPerson && (
-                <AddPlaceholderSheet
-                  group={group}
-                  open={addingPerson}
-                  onOpenChange={setAddingPerson}
-                  onAdded={(id) =>
-                    setDraft((d) =>
-                      d.participants.includes(id)
-                        ? d
-                        : { ...d, participants: [...d.participants, id] },
-                    )
-                  }
+              <Field
+                label={template ? t('expenses.recurring.nextLabel') : t('expenses.fields.date')}
+                error={submitted && nextError ? nextError : undefined}
+              >
+                <Input
+                  type="date"
+                  value={spentAt}
+                  min={template ? today : undefined}
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    setDateTouched(true)
+                    setSpentAt(e.target.value)
+                  }}
                 />
-              )}
-              {group.default_split && isDefault ? (
-                <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">
-                  <span>{t('expenses.defaultSplit.active')}</span>
-                  <span className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      loading={clearDefault.isPending}
-                      onClick={() => clearDefault.mutate()}
-                    >
-                      {t('expenses.defaultSplit.clear')}
-                    </Button>
-                    <Help topic="defaultSplit" />
-                  </span>
-                </p>
-              ) : canSaveDefault ? (
-                <div className="flex items-center justify-between gap-3">
-                  <Checkbox
-                    label={t('expenses.defaultSplit.save')}
-                    checked={saveDefault}
-                    onCheckedChange={(v) => setSaveDefault(v === true)}
-                  />
-                  <Help topic="defaultSplit" />
-                </div>
-              ) : null}
-            </>
-          )}
-        </section>
+              </Field>
+            </div>
+            {!template && (
+              <div className="-mt-2 flex items-start justify-between gap-3">
+                <Switch
+                  label={t('expenses.refund.label')}
+                  description={refund ? t('expenses.refund.hint') : undefined}
+                  checked={refund}
+                  onCheckedChange={setRefund}
+                  disabled={locked}
+                  className="flex-1"
+                />
+                <Help topic="refunds" className="mt-0.5" />
+              </div>
+            )}
+            {/* On a phone the shortcuts sit right under "Paid by", above the fold; on a wide
+              screen they join the split editor. */}
+            {!locked && !wide && quickSplit}
+            {props.mode === 'create' && props.eventId && (
+              <p className="inline-flex items-center gap-2 text-sm font-medium text-plum-ink">
+                <CalendarHeart aria-hidden className="size-4" />
+                {t('expenses.form.eventLinked')}
+              </p>
+            )}
+          </div>
 
-        <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
-          <Field label={t('expenses.fields.notes')} hint={t('common.optional')}>
-            <TextArea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('expenses.fields.notesPlaceholder')}
-              maxLength={2000}
-              rows={2}
-            />
-          </Field>
-          {template ? (
-            <>
-              <Field label={t('expenses.fields.recurring')} aside={<Help topic="recurringEdit" />}>
+          <section
+            aria-labelledby={`${formId}-split`}
+            className="flex flex-col gap-3 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:border-l lg:border-line lg:pl-10"
+          >
+            <h2 id={`${formId}-split`} className="font-display text-2xl leading-tight">
+              {t('expenses.fields.splitBetween')}
+            </h2>
+            {editing?.split_type === 'itemized' && editing.expense_items.length === 0 && (
+              <p className="text-sm text-mute">{t('expenses.form.itemizedEditNote')}</p>
+            )}
+            {locked && editing ? (
+              <>
+                <p role="note" className="text-sm font-medium text-saffron-ink">
+                  {t('expenses.form.departedLocked')}
+                </p>
+                <ul aria-label={t('expenses.fields.splitBetween')} className="divide-y divide-line">
+                  {editing.expense_splits.map((s) => {
+                    const person =
+                      splitMembers.find((m) => m.id === s.user_id) ?? formerMember(s.user_id)
+                    return (
+                      <li key={s.user_id} className="flex items-center gap-3 py-2">
+                        <Avatar
+                          name={person.display_name}
+                          seed={person.id}
+                          src={avatarSrc(person.avatar_path)}
+                          size="sm"
+                        />
+                        <span className="min-w-0 flex-1 truncate font-semibold">
+                          {person.id === me ? t('common.you') : person.display_name}
+                        </span>
+                        <Money cents={s.share_cents} currency={editing.currency} tone="neutral" />
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
+            ) : (
+              <>
+                {formerInDraft.length > 0 && (
+                  <p className="text-sm text-mute">
+                    {template
+                      ? t('expenses.recurring.formerNote', { names: formerNames })
+                      : t('expenses.form.formerNote', { names: formerNames })}
+                  </p>
+                )}
+                {wide && group.members.length === 2 && (
+                  <div className="flex flex-col gap-2 pb-2">
+                    <h3 className="text-sm font-semibold text-mute">{t('expenses.quick.label')}</h3>
+                    {quickSplit}
+                  </div>
+                )}
+                <SplitEditor
+                  members={splitMembers}
+                  viewerId={me}
+                  draft={draft}
+                  onChange={setDraft}
+                  amountCents={total}
+                  currency={currency}
+                  locale={intlLocale()}
+                  onAddPerson={canAddPerson ? () => setAddingPerson(true) : undefined}
+                  disabled={held}
+                />
+                {canAddPerson && (
+                  <AddPlaceholderSheet
+                    group={group}
+                    open={addingPerson}
+                    onOpenChange={setAddingPerson}
+                    onAdded={(id) =>
+                      setDraft((d) =>
+                        d.participants.includes(id)
+                          ? d
+                          : { ...d, participants: [...d.participants, id] },
+                      )
+                    }
+                  />
+                )}
+                {group.default_split && isDefault ? (
+                  <p className="flex flex-wrap items-center justify-between gap-2 rounded-card bg-sunken px-3 py-2 text-sm text-mute">
+                    <span>{t('expenses.defaultSplit.active')}</span>
+                    <span className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={clearDefault.isPending}
+                        onClick={() => clearDefault.mutate()}
+                      >
+                        {t('expenses.defaultSplit.clear')}
+                      </Button>
+                      <Help topic="defaultSplit" />
+                    </span>
+                  </p>
+                ) : canSaveDefault ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <Checkbox
+                      label={t('expenses.defaultSplit.save')}
+                      checked={saveDefault}
+                      onCheckedChange={(v) => setSaveDefault(v === true)}
+                    />
+                    <Help topic="defaultSplit" />
+                  </div>
+                ) : null}
+              </>
+            )}
+          </section>
+
+          <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
+            <Field label={t('expenses.fields.notes')} hint={t('common.optional')}>
+              <TextArea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t('expenses.fields.notesPlaceholder')}
+                maxLength={2000}
+                rows={2}
+              />
+            </Field>
+            {template ? (
+              <>
+                <Field
+                  label={t('expenses.fields.recurring')}
+                  aside={<Help topic="recurringEdit" />}
+                >
+                  <Select
+                    value={recurrence}
+                    onValueChange={(v) => setRecurrence(v as Recurrence)}
+                    options={RECURRENCES.map((r) => ({
+                      value: r,
+                      label: t(`expenses.recurrence.${r}`),
+                    }))}
+                  />
+                </Field>
+                {props.mode === 'recurring' && props.actions}
+              </>
+            ) : (
+              <AttachmentsField
+                value={fileDrafts}
+                onChange={setAttachments}
+                status={filesReady ? 'ready' : storedFiles.isError ? 'failed' : 'loading'}
+                onRetry={() => void storedFiles.refetch()}
+                retrying={storedFiles.isFetching}
+              />
+            )}
+            {!editing && !refund && (
+              <Field
+                label={t('expenses.fields.recurring')}
+                hint={
+                  recurrence !== 'none'
+                    ? `${t('expenses.recurring.hint')} ${t('expenses.recurring.firstOn', {
+                        date: formatDate(nextOccurrence(spentAt, recurrence), {
+                          timeZone: 'UTC',
+                          style: 'weekday',
+                        }),
+                      })}`
+                    : undefined
+                }
+                aside={<Help topic="recurring" />}
+              >
                 <Select
                   value={recurrence}
                   onValueChange={(v) => setRecurrence(v as Recurrence)}
-                  options={RECURRENCES.map((r) => ({
+                  options={(['none', ...RECURRENCES] as const).map((r) => ({
                     value: r,
                     label: t(`expenses.recurrence.${r}`),
                   }))}
                 />
               </Field>
-              {props.mode === 'recurring' && props.actions}
-            </>
-          ) : (
-            <AttachmentsField
-              value={fileDrafts}
-              onChange={setAttachments}
-              status={filesReady ? 'ready' : storedFiles.isError ? 'failed' : 'loading'}
-              onRetry={() => void storedFiles.refetch()}
-              retrying={storedFiles.isFetching}
-            />
-          )}
-          {!editing && !refund && (
-            <Field
-              label={t('expenses.fields.recurring')}
-              hint={
-                recurrence !== 'none'
-                  ? `${t('expenses.recurring.hint')} ${t('expenses.recurring.firstOn', {
-                      date: formatDate(nextOccurrence(spentAt, recurrence), {
-                        timeZone: 'UTC',
-                        style: 'weekday',
-                      }),
-                    })}`
-                  : undefined
-              }
-              aside={<Help topic="recurring" />}
-            >
-              <Select
-                value={recurrence}
-                onValueChange={(v) => setRecurrence(v as Recurrence)}
-                options={(['none', ...RECURRENCES] as const).map((r) => ({
-                  value: r,
-                  label: t(`expenses.recurrence.${r}`),
-                }))}
-              />
-            </Field>
-          )}
-        </div>
+            )}
+          </div>
+        </fieldset>
       </form>
       <CurrencyPicker
         open={pickingCurrency}

@@ -92,11 +92,14 @@ export function HomeDashboard() {
             <Skeleton shape="line" className="h-9 w-56" />
           )}
           <p className="mt-2 text-sm text-mute">
-            {timeline.isPending
+            {timeline.isPending || balances.isPending
               ? ' '
               : waiting > 0
                 ? t('home.summary.some', { count: waiting })
-                : t('home.summary.none')}
+                : summary?.open
+                  ? // Money owed either way, in any currency, is not "nothing".
+                    t('home.summary.balancesOpen')
+                  : t('home.summary.none')}
           </p>
         </div>
         <div className="flex items-center gap-2 self-start lg:hidden">

@@ -229,7 +229,13 @@ export function ExpenseDetail({ expenseId }: { expenseId: string }) {
               canMakeRepeat={mayEdit && !e.is_refund && !repeatBlocked}
             />
           )}
-          <SplitCard expense={e} me={me} people={people} nameOf={nameOf} />
+          <SplitCard
+            expense={e}
+            me={me}
+            people={people}
+            nameOf={nameOf}
+            memberOrder={group.data?.members.map((m) => m.id)}
+          />
           <ExpenseHistory expense={e} me={me} timeZone={timeZone} nameOf={nameOf} />
         </div>
 

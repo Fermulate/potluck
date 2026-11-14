@@ -21,7 +21,11 @@ vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
-  createExpense: vi.fn(async () => ({ id: 'new-expense' })),
+  // Like the server: the expense it saved.
+  createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+    id: 'new-expense',
+    ...payload,
+  })),
   updateExpense: vi.fn(async (_client: unknown, id: string) => ({ id })),
   setDefaultSplit: vi.fn(async (_client: unknown, _group: string, split: unknown) => split),
 }))

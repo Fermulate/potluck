@@ -1,6 +1,7 @@
 export {
   BACKUP_FORMAT,
   BACKUP_VERSION,
+  backupForFile,
   backupLedger,
   backupSchema,
   type Backup,

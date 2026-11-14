@@ -115,6 +115,7 @@ export const expenses = {
     formerNote:
       '{names} saiu do grupo. A parte dessa pessoa fica como está enquanto a divisão e o valor não mudarem.',
     formerInSplit: 'Tire {names} da divisão para alterá-la.',
+    youBlocked: 'Você bloqueou {names}, então vocês não podem dividir uma despesa. Tire primeiro.',
     departedLocked: 'Alguém nesta despesa saiu do grupo, então os valores não podem mudar.',
     archivedTitle: 'Este grupo está arquivado',
     archived:
@@ -266,7 +267,7 @@ export const expenses = {
     split_member_not_in_group:
       'Alguém nesta despesa não está mais no grupo, então o valor, quem pagou e a divisão ficam como estão.',
     payer_not_in_group: 'Quem pagou precisa estar no grupo.',
-    blocked_person: 'Duas dessas pessoas não podem dividir uma despesa. Tire uma delas.',
+    blocked_person: 'Esta despesa não pode incluir todo mundo que você escolheu. Tire alguém.',
     fx_rate_unavailable: 'Ainda não há taxa de câmbio para essa moeda. Tente a moeda do grupo.',
     invalid_amount: 'Insira um valor maior que zero.',
     invalid_currency: 'Escolha uma moeda.',
@@ -621,6 +622,7 @@ export const settle = {
   partial: 'Ainda faltam {amount}.',
   youPaid: 'Você pagou {amount} a {name}',
   paidYou: '{name} pagou {amount} a você',
+  paymentShort: 'pagamento',
   paid: '{from} pagou {amount} a {to}',
   pickGroup: 'Em qual grupo você está acertando as contas?',
   pickPersonHint: 'Pague o que você deve, ou marque o que alguém te pagou.',
@@ -699,6 +701,7 @@ export const settle = {
     notFound: 'Esse pagamento sumiu. Pode ter sido excluído.',
     deletedBanner: 'Este pagamento foi excluído.',
     recordedBy: 'Registrado por {name} {when}',
+    onlyRecorder: 'Só quem registrou este pagamento pode alterá-lo.',
     converted: '{amount} em {currency} a {rate}',
     departedLocked: 'Alguém deste pagamento saiu do grupo, então só a nota e a data podem mudar.',
     archived: '{group} está arquivado, então os pagamentos podem ser lidos mas não alterados.',

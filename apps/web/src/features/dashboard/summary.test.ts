@@ -23,6 +23,19 @@ describe('summarizeBalances', () => {
     expect(s.oweGroups.map((g) => g.groupId)).toEqual(['a', 'c'])
     expect(s.otherCurrencies).toEqual([{ currency: 'EUR', owed: 900, owe: 0 }])
     expect(s.groupCount).toBe(4)
+    expect(s.friendCount).toBe(0)
+    expect(s.open).toBe(true)
+  })
+
+  it('counts one-on-one tabs as friends, not groups', () => {
+    const s = summarizeBalances([b('a', 100), { ...b('t', -100), isDirect: true }], 'USD')
+    expect(s.groupCount).toBe(1)
+    expect(s.friendCount).toBe(1)
+  })
+
+  it('is open while anything is owed in any currency, and only then', () => {
+    expect(summarizeBalances([b('a', 0), b('b', -2000, 'GBP')], 'USD').open).toBe(true)
+    expect(summarizeBalances([b('a', 0), b('b', 0, 'GBP')], 'USD').open).toBe(false)
   })
 
   it('falls back to the most common currency when the preferred one has no groups', () => {

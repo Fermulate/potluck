@@ -451,6 +451,68 @@ describe('a friend export', () => {
   })
 })
 
+describe('a friend export of a group that simplifies debts', () => {
+  const expense = (
+    description: string,
+    payer: string,
+    amountCents: number,
+    among: string[],
+  ): LedgerGroup['expenses'][number] => ({
+    description,
+    category: null,
+    notes: null,
+    spentAt: '2026-03-01',
+    createdAt: `2026-03-01T1${among.length}:00:00Z`,
+    amountCents,
+    currency: 'USD',
+    fxRate: '1',
+    isRefund: false,
+    payers: [{ userId: payer, paidCents: amountCents }],
+    splits: among.map((userId) => ({ userId, shareCents: amountCents / among.length })),
+  })
+  // Ava covered Cleo, Cleo covered Ben, and Ava and Ben split a taxi. Simplified, Ben pays Ava
+  // everything, though only the taxi was between the two of them.
+  const flat: LedgerGroup = {
+    name: 'Flat',
+    currency: 'USD',
+    simplify: true,
+    expenses: [
+      expense('Groceries', 'a', 10000, ['c']),
+      expense('Tickets', 'c', 10000, ['b']),
+      expense('Taxi', 'a', 2000, ['a', 'b']),
+    ],
+    payments: [],
+  }
+  const friend = { me: 'a', friend: 'b' }
+  const labels = { ...TEST_LABELS, simplifiedBalance: 'Simplified: the rows are history' }
+  const balanceRow = (group: LedgerGroup) =>
+    parseCsv(ledgerCsv([group], { ...options, labels, friend })).at(-1)!
+
+  it('ends with the simplified debt the friend page shows, and says the rows are history', () => {
+    const row = balanceRow(flat)
+    expect(row[2]).toBe(TEST_LABELS.kinds.balance)
+    // The same standing as simplifying the group balances (SQL simplified_debts).
+    const balances = computeBalances(flat.expenses.map(toBalance), [], { groupCurrency: 'USD' })
+    expect(balances).toEqual({ a: 11000, b: -11000, c: 0 })
+    expect(row[15]).toBe('110.00')
+    expect(row[16]).toBe('Simplified: the rows are history')
+  })
+
+  it('is the sum of the rows when the group does not simplify', () => {
+    const row = balanceRow({ ...flat, simplify: false })
+    expect(row[15]).toBe('10.00')
+    expect(row[16]).toBe('')
+  })
+
+  it('keeps a group where the two only stand apart once debts are simplified', () => {
+    const rows = parseCsv(
+      ledgerCsv([{ ...flat, expenses: flat.expenses.slice(0, 2) }], { ...options, labels, friend }),
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows[1]![15]).toBe('100.00')
+  })
+})
+
 describe('parseLedger', () => {
   const header = parseCsv(ledgerCsv([trip], options))[0]!.join(',')
 

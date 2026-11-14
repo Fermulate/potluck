@@ -67,11 +67,23 @@ export function ActivityFeed({ groupId, person }: { groupId?: string; person?: s
   const sections = useMemo(() => {
     // The hidden 1:1 groups are an implementation detail: opening one (the group and its two
     // members joining) is not news. Anything later, like someone leaving, still is.
-    const items = (feed.data?.pages.flat() ?? []).filter(
+    const all = feed.data?.pages.flat() ?? []
+    // Starting a group also adds its creator as a member, in the same transaction (so at the
+    // same time, by the same person): "You started Book club" already says it.
+    const started = new Set(
+      all
+        .filter((item) => item.verb === 'group.created')
+        .map((item) => `${item.group_id}|${item.actor_id}|${item.created_at}`),
+    )
+    const items = all.filter(
       (item) =>
         !(
           item.group?.is_direct &&
           (item.verb === 'group.created' || item.verb === 'member.joined')
+        ) &&
+        !(
+          item.verb === 'member.joined' &&
+          started.has(`${item.group_id}|${item.actor_id}|${item.created_at}`)
         ),
     )
     return groupByDay(items, (item) => dayKey(item.created_at, timeZone))

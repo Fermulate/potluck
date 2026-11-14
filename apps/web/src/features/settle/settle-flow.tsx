@@ -34,6 +34,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { useUserId } from '@/lib/auth'
 import { isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
+import { newRequestId } from '@/lib/request-id'
 import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
 import { useDebts } from '@/features/balances/use-debts'
@@ -44,7 +45,7 @@ import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { GoodToKnow } from '@/features/help/help'
 import {
   invalidateMoney,
-  moneyErrorMessage,
+  paymentErrorMessage,
   useMoneyGroup,
   usePeople,
   useTimeZone,
@@ -329,6 +330,12 @@ export function PaymentForm({
         : undefined
 
   const [unreached, setUnreached] = useState(false)
+  // One id per payment, sent with every try: a retry after a lost reply returns the payment the
+  // first try recorded instead of recording it twice.
+  const [requestId] = useState(newRequestId)
+  // What was owed when this payment was first sent. A retry keeps it: by then the debts may
+  // already count the payment, if the lost try landed.
+  const owedWhenSent = useRef(0)
   const pay = useMutation({
     onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
@@ -351,22 +358,30 @@ export function PaymentForm({
         currency: currency === group.currency ? undefined : currency,
         note: trimmed,
         settledOn: day === today ? null : day,
+        requestId,
       })
     },
-    onSuccess: (_row, cents) => {
+    // What the server returned, not the form: a retry gets the first try's payment back.
+    onSuccess: (row) => {
       invalidateMoney(queryClient, group.id)
       void queryClient.invalidateQueries({ queryKey: paymentKeys.friendBalances() })
       if (editing) {
         void queryClient.invalidateQueries({ queryKey: paymentKeys.settlement(editing.id) })
         toast.success(t('settle.updated'))
       }
-      onDone({ from: payer, to: payee, owedBefore: owed, paid: cents, currency })
+      onDone({
+        from: person(row.from_user),
+        to: person(row.to_user),
+        owedBefore: owedWhenSent.current,
+        paid: row.amount_cents,
+        currency: row.currency,
+      })
     },
     onError: (e) => {
       const network = isNetworkError(e)
       setUnreached(network)
       if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
-      else toast.error(moneyErrorMessage(e))
+      else toast.error(paymentErrorMessage(e))
     },
   })
 
@@ -379,8 +394,13 @@ export function PaymentForm({
     if (!online) return
     setSubmitted(true)
     if (problem || !amount) return
+    if (!unreached) owedWhenSent.current = owed
     pay.mutate(amount)
   }
+
+  // While a payment is out, and after one whose reply was lost, the form is held as sent: a retry
+  // repeats exactly that payment (same request id), so nothing typed meanwhile could be dropped.
+  const held = pay.isPending || unreached
 
   const swap = () => {
     setFromUser(toUser)
@@ -430,7 +450,9 @@ export function PaymentForm({
               {error}
             </p>
           )}
-          <OfflineSaveNote failed={unreached} onRetry={submit} />
+          {/* After a lost reply the button itself becomes Try again (one action; the request id
+              makes it safe). */}
+          <OfflineSaveNote failed={unreached} />
           <Button
             type="submit"
             form={formId}
@@ -440,7 +462,11 @@ export function PaymentForm({
             disabled={!online && !pay.isPending}
             leadingIcon={<Check />}
           >
-            {editing ? t('settle.saveChanges') : t('settle.recordPayment')}
+            {unreached
+              ? t('common.retry')
+              : editing
+                ? t('settle.saveChanges')
+                : t('settle.recordPayment')}
           </Button>
         </div>
       }
@@ -452,132 +478,134 @@ export function PaymentForm({
         noValidate
         className="flex flex-col gap-6 px-4 py-6 md:px-8"
       >
-        <div className="flex flex-col items-center gap-3 pt-2 text-center">
-          <div className="flex items-center gap-2">
-            <span aria-hidden>
-              <Avatar
-                name={payer.display_name}
-                seed={payer.id}
-                src={avatarSrc(payer.avatar_path)}
-                size="lg"
-              />
-            </span>
-            {locked ? (
-              <ArrowLeftRight aria-hidden className="mx-2 size-6 text-mute" />
-            ) : (
-              <IconButton
-                label={t('settle.swap')}
-                icon={<ArrowLeftRight />}
-                variant="secondary"
-                onClick={swap}
-              />
-            )}
-            <span aria-hidden>
-              <Avatar
-                name={payee.display_name}
-                seed={payee.id}
-                src={avatarSrc(payee.avatar_path)}
-                size="lg"
-              />
-            </span>
-          </div>
-          <h2 className="font-display text-3xl leading-tight">{heading}</h2>
-          <p className="text-sm text-mute">{debtLine}</p>
-        </div>
-
-        {locked && (
-          <p role="note" className="text-sm font-medium text-saffron-ink">
-            {t('settle.detail.departedLocked')}
-          </p>
-        )}
-
-        <div className="flex flex-col items-center gap-3 rounded-card bg-paper px-4 py-6">
-          <Field
-            label={t('settle.amount')}
-            hideLabel
-            error={problem === 'invalid_amount' ? error : undefined}
-            className="w-full items-center"
-          >
-            {locked ? (
-              <span className="text-[3rem] leading-none font-extrabold tracking-tight">
-                {formatMoney(amount ?? 0, currency, { locale: intlLocale() })}
+        <fieldset disabled={held} className="contents">
+          <div className="flex flex-col items-center gap-3 pt-2 text-center">
+            <div className="flex items-center gap-2">
+              <span aria-hidden>
+                <Avatar
+                  name={payer.display_name}
+                  seed={payer.id}
+                  src={avatarSrc(payer.avatar_path)}
+                  size="lg"
+                />
               </span>
-            ) : (
-              <MoneyInput
-                // Swapping who paid can fill in the other direction's amount.
-                key={`${fromUser}-${toUser}`}
-                value={amount}
-                onValueChange={setAmount}
+              {locked ? (
+                <ArrowLeftRight aria-hidden className="mx-2 size-6 text-mute" />
+              ) : (
+                <IconButton
+                  label={t('settle.swap')}
+                  icon={<ArrowLeftRight />}
+                  variant="secondary"
+                  onClick={swap}
+                />
+              )}
+              <span aria-hidden>
+                <Avatar
+                  name={payee.display_name}
+                  seed={payee.id}
+                  src={avatarSrc(payee.avatar_path)}
+                  size="lg"
+                />
+              </span>
+            </div>
+            <h2 className="font-display text-3xl leading-tight">{heading}</h2>
+            <p className="text-sm text-mute">{debtLine}</p>
+          </div>
+
+          {locked && (
+            <p role="note" className="text-sm font-medium text-saffron-ink">
+              {t('settle.detail.departedLocked')}
+            </p>
+          )}
+
+          <div className="flex flex-col items-center gap-3 rounded-card bg-paper px-4 py-6">
+            <Field
+              label={t('settle.amount')}
+              hideLabel
+              error={problem === 'invalid_amount' ? error : undefined}
+              className="w-full items-center"
+            >
+              {locked ? (
+                <span className="text-[3rem] leading-none font-extrabold tracking-tight">
+                  {formatMoney(amount ?? 0, currency, { locale: intlLocale() })}
+                </span>
+              ) : (
+                <MoneyInput
+                  // Swapping who paid can fill in the other direction's amount.
+                  key={`${fromUser}-${toUser}`}
+                  value={amount}
+                  onValueChange={setAmount}
+                  currency={currency}
+                  locale={intlLocale()}
+                  onCurrencyPress={() => setPickingCurrency(true)}
+                  currencyButtonLabel={`${t('settle.currency')}, ${currency}`}
+                  autoFocus={!initialAmount}
+                  className="w-full"
+                />
+              )}
+            </Field>
+            {!!amount && amount > 0 && (
+              <ConversionPreview
+                amountCents={amount}
                 currency={currency}
-                locale={intlLocale()}
-                onCurrencyPress={() => setPickingCurrency(true)}
-                currencyButtonLabel={`${t('settle.currency')}, ${currency}`}
-                autoFocus={!initialAmount}
-                className="w-full"
+                groupCurrency={group.currency}
+                spentAt={day}
+                savedRate={
+                  editing && editing.currency === currency && day === savedDay
+                    ? editing.fx_rate
+                    : undefined
+                }
               />
             )}
-          </Field>
-          {!!amount && amount > 0 && (
-            <ConversionPreview
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t('settle.paidBy')} className="min-w-0">
+              <Select
+                value={fromUser}
+                onValueChange={setFromUser}
+                options={options}
+                disabled={locked}
+                className={TRUNCATE}
+              />
+            </Field>
+            <Field label={t('settle.paidTo')} className="min-w-0">
+              <Select
+                value={toUser}
+                onValueChange={setToUser}
+                options={options}
+                disabled={locked}
+                className={TRUNCATE}
+              />
+            </Field>
+            <Field label={t('settle.date')}>
+              <Input
+                type="date"
+                value={day}
+                max={today}
+                onChange={(e) => e.target.value && setDay(e.target.value)}
+              />
+            </Field>
+            <Field label={t('settle.note')} hint={t('common.optional')}>
+              <Input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t('settle.notePlaceholder')}
+                maxLength={280}
+              />
+            </Field>
+          </div>
+
+          {!editing && fromUser === me && toUser !== me && (
+            <PayWith
+              recipient={payee}
               amountCents={amount}
               currency={currency}
-              groupCurrency={group.currency}
-              spentAt={day}
-              savedRate={
-                editing && editing.currency === currency && day === savedDay
-                  ? editing.fx_rate
-                  : undefined
-              }
+              note={note.trim() || undefined}
+              onConfirmed={() => formRef.current?.requestSubmit()}
             />
           )}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label={t('settle.paidBy')} className="min-w-0">
-            <Select
-              value={fromUser}
-              onValueChange={setFromUser}
-              options={options}
-              disabled={locked}
-              className={TRUNCATE}
-            />
-          </Field>
-          <Field label={t('settle.paidTo')} className="min-w-0">
-            <Select
-              value={toUser}
-              onValueChange={setToUser}
-              options={options}
-              disabled={locked}
-              className={TRUNCATE}
-            />
-          </Field>
-          <Field label={t('settle.date')}>
-            <Input
-              type="date"
-              value={day}
-              max={today}
-              onChange={(e) => e.target.value && setDay(e.target.value)}
-            />
-          </Field>
-          <Field label={t('settle.note')} hint={t('common.optional')}>
-            <Input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('settle.notePlaceholder')}
-              maxLength={280}
-            />
-          </Field>
-        </div>
-
-        {!editing && fromUser === me && toUser !== me && (
-          <PayWith
-            recipient={payee}
-            amountCents={amount}
-            currency={currency}
-            note={note.trim() || undefined}
-            onConfirmed={() => formRef.current?.requestSubmit()}
-          />
-        )}
+        </fieldset>
       </form>
       <CurrencyPicker
         open={pickingCurrency}

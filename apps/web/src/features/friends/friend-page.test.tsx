@@ -160,6 +160,26 @@ describe('FriendPage', () => {
     ).toHaveLength(2)
   })
 
+  it('calls a partial payment a payment, and only a squaring one settled up', async () => {
+    renderPage()
+    const history = await screen.findByRole('region', { name: t('people.friendPage.history') })
+    // Ben paid 2 of the 10 he owed in Hike crew: he still owes 8.
+    const paid = within(history).getByRole('link', { name: /Ben paid you/ })
+    expect(paid).toHaveTextContent(t('settle.paymentShort'))
+    expect(paid).not.toHaveTextContent(t('balances.settledShort'))
+  })
+
+  it('says settled up on the payment that left the two square', async () => {
+    seed().respond('rpc:friend_balances', {
+      data: [{ ...friendBalances[0]!, net_cents: 0 }, friendBalances[1]],
+    })
+    renderPage()
+    const history = await screen.findByRole('region', { name: t('people.friendPage.history') })
+    expect(within(history).getByRole('link', { name: /Ben paid you/ })).toHaveTextContent(
+      t('balances.settledShort'),
+    )
+  })
+
   it('shows on each row only what the expense left between the two of you', async () => {
     const payer = (user_id: string, paid_cents: number) => [{ user_id, paid_cents }]
     resetDb({

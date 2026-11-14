@@ -402,6 +402,8 @@ export const home = {
     none: 'Nothing needs you right now.',
     some_one: '{count} thing needs you.',
     some_other: '{count} things need you.',
+    /** No plans waiting, but money is owed one way or the other. */
+    balancesOpen: 'No plans waiting on you. Your balances are below.',
   },
   balance: {
     title: 'Your balance',
@@ -420,6 +422,10 @@ export const home = {
     otherOwe: 'you owe {amount}',
     acrossGroups_one: 'across {count} group',
     acrossGroups_other: 'across {count} groups',
+    /** Only one-on-one tabs have balances. */
+    withFriends_one: 'with {count} friend',
+    withFriends_other: 'with {count} friends',
+    acrossGroupsAndFriends: 'across your groups and friends',
   },
   upNext: 'Up next',
   needsYou: 'Needs you',

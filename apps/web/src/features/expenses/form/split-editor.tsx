@@ -59,6 +59,11 @@ export interface SplitEditorProps {
   showAmounts?: boolean
   /** Offers to add someone not on Potluck yet; the form puts them in the split once added. */
   onAddPerson?: () => void
+  /**
+   * Nothing can change. Native controls follow a disabled `fieldset` around the editor; this
+   * holds the custom ones (the percent slider) too.
+   */
+  disabled?: boolean
 }
 
 function displayName(member: MoneyMember, viewerId: string) {
@@ -76,6 +81,7 @@ export function SplitEditor({
   modes = SPLIT_TYPES,
   showAmounts = true,
   onAddPerson,
+  disabled = false,
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
   const modesRef = useRef<HTMLDivElement>(null)
@@ -421,6 +427,7 @@ export function SplitEditor({
                   }))}
                   percent={draft.percent}
                   onChange={(percent) => onChange({ ...draft, percent })}
+                  disabled={disabled}
                 />
               )}
               {body && <ul className="divide-y divide-line">{body}</ul>}

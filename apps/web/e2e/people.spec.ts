@@ -7,6 +7,7 @@ import {
   fetchMyFriendLink,
   getOrCreateDirectGroup,
   removePlaceholder,
+  updateGroup,
 } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
 import { addEqualExpense, groupWith } from './support/api'
@@ -254,4 +255,56 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
     .fill(unique('Brunch'))
   await owenPage.getByRole('button', { name: t('expenses.form.save') }).click()
   await expect(owenPage.getByText(t('expenses.errors.blocked_person'))).toBeVisible()
+
+  // Jules, who blocked Ava, is told by name before saving; nobody else ever is.
+  const julesPage = await openAs(jules)
+  await julesPage.goto(`/new/expense?groupId=${group.id}`)
+  await expect(
+    julesPage.getByText(t('expenses.form.youBlocked', { names: ava.name })),
+  ).toBeVisible()
+})
+
+test('a long group name never widens a phone page, archived or not', async ({
+  newUser,
+  openAs,
+}) => {
+  const [ava, ben] = await Promise.all([
+    newUser({ name: unique('Ava') }),
+    newUser({ name: unique('Ben') }),
+  ])
+  const long = (prefix: string) =>
+    `${unique(prefix)} supper club of the northern district and every friend`.slice(0, 80)
+  const open = await groupWith(ava, [ben], { name: long('Open') })
+  const archived = await groupWith(ava, [ben], { name: long('Shelved') })
+  const snack = unique('Snacks')
+  await addEqualExpense(ava, open, [ava, ben], 3000, snack)
+  await addEqualExpense(ben, archived, [ava, ben], 2000, unique('Tickets'))
+  await updateGroup(ava.client, archived.id, { archived_at: new Date().toISOString() })
+
+  const page = await openAs(ava)
+  const fits = async (path: string, ready: string) => {
+    await page.goto(path)
+    await expect(page.getByText(ready).first()).toBeVisible()
+    const [scroll, width] = await page.evaluate(() => [
+      document.documentElement.scrollWidth,
+      window.innerWidth,
+    ])
+    expect(scroll, `${path} scrolls sideways`).toBeLessThanOrEqual(width!)
+  }
+  await fits(`/friends/${ben.id}`, archived.name)
+  await fits('/home', open.name)
+  await fits('/friends', ben.name)
+  await fits('/activity', open.name)
+  await fits(`/search?q=${snack}`, open.name)
+  await fits('/groups', open.name)
+  await fits(`/groups/${open.id}/balances`, ben.name)
+  await fits(`/groups/${archived.id}`, archived.name)
+
+  // On the friend page the menu sheet sits inside the screen.
+  await page.goto(`/friends/${ben.id}`)
+  await page.getByRole('button', { name: t('people.friendPage.menu', { name: ben.name }) }).click()
+  const sheet = await page.getByRole('dialog', { name: ben.name }).boundingBox()
+  const viewport = page.viewportSize()!
+  expect(sheet!.x).toBeGreaterThanOrEqual(0)
+  expect(sheet!.x + sheet!.width).toBeLessThanOrEqual(viewport.width)
 })

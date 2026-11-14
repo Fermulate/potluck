@@ -112,6 +112,30 @@ describe('ExpenseDetail', () => {
     expect(screen.getByRole('group', { name: t('expenses.detail.actions') })).toBeVisible()
   })
 
+  it('lists people as the form does: you first, then group order, never by amount', async () => {
+    renderDetail({
+      amount_cents: 10000,
+      paid_by: CLEO,
+      split_type: 'exact',
+      expense_payers: [{ user_id: CLEO, paid_cents: 10000 }],
+      expense_splits: [
+        { user_id: CLEO, share_cents: 4000, weight: null, adjustment_cents: null },
+        { user_id: BEN, share_cents: 5000, weight: null, adjustment_cents: null },
+        { user_id: ME, share_cents: 1000, weight: null, adjustment_cents: null },
+      ],
+    })
+    const type = t('splitTypes.exact.label').toLocaleLowerCase()
+    const heading = await screen.findByRole('heading', {
+      name: t('expenses.detail.split', { type }),
+    })
+    const rows = within(heading.parentElement!).getAllByRole('listitem')
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining(t('common.you')),
+      expect.stringContaining('Ben'),
+      expect.stringContaining('Cleo'),
+    ])
+  })
+
   it('marks a refund and says who got the money back', async () => {
     renderDetail({
       is_refund: true,

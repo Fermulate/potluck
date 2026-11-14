@@ -179,10 +179,15 @@ export interface ExpensePayload {
   event_id?: string | null
   /** Create only: also saves a recurring template. */
   recurrence?: RecurrenceValue
+  /**
+   * Create only: one random id per expense form. Sent again with a retry, the server returns the
+   * expense the first try saved instead of a second one (ADR 8 note on request keys).
+   */
+  request_id?: string
 }
 
 /** `update_expense` takes only the keys that change; leaving out `splits` keeps the stored ones. */
-export type ExpenseUpdate = Partial<Omit<ExpensePayload, 'group_id' | 'recurrence'>>
+export type ExpenseUpdate = Partial<Omit<ExpensePayload, 'group_id' | 'recurrence' | 'request_id'>>
 
 /**
  * Payload for `update_recurring_expense(id, payload)`: the money and details of an expense (no

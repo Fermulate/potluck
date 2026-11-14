@@ -10,6 +10,8 @@ export const auth = {
     noAccount: 'É novo por aqui?',
     createAccount: 'Criar uma conta',
     usePassword: 'Usar uma senha',
+    sessionEnded:
+      'Você saiu aqui porque sua conta foi desconectada em todos os lugares ou a senha mudou. Entre de novo para continuar de onde parou.',
   },
   signUp: {
     title: 'Sente-se à mesa',

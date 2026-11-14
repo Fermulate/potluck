@@ -1,5 +1,5 @@
 import { exportMyData, moneyQueries } from '@potluck/api'
-import { backupLedger, ledgerCsv, ledgerPeople, type Backup } from '@potluck/core'
+import { backupForFile, backupLedger, ledgerCsv, ledgerPeople, type Backup } from '@potluck/core'
 import { t } from '@potluck/i18n'
 import { toast } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
@@ -109,7 +109,9 @@ export function useAccountExports() {
       run('backup', async () => {
         const backup = await exportMyData(supabase)
         const file = fileName('potluck-backup', 'json')
-        saveFile(file, JSON.stringify(backup, null, 2), 'json')
+        // A one-on-one tab goes by the friend, as on every screen; is_direct stays.
+        const named = backupForFile(backup, t('people.friendPage.oneOnOne'))
+        saveFile(file, JSON.stringify(named, null, 2), 'json')
         return file
       }),
     everything: () =>

@@ -1,5 +1,5 @@
 import { t } from '@potluck/i18n'
-import { Button, cn } from '@potluck/ui'
+import { cn } from '@potluck/ui'
 import { WifiOff } from 'lucide-react'
 import { useOnline } from '@/lib/online'
 
@@ -32,29 +32,18 @@ export function OfflineBanner() {
 /**
  * Next to a save button: offline, the button is disabled and this says the entry stays put
  * until the connection is back. When a save `failed` because Potluck could not be reached, it
- * says what was typed is still here and offers Try again (`onRetry`) once back online. Nothing
- * retries on its own: a request that did arrive could otherwise be saved twice.
+ * says the entry is held as it was sent; the form keeps its fields read only and its own save
+ * button reads Try again, so there is one action. Nothing retries on its own, and each form
+ * sends a request id with every try, so a save that did arrive comes back instead of being
+ * saved twice.
  */
-export function OfflineSaveNote({
-  failed = false,
-  onRetry,
-}: {
-  failed?: boolean
-  onRetry?: () => void
-}) {
+export function OfflineSaveNote({ failed = false }: { failed?: boolean }) {
   const online = useOnline()
   return (
-    <div
-      className={cn('flex flex-wrap items-center gap-x-3 gap-y-2', online && !failed && 'hidden')}
-    >
+    <div className={cn(online && !failed && 'hidden')}>
       <p role="status" className="text-sm font-medium text-saffron-ink">
         {failed ? t('app.offline.failed') : !online ? t('app.offline.form') : null}
       </p>
-      {failed && onRetry && (
-        <Button size="sm" variant="secondary" disabled={!online} onClick={onRetry}>
-          {t('common.retry')}
-        </Button>
-      )}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { meKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { badgeCount } from '@potluck/ui'
 import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderInRouter } from '@/features/expenses/router-test-utils'
@@ -20,6 +21,18 @@ describe('InboxBell', () => {
     })
     expect(bell).toHaveAttribute('href', '/notifications')
     expect(bell).toHaveTextContent('3')
+  })
+
+  it('caps the count as every badge does', async () => {
+    renderInRouter(
+      <InboxBell />,
+      seededClient((c) => c.setQueryData(meKeys.unread(ME), 10)),
+    )
+    const bell = await screen.findByRole('link', {
+      name: `${t('nav.notifications')} (${t('notifications.unread', { count: 10 })})`,
+    })
+    expect(bell).toHaveTextContent(badgeCount(10))
+    expect(badgeCount(10)).toBe('9+')
   })
 
   it('is just the bell when everything is read', async () => {
