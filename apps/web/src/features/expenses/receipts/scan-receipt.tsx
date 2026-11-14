@@ -39,16 +39,16 @@ export interface ScanResult {
 
 type State =
   | { phase: 'idle' }
-  | { phase: 'reading'; photo: File; url: string; stage: ReadStage; progress: number }
+  | { phase: 'reading'; photo: File; original: File; stage: ReadStage; progress: number }
   | {
       phase: 'review'
       photo: File
-      url: string
+      original: File
       scan: ReceiptScan
       choice: ScanChoice
       attach: boolean
     }
-  | { phase: 'empty'; photo: File; url: string }
+  | { phase: 'empty'; photo: File; original: File }
   | { phase: 'failed'; reason: 'offline' | 'failed' }
 
 /**
@@ -75,7 +75,9 @@ export function ScanReceipt({
   const inputRef = useRef<HTMLInputElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const [state, setState] = useState<State>({ phase: 'idle' })
-  const url = 'url' in state ? state.url : null
+  // The photo as picked, shown while reading and beside the review.
+  const original = 'original' in state ? state.original : null
+  const url = useMemo(() => (original ? URL.createObjectURL(original) : null), [original])
   useEffect(
     () => () => {
       if (url) URL.revokeObjectURL(url)
@@ -89,8 +91,7 @@ export function ScanReceipt({
     const controller = new AbortController()
     abortRef.current = controller
     // The reader works from the original photo; the shrunk JPEG is only what gets uploaded.
-    const photoUrl = URL.createObjectURL(picked)
-    setState({ phase: 'reading', photo: picked, url: photoUrl, stage: 'loading', progress: 0 })
+    setState({ phase: 'reading', photo: picked, original: picked, stage: 'loading', progress: 0 })
     const upload = prepareImage(picked)
     const parse = (text: string) =>
       parseReceipt(text, {
@@ -113,16 +114,15 @@ export function ScanReceipt({
           ? {
               phase: 'review',
               photo,
-              url: photoUrl,
+              original: picked,
               scan,
               choice: defaultChoice(scan, description),
               attach: canAttach,
             }
-          : { phase: 'empty', photo, url: photoUrl },
+          : { phase: 'empty', photo, original: picked },
       )
     } catch (error) {
       if (controller.signal.aborted) return
-      URL.revokeObjectURL(photoUrl)
       setState({
         phase: 'failed',
         reason: error instanceof ReaderUnavailableError && !navigator.onLine ? 'offline' : 'failed',
@@ -219,12 +219,12 @@ export function ScanReceipt({
           size={state.phase === 'review' ? 'lg' : 'md'}
           footer={footer}
         >
-          {state.phase === 'reading' && (
-            <Reading url={state.url} stage={state.stage} progress={state.progress} />
+          {state.phase === 'reading' && url && (
+            <Reading url={url} stage={state.stage} progress={state.progress} />
           )}
-          {state.phase === 'review' && (
+          {state.phase === 'review' && url && (
             <Review
-              url={state.url}
+              url={url}
               scan={state.scan}
               choice={state.choice}
               formCurrency={currency}
@@ -237,7 +237,7 @@ export function ScanReceipt({
             />
           )}
           {state.phase === 'empty' && (
-            <Message url={state.url}>{t('expenses.scan.nothing')}</Message>
+            <Message url={url ?? undefined}>{t('expenses.scan.nothing')}</Message>
           )}
           {state.phase === 'failed' && (
             <Message>

@@ -144,8 +144,21 @@ const PRICE_AT_END = new RegExp(
   String.raw`(?:^|[\s:=])(-)?\s*(${SYMBOL})?\s*(-)?(${AMOUNT})\s*(${SYMBOL}|円)?\s*(-)?$`,
   'u',
 )
-/** Trailing marks some tills print after a price: VAT class letters, "*", a currency code. */
-const TRAILING_MARKS = /(?:\s+(?:[A-Z]{1,2}\d?|[*#]))+\s*$/u
+/** A mark some tills print after a price: a VAT class letter, "*", a currency code. */
+const TRAILING_MARK = /^(?:[A-Z]{1,2}\d?|[*#])$/u
+
+/**
+ * The line without the marks after its price. Words in a tidied line are one space apart; going
+ * word by word from the end keeps this linear however many marks a misread line has.
+ */
+function withoutTrailingMarks(line: string): string {
+  let end = line.length
+  for (let space = line.lastIndexOf(' '); space > 0; space = line.lastIndexOf(' ', end - 1)) {
+    if (!TRAILING_MARK.test(line.slice(space + 1, end))) break
+    end = space
+  }
+  return line.slice(0, end)
+}
 
 interface Priced {
   cents: number
@@ -155,7 +168,7 @@ interface Priced {
 }
 
 function trailingPrice(line: string, currency: string): Priced | null {
-  const trimmed = line.replace(TRAILING_MARKS, '')
+  const trimmed = withoutTrailingMarks(line)
   const match = PRICE_AT_END.exec(trimmed)
   if (!match) return null
   const [whole, minusBefore, symbolBefore, minusMiddle, token, symbolAfter, minusAfter] = match
@@ -323,7 +336,9 @@ function findMerchant(lines: string[]): string | null {
     if (letters < 3 || numbers > letters) continue
     if (NOT_A_NAME.test(key) || /^\d+\s+\p{L}/u.test(line)) continue
     if (datesIn(key, 'dmy').length > 0) continue
-    const name = titleCase(line.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}).!']+$/gu, '').trim())
+    const name = titleCase(
+      line.replace(/^[^\p{L}\p{N}]+|(?<![^\p{L}\p{N}).!'])[^\p{L}\p{N}).!']+$/gu, '').trim(),
+    )
     if (name.length >= 2) return name.slice(0, MERCHANT_MAX).trim()
   }
   return null
@@ -337,7 +352,7 @@ const QTY_AT_END = new RegExp(
   String.raw`\s*(\d{1,3})\s*[x×@*]\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`,
   'iu',
 )
-const QTY_SUFFIX = /\s+[x×]\s*(\d{1,2})$/i
+const QTY_SUFFIX = /(?<!\s)\s+[x×]\s*(\d{1,2})$/i
 /**
  * What is left of a unit price line once its price is cut off: "2 Stk x", "3 x", "2 @", "2 un x",
  * "> stk x" (the count lost to the scan). It belongs to the item above it, or the one below.
@@ -346,7 +361,9 @@ const QTY_LINE =
   /^[^\p{L}\d]*(\d{1,3})?\s*(?:stk|st|pcs?|pz|ea|un|uds?|und|units?)?\.?\s*[x×@*]\s*$/iu
 const UNIT_AT_END = new RegExp(String.raw`\s+@\s*(?:${SYMBOL})?\s*(?:${AMOUNT})\s*$`, 'u')
 
-const JUNK_EDGES = /^[\s.,:;\-*#|>_~'"`«»[\]){}\\/]+|[\s.,:;\-*#|>_~'"`«»[\]{}\\/]+$/g
+// A trailing run starts only after a character outside it, so no position is tried twice.
+const JUNK_EDGES =
+  /^[\s.,:;\-*#|>_~'"`«»[\]){}\\/]+|(?<![\s.,:;\-*#|>_~'"`«»[\]{}\\/])[\s.,:;\-*#|>_~'"`«»[\]{}\\/]+$/g
 
 function itemOf(rest: string): { description: string; quantity: number } {
   let text = rest.replace(/^\d{4,}\s+/, '')

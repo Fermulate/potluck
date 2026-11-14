@@ -18,6 +18,8 @@ Deno.serve(async (req) => {
     })
     return json(result)
   } catch (error) {
-    return json({ error: String((error as { message?: string })?.message ?? error) }, 500)
+    // The cause goes to the function log, not back to the caller.
+    console.error('receipts sweep failed', error)
+    return json({ error: 'sweep_failed' }, 500)
   }
 })
