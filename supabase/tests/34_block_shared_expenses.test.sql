@@ -1,10 +1,11 @@
 -- A block reaches every expense (20261114154849_block_shared_expenses): once either person has
 -- blocked the other, no new expense names both of them, as payers or with a share, in any group
--- or 1:1 tab. Creating, editing so someone comes in, repeating expenses and import are covered;
--- details of older expenses, payments and settling up keep working, and no answer says who
--- blocked whom. Ben and Cleo are the pair; Ava and Dan have no block with anyone.
+-- or 1:1 tab. Creating, editing so someone comes in, restoring, repeating expenses and import are
+-- covered; details of older expenses, payments and settling up keep working for both people
+-- (20261114161054_payments_across_blocks), and no answer says who blocked whom. Ben and Cleo are
+-- the pair; Ava and Dan have no block with anyone.
 begin;
-select plan(36);
+select plan(43);
 
 delete from public.fx_rates;
 
@@ -65,11 +66,25 @@ select tests.remember('ben_monthly', (select recurring_id from public.create_exp
   'group_id', tests.id('g'), 'description', 'Gym', 'amount_cents', 2000, 'paid_by', tests.uid('ava'),
   'recurrence', 'monthly', 'spent_at', '2026-01-10', 'splits', tests.people('ava', 'ben')))));
 
+-- Deleted before the block, to be restored after it.
+select tests.remember('gone_pair', (select id from public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Pizza', 'amount_cents', 900, 'paid_by', tests.uid('ava'),
+  'splits', tests.people('ava', 'ben', 'cleo')))));
+select tests.remember('gone_other', (select id from public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('g'), 'description', 'Bread', 'amount_cents', 400, 'paid_by', tests.uid('ava'),
+  'splits', tests.people('ava', 'dan')))));
+select public.delete_expense(tests.id('gone_pair'));
+select public.delete_expense(tests.id('gone_other'));
+
 select tests.login('ben');
 select tests.remember('tab', public.get_or_create_direct_group(tests.uid('cleo')));
 select tests.remember('tab_lunch', (select id from public.create_expense_v2(jsonb_build_object(
   'group_id', tests.id('tab'), 'description', 'Lunch', 'amount_cents', 800, 'paid_by', tests.uid('ben'),
   'splits', tests.people('ben', 'cleo')))));
+select tests.remember('tab_coffee', (select id from public.create_expense_v2(jsonb_build_object(
+  'group_id', tests.id('tab'), 'description', 'Coffee', 'amount_cents', 500, 'paid_by', tests.uid('ben'),
+  'splits', tests.people('ben', 'cleo')))));
+select public.delete_expense(tests.id('tab_coffee'));
 
 select tests.login('ben');
 select public.block_user(tests.uid('cleo'));
@@ -158,6 +173,28 @@ select throws_ok(
   '23514', 'blocked_person', 'the first version of the edit call refuses it too'
 );
 
+-- Restoring a deleted expense --------------------------------------------------------------
+
+select tests.login('ava');
+select throws_ok(
+  format($$ select public.restore_expense(%L) $$, tests.id('gone_pair')),
+  '23514', 'blocked_person', 'restoring an expense that names the pair is refused like adding it'
+);
+select lives_ok(
+  format($$ select public.restore_expense(%L) $$, tests.id('gone_other')),
+  'one without a blocked pair comes back'
+);
+select tests.login('ben');
+select throws_ok(
+  format($$ select public.restore_expense(%L) $$, tests.id('tab_coffee')),
+  '42501', 'not_a_friend', 'in the 1:1 tab the person who blocked cannot restore one either'
+);
+select tests.login('cleo');
+select throws_ok(
+  format($$ select public.restore_expense(%L) $$, tests.id('tab_coffee')),
+  '42501', 'not_a_friend', 'nor can the blocked person'
+);
+
 -- Payments and settling up -----------------------------------------------------------------
 
 select tests.login('ben');
@@ -182,6 +219,16 @@ select lives_ok(
   format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('tab'), tests.uid('cleo'), tests.uid('ben')),
   'and settle up there'
 );
+select tests.login('cleo');
+select lives_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 200) $$, tests.id('g'), tests.uid('cleo'), tests.uid('ben')),
+  'the blocked person can pay the blocker in a group'
+);
+select lives_ok(
+  format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('tab'), tests.uid('cleo'), tests.uid('ben')),
+  '...and in their 1:1 tab'
+);
+select tests.login('ben');
 select is(public.can_split_with(tests.uid('cleo')), false, 'can_split_with says no to the blocker too');
 
 -- Import -------------------------------------------------------------------------------------
@@ -214,6 +261,12 @@ select is(
   public.import_expenses(tests.id('tab'), jsonb_build_array(pg_temp.payment('ben', 'cleo'))),
   '{"expenses": 0, "payments": 1}'::jsonb,
   'but can import payments there'
+);
+select tests.login('cleo');
+select is(
+  public.import_expenses(tests.id('tab'), jsonb_build_array(pg_temp.payment('cleo', 'ben'))),
+  '{"expenses": 0, "payments": 1}'::jsonb,
+  'and so can the blocked person'
 );
 
 -- Repeating expenses -------------------------------------------------------------------------

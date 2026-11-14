@@ -1969,7 +1969,8 @@ declare
   row jsonb := coalesce(to_jsonb(new), to_jsonb(old));
   gid uuid;
 begin
-  if uid is null or private.claiming() then
+  -- Payments are how the two square up, so they always go through.
+  if uid is null or private.claiming() or tg_table_name = 'settlements' then
     return coalesce(new, old);
   end if;
   if tg_table_name = 'comments' then
@@ -7319,12 +7320,16 @@ begin
   perform private.require_unarchived(gid);
   select * into g from public.groups x where x.id = gid;
 
-  -- A 1:1 tab across a block is frozen for the blocked side (ADR 19): said once here, before any
-  -- row is read, with the answer private.freeze_blocked_direct_money gives every row it stops.
+  -- A 1:1 tab across a block is frozen for the blocked side (ADR 19), payments aside: said once
+  -- here, before any row is read, with the answer private.freeze_blocked_direct_money gives every
+  -- expense it stops. An import of payments alone goes through.
   if g.is_direct and exists (
     select 1 from public.blocks b
     join public.group_members m on m.group_id = gid and m.user_id = b.blocker_id
     where b.blocked_id = uid
+  ) and exists (
+    select 1 from jsonb_array_elements(all_rows) x
+    where jsonb_typeof(x) <> 'object' or (x ->> 'kind') is distinct from 'payment'
   ) then
     raise exception using message = 'not_a_friend', detail = 'You can only split with friends', errcode = '42501';
   end if;
@@ -8605,6 +8610,13 @@ begin
   ) then
     raise exception using message = 'split_member_not_in_group', detail = 'Someone in this expense has left the group', errcode = '23514';
   end if;
+
+  -- Back on the books is new as far as a block goes: no two people in it may have one between them.
+  perform private.require_no_blocked_pair(e.group_id, array(
+    select s.user_id from public.expense_splits s where s.expense_id = e.id and s.share_cents > 0
+    union
+    select p.user_id from public.expense_payers p where p.expense_id = e.id and p.paid_cents > 0
+  ));
 
   update public.expenses x set deleted_at = null where x.id = e.id returning * into e;
   return e;

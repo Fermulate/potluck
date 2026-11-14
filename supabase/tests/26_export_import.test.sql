@@ -3,7 +3,7 @@
 -- export_my_data returns the caller's account and nothing else.
 -- Money cases match packages/core portability/import-plan.test.ts.
 begin;
-select plan(88);
+select plan(89);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values ('EUR', 'USD', '2026-01-01', 1.1);
@@ -513,15 +513,23 @@ select tests.login('cleo');
 select public.block_user(tests.uid('ben'));
 select tests.login('ben');
 select throws_ok(
-  format($$ select public.import_expenses(%L, jsonb_build_array(pg_temp.payment('ben', 'cleo', 100))) $$,
+  format($$ select public.import_expenses(%L, jsonb_build_array(
+    pg_temp.expense('Solo', 100, jsonb_build_array(pg_temp.cents('ben', 100, 'paid_cents')),
+      jsonb_build_array(pg_temp.cents('ben', 100, 'share_cents'))),
+    pg_temp.payment('ben', 'cleo', 100))) $$,
     tests.id('dm')),
-  '42501', 'not_a_friend', 'the blocked side of a 1:1 tab cannot import into it'
+  '42501', 'not_a_friend', 'the blocked side of a 1:1 tab cannot import expenses into it'
+);
+select is(
+  public.import_expenses(tests.id('dm'), jsonb_build_array(pg_temp.payment('ben', 'cleo', 100))),
+  '{"expenses": 0, "payments": 1}'::jsonb,
+  'but can import payments there (20261114161054_payments_across_blocks)'
 );
 select tests.login('cleo');
 select is(
   public.import_expenses(tests.id('dm'), jsonb_build_array(pg_temp.payment('cleo', 'ben', 100))),
   '{"expenses": 0, "payments": 1}'::jsonb,
-  'the person who blocked still can, as with every money write there'
+  'and so can the person who blocked'
 );
 reset role;
 

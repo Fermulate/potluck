@@ -876,9 +876,9 @@ select throws_ok(
     tests.id('dm'), tests.uid('dan'), tests.uid('dan'), tests.uid('ben')),
   '42501', 'not_a_friend', 'the blocked person can no longer change money in the 1:1 tab'
 );
-select throws_ok(
+select lives_ok(
   format($$ select public.settle_up_v2(%L, %L, %L, 100) $$, tests.id('dm'), tests.uid('dan'), tests.uid('ben')),
-  '42501', 'not_a_friend', 'nor record payments there'
+  'but can still pay the blocker back there'
 );
 select tests.login('ben');
 select throws_ok(
