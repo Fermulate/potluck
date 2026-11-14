@@ -31,8 +31,15 @@ vi.mock('@potluck/api', async (importOriginal) => {
         queryFn: () => listFiles(expenseId),
       }),
     },
-    createExpense: vi.fn(async () => ({ id: 'new-expense' })),
-    createExpenseWithAttachments: vi.fn(async () => ({ id: 'new-expense' })),
+    // Like the server: the expense it saved.
+    createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+      id: 'new-expense',
+      ...payload,
+    })),
+    createExpenseWithAttachments: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+      id: 'new-expense',
+      ...payload,
+    })),
     updateExpense: vi.fn(async (_c: unknown, id: string) => ({ id })),
     uploadReceipt: vi.fn(async (_c: unknown, groupId: string) => `${groupId}/up-${(n += 1)}.jpg`),
     setExpenseAttachments: vi.fn(async () => []),
@@ -230,6 +237,29 @@ describe('expense form files', () => {
     const paths = vi.mocked(createExpenseWithAttachments).mock.calls[0]![2]
     view.unmount()
     expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), paths)
+  })
+
+  it('keeps the files of a save whose reply was lost, even when the form closes', async () => {
+    vi.mocked(createExpenseWithAttachments).mockRejectedValueOnce({
+      message: 'TypeError: Failed to fetch',
+      code: '',
+    })
+    const view = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+    )
+    fillNewExpense()
+    await addFiles([photo('a.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    const paths = vi.mocked(createExpenseWithAttachments).mock.calls[0]![2]
+    // That save may have landed with these files, so they cannot be swapped out before a retry,
+    // and leaving does not delete them.
+    expect(screen.getByRole('button', { name: t('expenses.attachments.addLabel') })).toBeDisabled()
+    view.unmount()
+    expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining(paths),
+    )
   })
 
   it('tells the person when an edit saved but its files did not, and drops the new upload', async () => {

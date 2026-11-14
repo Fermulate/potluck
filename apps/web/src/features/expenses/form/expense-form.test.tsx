@@ -1,6 +1,7 @@
 import type * as Api from '@potluck/api'
 import { createExpense, moneyKeys, peopleKeys, updateExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
+import { Toaster } from '@potluck/ui'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { goOffline, goOnline } from '@/test/network'
@@ -21,7 +22,11 @@ vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => ({
   ...(await importOriginal<typeof Api>()),
-  createExpense: vi.fn(async () => ({ id: 'new-expense' })),
+  // Like the server: the expense it saved.
+  createExpense: vi.fn(async (_c: unknown, payload: Api.ExpensePayload) => ({
+    id: 'new-expense',
+    ...payload,
+  })),
   // Like the server: a rewritten split may only name current members.
   updateExpense: vi.fn(async (_client: unknown, id: string, payload: Api.ExpenseUpdate) => {
     const current = new Set(members.map((m) => m.id))
@@ -534,6 +539,58 @@ describe('ExpenseForm offline', () => {
       description: 'Cabin deposit',
       amount_cents: 9000,
     })
+    expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
+  })
+
+  it('holds the draft after a lost reply and reports the expense the server returned', async () => {
+    const onDone = vi.fn()
+    renderWithClient(
+      <>
+        <ExpenseForm mode="create" groupId={GROUP_ID} onDone={onDone} onClose={() => {}} />
+        <Toaster label="Notifications" />
+      </>,
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '90' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+      target: { value: 'Cabin deposit' },
+    })
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    // A retry sends the same request id, so it can only ever repeat what was sent.
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Shares' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: t('common.retry') })).toBeEnabled()
+
+    // The first try had landed: the server hands that expense back, and the toast describes it.
+    create.mockResolvedValueOnce({
+      id: 'new-expense',
+      description: 'Cabin deposit (first try)',
+      amount_cents: 9000,
+      currency: 'USD',
+      is_refund: false,
+    } as Awaited<ReturnType<typeof createExpense>>)
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-expense'))
+    expect(
+      await screen.findByText('Added "Cabin deposit (first try)". Your share: $30.00.'),
+    ).toBeInTheDocument()
+  })
+
+  it('lets the draft change again once a retry is refused', async () => {
+    setup()
+    create.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(saveButton())
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeDisabled()
+
+    // A refusal means nothing was saved under the request id, so the draft is free again.
+    create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'What was it?' })).toBeEnabled())
     expect(screen.queryByText(t('app.offline.failed'))).toBeNull()
   })
 

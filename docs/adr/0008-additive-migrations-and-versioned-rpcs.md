@@ -45,6 +45,7 @@ How it stays additive:
   `settle_up_v3(..., request_id uuid default null)`, which calls `settle_up_v2`; v2 stays for older
   clients.
 
-The key wins over the payload: a retry after the draft changed still returns the first save. The
-form keeps one key for its whole life, so this only happens after a lost reply. Details:
+The key wins over the payload: a retry with a changed draft would still return the first save.
+So the form holds its fields read only while a save is out and after a lost reply, until a try
+gets an answer, and reports what the server returned, never its own fields. Details:
 [architecture](../architecture.md) (Request keys).

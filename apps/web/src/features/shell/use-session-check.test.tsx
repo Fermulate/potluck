@@ -86,6 +86,24 @@ describe('useSessionCheck', () => {
     visibility.mockRestore()
   })
 
+  it('checks within 30 seconds of the last check, even when focus brought one in between', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    respondAuth('getUser', { data: { user: { id: 'u-1' } }, error: null })
+    render(<Probe />)
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(1))
+
+    // Hidden past one 30 second mark, then back 45 seconds in: that brings a check.
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    await act(async () => vi.advanceTimersByTime(45_000))
+    visibility.mockRestore()
+    act(() => window.dispatchEvent(new Event('focus')))
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(2))
+
+    // The next one comes 30 seconds after that, not at the following 30 second mark from the start.
+    await act(async () => vi.advanceTimersByTime(SESSION_CHECK_INTERVAL_MS + 1))
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(3))
+  })
+
   it('leaves a note for the sign-in page when the session ended elsewhere', async () => {
     respondAuth('getUser', authError('AuthSessionMissingError', 400))
     clearSessionEnded()

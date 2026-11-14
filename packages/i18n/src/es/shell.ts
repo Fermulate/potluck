@@ -64,7 +64,7 @@ export const app = {
     banner: 'Sin conexión. Algunas cosas esperarán.',
     form: 'Estás sin conexión. Lo que escribiste se queda aquí; guárdalo cuando vuelvas.',
     failed:
-      'Potluck no pudo confirmar el guardado. Lo que escribiste sigue aquí, y volver a intentarlo nunca lo guarda dos veces.',
+      'Potluck no pudo confirmar el guardado. Lo que escribiste queda tal cual hasta que se guarde, y volver a intentarlo nunca lo guarda dos veces.',
   },
 } satisfies Translation<typeof en.app>
 

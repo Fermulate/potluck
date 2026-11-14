@@ -32,9 +32,10 @@ export function OfflineBanner() {
 /**
  * Next to a save button: offline, the button is disabled and this says the entry stays put
  * until the connection is back. When a save `failed` because Potluck could not be reached, it
- * says what was typed is still here; the form's own save button then reads Try again, so there
- * is one action. Nothing retries on its own, and each form sends a request id with every try,
- * so a save that did arrive comes back instead of being saved twice.
+ * says the entry is held as it was sent; the form keeps its fields read only and its own save
+ * button reads Try again, so there is one action. Nothing retries on its own, and each form
+ * sends a request id with every try, so a save that did arrive comes back instead of being
+ * saved twice.
  */
 export function OfflineSaveNote({ failed = false }: { failed?: boolean }) {
   const online = useOnline()
