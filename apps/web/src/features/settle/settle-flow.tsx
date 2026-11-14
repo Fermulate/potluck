@@ -333,6 +333,9 @@ export function PaymentForm({
   // One id per payment, sent with every try: a retry after a lost reply returns the payment the
   // first try recorded instead of recording it twice.
   const [requestId] = useState(newRequestId)
+  // What was owed when this payment was first sent. A retry keeps it: by then the debts may
+  // already count the payment, if the lost try landed.
+  const owedWhenSent = useRef(0)
   const pay = useMutation({
     onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
@@ -369,7 +372,7 @@ export function PaymentForm({
       onDone({
         from: person(row.from_user),
         to: person(row.to_user),
-        owedBefore: owedBetween(debts, row.from_user, row.to_user),
+        owedBefore: owedWhenSent.current,
         paid: row.amount_cents,
         currency: row.currency,
       })
@@ -391,6 +394,7 @@ export function PaymentForm({
     if (!online) return
     setSubmitted(true)
     if (problem || !amount) return
+    if (!unreached) owedWhenSent.current = owed
     pay.mutate(amount)
   }
 

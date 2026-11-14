@@ -180,6 +180,26 @@ describe('SettleFlow', () => {
     expect(within(screen.getByRole('status')).getByText('You still owe $27.50')).toBeInTheDocument()
   })
 
+  it('works out what is left from the debt before the payment, even once the debts count it', async () => {
+    const { client } = setup({ to: BEN, amount: 3000 })
+    pay.mockRejectedValueOnce({ message: 'TypeError: Failed to fetch', code: '' })
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+    expect(await screen.findByText(t('app.offline.failed'))).toBeInTheDocument()
+
+    // The lost try had landed: the debts come back with the $30 already off the $47.50.
+    act(() =>
+      client.setQueryData(moneyKeys.simplified(GROUP_ID), [
+        { from_user: ME, to_user: BEN, amount_cents: 1750 },
+        { from_user: CLEO, to_user: ME, amount_cents: 1000 },
+      ]),
+    )
+    expect(await screen.findByText('You owe Ben $17.50')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
+    expect(await screen.findByRole('heading', { name: 'Payment recorded' })).toBeInTheDocument()
+    expect(within(screen.getByRole('status')).getByText('You still owe $17.50')).toBeInTheDocument()
+  })
+
   it('keeps a refused payment a refusal after the connection goes', async () => {
     setup({ to: BEN })
     pay.mockRejectedValueOnce({ message: 'member_not_in_group', code: '23514' })
