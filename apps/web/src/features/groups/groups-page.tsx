@@ -36,27 +36,29 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
           : { type: 'spring', stiffness: 380, damping: 32, delay: index * 0.03 }
       }
     >
+      {/* Phones get one compact row per group (tile, name, balance) so a screen holds more than
+          three; from `sm` up it is a card with the tile and balance above the name. */}
       <Link
         to="/groups/$groupId"
         params={{ groupId: group.id }}
         viewTransition
-        className="group flex h-full flex-col gap-4 overflow-hidden rounded-card border border-line bg-card p-4 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99] sm:p-5"
+        className="group flex h-full items-center gap-3 overflow-hidden rounded-card border border-line bg-card p-3 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99] sm:flex-col sm:items-stretch sm:gap-4 sm:p-5"
       >
         {group.cover_path && (
           <GroupCover
             path={group.cover_path}
             name={group.name}
-            className="-mx-4 -mt-4 mb-[-2.25rem] h-24 w-[calc(100%+2rem)] max-w-none sm:-mx-5 sm:-mt-5 sm:w-[calc(100%+2.5rem)]"
+            className="hidden sm:-mx-5 sm:-mt-5 sm:mb-[-2.25rem] sm:block sm:h-24 sm:w-[calc(100%+2.5rem)] sm:max-w-none"
           />
         )}
-        <div className="flex items-start justify-between gap-3">
+        <div className="contents sm:flex sm:items-start sm:justify-between sm:gap-3">
           <GroupTile
             emoji={group.emoji}
             color={group.color}
             size="md"
             className={cn(
-              'transition-transform duration-200 group-hover:rotate-[-9deg]',
-              group.cover_path && 'relative ring-4 ring-[var(--pl-card)]',
+              'size-12 rounded-[0.875rem] text-2xl transition-transform duration-200 group-hover:rotate-[-9deg] sm:size-14 sm:rounded-[1rem] sm:text-[1.75rem]',
+              group.cover_path && 'sm:relative sm:ring-4 sm:ring-[var(--pl-card)]',
             )}
             style={{ viewTransitionName: groupTransitionName(group.id) }}
           />
@@ -64,13 +66,18 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
             cents={group.my_net_cents}
             currency={group.currency}
             stacked
-            className={cn(group.cover_path && 'relative rounded-[0.75rem] bg-card/90 px-2 py-1')}
+            className={cn(
+              'order-last shrink-0 sm:order-none',
+              group.cover_path && 'sm:relative sm:rounded-[0.75rem] sm:bg-card/90 sm:px-2 sm:py-1',
+            )}
           />
         </div>
-        <div className="mt-auto">
-          <h3 className="truncate font-display text-[1.75rem] leading-tight">{group.name}</h3>
+        <div className="min-w-0 flex-1 sm:mt-auto sm:flex-none">
+          <h3 className="truncate font-display text-[1.375rem] leading-tight sm:text-[1.75rem]">
+            {group.name}
+          </h3>
           {dates && <p className="truncate text-xs font-semibold text-plum-ink">{dates}</p>}
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2 sm:mt-2">
             <AvatarStack
               people={people}
               max={5}

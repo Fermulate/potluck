@@ -58,6 +58,8 @@ Heat scale for availability (0 to max): `#f1e9db`, `#f9dccf`, `#f4ab95`, `#ee7a5
 - Mobile first. Bottom tab bar: Home, Groups, (+ big add button), Plans, Me.
 - At `lg` the tab bar becomes a left rail and detail views open as a second pane.
 - The add button opens a quick sheet: Add expense, Plan something, Settle up.
+- Lists people scan (the Groups page) are one compact row per item on phones (tile, name, balance, 12px padding) so five or more fit; from `sm` up they become cards.
+- Titles that can be any length (a group's name in its header) stop at two lines, with the whole name in `title` and a tap to open it out.
 
 ## Accessibility
 
