@@ -26,6 +26,7 @@ import { ActivityIconLink } from '@/features/activity/activity-link'
 import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
 import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
 import { useGroupExport } from '@/features/export-import/use-exports'
+import { useTabSplitNote } from '@/features/friends/split-note'
 import { HomeStarters } from '@/features/groups/home-starters'
 import { RecurringSection } from '@/features/recurring/recurring-section'
 import { SettlementActions } from '@/features/settle/settlement-actions'
@@ -126,6 +127,8 @@ export function ExpensesTab({
   const myRole = group.data?.members.find((m) => m.id === me)?.role
   // An archived group is read only: nothing here offers to add to it.
   const archived = !!group.data?.archived_at
+  // A 1:1 tab across a block takes no new expenses (payments still go in): say why instead.
+  const splitNote = useTabSplitNote(groupId)
   // Payments count too: wait for them before calling the tab empty.
   const loading = expenses.isPending || group.isPending || settlements.isPending
   const empty =
@@ -195,10 +198,10 @@ export function ExpensesTab({
           description={
             archived && group.data
               ? t('expenses.form.archived', { group: groupTitle(group.data, me) })
-              : t('empty.expenses.body')
+              : (splitNote ?? t('empty.expenses.body'))
           }
           action={
-            archived ? undefined : (
+            archived || splitNote ? undefined : (
               <Button asChild leadingIcon={<Plus />}>
                 <Link to="/new/expense" search={{ groupId }}>
                   {t('empty.expenses.action')}
@@ -236,14 +239,30 @@ export function ExpensesTab({
           disabled={loading || exporting || !expenses.data?.length}
         />
         <ActivityIconLink groupId={groupId} />
-        {!archived && (
-          <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
-            <Link to="/new/expense" search={{ groupId }}>
+        {!archived &&
+          (splitNote ? (
+            <Button
+              leadingIcon={<Plus />}
+              className="hidden sm:inline-flex"
+              disabled
+              aria-describedby="tab-split-note"
+            >
               {t('expenses.add')}
-            </Link>
-          </Button>
-        )}
+            </Button>
+          ) : (
+            <Button asChild leadingIcon={<Plus />} className="hidden sm:inline-flex">
+              <Link to="/new/expense" search={{ groupId }}>
+                {t('expenses.add')}
+              </Link>
+            </Button>
+          ))}
       </div>
+
+      {!archived && splitNote && (
+        <p id="tab-split-note" className="px-1 text-sm text-pretty text-mute">
+          {splitNote}
+        </p>
+      )}
 
       {categories.length > 1 && filters.kind !== 'payment' && (
         <div

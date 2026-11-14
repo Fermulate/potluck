@@ -1,11 +1,9 @@
 import {
   blockUser,
-  canSplitWithQueryOptions,
   friendsQueryOptions,
   getOrCreateDirectGroup,
   groupKeys,
   moneyKeys,
-  myBlocksQueryOptions,
   paymentKeys,
   paymentQueries,
   peopleKeys,
@@ -55,6 +53,7 @@ import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { toBalanceSettlement, useLedgers } from './friend-ledger'
 import { SettleFriendSheet } from './settle-friend-sheet'
+import { useSplitNote } from './split-note'
 import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
@@ -298,8 +297,6 @@ export function FriendPage({ friendId }: { friendId: string }) {
   const profile = useQuery(profilesByIdsQueryOptions(supabase, [friendId]))
   const friends = useQuery(friendsQueryOptions(supabase, me))
   const ledger = useSharedLedger(friendId)
-  const blocks = useQuery(myBlocksQueryOptions(supabase, me))
-  const canSplit = useQuery(canSplitWithQueryOptions(supabase, friendId))
   const exports = useAccountExports()
   const [menuOpen, setMenuOpen] = useState(false)
   const [pending, setPending] = useState<Pending>(null)
@@ -318,13 +315,7 @@ export function FriendPage({ friendId }: { friendId: string }) {
   const overall = (ledger.total?.byCurrency ?? []).map((c) => [c.currency, c.netCents] as const)
   const friend = friends.data?.find((f) => f.id === friendId)
   const [settling, setSettling] = useState(false)
-  // A block either way stops new expenses (the server refuses them), so say so up front. Which
-  // side blocked is only told to the person who did it.
-  const splitNote = blocks.data?.some((b) => b.user_id === friendId)
-    ? t('people.friendPage.youBlocked', { name })
-    : canSplit.data === false
-      ? t('errors.codes.not_a_friend')
-      : null
+  const splitNote = useSplitNote(friendId, name)
 
   if (profile.isPending || ledger.pending) return <FriendSkeleton />
   if (!person || person.id === me || person.is_placeholder) {

@@ -15,6 +15,7 @@ import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { GoodToKnow } from '@/features/help/help'
 import { Money } from '@/features/expenses/money'
+import { useTabSplitNote } from '@/features/friends/split-note'
 import {
   useGroupMoneyRealtime,
   useMoneyGroup,
@@ -31,6 +32,8 @@ export function BalancesTab({ groupId }: { groupId: string }) {
   const balances = useQuery(moneyQueries.balances(supabase, groupId))
   const debts = useDebts(groupId, group.data)
   const [settlingAll, setSettlingAll] = useState(false)
+  // Across a block a 1:1 tab takes no new expenses; settling up stays.
+  const splitNote = useTabSplitNote(groupId)
 
   if (!group.data || !balances.data || !debts) return <BalancesSkeleton />
 
@@ -116,7 +119,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
           title={t('empty.balances.title')}
           description={t('empty.balances.body')}
           action={
-            open ? (
+            open && !splitNote ? (
               <Button asChild variant="secondary" leadingIcon={<Plus />}>
                 <Link to="/new/expense" search={{ groupId }}>
                   {t('empty.balances.action')}

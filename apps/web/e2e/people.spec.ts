@@ -5,6 +5,7 @@ import {
   blockUser,
   createExpense,
   fetchMyFriendLink,
+  getOrCreateDirectGroup,
   removePlaceholder,
 } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
@@ -207,9 +208,42 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
   expect(csv).toContain(t('transfer.csv.between', { name: jules.name }))
   expect(csv).toContain(dinner)
 
+  // Their 1:1 tab, from before the block: Jules covered lunch, so Ava owes him.
+  const tab = await getOrCreateDirectGroup(ava.client, jules.id)
+  await addEqualExpense(jules, { id: tab, name: '' }, [ava, jules], 2000, unique('Lunch'))
+
   await blockUser(jules.client, ava.id)
   await page.reload()
   const add = page.getByRole('button', { name: t('people.friendPage.addExpense') })
   await expect(add).toBeDisabled()
   await expect(page.getByText(t('errors.codes.not_a_friend'))).toBeVisible()
+
+  // The tab itself offers no new expense either, with the same reason, but settling up stays.
+  await page.goto(`/groups/${tab}`)
+  await expect(page.getByText(t('errors.codes.not_a_friend'))).toBeVisible()
+  await expect(page.getByRole('link', { name: t('expenses.add') })).toHaveCount(0)
+  await page
+    .getByRole('button', { name: t('nav.add') })
+    .filter({ visible: true })
+    .click()
+  const quickAdd = page.getByRole('dialog', { name: t('nav.quickAdd.title') })
+  await expect(
+    quickAdd.getByRole('link', { name: new RegExp(t('nav.quickAdd.expense')) }),
+  ).toHaveAttribute('aria-disabled', 'true')
+  await expect(
+    quickAdd.getByRole('link', { name: new RegExp(t('nav.quickAdd.settle')) }),
+  ).toHaveAttribute('href', `/new/settle?groupId=${tab}`)
+  await page.keyboard.press('Escape')
+  await page.goto(`/groups/${tab}/balances`)
+  await expect(page.getByRole('link', { name: t('balances.settleUp') })).toBeVisible()
+
+  // In the group they share, someone else splitting with both of them is told so on the form.
+  const owenPage = await openAs(owen)
+  await owenPage.goto(`/new/expense?groupId=${group.id}`)
+  await owenPage.getByRole('textbox', { name: t('expenses.fields.amount') }).fill('30')
+  await owenPage
+    .getByRole('textbox', { name: t('expenses.fields.description') })
+    .fill(unique('Brunch'))
+  await owenPage.getByRole('button', { name: t('expenses.form.save') }).click()
+  await expect(owenPage.getByText(t('expenses.errors.blocked_person'))).toBeVisible()
 })

@@ -13,6 +13,7 @@ import { Bell, BookOpen, CalendarHeart, House, Plus, Search, User, Users } from 
 import { useState } from 'react'
 import { useProfileLanguage } from '@/features/account/use-profile-language'
 import { useMoneyGroup } from '@/features/expenses/money-data'
+import { useTabSplitNote } from '@/features/friends/split-note'
 import {
   useNotificationsRealtime,
   useUnreadCount,
@@ -78,6 +79,8 @@ export function AppLayout() {
   const { groupId } = useParams({ strict: false }) as { groupId?: string }
   // Adding from inside an archived group starts without a group: that one takes nothing new.
   const groupArchived = !!useMoneyGroup(groupId).data?.archived_at
+  // Inside a 1:1 tab across a block, a new expense cannot go in: the sheet says why.
+  const expenseNote = useTabSplitNote(groupArchived ? undefined : groupId)
   const { data: unread = 0 } = useUnreadCount()
   useNotificationsRealtime()
   useSessionCheck()
@@ -175,6 +178,7 @@ export function AppLayout() {
         open={addOpen}
         onOpenChange={setAddOpen}
         groupId={groupArchived ? undefined : groupId}
+        expenseNote={expenseNote}
       />
     </div>
   )

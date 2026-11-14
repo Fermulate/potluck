@@ -54,7 +54,7 @@ import { Link } from '@tanstack/react-router'
 import { CalendarHeart, Repeat } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
-import { isNetworkError } from '@/lib/errors'
+import { errorCode, isNetworkError } from '@/lib/errors'
 import { useOnline, useWarnBeforeUnload } from '@/lib/online'
 import { OfflineSaveNote } from '@/features/shell/offline'
 import { supabase } from '@/lib/supabase'
@@ -368,11 +368,23 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     !template && !locked && !!defaultSplit && !isDefault && !(plainEqual && !group.default_split)
 
   const [unreached, setUnreached] = useState(false)
+  // The server refused these people together (a block between two of them; it never says who).
+  // The message stays by the save button until the people or payers change.
+  const [refused, setRefused] = useState<{
+    message: string
+    draft: SplitDraft
+    payers: typeof payers
+  } | null>(null)
+  const peopleError =
+    refused && refused.draft === draft && refused.payers === payers ? refused.message : null
   const failSave = (error: unknown) => {
     const network = isNetworkError(error)
     setUnreached(network)
+    const code = errorCode(error)
     if (network) void queryClient.invalidateQueries({ queryKey: moneyKeys.group(group.id) })
-    else toast.error(moneyErrorMessage(error))
+    else if (code === 'blocked_person' || code === 'not_a_friend') {
+      setRefused({ message: moneyErrorMessage(error), draft, payers })
+    } else toast.error(moneyErrorMessage(error))
   }
 
   const saveTemplate = useMutation({
@@ -597,11 +609,17 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
       footer={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
           {submitted &&
-            (descriptionError || amountError || payersError || splitError || nextError) && (
+          (descriptionError || amountError || payersError || splitError || nextError) ? (
+            <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
+              {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
+            </p>
+          ) : (
+            peopleError && (
               <p role="alert" className="text-sm font-medium text-tomato-ink sm:mr-auto">
-                {descriptionError ?? amountError ?? payersError ?? splitError ?? nextError}
+                {peopleError}
               </p>
-            )}
+            )
+          )}
           <OfflineSaveNote failed={unreached} onRetry={onSubmit} />
           <Button
             type="submit"

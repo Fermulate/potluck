@@ -1,4 +1,4 @@
-import { moneyKeys, type RecurringExpense } from '@potluck/api'
+import { moneyKeys, peopleKeys, type RecurringExpense } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MoneyFilters } from '@/features/insights/filter-state'
 import { ExpensesTab } from './expenses-tab'
 import { renderInRouter } from './router-test-utils'
-import { BEN, CLEO, GROUP_ID, ME, expense, group, seededClient } from './test-utils'
+import { BEN, CLEO, GROUP_ID, ME, expense, group, members, seededClient } from './test-utils'
 
 vi.mock('@/lib/supabase', () => import('./fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
@@ -238,6 +238,62 @@ describe('ExpensesTab', () => {
     renderInRouter(<Tab />, full)
     expect(await screen.findByText('Tacos')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: t('expenses.add') })).toBeNull()
+  })
+
+  describe('in a 1:1 tab', () => {
+    const tab = { ...group, is_direct: true, members: members.filter((m) => m.id !== CLEO) }
+    function tabClient(answer: { canSplit: boolean; iBlocked?: boolean; empty?: boolean }) {
+      return seededClient((c) => {
+        c.setQueryData(moneyKeys.groupInfo(GROUP_ID), tab)
+        c.setQueryData(
+          moneyKeys.expenses(GROUP_ID),
+          answer.empty ? [] : [expense({ id: 'e1', description: 'Tacos' })],
+        )
+        c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+        c.setQueryData(
+          peopleKeys.blocks(ME),
+          answer.iBlocked
+            ? [{ user_id: BEN, display_name: 'Ben Okafor', avatar_path: null, blocked_at: '' }]
+            : [],
+        )
+        c.setQueryData(peopleKeys.canSplit(BEN), answer.canSplit)
+      })
+    }
+
+    it('offers Add expense when nothing stands between you', async () => {
+      renderInRouter(<Tab />, tabClient({ canSplit: true }))
+      expect(await screen.findByRole('link', { name: t('expenses.add') })).toHaveAttribute(
+        'href',
+        `/new/expense?groupId=${GROUP_ID}`,
+      )
+      expect(screen.queryByText(t('errors.codes.not_a_friend'))).toBeNull()
+    })
+
+    it('turns Add expense off with the friend page reason across a block', async () => {
+      renderInRouter(<Tab />, tabClient({ canSplit: false }))
+      const add = await screen.findByRole('button', { name: t('expenses.add') })
+      expect(add).toBeDisabled()
+      const note = screen.getByText(t('errors.codes.not_a_friend'))
+      expect(add).toHaveAttribute('aria-describedby', note.id)
+      expect(screen.queryByRole('link', { name: t('expenses.add') })).toBeNull()
+      // What is already on the tab stays: only new expenses stop.
+      expect(screen.getByText('Tacos')).toBeInTheDocument()
+    })
+
+    it('tells the person who blocked that it was them', async () => {
+      renderInRouter(<Tab />, tabClient({ canSplit: false, iBlocked: true }))
+      expect(
+        await screen.findByText(t('people.friendPage.youBlocked', { name: 'Ben Okafor' })),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: t('expenses.add') })).toBeDisabled()
+    })
+
+    it('leaves the empty tab without an Add expense button and says why', async () => {
+      renderInRouter(<Tab />, tabClient({ canSplit: false, empty: true }))
+      expect(await screen.findByRole('heading', { name: 'Nothing on the tab' })).toBeInTheDocument()
+      expect(screen.getByText(t('errors.codes.not_a_friend'))).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: t('empty.expenses.action') })).toBeNull()
+    })
   })
 
   it('waits for payments before calling the tab empty', async () => {
