@@ -1,9 +1,9 @@
--- Several attachments per expense (20261113155139_expense_attachments, ADR 21): the files stay in
+-- Several attachments per expense (20261114015104_expense_attachments, ADR 21): the files stay in
 -- the private receipts bucket under the group folder, so other groups, anon and an unfinished
 -- two-step sign in read none of them; set_expense_attachments and the receipt_path mirror for
 -- older clients.
 begin;
-select plan(58);
+select plan(59);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -106,13 +106,18 @@ select is(
   'the same list changes nothing and logs nothing'
 );
 
--- Paths are plain strings or {path} objects.
+-- Paths are plain strings.
 select tests.login('ava');
+select throws_ok(
+  format($$ select public.set_expense_attachments(%L, %L) $$, tests.id('e'),
+    jsonb_build_array(jsonb_build_object('path', pg_temp.file('one.jpg')))),
+  '22023', 'invalid_receipt_path', 'a path, not an object holding one'
+);
 select is(
-  (select count(*)::int from public.set_expense_attachments(tests.id('e'), jsonb_build_array(
-    jsonb_build_object('path', pg_temp.file('one.jpg')), pg_temp.file('four.webp')))),
+  (select count(*)::int from public.set_expense_attachments(tests.id('e'),
+    pg_temp.files('one.jpg', 'four.webp'))),
   2,
-  'objects with a path work too'
+  'a shorter list of paths'
 );
 reset role;
 select is(pg_temp.paths('e'), 'one.jpg,four.webp', 'files left out are dropped from the list');

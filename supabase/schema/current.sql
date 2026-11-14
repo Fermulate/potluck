@@ -182,7 +182,6 @@ begin
   for entry in select x.v from jsonb_array_elements(attachments) as x (v) loop
     file_path := case jsonb_typeof(entry)
       when 'string' then entry #>> '{}'
-      when 'object' then entry ->> 'path'
     end;
     if file_path is null or file_path not like gid::text || '/%' or file_path like '%..%'
        or char_length(file_path) > 300

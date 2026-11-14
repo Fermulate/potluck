@@ -40,7 +40,7 @@ Out of scope: a compromised Supabase or Cloudflare account, a malicious maintain
 These are real today. Each should become an issue.
 
 - **Closed accounts keep their calendar feed.** `delete_my_account()` does not delete the `calendar_feed_tokens` row, and `ics-feed` does not check `profiles.deleted_at`. A closed account that still has an open balance in a group keeps that group's membership, so its old feed URL keeps listing that group's events.
-- **Removed attachments can linger.** Taking a file off an expense deletes it only when the person removing it uploaded it or is an admin (the bucket's delete rule); otherwise the file stays in the group folder, readable by members, with nothing pointing at it. Deleting an expense keeps its files (it can be restored).
+- **Removed attachments can linger.** Taking a file off an expense deletes it only when the person removing it uploaded it or is an admin (the bucket's delete rule); otherwise the file stays in the group folder, readable by members with nothing pointing at it, until the daily `receipts-sweep` deletes it once it is a day old. Deleting an expense keeps its files (it can be restored).
 - **Avatar files outlive the account.** The profile's `avatar_path` is cleared, but the file stays in the public `avatars` bucket, at a URL anyone who saw it can still open.
 - **Admin invite rule mismatch.** `can()` in core lets admins create admin invites. The server refuses, so this is a UI bug, not a hole.
 - **Previews use production data.** PR preview builds point at the production Supabase project. Anyone who can open a PR that gets a preview deploy can ship code that runs against real accounts. Today previews only build for branches in this repository, because fork PRs do not get the Cloudflare secret.

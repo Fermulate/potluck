@@ -15,12 +15,22 @@ import type * as Ocr from '../receipts/ocr'
 import { BEN, CLEO, GROUP_ID, ME, expense, renderWithClient, seededClient } from '../test-utils'
 import { ExpenseForm } from './expense-form'
 
+const listFiles = vi.hoisted(() => vi.fn<(expenseId: string) => Promise<unknown[]>>())
+
 vi.mock('@/lib/supabase', () => import('../fake-supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 vi.mock('@potluck/api', async (importOriginal) => {
   let n = 0
+  const api = await importOriginal<typeof Api>()
   return {
-    ...(await importOriginal<typeof Api>()),
+    ...api,
+    // The stored list, for an edit whose files are not in the cache yet.
+    attachmentQueries: {
+      list: (_c: unknown, expenseId: string) => ({
+        queryKey: api.attachmentKeys.list(expenseId),
+        queryFn: () => listFiles(expenseId),
+      }),
+    },
     createExpense: vi.fn(async () => ({ id: 'new-expense' })),
     createExpenseWithAttachments: vi.fn(async () => ({ id: 'new-expense' })),
     updateExpense: vi.fn(async (_c: unknown, id: string) => ({ id })),
@@ -48,8 +58,43 @@ const addFiles = async (files: File[]) => {
   })
 }
 
+const storedFile = (expenseId: string, name: string, position = 0) => ({
+  expense_id: expenseId,
+  position,
+  path: `${GROUP_ID}/${name}`,
+  content_type: 'image/jpeg',
+  uploaded_by: ME,
+  created_at: '2026-11-01T00:00:00Z',
+})
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const fillNewExpense = () => {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '20' } })
+  fireEvent.change(screen.getByRole('textbox', { name: 'What was it?' }), {
+    target: { value: 'Lunch' },
+  })
+}
+
+const scanPhoto = async () => {
+  const input = document.querySelector('input[type=file][accept="image/*"]') as HTMLInputElement
+  await act(async () => {
+    fireEvent.change(input, { target: { files: [photo('scan.jpg')] } })
+  })
+  return screen.findByRole('dialog', { name: t('expenses.scan.reviewTitle') })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  listFiles.mockReset()
   URL.createObjectURL = vi.fn(() => 'blob:photo')
   URL.revokeObjectURL = vi.fn()
 })
@@ -244,5 +289,100 @@ describe('expense form files', () => {
       { description: 'Tacos al pastor', amount_cents: 1200, user_ids: [ME, BEN, CLEO] },
       { description: 'Horchata', amount_cents: 400, user_ids: [ME, BEN, CLEO] },
     ])
+  })
+  it('keeps the files and the scan from changing anything while the stored list loads', async () => {
+    listFiles.mockReturnValue(new Promise(() => {}))
+    const onDone = vi.fn()
+    renderWithClient(
+      <ExpenseForm
+        mode="edit"
+        expense={expense({ id: 'e4' })}
+        onDone={onDone}
+        onClose={() => {}}
+      />,
+    )
+    expect(
+      await screen.findByRole('status', { name: t('expenses.attachments.loading') }),
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: t('expenses.attachments.addLabel') })).toBeNull()
+
+    const sheet = await scanPhoto()
+    expect(within(sheet).queryByRole('checkbox', { name: t('expenses.scan.attach') })).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: t('expenses.scan.apply') }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('e4'))
+    expect(vi.mocked(uploadReceipt)).not.toHaveBeenCalled()
+    expect(vi.mocked(setExpenseAttachments)).not.toHaveBeenCalled()
+  })
+
+  it('says when the stored list failed to load, changes nothing, and tries again', async () => {
+    listFiles.mockRejectedValue(new Error('offline'))
+    const onDone = vi.fn()
+    renderWithClient(
+      <ExpenseForm
+        mode="edit"
+        expense={expense({ id: 'e5' })}
+        onDone={onDone}
+        onClose={() => {}}
+      />,
+    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(t('expenses.attachments.loadFailed'))
+    expect(screen.queryByRole('button', { name: t('expenses.attachments.addLabel') })).toBeNull()
+
+    const sheet = await scanPhoto()
+    expect(within(sheet).queryByRole('checkbox', { name: t('expenses.scan.attach') })).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: t('expenses.scan.apply') }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('e5'))
+    expect(vi.mocked(setExpenseAttachments)).not.toHaveBeenCalled()
+
+    listFiles.mockResolvedValue([storedFile('e5', 'a.jpg')])
+    fireEvent.click(await screen.findByRole('button', { name: t('common.retry') }))
+    expect(
+      await screen.findByRole('img', { name: t('expenses.attachments.photo', { number: 1 }) }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('expenses.attachments.addLabel') })).toBeVisible()
+  })
+
+  it('leaves the uploads of a save still running when the form closes', async () => {
+    const call = deferred<{ id: string }>()
+    vi.mocked(createExpenseWithAttachments).mockReturnValueOnce(call.promise as never)
+    const view = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+    )
+    fillNewExpense()
+    await addFiles([photo('a.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(vi.mocked(createExpenseWithAttachments)).toHaveBeenCalledTimes(1))
+    const paths = vi.mocked(createExpenseWithAttachments).mock.calls[0]![2]
+    view.unmount()
+    expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(expect.anything(), paths)
+
+    await act(async () => call.resolve({ id: 'new-expense' }))
+    expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(expect.anything(), paths)
+  })
+
+  it('deletes the uploads once a save that outlived the form fails', async () => {
+    const call = deferred<{ id: string }>()
+    vi.mocked(createExpenseWithAttachments).mockReturnValueOnce(call.promise as never)
+    const view = renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={() => {}} onClose={() => {}} />,
+    )
+    fillNewExpense()
+    await addFiles([photo('a.jpg')])
+    fireEvent.click(screen.getByRole('button', { name: 'Save expense' }))
+    await waitFor(() => expect(vi.mocked(createExpenseWithAttachments)).toHaveBeenCalledTimes(1))
+    const paths = vi.mocked(createExpenseWithAttachments).mock.calls[0]![2]
+    view.unmount()
+    expect(vi.mocked(removeReceiptFiles)).not.toHaveBeenCalledWith(expect.anything(), paths)
+
+    await act(async () => call.reject({ message: 'fx_rate_unavailable' }))
+    await waitFor(() =>
+      expect(vi.mocked(removeReceiptFiles)).toHaveBeenCalledWith(expect.anything(), paths),
+    )
   })
 })

@@ -183,8 +183,8 @@ where e.receipt_path is not null
 
 -- The RPCs ---------------------------------------------------------------------------------------
 
--- Sets an expense's attachments, in order: `attachments` is a list of storage paths (or
--- {path} objects) of files already uploaded under the group's folder. Up to five. Who may edit
+-- Sets an expense's attachments, in order: `attachments` is a list of storage paths of files
+-- already uploaded under the group's folder. Up to five. Who may edit
 -- the expense may change them (a member their own expenses, admins any); they are details, so
 -- an expense that names someone who left still takes them. A changed list is logged as one
 -- `expense.updated` with an `attachments` change (count before and after) when `log_edit`; the
@@ -233,7 +233,6 @@ begin
   for entry in select x.v from jsonb_array_elements(attachments) as x (v) loop
     file_path := case jsonb_typeof(entry)
       when 'string' then entry #>> '{}'
-      when 'object' then entry ->> 'path'
     end;
     if file_path is null or file_path not like gid::text || '/%' or file_path like '%..%'
        or char_length(file_path) > 300

@@ -287,14 +287,24 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     enabled: !!expense,
   })
   const [attachments, setAttachments] = useState<AttachmentDraft[] | null>(expense ? null : [])
+  // Until the stored list is in, the files cannot be changed: an empty list would replace them.
+  const filesReady = !expense || storedFiles.data !== undefined
   const fileDrafts = attachments ?? draftsFromStored(storedFiles.data ?? [])
   // Files uploaded for a save that has not gone through yet: reused on a retry, deleted if the
-  // form closes without saving.
+  // form closes without saving. A save still running when the form closes cleans up after itself.
   const uploaded = useRef(new Map<string, string>())
+  const closed = useRef(false)
+  const saveRunning = useRef(false)
+  const dropUploads = () => {
+    const unused = [...uploaded.current.values()]
+    uploaded.current.clear()
+    if (unused.length > 0) void removeReceiptFiles(supabase, unused)
+  }
   useEffect(() => {
-    const pending = uploaded.current
+    closed.current = false
     return () => {
-      if (pending.size > 0) void removeReceiptFiles(supabase, [...pending.values()])
+      closed.current = true
+      if (!saveRunning.current) dropUploads()
     }
   }, [])
   const [recurrence, setRecurrence] = useState<Recurrence>(
@@ -388,6 +398,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
   })
 
   const save = useMutation({
+    onMutate: () => {
+      saveRunning.current = true
+    },
+    onSettled: () => {
+      saveRunning.current = false
+      if (closed.current) dropUploads()
+    },
     mutationFn: async () => {
       const stored = expense ? (storedFiles.data ?? []) : []
       const filesChanged = !!attachments && attachmentsChanged(attachments, stored)
@@ -514,7 +531,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     }
     if (fill.amount !== undefined) setAmount(fill.amount)
     if (fill.draft) setDraft(fill.draft)
-    if (photo) setAttachments(addDrafts(fileDrafts, [photo]).drafts)
+    if (photo && filesReady) setAttachments(addDrafts(fileDrafts, [photo]).drafts)
     if (fill.amount !== undefined || fill.draft) toast.success(t('expenses.scan.applied'))
   }
 
@@ -650,7 +667,7 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
                 draft={draft}
                 memberIds={memberIds}
                 timeZone={timeZone}
-                canAttach={fileDrafts.length < MAX_ATTACHMENTS}
+                canAttach={filesReady && fileDrafts.length < MAX_ATTACHMENTS}
                 onApply={applyScan}
               />
             )}
@@ -859,7 +876,13 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
               {props.mode === 'recurring' && props.actions}
             </>
           ) : (
-            <AttachmentsField value={fileDrafts} onChange={setAttachments} />
+            <AttachmentsField
+              value={fileDrafts}
+              onChange={setAttachments}
+              status={filesReady ? 'ready' : storedFiles.isError ? 'failed' : 'loading'}
+              onRetry={() => void storedFiles.refetch()}
+              retrying={storedFiles.isFetching}
+            />
           )}
           {!editing && !refund && (
             <Field

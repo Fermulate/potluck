@@ -428,7 +428,8 @@ export function parseReceipt(text: string, options: ParseReceiptOptions): Receip
       pending = null
       continue
     }
-    largest = Math.max(largest ?? 0, price.cents)
+    // Cash handed over is not the bill: a payment line can only confirm a total (below).
+    if (kind !== 'payment') largest = Math.max(largest ?? 0, price.cents)
     switch (kind) {
       case 'subtotal':
         subtotal ??= price.cents

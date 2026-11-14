@@ -1,6 +1,6 @@
 import { MAX_ATTACHMENTS, moneyQueries } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { IconButton, Spinner, toast } from '@potluck/ui'
+import { Button, IconButton, Spinner, toast } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Camera, FileText, X } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
@@ -18,13 +18,23 @@ import { prepareImage } from './image'
 
 const MAX_BYTES = 10 * 1024 * 1024
 
-/** Receipts, photos and PDFs on the expense form: up to five, shrunk on the device first. */
+/**
+ * Receipts, photos and PDFs on the expense form: up to five, shrunk on the device first. While
+ * the files already on the expense are loading, or failed to load, nothing can be changed, so a
+ * save never replaces files the person never saw.
+ */
 export function AttachmentsField({
   value,
   onChange,
+  status = 'ready',
+  onRetry,
+  retrying = false,
 }: {
   value: AttachmentDraft[]
   onChange: (next: AttachmentDraft[]) => void
+  status?: 'ready' | 'loading' | 'failed'
+  onRetry?: () => void
+  retrying?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const id = useId()
@@ -75,53 +85,66 @@ export function AttachmentsField({
         </span>
         <Help topic="receipts" />
       </div>
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept={RECEIPT_ACCEPT}
-        className="sr-only"
-        tabIndex={-1}
-        aria-labelledby={`${id}-label`}
-        onChange={(e) => {
-          const files = [...(e.target.files ?? [])]
-          e.target.value = ''
-          void pick(files)
-        }}
-      />
-      <ul aria-labelledby={`${id}-label`} className="flex flex-wrap gap-2.5">
-        {value.map((draft, index) => (
-          <Tile
-            key={draft.key}
-            draft={draft}
-            index={index}
-            onRemove={() => onChange(value.filter((d) => d.key !== draft.key))}
+      {status === 'loading' && <Spinner label={t('expenses.attachments.loading')} />}
+      {status === 'failed' && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-mute">{t('expenses.attachments.loadFailed')}</p>
+          <Button size="sm" variant="secondary" loading={retrying} onClick={onRetry}>
+            {t('common.retry')}
+          </Button>
+        </div>
+      )}
+      {status === 'ready' && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept={RECEIPT_ACCEPT}
+            className="sr-only"
+            tabIndex={-1}
+            aria-labelledby={`${id}-label`}
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])]
+              e.target.value = ''
+              void pick(files)
+            }}
           />
-        ))}
-        {Array.from({ length: preparing }, (_, i) => (
-          <li
-            key={`preparing-${i}`}
-            className="grid size-20 place-items-center rounded-[0.875rem] border border-line bg-sunken"
-          >
-            <Spinner label={t('expenses.attachments.preparing')} />
-          </li>
-        ))}
-        {!full && (
-          <li>
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              aria-label={t('expenses.attachments.addLabel')}
-              className="flex size-20 flex-col items-center justify-center gap-1 rounded-[0.875rem] border border-dashed border-line-strong text-xs font-semibold text-mute transition-colors hover:border-ink/40 hover:text-ink"
-            >
-              <Camera aria-hidden className="size-5" />
-              {t('expenses.attachments.add')}
-            </button>
-          </li>
-        )}
-      </ul>
-      {full && value.length >= MAX_ATTACHMENTS && (
-        <p className="text-xs text-mute">{t('expenses.attachments.full')}</p>
+          <ul aria-labelledby={`${id}-label`} className="flex flex-wrap gap-2.5">
+            {value.map((draft, index) => (
+              <Tile
+                key={draft.key}
+                draft={draft}
+                index={index}
+                onRemove={() => onChange(value.filter((d) => d.key !== draft.key))}
+              />
+            ))}
+            {Array.from({ length: preparing }, (_, i) => (
+              <li
+                key={`preparing-${i}`}
+                className="grid size-20 place-items-center rounded-[0.875rem] border border-line bg-sunken"
+              >
+                <Spinner label={t('expenses.attachments.preparing')} />
+              </li>
+            ))}
+            {!full && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  aria-label={t('expenses.attachments.addLabel')}
+                  className="flex size-20 flex-col items-center justify-center gap-1 rounded-[0.875rem] border border-dashed border-line-strong text-xs font-semibold text-mute transition-colors hover:border-ink/40 hover:text-ink"
+                >
+                  <Camera aria-hidden className="size-5" />
+                  {t('expenses.attachments.add')}
+                </button>
+              </li>
+            )}
+          </ul>
+          {full && value.length >= MAX_ATTACHMENTS && (
+            <p className="text-xs text-mute">{t('expenses.attachments.full')}</p>
+          )}
+        </>
       )}
     </div>
   )

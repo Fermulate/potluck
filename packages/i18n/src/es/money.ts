@@ -411,6 +411,8 @@ export const expenses = {
     photo: 'Foto {number}',
     pdf: 'PDF {number}',
     preparing: 'Preparando la foto',
+    loading: 'Cargando los archivos de este gasto',
+    loadFailed: 'Los archivos de este gasto no se cargaron, así que aún no se pueden cambiar.',
     open: 'Abrir {name}',
     alt: 'Foto {number} de {description}',
     position: '{number} de {count}',

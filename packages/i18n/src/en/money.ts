@@ -419,6 +419,8 @@ export const expenses = {
     photo: 'Photo {number}',
     pdf: 'PDF {number}',
     preparing: 'Getting the photo ready',
+    loading: 'Getting the files on this expense',
+    loadFailed: 'The files on this expense did not load, so they cannot be changed yet.',
     open: 'Open {name}',
     alt: 'Photo {number} for {description}',
     position: '{number} of {count}',
