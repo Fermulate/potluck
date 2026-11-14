@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { splitAdjustment, splitEqual, splitPercent, splitShares } from './split'
 
-// Twin of supabase/tests/30_split_rounding.test.sql: same people, same cases, same answers.
+// Twin of supabase/tests/31_split_rounding.test.sql: same people, same cases, same answers.
 // Every weighted split rounds the same way: floor each exact share, then the cents left over go
 // one each to the largest remainders, ties to the smaller user id (never to whoever is listed
 // first). So the same split typed as percents, shares or adjustments charges the extra cent to
