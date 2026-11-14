@@ -138,6 +138,10 @@ describe('HomeDashboard', () => {
       '/groups/g-jules',
     )
     expect(within(hero).queryByText('Direct')).not.toBeInTheDocument()
+    // Four groups and a friend: tabs are never counted as groups (Groups does not list them).
+    expect(
+      within(hero).getByText(new RegExp(t('home.balance.acrossGroupsAndFriends'))),
+    ).toBeInTheDocument()
     // Every other currency with its amounts, never converted.
     expect(
       within(hero).getByText(
@@ -191,6 +195,28 @@ describe('HomeDashboard', () => {
     expect(await screen.findByText(t('home.balance.settledHint'))).toBeInTheDocument()
     expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: t('home.needsYou') })).not.toBeInTheDocument()
+  })
+
+  it('never says nothing needs you while money is owed, in any currency', async () => {
+    const fake = resetDb({
+      tables: {
+        profiles: [viewerProfile],
+        groups: groupRows,
+        group_balances: [
+          { user_id: VIEWER, group_id: 'g-flat', net_cents: 0 },
+          { user_id: VIEWER, group_id: 'g-london', net_cents: -2000 },
+        ],
+        event_rsvps: [],
+      },
+    })
+    fake.respond('rpc:my_timeline', { data: [] })
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    expect(await screen.findByText(t('home.summary.balancesOpen'))).toBeInTheDocument()
+    expect(screen.queryByText(t('home.summary.none'))).not.toBeInTheDocument()
+    const hero = await screen.findByRole('region', { name: t('home.balance.title') })
+    expect(
+      within(hero).getByText(new RegExp(t('home.balance.acrossGroups', { count: 2 }))),
+    ).toBeInTheDocument()
   })
 
   it('celebrates being owed', async () => {

@@ -23,6 +23,16 @@ function otherTotals(summary: BalanceSummary): string {
   return t('home.balance.otherTotals', { list })
 }
 
+/**
+ * What the balance is across, counted the way Groups and Friends list them: one-on-one tabs are
+ * friends, never groups.
+ */
+function acrossWhat({ groupCount, friendCount }: BalanceSummary): string {
+  if (friendCount === 0) return t('home.balance.acrossGroups', { count: groupCount })
+  if (groupCount === 0) return t('home.balance.withFriends', { count: friendCount })
+  return t('home.balance.acrossGroupsAndFriends')
+}
+
 function GroupLinks({ summary }: { summary: BalanceSummary }) {
   const groups = [...summary.oweGroups, ...summary.owedGroups].slice(0, 5)
   if (groups.length === 0) return null
@@ -86,7 +96,7 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
     >
       <div className="flex items-center justify-between text-sm text-hero-mute">
         <span>
-          {t('home.balance.title')}, {t('home.balance.acrossGroups', { count: summary.groupCount })}
+          {t('home.balance.title')}, {acrossWhat(summary)}
         </span>
         <span className="tabular">{currency}</span>
       </div>
