@@ -223,7 +223,7 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
   await expect(page.getByText(t('errors.codes.not_a_friend'))).toBeVisible()
   await expect(page.getByRole('link', { name: t('expenses.add') })).toHaveCount(0)
   await page
-    .getByRole('button', { name: t('nav.add') })
+    .getByRole('button', { name: t('nav.add'), exact: true })
     .filter({ visible: true })
     .click()
   const quickAdd = page.getByRole('dialog', { name: t('nav.quickAdd.title') })
@@ -235,7 +235,7 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
   ).toHaveAttribute('href', `/new/settle?groupId=${tab}`)
   await page.keyboard.press('Escape')
   await page.goto(`/groups/${tab}/balances`)
-  await expect(page.getByRole('link', { name: t('balances.settleUp') })).toBeVisible()
+  await expect(page.getByRole('link', { name: t('balances.settleUp') }).first()).toBeVisible()
 
   // In the group they share, someone else splitting with both of them is told so on the form.
   const owenPage = await openAs(owen)
