@@ -498,6 +498,15 @@ function AccountSection() {
         >
           {t('settings.about.source')}
         </a>
+        {'. '}
+        <a
+          href="https://fermulate.com"
+          className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t('settings.about.madeBy')}
+        </a>
       </p>
     </section>
   )

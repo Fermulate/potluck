@@ -204,6 +204,7 @@ export const settings = {
     title: 'Sobre',
     version: 'Versão {version}',
     source: 'Código-fonte',
+    madeBy: 'Um projeto da Fermulate',
     license: 'Software livre sob a AGPL-3.0',
     feedback: 'Enviar comentários',
   },
