@@ -11,9 +11,9 @@ function Probe() {
 }
 
 const signedIn = { data: { session: { user: { id: 'u-1' }, access_token: 'token' } } }
-const authError = (name: string, status: number) => ({
+const authError = (name: string, status: number, code?: string) => ({
   data: { user: null },
-  error: Object.assign(new Error(name), { name, status }),
+  error: Object.assign(new Error(name), { name, status, code }),
 })
 
 describe('useSessionCheck', () => {
@@ -27,24 +27,28 @@ describe('useSessionCheck', () => {
   })
 
   it.each([
-    ['ended elsewhere', 'AuthSessionMissingError', 400],
-    ['for a deleted account', 'AuthApiError', 403],
-    ['with a token the server refuses', 'AuthApiError', 401],
-  ])('signs this device out when the session was %s', async (_case, name, status) => {
-    respondAuth('getUser', authError(name, status))
+    ['ended elsewhere', 'AuthSessionMissingError', 400, undefined],
+    ['for a deleted account', 'AuthApiError', 403, 'user_not_found'],
+  ])('signs this device out when the session was %s', async (_case, name, status, code) => {
+    respondAuth('getUser', authError(name, status, code))
     render(<Probe />)
     await waitFor(() => expect(authCallsTo('signOut')).toEqual([[{ scope: 'local' }]]))
   })
 
-  it('stays signed in while the session is alive, or the network is down', async () => {
+  it('stays signed in while the session is alive, the network is down or the token expired', async () => {
     respondAuth('getUser', { data: { user: { id: 'u-1' } }, error: null })
-    const { unmount } = render(<Probe />)
+    const first = render(<Probe />)
     await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(1))
-    unmount()
+    first.unmount()
 
     respondAuth('getUser', authError('AuthRetryableFetchError', 0))
-    render(<Probe />)
+    const second = render(<Probe />)
     await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(2))
+    second.unmount()
+
+    respondAuth('getUser', authError('AuthApiError', 401, 'bad_jwt'))
+    render(<Probe />)
+    await waitFor(() => expect(authCallsTo('getUser')).toHaveLength(3))
     await act(async () => {})
     expect(authCallsTo('signOut')).toEqual([])
   })

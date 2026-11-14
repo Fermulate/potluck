@@ -160,8 +160,9 @@ export async function endEndedSession() {
 
 /**
  * Asks Supabase Auth whether this device's session still exists (`getUser` goes to the server,
- * unlike `getSession`). A session ended elsewhere answers `session_not_found` (or 401/403 for a
- * deleted account), and this device signs out. Network trouble changes nothing.
+ * unlike `getSession`). A session ended elsewhere answers `session_not_found` (auth-js turns it
+ * into `AuthSessionMissingError`), a deleted account `user_not_found`, and this device signs out.
+ * Anything else, such as an expired token (`bad_jwt`) or network trouble, changes nothing.
  */
 export async function confirmSession(): Promise<void> {
   const supabase = await loadSupabase()
@@ -169,11 +170,9 @@ export async function confirmSession(): Promise<void> {
   if (!data.session) return
   const { error } = await supabase.auth.getUser()
   if (!error) return
-  const status = (error as { status?: number }).status
-  const gone =
-    error.name === 'AuthSessionMissingError' ||
-    (error.name === 'AuthApiError' && (status === 401 || status === 403))
-  if (gone) await endEndedSession()
+  if (error.name === 'AuthSessionMissingError' || error.code === 'user_not_found') {
+    await endEndedSession()
+  }
 }
 
 /**
