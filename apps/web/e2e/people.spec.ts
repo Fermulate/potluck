@@ -234,8 +234,16 @@ test("a friend's page shows only what is between you two, exports it, and a bloc
     quickAdd.getByRole('link', { name: new RegExp(t('nav.quickAdd.settle')) }),
   ).toHaveAttribute('href', `/new/settle?groupId=${tab}`)
   await page.keyboard.press('Escape')
+  // Ava, the one blocked, can still pay Jules back there.
   await page.goto(`/groups/${tab}/balances`)
-  await expect(page.getByRole('link', { name: t('balances.settleUp') }).first()).toBeVisible()
+  await page
+    .getByRole('link', { name: t('balances.settleUp') })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/\/new\/settle/)
+  await page.getByRole('button', { name: t('settle.recordPayment') }).click()
+  await page.goto(`/groups/${tab}/balances`)
+  await expect(page.getByText(t('balances.youAreSquare'))).toBeVisible()
 
   // In the group they share, someone else splitting with both of them is told so on the form.
   const owenPage = await openAs(owen)
