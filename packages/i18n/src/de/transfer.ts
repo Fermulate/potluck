@@ -150,10 +150,12 @@ export const transfer = {
     duplicates: {
       sameFile: 'Diese Datei ist schon in {group} eingegangen, {when}.',
       partSameFile: 'Ein Teil dieser Datei ist schon in {group} eingegangen, {when}.',
-      rows_one: '{count} Zeile sieht aus wie eine Ausgabe oder Zahlung, die schon in {group} ist.',
+      rows_one:
+        '{count} Zeile sieht aus wie eine Ausgabe oder Zahlung, die schon in {group} ist, also bleibt sie draußen.',
       rows_other:
-        '{count} Zeilen sehen aus wie Ausgaben oder Zahlungen, die schon in {group} sind.',
-      leaveOut: 'Diese Zeilen weglassen',
+        '{count} Zeilen sehen aus wie Ausgaben oder Zahlungen, die schon in {group} sind, also bleiben sie draußen.',
+      bringIn_one: 'Diese Zeile trotzdem importieren',
+      bringIn_other: 'Alle {count} trotzdem importieren',
       fromThisFile_one:
         '{count} Zeile dieser Datei ist schon in {group}: Sie kam hinein, bevor der Import abbrach.',
       fromThisFile_other:
@@ -164,6 +166,7 @@ export const transfer = {
     progress: '{sent} von {total} Zeilen werden importiert',
     justNow: 'gerade eben',
     submitBlocked: 'Importieren',
+    nothingNew: 'Nichts Neues zu importieren',
     errors: {
       left: 'Zeile {line}: Jemand darin hat die Gruppe verlassen. Lass die Zeilen dieser Person weg oder lade sie wieder ein, dann importiere erneut.',
       timeout:

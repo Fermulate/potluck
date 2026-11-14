@@ -150,9 +150,12 @@ export const transfer = {
     duplicates: {
       sameFile: 'Este archivo ya entró en {group} {when}.',
       partSameFile: 'Parte de este archivo entró en {group} {when}.',
-      rows_one: '{count} fila parece un gasto o pago que ya está en {group}.',
-      rows_other: '{count} filas parecen gastos o pagos que ya están en {group}.',
-      leaveOut: 'Dejar fuera esas filas',
+      rows_one:
+        '{count} fila parece un gasto o pago que ya está en {group}, así que se queda fuera.',
+      rows_other:
+        '{count} filas parecen gastos o pagos que ya están en {group}, así que se quedan fuera.',
+      bringIn_one: 'Importar esta fila de todos modos',
+      bringIn_other: 'Importar las {count} de todos modos',
       fromThisFile_one:
         '{count} fila de este archivo ya está en {group}: entró antes de que la importación se detuviera.',
       fromThisFile_other:
@@ -163,6 +166,7 @@ export const transfer = {
     progress: 'Importando {sent} de {total} filas',
     justNow: 'hace un momento',
     submitBlocked: 'Importar',
+    nothingNew: 'Nada nuevo que importar',
     errors: {
       left: 'Fila {line}: alguien en ella dejó el grupo. Deja fuera sus filas, o invítale de nuevo, y vuelve a importar.',
       timeout:

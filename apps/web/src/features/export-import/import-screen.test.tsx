@@ -530,8 +530,41 @@ describe('ImportScreen', () => {
     expect(
       screen.getByText(t('transfer.import.duplicates.rows', { count: 1, group: group.name })),
     ).toBeVisible()
+    // The row already there stays out unless someone brings it back in.
+    const bringIn = screen.getByRole('checkbox', {
+      name: t('transfer.import.duplicates.bringIn', { count: 1 }),
+    })
+    expect(bringIn).not.toBeChecked()
+    expect(await submitButton(3)).toBeEnabled()
+    fireEvent.click(bringIn)
+    expect(await submitButton(4)).toBeEnabled()
+    fireEvent.click(await submitButton(4))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(save.mock.calls[0]![2]).toHaveLength(4)
+  })
+
+  it('has nothing to import when every row is already there, until some are ticked back in', async () => {
+    renderScreen({
+      expenses: [
+        expense({ id: 'x1', description: 'Dinner', amount_cents: 9000, spent_at: '2026-03-01' }),
+        expense({ id: 'x2', description: 'Groceries', amount_cents: 4500, spent_at: '2026-03-02' }),
+        expense({ id: 'x3', description: 'Taxi', amount_cents: 2400, spent_at: '2026-03-03' }),
+      ],
+    })
+    await upload(
+      [
+        HEADER,
+        '2026-03-01,Dinner,Dining out,90.00,USD,60.00,-30.00,-30.00',
+        '2026-03-02,Groceries,Groceries,45.00,USD,-15.00,30.00,-15.00',
+        '2026-03-03,Taxi,Taxi,24.00,USD,16.00,-8.00,-8.00',
+      ].join('\n'),
+    )
+    expect(
+      screen.getByText(t('transfer.import.duplicates.rows', { count: 3, group: group.name })),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: t('transfer.import.nothingNew') })).toBeDisabled()
     fireEvent.click(
-      screen.getByRole('checkbox', { name: t('transfer.import.duplicates.leaveOut') }),
+      screen.getByRole('checkbox', { name: t('transfer.import.duplicates.bringIn', { count: 3 }) }),
     )
     expect(await submitButton(3)).toBeEnabled()
   })

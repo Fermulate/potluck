@@ -146,9 +146,11 @@ export const transfer = {
     duplicates: {
       sameFile: 'This file already went into {group} {when}.',
       partSameFile: 'Part of this file went into {group} {when}.',
-      rows_one: '{count} row looks like an expense or payment already in {group}.',
-      rows_other: '{count} rows look like expenses or payments already in {group}.',
-      leaveOut: 'Leave those rows out',
+      rows_one: '{count} row looks like an expense or payment already in {group}, so it stays out.',
+      rows_other:
+        '{count} rows look like expenses or payments already in {group}, so they stay out.',
+      bringIn_one: 'Bring this row in anyway',
+      bringIn_other: 'Bring all {count} in anyway',
       fromThisFile_one:
         '{count} row of this file is already in {group}: it went in before the import stopped.',
       fromThisFile_other:
@@ -159,6 +161,7 @@ export const transfer = {
     progress: 'Importing {sent} of {total} rows',
     justNow: 'just now',
     submitBlocked: 'Import',
+    nothingNew: 'Nothing new to import',
     errors: {
       left: 'Row {line}: someone in it has left the group. Leave their rows out, or invite them back, then import again.',
       timeout: 'That took too long, so this import was not saved. Try again in a moment.',

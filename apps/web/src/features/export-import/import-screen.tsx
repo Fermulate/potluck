@@ -432,7 +432,8 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   const [fromGroup, setFromGroup] = useState<string | null>(null)
   const [typedRates, setTypedRates] = useState<Record<string, string>>({})
   const [skipCurrencies, setSkipCurrencies] = useState<ReadonlySet<string>>(new Set())
-  const [leaveOutDuplicates, setLeaveOutDuplicates] = useState(false)
+  // Rows that look already imported stay out unless someone ticks them back in.
+  const [includeDuplicates, setIncludeDuplicates] = useState(false)
   const [confirmedRates, setConfirmedRates] = useState<ReadonlySet<string>>(new Set())
   const [confirmedFileRates, setConfirmedFileRates] = useState<ReadonlySet<string>>(new Set())
   const [partlyImported, setPartlyImported] = useState(false)
@@ -481,7 +482,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       setTypedRates({})
       setSkipCurrencies(new Set())
       setConfirmedFileRates(new Set())
-      setLeaveOutDuplicates(false)
+      setIncludeDuplicates(false)
       setFocusAfterRead(true)
     } finally {
       setReading(false)
@@ -540,10 +541,10 @@ function ImportBody({ group }: { group: MoneyGroup }) {
   )
   const plan = useMemo(
     () =>
-      source && leaveOutDuplicates && duplicates.length > 0
+      source && !includeDuplicates && duplicates.length > 0
         ? planImport(source, { ...options, skipLines: new Set(duplicates) })
         : basePlan,
-    [source, options, leaveOutDuplicates, duplicates, basePlan],
+    [source, options, includeDuplicates, duplicates, basePlan],
   )
 
   useEffect(() => {
@@ -626,7 +627,7 @@ function ImportBody({ group }: { group: MoneyGroup }) {
       if ((imported?.expenses ?? 0) + (imported?.payments ?? 0) > 0) {
         invalidateMoney(queryClient, group.id)
         setPartlyImported(true)
-        setLeaveOutDuplicates(true)
+        setIncludeDuplicates(false)
       }
     },
     onSettled: () => setProgress(null),
@@ -877,9 +878,9 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                     })}
               </p>
               <Checkbox
-                label={t('transfer.import.duplicates.leaveOut')}
-                checked={leaveOutDuplicates}
-                onCheckedChange={(checked) => setLeaveOutDuplicates(checked === true)}
+                label={t('transfer.import.duplicates.bringIn', { count: duplicates.length })}
+                checked={includeDuplicates}
+                onCheckedChange={(checked) => setIncludeDuplicates(checked === true)}
               />
             </Card>
           )}
@@ -1012,7 +1013,9 @@ function ImportBody({ group }: { group: MoneyGroup }) {
                 ? t('transfer.import.progress', { sent: progress.sent, total: progress.total })
                 : t('transfer.import.importing')
               : blocked
-                ? t('transfer.import.submitBlocked')
+                ? total === 0 && skippedBy('duplicate') > 0
+                  ? t('transfer.import.nothingNew')
+                  : t('transfer.import.submitBlocked')
                 : t('transfer.import.submit', { count: total })}
           </Button>
         </>
