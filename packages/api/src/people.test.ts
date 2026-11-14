@@ -4,6 +4,8 @@ import {
   addFriend,
   addPlaceholderMember,
   blockUser,
+  canSplitWith,
+  canSplitWithQueryOptions,
   createFriendInvite,
   fetchFriendInvitePreview,
   fetchGroupPlaceholders,
@@ -213,6 +215,16 @@ describe('blocks and reports', () => {
     expect(await fetchMyBlocks(fake.client)).toHaveLength(1)
     expect(await fetchMyBlocks(fake.client)).toEqual([])
     expect(myBlocksQueryOptions(fake.client, 'me').queryKey).toEqual(peopleKeys.blocks('me'))
+  })
+
+  it('asks whether a new expense with someone would go in', async () => {
+    const fake = fakeSupabase().respond('rpc:can_split_with', { data: true }, { data: false })
+    expect(await canSplitWith(fake.client, 'u2')).toBe(true)
+    expect(await canSplitWith(fake.client, 'u3')).toBe(false)
+    expect(fake.rpcArgs('can_split_with')).toEqual([{ person: 'u2' }, { person: 'u3' }])
+    expect(canSplitWithQueryOptions(fake.client, 'u2').queryKey).toEqual(peopleKeys.canSplit('u2'))
+    const failing = fakeSupabase().respond('rpc:can_split_with', { error: boom })
+    await expect(canSplitWith(failing.client, 'u2')).rejects.toBe(boom)
   })
 
   it('files a report with a trimmed reason', async () => {

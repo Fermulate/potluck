@@ -65,12 +65,25 @@ export function ActivityFeed({ groupId, person }: { groupId?: string; person?: s
       : null
 
   const sections = useMemo(() => {
-    // The hidden 1:1 groups are an implementation detail; their creation is not news.
+    // The hidden 1:1 groups are an implementation detail: opening one (the group and its two
+    // members joining) is not news. Anything later, like someone leaving, still is.
     const items = (feed.data?.pages.flat() ?? []).filter(
-      (item) => !(item.verb === 'group.created' && item.group?.is_direct),
+      (item) =>
+        !(
+          item.group?.is_direct &&
+          (item.verb === 'group.created' || item.verb === 'member.joined')
+        ),
     )
     return groupByDay(items, (item) => dayKey(item.created_at, timeZone))
   }, [feed.data, timeZone])
+  const groupById = useMemo(() => new Map((groups.data ?? []).map((g) => [g.id, g])), [groups.data])
+  /** A 1:1 tab goes by the friend, never by its stored name. */
+  const groupName = (group: (typeof sections)[number]['items'][number]['group']) => {
+    if (!group) return ''
+    const full = groupById.get(group.id)
+    if (full) return groupTitle(full, me)
+    return group.is_direct ? t('people.friendPage.oneOnOne') : group.name
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
@@ -131,11 +144,14 @@ export function ActivityFeed({ groupId, person }: { groupId?: string; person?: s
               <Card padding="none" className="overflow-hidden">
                 <ul className="divide-y divide-line">
                   {section.items.map((item, i) => {
-                    const view = describeActivity(item, { viewerId: me, timeZone, nameOf })
+                    const where = groupName(item.group)
+                    const view = describeActivity(item, {
+                      viewerId: me,
+                      timeZone,
+                      nameOf,
+                      groupName: where,
+                    })
                     const actor = item.actor_id ? people.get(item.actor_id) : undefined
-                    const groupName = item.group?.is_direct
-                      ? t('activity.direct')
-                      : (item.group?.name ?? '')
                     const body = (
                       <>
                         <span className="relative shrink-0">
@@ -165,15 +181,15 @@ export function ActivityFeed({ groupId, person }: { groupId?: string; person?: s
                             </span>
                           )}
                           <span className="text-xs text-mute">
-                            {groupName && (
+                            {where && (
                               <span className="font-semibold">
                                 {item.group?.emoji && !item.group.is_direct
                                   ? `${item.group.emoji} `
                                   : ''}
-                                {groupName}
+                                {where}
                               </span>
                             )}
-                            {groupName && ', '}
+                            {where && ', '}
                             <time dateTime={item.created_at}>
                               {formatTime(item.created_at, { timeZone })}
                             </time>

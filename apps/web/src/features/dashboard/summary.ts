@@ -10,8 +10,11 @@ export interface BalanceSummary {
   owed: number
   oweGroups: HomeBalance[]
   owedGroups: HomeBalance[]
-  /** Other currencies with a non-zero balance (not summed: no conversion on the client). */
-  otherCurrencies: string[]
+  /**
+   * What the viewer is owed and owes in each other currency, kept apart (no conversion on the
+   * client), by currency code. Only currencies with something on either side.
+   */
+  otherCurrencies: { currency: string; owed: number; owe: number }[]
   groupCount: number
 }
 
@@ -38,11 +41,15 @@ export function summarizeBalances(
   const owedGroups = inCurrency.filter((b) => b.netCents > 0).sort(byMagnitude)
   const owe = oweGroups.reduce((s, b) => s + b.netCents, 0)
   const owed = owedGroups.reduce((s, b) => s + b.netCents, 0)
-  const otherCurrencies = [
-    ...new Set(
-      balances.filter((b) => b.currency !== currency && b.netCents !== 0).map((b) => b.currency),
-    ),
-  ].sort()
+  const others = new Map<string, { currency: string; owed: number; owe: number }>()
+  for (const b of balances) {
+    if (b.currency === currency || b.netCents === 0) continue
+    const totals = others.get(b.currency) ?? { currency: b.currency, owed: 0, owe: 0 }
+    if (b.netCents > 0) totals.owed += b.netCents
+    else totals.owe += b.netCents
+    others.set(b.currency, totals)
+  }
+  const otherCurrencies = [...others.values()].sort((a, b) => a.currency.localeCompare(b.currency))
 
   return {
     currency,

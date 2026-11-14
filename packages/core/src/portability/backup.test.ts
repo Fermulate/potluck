@@ -179,6 +179,25 @@ describe('backupLedger', () => {
     expect(nameOf(id(9))).toBe(id(9))
   })
 
+  it('names a one-on-one tab after the other person, never "Direct"', () => {
+    const backup = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
+    const trip = backup.groups[0]!
+    backup.people.push({ id: id(2), display_name: 'Jules', deleted: false, placeholder: false })
+    backup.groups.push({
+      ...trip,
+      id: id(11),
+      name: 'Direct',
+      is_direct: true,
+      members: [
+        { user_id: id(1), role: 'owner', joined_at: at },
+        { user_id: id(2), role: 'admin', joined_at: at },
+      ],
+    })
+    backup.groups.push({ ...trip, id: id(12), name: 'Direct', is_direct: true })
+    const { groups } = backupLedger(backup, 'UTC', 'Someone', 'One-on-one')
+    expect(groups.map((g) => g.name)).toEqual(['Trip', 'Jules', 'One-on-one'])
+  })
+
   it("dates a payment on the viewer's day, as settle_up_v2 stored it", () => {
     const backup = backupSchema.parse(JSON.parse(JSON.stringify(sample)) as typeof sample)
     // Noon on March 2 in Auckland (UTC+13) is 23:00 UTC on March 1.

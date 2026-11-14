@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(130);
+select plan(131);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -124,6 +124,7 @@ select has_function('public', 'add_friend', array['uuid'], 'add_friend(user_id)'
 select has_function('public', 'remove_friend', array['uuid'], 'remove_friend(friend_id)');
 select has_function('public', 'block_user', array['uuid'], 'block_user(user_id)');
 select has_function('public', 'my_blocks', array[]::text[], 'my_blocks()');
+select has_function('public', 'can_split_with', array['uuid'], 'can_split_with(person)');
 select ok(
   not has_function_privilege('authenticated', 'public.email_outbox_report(uuid, boolean, text, uuid[])', 'execute'),
   'only the service role reports email deliveries'

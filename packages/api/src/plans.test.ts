@@ -110,18 +110,41 @@ describe('fetchHomeBalances', () => {
           { group_id: 'g2', net_cents: null },
           { group_id: 'gone', net_cents: 9 },
           { group_id: null, net_cents: 9 },
+          { group_id: 'g3', net_cents: -1200 },
         ],
       })
       .respond('from:groups', {
         data: [
-          { id: 'g1', name: 'Flat', emoji: null, currency: 'EUR' },
-          { id: 'g2', name: 'Trip', emoji: 'x', currency: 'USD' },
+          { id: 'g1', name: 'Flat', emoji: null, currency: 'EUR', is_direct: false },
+          { id: 'g2', name: 'Trip', emoji: 'x', currency: 'USD', is_direct: false },
+          {
+            id: 'g3',
+            name: 'Direct',
+            emoji: null,
+            currency: 'USD',
+            is_direct: true,
+            group_members: [
+              { profiles: { id: 'u1', display_name: 'Pat' } },
+              { profiles: { id: 'u2', display_name: 'Jules Park' } },
+              { profiles: null },
+            ],
+          },
         ],
       })
 
+    const home = { groupEmoji: null, isDirect: false }
     expect(await fetchHomeBalances(fake.client, 'u1')).toEqual([
-      { groupId: 'g1', groupName: 'Flat', groupEmoji: null, currency: 'EUR', netCents: 250 },
-      { groupId: 'g2', groupName: 'Trip', groupEmoji: 'x', currency: 'USD', netCents: 0 },
+      { ...home, groupId: 'g1', groupName: 'Flat', currency: 'EUR', netCents: 250 },
+      { ...home, groupId: 'g2', groupName: 'Trip', groupEmoji: 'x', currency: 'USD', netCents: 0 },
+      // A one-on-one tab goes by the friend, never its stored name.
+      {
+        ...home,
+        groupId: 'g3',
+        groupName: 'Jules Park',
+        isDirect: true,
+        currency: 'USD',
+        netCents: -1200,
+      },
     ])
     expect(argsOf(fake.queries('group_balances')[0]!, 'eq')).toEqual([['user_id', 'u1']])
   })

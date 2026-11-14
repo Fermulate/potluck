@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { dayKey } from '../dates'
+import { groupDisplayName } from '../groups'
 import type { LedgerGroup } from './ledger'
 
 /**
@@ -189,13 +190,20 @@ export function backupLedger(
   timeZone: string,
   /** Name for an id the backup does not know (never expected; the export lists everyone). */
   unknown?: string,
+  /** Name for a one-on-one tab whose other person is unknown; a tab otherwise goes by them. */
+  oneOnOne?: string,
 ): {
   groups: LedgerGroup[]
   nameOf: (id: string) => string
 } {
   const names = new Map(backup.people.map((p) => [p.id, p.display_name]))
   const groups = backup.groups.map((g): LedgerGroup => ({
-    name: g.name,
+    name: groupDisplayName(
+      { name: g.name, isDirect: g.is_direct, memberIds: g.members.map((m) => m.user_id) },
+      backup.profile.id,
+      (id) => names.get(id),
+      oneOnOne ?? unknown ?? g.name,
+    ),
     currency: g.currency,
     expenses: g.expenses
       .filter((e) => !e.deleted_at)

@@ -5,8 +5,9 @@ import { toast } from '@potluck/ui'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { groupCsv } from '@/features/expenses/expense-math'
-import { categoryLabel } from '@/features/expenses/format'
+import { categoryLabel, groupTitle } from '@/features/expenses/format'
 import { useTimeZone } from '@/features/expenses/money-data'
+import { useUserId } from '@/lib/auth'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 import { fileName, saveFile } from './download'
@@ -32,6 +33,7 @@ function useRunner<K extends string>() {
 
 /** The group's spreadsheet, from the same data the expenses tab shows. */
 export function useGroupExport(groupId: string) {
+  const me = useUserId()
   const queryClient = useQueryClient()
   const timeZone = useTimeZone()
   const { busy, run } = useRunner<'group'>()
@@ -43,10 +45,12 @@ export function useGroupExport(groupId: string) {
         queryClient.fetchQuery(moneyQueries.settlements(supabase, groupId)),
         queryClient.fetchQuery(moneyQueries.people(supabase)),
       ])
-      const file = fileName(group.name, 'csv', 'expenses')
+      // A one-on-one tab goes by the friend, in the file name and the Group column alike.
+      const named = { ...group, name: groupTitle(group, me) }
+      const file = fileName(named.name, 'csv', 'expenses')
       saveFile(
         file,
-        groupCsv(group, expenses, settlements, new Map(people.map((p) => [p.id, p])), timeZone),
+        groupCsv(named, expenses, settlements, new Map(people.map((p) => [p.id, p])), timeZone),
         'csv',
       )
       return file
@@ -78,7 +82,12 @@ function everyone(backup: Backup, timeZone: string) {
 }
 
 function accountCsv(backup: Backup, timeZone: string, friend?: string): string {
-  const { groups, nameOf } = backupLedger(backup, timeZone, t('transfer.csv.someoneWhoLeft'))
+  const { groups, nameOf } = backupLedger(
+    backup,
+    timeZone,
+    t('transfer.csv.someoneWhoLeft'),
+    t('people.friendPage.oneOnOne'),
+  )
   return ledgerCsv(groups, {
     labels: ledgerLabels(),
     people: everyone(backup, timeZone),

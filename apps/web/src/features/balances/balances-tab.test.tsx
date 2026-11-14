@@ -84,6 +84,38 @@ describe('BalancesTab', () => {
       expect.stringContaining('You'),
     ])
     expect(within(rows[0]!).getByText(t('balances.isOwedShort'))).toBeInTheDocument()
+    // Each row is one sentence for a screen reader, with "you" grammar for the viewer.
+    expect(
+      within(rows[0]!).getByText(t('balances.isOwed', { name: 'Ben', amount: '$60.00' })),
+    ).toBeInTheDocument()
+    expect(
+      within(rows[1]!).getByText(t('balances.netOwe', { name: 'Cleo', amount: '$12.50' })),
+    ).toBeInTheDocument()
+    expect(
+      within(rows[2]!).getByText(t('balances.youOweNet', { amount: '$47.50' })),
+    ).toBeInTheDocument()
+    expect(within(rows[2]!).getByText(t('balances.oweShort'))).toBeInTheDocument()
+  })
+
+  it('says "You are owed" for the viewer, never "You is owed"', async () => {
+    renderTab({
+      nets: [
+        [ME, 153580],
+        [BEN, -153580],
+        [CLEO, 0],
+      ],
+      simplified: [{ from_user: BEN, to_user: ME, amount_cents: 153580 }],
+    })
+    const everyone = await screen.findByRole('heading', { name: t('balances.members') })
+    const rows = within(everyone.closest('section')!).getAllByRole('listitem')
+    const mine = rows.find((row) => row.textContent?.includes('You'))!
+    expect(
+      within(mine).getByText(t('balances.youAreOwed', { amount: '$1,535.80' })),
+    ).toBeInTheDocument()
+    expect(within(mine).getByText(t('balances.areOwedShort'))).toBeInTheDocument()
+    expect(mine.textContent).not.toContain(t('balances.isOwedShort'))
+    const cleo = rows.find((row) => row.textContent?.includes('Cleo'))!
+    expect(within(cleo).getByText(t('balances.settled', { name: 'Cleo' }))).toBeInTheDocument()
   })
 
   it('lists the debts you can act on before everyone else’s', async () => {

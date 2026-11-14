@@ -6,7 +6,7 @@ import { Link, useCanGoBack, useNavigate, useRouter } from '@tanstack/react-rout
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { ExpenseForm } from '@/features/expenses/form/expense-form'
-import { categoryEmoji } from '@/features/expenses/format'
+import { categoryEmoji, groupTitle } from '@/features/expenses/format'
 import { MoneyPageShell } from '@/features/expenses/money-page-shell'
 import { useMoneyGroup, useNameOf, usePeople } from '@/features/expenses/money-data'
 import { joinNames } from '@/features/plans/format'
@@ -184,7 +184,7 @@ function TemplateSummary({
         )}
         <p role="note" className="mt-2 rounded-card bg-sunken px-4 py-3 text-sm text-mute">
           {group.archived_at
-            ? t('expenses.form.archived', { group: group.name })
+            ? t('expenses.form.archived', { group: groupTitle(group, me) })
             : t('expenses.recurring.readOnly')}
         </p>
       </div>

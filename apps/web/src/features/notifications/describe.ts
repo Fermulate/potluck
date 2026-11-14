@@ -1,4 +1,4 @@
-import { firstName } from '@potluck/core'
+import { directFriendId, firstName } from '@potluck/core'
 import type { NotificationRow } from '@potluck/api'
 import { formatDate, formatMoney, formatRelative, formatTime, t } from '@potluck/i18n'
 
@@ -31,7 +31,7 @@ export interface NotificationView {
 export interface DescribeContext {
   /** Display names by profile id. */
   people: Map<string, string>
-  /** Group names by id. */
+  /** Group names by id, as they read after "in" (`notificationGroupName`). */
   groups: Map<string, string>
   timeZone: string
   now?: Date
@@ -46,6 +46,30 @@ const num = (value: unknown): number | undefined =>
 
 const firstNameOf = (full: string | undefined) => (full ? firstName(full) : undefined)
 
+/**
+ * How a group is named inside a notification ("New expense in {group}"): its name, or for a
+ * one-on-one tab "your tab with Jules", never the tab's stored name.
+ */
+export function notificationGroupName(
+  group: {
+    id: string
+    name: string
+    is_direct: boolean
+    members: { id: string; display_name: string }[]
+  },
+  viewerId: string,
+): string {
+  if (!group.is_direct) return group.name
+  const friendId = directFriendId(
+    { name: group.name, isDirect: true, memberIds: group.members.map((m) => m.id) },
+    viewerId,
+  )
+  const friend = group.members.find((m) => m.id === friendId)
+  return friend
+    ? t('notifications.directTab', { name: firstName(friend.display_name) })
+    : t('notifications.aGroup')
+}
+
 /** "Roommates: you are owed $12.50, Hike crew: you owe $5.00 and 1 more group". */
 function summaryLine(groups: unknown, ctx: DescribeContext): string {
   const owing = (Array.isArray(groups) ? groups : [])
@@ -55,7 +79,12 @@ function summaryLine(groups: unknown, ctx: DescribeContext): string {
   const parts = owing.slice(0, 2).map((g) => {
     const net = num(g.net_cents)!
     const groupId = str(g.group_id)
-    const group = (groupId && ctx.groups.get(groupId)) || str(g.name) || t('notifications.aGroup')
+    // The summary names a one-on-one tab after the friend already (`monthly_summary`).
+    const group =
+      (g.is_direct === true && str(g.name)) ||
+      (groupId && ctx.groups.get(groupId)) ||
+      str(g.name) ||
+      t('notifications.aGroup')
     const amount = formatMoney(Math.abs(net), str(g.currency) ?? 'USD')
     return net > 0
       ? t('notifications.types.summary.owed', { group, amount })

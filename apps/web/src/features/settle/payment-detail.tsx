@@ -97,7 +97,9 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
           className={buttonClassName({ variant: 'ghost', size: 'sm', className: 'pl-2' })}
         >
           <ChevronLeft aria-hidden className="size-5" />
-          <span className="max-w-[12rem] truncate">{group.data?.name ?? t('common.back')}</span>
+          <span className="max-w-[12rem] truncate">
+            {group.data ? groupTitle(group.data, me) : t('common.back')}
+          </span>
         </Link>
         {!deleted && !archived && (mayEdit || mayDelete) && (
           <div className="flex gap-1" role="group" aria-label={t('settle.detail.actions')}>

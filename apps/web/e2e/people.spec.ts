@@ -1,11 +1,14 @@
+import { readFile } from 'node:fs/promises'
 import {
+  addFriend,
   addPlaceholderMember,
+  blockUser,
   createExpense,
   fetchMyFriendLink,
   removePlaceholder,
 } from '@potluck/api'
 import { formatMoney, t } from '@potluck/i18n'
-import { groupWith } from './support/api'
+import { addEqualExpense, groupWith } from './support/api'
 import { expect, PASSWORD, test, unique } from './support/fixtures'
 
 test('add Sam by name, split with him, and Sam signs up through his invite to find it all', async ({
@@ -161,4 +164,52 @@ test('Ava records that Pat, not on Potluck yet, paid her, then removes the settl
   await removePlaceholder(ava.client, pat)
   await page.goto(`/groups/${group.id}/members`)
   await expect(page.getByRole('listitem').filter({ hasText: patName })).toHaveCount(0)
+})
+
+test("a friend's page shows only what is between you two, exports it, and a block stops new expenses", async ({
+  newUser,
+  openAs,
+}) => {
+  const [ava, jules, owen] = await Promise.all([
+    newUser({ name: unique('Ava') }),
+    newUser({ name: unique('Jules') }),
+    newUser({ name: unique('Owen') }),
+  ])
+  const group = await groupWith(ava, [jules, owen])
+  await addFriend(ava.client, jules.id)
+  // Ava paid 90 for the three of them: she is up 60, but only 30 of it is Jules's.
+  const dinner = unique('Dinner')
+  await addEqualExpense(ava, group, [ava, jules, owen], 9000, dinner)
+  // Owen paid 60 for the three: Ava and Jules each owe Owen, not each other.
+  const taxi = unique('Taxi')
+  await addEqualExpense(owen, group, [ava, jules, owen], 6000, taxi)
+
+  const page = await openAs(ava)
+  await page.goto(`/friends/${jules.id}`)
+  const history = page.getByRole('region', { name: t('people.friendPage.history') })
+  await expect(
+    history
+      .getByRole('link', { name: new RegExp(dinner) })
+      .getByText(t('expenses.youLent', { amount: formatMoney(3000, 'USD') })),
+  ).toBeAttached()
+  await expect(
+    history
+      .getByRole('link', { name: new RegExp(taxi) })
+      .getByText(t('people.friendPage.nothingBetween')),
+  ).toBeVisible()
+
+  await page
+    .getByRole('button', { name: t('people.friendPage.menu', { name: jules.name }) })
+    .click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: new RegExp(t('people.friendPage.export')) }).click()
+  const csv = await readFile((await (await download).path())!, 'utf8')
+  expect(csv).toContain(t('transfer.csv.between', { name: jules.name }))
+  expect(csv).toContain(dinner)
+
+  await blockUser(jules.client, ava.id)
+  await page.reload()
+  const add = page.getByRole('button', { name: t('people.friendPage.addExpense') })
+  await expect(add).toBeDisabled()
+  await expect(page.getByText(t('errors.codes.not_a_friend'))).toBeVisible()
 })

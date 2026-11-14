@@ -76,6 +76,27 @@ const groupRows = [
     archived_at: null,
     group_members: [{ count: 3 }],
   },
+  {
+    id: 'g-london',
+    name: 'London',
+    emoji: null,
+    currency: 'GBP',
+    is_direct: false,
+    archived_at: null,
+    group_members: [{ count: 2 }],
+  },
+  {
+    id: 'g-jules',
+    name: 'Direct',
+    emoji: null,
+    currency: 'USD',
+    is_direct: true,
+    archived_at: null,
+    group_members: [
+      { profiles: { id: VIEWER, display_name: 'Ava' } },
+      { profiles: { id: 'u-jules', display_name: 'Jules Park' } },
+    ],
+  },
 ]
 
 function seed({ items = timeline as object[], balances = true } = {}) {
@@ -88,6 +109,8 @@ function seed({ items = timeline as object[], balances = true } = {}) {
             { user_id: VIEWER, group_id: 'g-hike', net_cents: -6051 },
             { user_id: VIEWER, group_id: 'g-flat', net_cents: 2500 },
             { user_id: VIEWER, group_id: 'g-paris', net_cents: 1200 },
+            { user_id: VIEWER, group_id: 'g-london', net_cents: -500 },
+            { user_id: VIEWER, group_id: 'g-jules', net_cents: 300 },
           ]
         : [],
       event_rsvps: [],
@@ -104,13 +127,24 @@ describe('HomeDashboard', () => {
     expect(await screen.findByRole('heading', { level: 1, name: /Ava/ })).toBeInTheDocument()
     const hero = await screen.findByRole('region', { name: t('home.balance.title') })
     expect(within(hero).getByText(t('home.balance.headlineOwe'))).toBeInTheDocument()
-    expect(within(hero).getByText('You owe $35.51')).toBeInTheDocument()
+    expect(within(hero).getByText('You owe $32.51')).toBeInTheDocument()
     expect(within(hero).getByRole('link', { name: /Hike crew/ })).toHaveAttribute(
       'href',
       '/groups/g-hike',
     )
+    // A one-on-one tab goes by the friend, never its stored name.
+    expect(within(hero).getByRole('link', { name: /Jules Park/ })).toHaveAttribute(
+      'href',
+      '/groups/g-jules',
+    )
+    expect(within(hero).queryByText('Direct')).not.toBeInTheDocument()
+    // Every other currency with its amounts, never converted.
     expect(
-      within(hero).getByText(t('home.balance.otherCurrencies', { currencies: 'EUR' })),
+      within(hero).getByText(
+        t('home.balance.otherTotals', {
+          list: `${t('home.balance.otherOwed', { amount: '€12.00' })} ${t('common.and')} ${t('home.balance.otherOwe', { amount: '£5.00' })}`,
+        }),
+      ),
     ).toBeInTheDocument()
   })
 

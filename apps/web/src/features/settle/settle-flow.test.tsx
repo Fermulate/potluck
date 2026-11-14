@@ -110,7 +110,11 @@ describe('SettleFlow', () => {
     setup({ to: BEN, amount: 2000 })
     fireEvent.click(screen.getByRole('button', { name: 'Record payment' }))
     expect(await screen.findByRole('heading', { name: 'Payment recorded' })).toBeInTheDocument()
-    expect(screen.getByText('You still owe $27.50')).toBeInTheDocument()
+    // The headline is what was just paid; what is left sits underneath in plain type.
+    const status = screen.getByRole('status')
+    expect(within(status).getByText('$20.00')).toBeInTheDocument()
+    expect(within(status).queryByText('$27.50')).not.toBeInTheDocument()
+    expect(within(status).getByText('You still owe $27.50')).toBeInTheDocument()
   })
 
   it('records "Cleo paid me" on a past day', async () => {

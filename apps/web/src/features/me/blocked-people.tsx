@@ -22,6 +22,7 @@ export function BlockedPeopleSection() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: peopleKeys.blocks(userId) }),
         queryClient.invalidateQueries({ queryKey: groupKeys.friends(userId) }),
+        queryClient.invalidateQueries({ queryKey: peopleKeys.canSplit(id) }),
       ])
       toast.success(t('people.blocked.unblocked', { name }))
     } catch (error) {

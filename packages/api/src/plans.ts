@@ -3,6 +3,7 @@
  *
  * Every function takes the client first so web and mobile can pass their own.
  */
+import { groupDisplayName } from '@potluck/core'
 import { queryOptions } from '@tanstack/react-query'
 import type { Database } from './database.types'
 import type { PotluckClient } from './index'
@@ -65,7 +66,10 @@ export interface PlanProfile {
 /** One group's net for the viewer, in that group's currency. Positive means they are owed. */
 export interface HomeBalance {
   groupId: string
+  /** The group's name; a one-on-one tab goes by the friend ('' if they are unknown). */
   groupName: string
+  /** A one-on-one tab between two friends. */
+  isDirect: boolean
   groupEmoji: string | null
   currency: string
   netCents: number
@@ -183,7 +187,9 @@ export async function fetchHomeBalances(
 ): Promise<HomeBalance[]> {
   const [balances, groups] = await Promise.all([
     client.from('group_balances').select('group_id, net_cents').eq('user_id', userId),
-    client.from('groups').select('id, name, emoji, currency, is_direct'),
+    client
+      .from('groups')
+      .select('id, name, emoji, currency, is_direct, group_members (profiles (id, display_name))'),
   ])
   if (balances.error) fail(balances.error)
   if (groups.error) fail(groups.error)
@@ -192,9 +198,16 @@ export async function fetchHomeBalances(
   for (const row of balances.data) {
     const group = row.group_id ? byId.get(row.group_id) : undefined
     if (!group) continue
+    const members = (group.group_members ?? []).flatMap((m) => (m.profiles ? [m.profiles] : []))
     out.push({
       groupId: group.id,
-      groupName: group.name,
+      groupName: groupDisplayName(
+        { name: group.name, isDirect: group.is_direct, memberIds: members.map((p) => p.id) },
+        userId,
+        (id) => members.find((p) => p.id === id)?.display_name,
+        '',
+      ),
+      isDirect: group.is_direct,
       groupEmoji: group.emoji,
       currency: group.currency,
       netCents: Number(row.net_cents ?? 0),

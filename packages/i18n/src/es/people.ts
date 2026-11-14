@@ -128,6 +128,10 @@ export const people = {
     blocked: '{name} está bloqueado.',
     report: 'Denunciar a {name}',
     reportHint: 'Cuéntanos si algo va mal.',
+    nothingBetween: 'nada entre ustedes',
+    export: 'Exportar como hoja de cálculo',
+    youBlocked:
+      'Bloqueaste a {name}, así que no entra nada nuevo entre ustedes. Desbloquéalo en Yo para volver a dividir.',
   },
   report: {
     title: 'Denunciar a {name}',

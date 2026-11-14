@@ -11,6 +11,7 @@ export const notifications = {
   pushBlocked: 'Les notifications sont bloquées dans les réglages de ton navigateur.',
   someone: "Quelqu'un",
   aGroup: 'ton groupe',
+  directTab: 'ton compte avec {name}',
   anEvent: 'une sortie',
   anExpense: 'une dépense',
   generic: { title: "Il s'est passé quelque chose", body: 'Touche pour jeter un œil.' },

@@ -9,6 +9,7 @@ import { ArrowRight, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { RemindButton } from '@/features/settle/remind-button'
 import { SettleAllSheet } from '@/features/settle/settle-all-sheet'
+import { netLabel } from './net-label'
 import { useDebts } from './use-debts'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
@@ -236,6 +237,11 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                 {rows.map((r) => {
                   const person = personOf(r.id)
                   const width = `${(Math.abs(r.cents) / scale) * 50}%`
+                  const label = netLabel(r.cents, {
+                    name: nameOf(r.id),
+                    isViewer: r.id === me,
+                    amount: formatMoney(Math.abs(r.cents), currency),
+                  })
                   return (
                     <li key={r.id} className="flex flex-col gap-2 px-4 py-3">
                       <div className="flex items-center gap-3">
@@ -245,17 +251,12 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                           src={avatarSrc(person?.avatar_path)}
                           size="sm"
                         />
-                        <span className="min-w-0 flex-1 truncate font-semibold">
+                        <span className="sr-only">{label.full}</span>
+                        <span aria-hidden className="min-w-0 flex-1 truncate font-semibold">
                           {nameOf(r.id)}
                         </span>
-                        <span className="flex flex-col items-end">
-                          <span className="text-xs text-mute">
-                            {r.cents > 0
-                              ? t('balances.isOwedShort')
-                              : r.cents < 0
-                                ? t('balances.owesShort')
-                                : t('balances.settledShort')}
-                          </span>
+                        <span aria-hidden className="flex flex-col items-end">
+                          <span className="text-xs text-mute">{label.short}</span>
                           {r.cents !== 0 && (
                             <span className="font-bold">
                               <Money

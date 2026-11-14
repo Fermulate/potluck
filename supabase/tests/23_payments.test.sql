@@ -2,7 +2,7 @@
 -- payments, payment_methods, pairwise and group debts, settle_all, friend_balances,
 -- settle_with_friend, remind_debt and the settlement change notifications.
 begin;
-select plan(117);
+select plan(119);
 
 delete from public.fx_rates;
 insert into public.fx_rates (base, quote, day, rate) values
@@ -477,6 +477,33 @@ select results_eq(
   format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('m4')),
   format($$ values (%L::uuid, %L::uuid, 3000::bigint) $$, tests.uid('b'), tests.uid('a')),
   'a refund reduces what someone owes for the original expense'
+);
+
+-- Per expense between two people (expenseBetween in between.test.ts, what a friend page row shows).
+select tests.remember('pc', pg_temp.fresh(array['a', 'b', 'c'], false));
+select tests.login('a');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('pc'), 'description', 'Concert',
+  'amount_cents', 20000, 'payers', jsonb_build_array(pg_temp.payer('a', 20000)),
+  'split_type', 'exact', 'splits', jsonb_build_array(pg_temp.exact('b', 16000), pg_temp.exact('c', 4000))));
+reset role;
+select set_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('pc')),
+  format($$ values (%L::uuid, %L::uuid, 16000::bigint), (%L::uuid, %L::uuid, 4000::bigint) $$,
+    tests.uid('b'), tests.uid('a'), tests.uid('c'), tests.uid('a')),
+  'between two people: each owes the payer their own share, not the payer''s whole lead'
+);
+
+select tests.remember('pr', pg_temp.fresh(array['a', 'b', 'c'], false));
+select tests.login('c');
+select public.create_expense_v2(jsonb_build_object('group_id', tests.id('pr'), 'description', 'Rent',
+  'amount_cents', 150000, 'payers', jsonb_build_array(pg_temp.payer('c', 150000)),
+  'splits', tests.people('a', 'b', 'c')));
+reset role;
+select set_eq(
+  format($$ select from_user, to_user, amount_cents from private.pairwise_debts(%L) $$, tests.id('pr')),
+  format($$ values (%L::uuid, %L::uuid, 50000::bigint), (%L::uuid, %L::uuid, 50000::bigint) $$,
+    tests.uid('a'), tests.uid('c'), tests.uid('b'), tests.uid('c')),
+  'between two people: two who both owe the payer owe each other nothing'
 );
 
 -- Payment days are the caller's own calendar day.

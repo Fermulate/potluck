@@ -1,4 +1,4 @@
-import { expenseEffect, pairEffect } from '../balances'
+import { expenseBetween, expenseEffect, type BalanceExpense } from '../balances'
 import { convert } from '../currency'
 import { compareIds } from '../money/allocate'
 import { isBlankRow, toCsv, unguardCell, type CsvValue } from './csv'
@@ -135,22 +135,16 @@ function itemsText(expense: CsvExpense, labels: LedgerLabels, nameOf: (id: strin
   return parts.join('; ')
 }
 
-/** The effect of one expense on everyone, in the group currency (positive = is owed). */
-function effectOf(expense: CsvExpense, groupCurrency: string): Record<string, number> {
-  return (
-    expenseEffect(
-      {
-        paidBy: expense.payers[0]?.userId ?? '',
-        payers: expense.payers,
-        isRefund: expense.isRefund,
-        amountCents: expense.amountCents,
-        currency: expense.currency,
-        fxRate: expense.fxRate,
-        splits: expense.splits,
-      },
-      { groupCurrency },
-    ) ?? {}
-  )
+function balanceExpense(expense: CsvExpense): BalanceExpense {
+  return {
+    paidBy: expense.payers[0]?.userId ?? '',
+    payers: expense.payers,
+    isRefund: expense.isRefund,
+    amountCents: expense.amountCents,
+    currency: expense.currency,
+    fxRate: expense.fxRate,
+    splits: expense.splits,
+  }
 }
 
 /** The export as CSV text. */
@@ -202,15 +196,15 @@ export function ledgerCsv(groups: readonly LedgerGroup[], options: LedgerOptions
     const lines: Line[] = []
 
     for (const e of group.expenses) {
-      const effect = effectOf(e, gc)
+      const balance = balanceExpense(e)
+      const effect = expenseEffect(balance, { groupCurrency: gc }) ?? {}
       for (const [id, cents] of Object.entries(effect)) add(id, cents)
-      const pair = friend ? pairEffect(effect, friend.me, friend.friend) : 0
-      if (friend) {
-        const involved = (id: string) =>
-          e.payers.some((p) => p.userId === id) || e.splits.some((s) => s.userId === id)
-        if (pair === 0 && !(involved(friend.me) && involved(friend.friend))) continue
-        between += pair
-      }
+      // The same per expense amount the friend page shows on each row.
+      const pair = friend
+        ? expenseBetween(balance, friend.me, friend.friend, { groupCurrency: gc })
+        : 0
+      if (pair === null) continue
+      between += pair
       const sign = e.isRefund ? -1 : 1
       const payers = [...e.payers].sort((a, b) => b.paidCents - a.paidCents)
       const perPerson = people.flatMap((p) => {

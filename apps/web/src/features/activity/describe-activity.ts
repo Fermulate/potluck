@@ -23,6 +23,8 @@ interface Context {
   timeZone: string
   /** First name for a user id, or "you" style text for the viewer. */
   nameOf: (id: string | null | undefined, options?: { lower?: boolean }) => string
+  /** The group's name as the viewer sees it (a 1:1 tab goes by the friend); defaults to its name. */
+  groupName?: string
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
@@ -51,7 +53,7 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
   const params: Record<string, string> = {
     actor,
     // A deleted group is hidden, so its delete line carries the name.
-    group: item.group?.name ?? str(d.name) ?? '',
+    group: (item.group ? (ctx.groupName ?? item.group.name) : undefined) ?? str(d.name) ?? '',
     description: str(d.description) ?? '',
     amount,
     event: [str(d.emoji), str(d.title)].filter(Boolean).join(' '),
