@@ -2,6 +2,7 @@ import { ACTIVITY_PAGE_SIZE } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { group, groupTables, member } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { argsOf, db, emitChange, resetDb, subscriptions } from '@/test/supabase'
 import { BEN, ME, seededClient } from '../expenses/test-utils'
@@ -11,7 +12,14 @@ vi.mock('@/lib/supabase', () => import('@/test/supabase'))
 vi.mock('@/lib/auth', () => ({ useUserId: () => 'aaaaaaaa-0000-4000-8000-000000000001' }))
 
 const hike = { id: 'g-hike', name: 'Hike crew', emoji: '🥾', is_direct: false }
-const direct = { id: 'g-ben', name: '', emoji: null, is_direct: true }
+const direct = { id: 'g-ben', name: 'Direct', emoji: null, is_direct: true }
+const tab = group({
+  id: 'g-ben',
+  name: 'Direct',
+  emoji: null,
+  is_direct: true,
+  members: [member(ME, 'Ava Chen', 'owner'), member(BEN, 'Ben Okafor', 'admin')],
+})
 
 function activity(id: string, created_at: string, patch: object = {}) {
   return {
@@ -29,7 +37,8 @@ function activity(id: string, created_at: string, patch: object = {}) {
 }
 
 function renderFeed(rows: Record<string, unknown>[]) {
-  resetDb({ tables: { activity: rows, groups: [{ ...hike, group_members: [] }] } })
+  const { groups } = groupTables(tab)
+  resetDb({ tables: { activity: rows, groups: [{ ...hike, group_members: [] }, ...groups] } })
   return renderWithProviders(<ActivityFeed />, { path: '/activity', client: seededClient() })
 }
 
@@ -46,15 +55,22 @@ describe('ActivityFeed', () => {
         group: direct,
       }),
       activity('a3', '2026-11-03T10:00:00Z', { verb: 'group.created', group: direct }),
+      activity('a4', '2026-11-03T10:00:00Z', {
+        verb: 'member.joined',
+        actor_id: ME,
+        data: {},
+        group: direct,
+      }),
     ])
     const tacos = await screen.findByRole('link', { name: /Ben added "Tacos"/ })
     expect(tacos).toHaveAttribute('href', '/expenses/x-a1')
     expect(within(tacos).getByText(/Hike crew/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /You paid Ben/ })).toHaveTextContent(
-      t('activity.direct'),
-    )
+    // A one-to-one tab goes by the friend, never by its stored name.
+    const paid = screen.getByRole('link', { name: /You paid Ben/ })
+    expect(paid).toHaveTextContent('Ben Okafor')
+    expect(paid).not.toHaveTextContent('Direct')
     expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2)
-    // Opening a hidden one-to-one tab is not news.
+    // Opening a hidden one-to-one tab, and joining it, is not news.
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
   })
 
@@ -150,7 +166,10 @@ describe('ActivityFeed', () => {
   it("listens only to the viewer's groups", async () => {
     renderFeed([])
     await waitFor(() =>
-      expect(subscriptions()).toContainEqual({ table: 'activity', filter: 'group_id=in.(g-hike)' }),
+      expect(subscriptions()).toContainEqual({
+        table: 'activity',
+        filter: 'group_id=in.(g-ben,g-hike)',
+      }),
     )
     expect(subscriptions().filter((s) => s.table === 'activity')).toHaveLength(1)
   })

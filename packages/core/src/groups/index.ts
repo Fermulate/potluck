@@ -11,3 +11,4 @@ export {
   type HomeStarter,
   type TripDatesProblem,
 } from './group-types'
+export { directFriendId, groupDisplayName, type NamedGroup } from './group-name'

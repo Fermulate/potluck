@@ -6,7 +6,15 @@ import { toast } from '@potluck/ui'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderInRouter } from '@/features/expenses/router-test-utils'
-import { BEN, CLEO, GROUP_ID, ME, expense, seededClient } from '@/features/expenses/test-utils'
+import {
+  BEN,
+  CLEO,
+  GROUP_ID,
+  ME,
+  expense,
+  group,
+  seededClient,
+} from '@/features/expenses/test-utils'
 import type * as Download from './download'
 import { saveFile } from './download'
 import { GroupDataSection } from './group-data-section'
@@ -199,6 +207,28 @@ describe('GroupDataSection', () => {
       'href',
       `/groups/${GROUP_ID}/import`,
     )
+  })
+
+  it('names a one-on-one tab after the friend, in the file and the Group column', async () => {
+    renderInRouter(
+      <GroupDataSection groupId={GROUP_ID} archived={false} />,
+      seededClient((c) => {
+        c.setQueryData(moneyKeys.groupInfo(GROUP_ID), {
+          ...group,
+          name: 'Direct',
+          is_direct: true,
+          members: group.members.filter((m) => m.id === ME || m.id === BEN),
+        })
+        c.setQueryData(moneyKeys.expenses(GROUP_ID), [expense({})])
+        c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+      }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: t('transfer.group.export') }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    const [name, content] = save.mock.calls[0]!
+    expect(name).toMatch(/^ben-okafor-/)
+    expect(content).toContain('2026-11-04,Ben Okafor,Expense,Tacos')
+    expect(content).not.toContain('Direct')
   })
 
   it('points archived groups at unarchiving first', async () => {

@@ -720,7 +720,6 @@ export const activity = {
   someone: 'Someone',
   you: 'You',
   youLower: 'you',
-  direct: 'Just the two of you',
   fallback: '{actor} made a change',
   aPlan: 'a plan',
   anExpense: 'an expense',

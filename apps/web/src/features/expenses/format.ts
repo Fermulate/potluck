@@ -1,4 +1,11 @@
-import { categoryEmoji, dayKey, isCategory, isSubcategory, type TopCategoryId } from '@potluck/core'
+import {
+  categoryEmoji,
+  dayKey,
+  groupDisplayName,
+  isCategory,
+  isSubcategory,
+  type TopCategoryId,
+} from '@potluck/core'
 import { formatDate, hasMessage, t } from '@potluck/i18n'
 
 /** Label for a stored category or subcategory, including legacy values outside the core list. */
@@ -45,12 +52,19 @@ export function groupByDay<T>(items: readonly T[], dayOfItem: (item: T) => strin
   return sections
 }
 
-/** Title for a group, using the other person's name for 1:1 groups. */
+/**
+ * A group's name as the viewer sees it. A one-on-one tab's stored name ("Direct") is never
+ * shown: it goes by the other person (core `groupDisplayName`). Use this wherever a group is
+ * named on screen or in a file.
+ */
 export function groupTitle(
   group: { name: string; is_direct: boolean; members: { id: string; display_name: string }[] },
   me: string,
 ) {
-  if (!group.is_direct) return group.name
-  const other = group.members.find((m) => m.id !== me)
-  return other ? other.display_name : group.name
+  return groupDisplayName(
+    { name: group.name, isDirect: group.is_direct, memberIds: group.members.map((m) => m.id) },
+    me,
+    (id) => group.members.find((m) => m.id === id)?.display_name,
+    t('people.friendPage.oneOnOne'),
+  )
 }

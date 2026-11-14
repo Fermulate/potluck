@@ -732,7 +732,6 @@ export const activity = {
   someone: "Quelqu'un",
   you: 'Toi',
   youLower: 'toi',
-  direct: 'Juste vous deux',
   fallback: '{actor} a fait une modification',
   aPlan: 'une sortie',
   anExpense: 'une dépense',

@@ -8,6 +8,8 @@ export const notifications = {
   pushBlocked: 'Notifications are blocked in your browser settings.',
   someone: 'Someone',
   aGroup: 'your group',
+  /** A one-on-one tab, read after "in": "New expense in your tab with Jules". */
+  directTab: 'your tab with {name}',
   anEvent: 'a plan',
   anExpense: 'an expense',
   generic: { title: 'Something happened', body: 'Tap to take a look.' },

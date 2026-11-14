@@ -1,7 +1,7 @@
 import type { NotificationRow } from '@potluck/api'
 import { formatDate, formatTime } from '@potluck/i18n'
 import { describe, expect, it } from 'vitest'
-import { describeNotification } from './describe'
+import { describeNotification, notificationGroupName } from './describe'
 
 const ctx = {
   people: new Map([['u-ben', 'Ben Ortiz']]),
@@ -280,6 +280,56 @@ describe('deletions, being added, and the monthly summary', () => {
         ctx,
       ).body,
     ).toBe('Solo: you are owed $5.00')
+  })
+})
+
+describe('one-on-one tabs', () => {
+  const tab = {
+    id: 'g-tab',
+    name: 'Direct',
+    is_direct: true,
+    members: [
+      { id: 'me', display_name: 'Pat Lee' },
+      { id: 'u-owen', display_name: 'Owen Owner' },
+    ],
+  }
+
+  it('are named after the friend inside a sentence, never by their stored name', () => {
+    expect(notificationGroupName(tab, 'me')).toBe('your tab with Owen')
+    expect(notificationGroupName({ ...tab, members: [tab.members[0]!] }, 'me')).toBe('your group')
+    expect(notificationGroupName({ ...tab, name: 'Hike crew', is_direct: false }, 'me')).toBe(
+      'Hike crew',
+    )
+    const view = describeNotification(
+      row('expense.created', {
+        actor_id: 'u-ben',
+        group_id: 'g-tab',
+        expense_id: 'e-1',
+        description: 'Rent',
+        amount_cents: 50000,
+        currency: 'USD',
+      }),
+      { ...ctx, groups: new Map([['g-tab', notificationGroupName(tab, 'me')]]) },
+    )
+    expect(view.title).toBe('New expense in your tab with Owen')
+  })
+
+  it('keep the friend name the monthly summary gives them', () => {
+    const view = describeNotification(
+      row('summary.monthly', {
+        groups: [
+          {
+            group_id: 'g-tab',
+            name: 'Owen Owner',
+            is_direct: true,
+            currency: 'USD',
+            net_cents: 500,
+          },
+        ],
+      }),
+      { ...ctx, groups: new Map([['g-tab', 'your tab with Owen']]) },
+    )
+    expect(view.body).toBe('Owen Owner: you are owed $5.00')
   })
 })
 

@@ -16,12 +16,16 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, type ReactNode } from 'react'
-import { groupTitle } from '@/features/expenses/format'
 import { useMyGroups } from '@/features/groups/use-groups'
 import { useUserId } from '@/lib/auth'
 import { useViewerTimezone } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
-import { describeNotification, type NotificationKind, type NotificationView } from './describe'
+import {
+  describeNotification,
+  notificationGroupName,
+  type NotificationKind,
+  type NotificationView,
+} from './describe'
 import { useMarkRead, useNotifications } from './use-notifications'
 
 const kindStyle: Record<NotificationKind, { icon: ReactNode; tile: string }> = {
@@ -118,7 +122,7 @@ export function NotificationsPage() {
   const ctx = useMemo(
     () => ({
       people: new Map((people ?? []).map((p) => [p.id, p.display_name])),
-      groups: new Map((groups ?? []).map((g) => [g.id, groupTitle(g, viewerId)])),
+      groups: new Map((groups ?? []).map((g) => [g.id, notificationGroupName(g, viewerId)])),
       timeZone,
     }),
     [people, groups, viewerId, timeZone],
