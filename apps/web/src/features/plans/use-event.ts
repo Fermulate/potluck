@@ -12,7 +12,8 @@ import { planErrorCode, planErrorMessage } from './format'
 /**
  * Live updates for one event: availability and guest answers (the heatmap), the event row (locked, cancelled),
  * RSVPs, and new comments (via the group's activity feed, since comments are not published
- * themselves). Invalidations are batched so a burst of rows refetches once.
+ * themselves). Invalidations are batched so a burst of rows refetches once. Everything is
+ * refetched when the channel joins, since a change made while it was joining is never sent.
  */
 export function useEventRealtime(eventId: string, groupId: string | undefined) {
   const bump = useBatchedInvalidate()
@@ -59,6 +60,20 @@ export function useEventRealtime(eventId: string, groupId: string | undefined) {
           if (row.verb === 'availability.requested') bump(plansKeys.requests(eventId))
         }
       }
+    },
+    // Someone may have painted or answered while this page was still joining.
+    () => {
+      bump(
+        plansKeys.availability(eventId),
+        plansKeys.bestSlots(eventId),
+        plansKeys.requests(eventId),
+        guestKeys.slots(eventId),
+        guestKeys.guests(eventId),
+        guestKeys.links(eventId),
+        plansKeys.event(eventId),
+        plansKeys.rsvps(eventId),
+        plansKeys.comments(eventId),
+      )
     },
   )
 }

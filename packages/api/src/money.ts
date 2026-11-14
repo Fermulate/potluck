@@ -293,8 +293,15 @@ function toGroup(row: GroupSelectRow): MoneyGroup {
   }
 }
 
+/**
+ * One group with its members. A group the viewer cannot see (deleted, or never theirs) throws a
+ * not found error (`group_not_found`, PT404) without the 406 a `.single()` read would log.
+ */
 export async function fetchMoneyGroup(client: PotluckClient, groupId: string): Promise<MoneyGroup> {
-  const row = unwrap(await client.from('groups').select(GROUP_SELECT).eq('id', groupId).single())
+  const row = unwrap(
+    await client.from('groups').select(GROUP_SELECT).eq('id', groupId).maybeSingle(),
+  )
+  if (!row) throw Object.assign(new Error('group_not_found'), { code: 'PT404' })
   return toGroup(row as unknown as GroupSelectRow)
 }
 

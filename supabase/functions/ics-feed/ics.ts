@@ -34,3 +34,18 @@ export function fold(line: string): string {
   out.push(current)
   return out.join('\r\n')
 }
+
+export interface FeedMembership {
+  group_id: string
+  groups: { deleted_at: string | null } | { deleted_at: string | null }[] | null
+}
+
+/** Groups whose plans go in the feed: every group the owner is in, except deleted ones. */
+export function liveGroupIds(memberships: readonly FeedMembership[]): string[] {
+  return memberships
+    .filter((m) => {
+      const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
+      return !!group && !group.deleted_at
+    })
+    .map((m) => m.group_id)
+}

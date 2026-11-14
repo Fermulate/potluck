@@ -47,6 +47,7 @@ import { Route as AppGroupsGroupIdBalancesRouteImport } from './routes/_app/grou
 import { Route as AppGroupsGroupIdDeletedRouteImport } from './routes/_app/groups/$groupId/deleted'
 import { Route as AppGroupsGroupIdImportRouteImport } from './routes/_app/groups/$groupId/import'
 import { Route as AppGroupsGroupIdMembersRouteImport } from './routes/_app/groups/$groupId/members'
+import { Route as AppGroupsGroupIdNotesRouteImport } from './routes/_app/groups/$groupId/notes'
 import { Route as AppGroupsGroupIdPlansRouteImport } from './routes/_app/groups/$groupId/plans'
 import { Route as AppGroupsGroupIdSettingsRouteImport } from './routes/_app/groups/$groupId/settings'
 import { Route as AppGroupsGroupIdTotalsRouteImport } from './routes/_app/groups/$groupId/totals'
@@ -243,6 +244,11 @@ const AppGroupsGroupIdMembersRoute = AppGroupsGroupIdMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => AppGroupsGroupIdRoute,
 } as any)
+const AppGroupsGroupIdNotesRoute = AppGroupsGroupIdNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => AppGroupsGroupIdRoute,
+} as any)
 const AppGroupsGroupIdPlansRoute = AppGroupsGroupIdPlansRouteImport.update({
   id: '/plans',
   path: '/plans',
@@ -303,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/groups/$groupId/notes': typeof AppGroupsGroupIdNotesRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
   '/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
@@ -345,6 +352,7 @@ export interface FileRoutesByTo {
   '/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/groups/$groupId/notes': typeof AppGroupsGroupIdNotesRoute
   '/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
   '/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
@@ -390,6 +398,7 @@ export interface FileRoutesById {
   '/_app/groups/$groupId/deleted': typeof AppGroupsGroupIdDeletedRoute
   '/_app/groups/$groupId/import': typeof AppGroupsGroupIdImportRoute
   '/_app/groups/$groupId/members': typeof AppGroupsGroupIdMembersRoute
+  '/_app/groups/$groupId/notes': typeof AppGroupsGroupIdNotesRoute
   '/_app/groups/$groupId/plans': typeof AppGroupsGroupIdPlansRoute
   '/_app/groups/$groupId/settings': typeof AppGroupsGroupIdSettingsRoute
   '/_app/groups/$groupId/totals': typeof AppGroupsGroupIdTotalsRoute
@@ -435,6 +444,7 @@ export interface FileRouteTypes {
     | '/groups/$groupId/deleted'
     | '/groups/$groupId/import'
     | '/groups/$groupId/members'
+    | '/groups/$groupId/notes'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
     | '/groups/$groupId/totals'
@@ -477,6 +487,7 @@ export interface FileRouteTypes {
     | '/groups/$groupId/deleted'
     | '/groups/$groupId/import'
     | '/groups/$groupId/members'
+    | '/groups/$groupId/notes'
     | '/groups/$groupId/plans'
     | '/groups/$groupId/settings'
     | '/groups/$groupId/totals'
@@ -521,6 +532,7 @@ export interface FileRouteTypes {
     | '/_app/groups/$groupId/deleted'
     | '/_app/groups/$groupId/import'
     | '/_app/groups/$groupId/members'
+    | '/_app/groups/$groupId/notes'
     | '/_app/groups/$groupId/plans'
     | '/_app/groups/$groupId/settings'
     | '/_app/groups/$groupId/totals'
@@ -813,6 +825,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsGroupIdMembersRouteImport
       parentRoute: typeof AppGroupsGroupIdRoute
     }
+    '/_app/groups/$groupId/notes': {
+      id: '/_app/groups/$groupId/notes'
+      path: '/notes'
+      fullPath: '/groups/$groupId/notes'
+      preLoaderRoute: typeof AppGroupsGroupIdNotesRouteImport
+      parentRoute: typeof AppGroupsGroupIdRoute
+    }
     '/_app/groups/$groupId/plans': {
       id: '/_app/groups/$groupId/plans'
       path: '/plans'
@@ -849,6 +868,7 @@ interface AppGroupsGroupIdRouteChildren {
   AppGroupsGroupIdDeletedRoute: typeof AppGroupsGroupIdDeletedRoute
   AppGroupsGroupIdImportRoute: typeof AppGroupsGroupIdImportRoute
   AppGroupsGroupIdMembersRoute: typeof AppGroupsGroupIdMembersRoute
+  AppGroupsGroupIdNotesRoute: typeof AppGroupsGroupIdNotesRoute
   AppGroupsGroupIdPlansRoute: typeof AppGroupsGroupIdPlansRoute
   AppGroupsGroupIdSettingsRoute: typeof AppGroupsGroupIdSettingsRoute
   AppGroupsGroupIdTotalsRoute: typeof AppGroupsGroupIdTotalsRoute
@@ -860,6 +880,7 @@ const AppGroupsGroupIdRouteChildren: AppGroupsGroupIdRouteChildren = {
   AppGroupsGroupIdDeletedRoute: AppGroupsGroupIdDeletedRoute,
   AppGroupsGroupIdImportRoute: AppGroupsGroupIdImportRoute,
   AppGroupsGroupIdMembersRoute: AppGroupsGroupIdMembersRoute,
+  AppGroupsGroupIdNotesRoute: AppGroupsGroupIdNotesRoute,
   AppGroupsGroupIdPlansRoute: AppGroupsGroupIdPlansRoute,
   AppGroupsGroupIdSettingsRoute: AppGroupsGroupIdSettingsRoute,
   AppGroupsGroupIdTotalsRoute: AppGroupsGroupIdTotalsRoute,

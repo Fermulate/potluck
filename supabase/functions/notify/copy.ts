@@ -30,6 +30,10 @@ export interface PushCopy {
   expenseRestored: string
   expenseRestoredBody: string
   memberAdded: string
+  groupDeleted: string
+  groupDeletedBody: string
+  groupRestored: string
+  groupRestoredBody: string
   memberAddedBody: string
   friendAdded: string
   friendAddedBody: string
@@ -108,6 +112,10 @@ const en: PushCopy = {
   recurringPausedBody:
     'Someone in it left the group. Take them out of the split to start it again.',
   other: 'Something new is waiting for you.',
+  groupDeleted: 'Group deleted',
+  groupDeletedBody: 'Anyone in it can bring it back for 30 days.',
+  groupRestored: 'Group restored',
+  groupRestoredBody: 'It is back on the table.',
 }
 
 const es: PushCopy = {
@@ -163,6 +171,10 @@ const es: PushCopy = {
   recurringPausedBody:
     'Alguien que participa dejó el grupo. Quítalo del reparto para que vuelva a funcionar.',
   other: 'Tienes algo nuevo esperándote.',
+  groupDeleted: 'Grupo eliminado',
+  groupDeletedBody: 'Cualquiera del grupo puede recuperarlo durante 30 días.',
+  groupRestored: 'Grupo recuperado',
+  groupRestoredBody: 'Vuelve a la mesa.',
 }
 
 const fr: PushCopy = {
@@ -218,6 +230,10 @@ const fr: PushCopy = {
   recurringPausedBody:
     'Quelqu’un a quitté le groupe. Retire cette personne du partage pour la relancer.',
   other: "Quelque chose de nouveau t'attend.",
+  groupDeleted: 'Groupe supprimé',
+  groupDeletedBody: 'Chacun peut le restaurer pendant 30 jours.',
+  groupRestored: 'Groupe restauré',
+  groupRestoredBody: 'Il est de retour à table.',
 }
 
 const de: PushCopy = {
@@ -273,6 +289,10 @@ const de: PushCopy = {
   recurringPausedBody:
     'Jemand ist aus der Gruppe ausgetreten. Nimm die Person aus der Aufteilung, um sie wieder zu starten.',
   other: 'Etwas Neues wartet auf dich.',
+  groupDeleted: 'Gruppe gelöscht',
+  groupDeletedBody: 'Alle darin können sie 30 Tage lang zurückholen.',
+  groupRestored: 'Gruppe zurück',
+  groupRestoredBody: 'Sie ist wieder am Tisch.',
 }
 
 const pt: PushCopy = {
@@ -326,6 +346,10 @@ const pt: PushCopy = {
   recurringPaused: '"{what}" está pausada',
   recurringPausedBody: 'Alguém saiu do grupo. Tire da divisão para voltar a funcionar.',
   other: 'Tem novidade esperando por você.',
+  groupDeleted: 'Grupo excluído',
+  groupDeletedBody: 'Qualquer pessoa do grupo pode trazê-lo de volta por 30 dias.',
+  groupRestored: 'Grupo restaurado',
+  groupRestoredBody: 'Voltou para a mesa.',
 }
 
 const COPY: Record<string, PushCopy> = { en, es, fr, de, pt }

@@ -77,6 +77,7 @@ export const common = {
   delete: 'Excluir',
   remove: 'Remover',
   undo: 'Desfazer',
+  separator: ', ',
   retry: 'Tentar de novo',
   confirm: 'Confirmar',
   continue: 'Continuar',
@@ -230,6 +231,14 @@ export const errors = {
     email_not_verified: 'Confirme seu e-mail primeiro. Veja sua caixa de entrada.',
     friend_has_balance: 'Acertem primeiro a conta de vocês dois.',
     person_not_found: 'Não encontramos essa pessoa.',
+    group_deleted:
+      'Este grupo foi excluído. Qualquer pessoa dele pode restaurá-lo em Grupos por 30 dias.',
+    group_not_found: 'Esse grupo sumiu de vez.',
+    trip_dates_invalid: 'Uma viagem não pode terminar antes de começar.',
+    whiteboard_conflict: 'Outra pessoa salvou as notas antes. A versão dela já está aqui.',
+    whiteboard_too_long: 'As notas estão cheias. Fique abaixo de 10.000 caracteres.',
+    direct_group_not_deletable:
+      'Uma conta entre duas pessoas não pode ser excluída. Acertem as contas e ela fica quieta.',
   },
   auth: {
     invalidCredentials: 'Esse e-mail e essa senha não combinam.',

@@ -1,24 +1,18 @@
 import type { GroupDetail } from '@potluck/api'
 import { can } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
-import {
-  Avatar,
-  AvatarStack,
-  Button,
-  cn,
-  EmptyState,
-  Skeleton,
-  usePrefersReducedMotion,
-} from '@potluck/ui'
+import { Avatar, AvatarStack, Button, cn, Skeleton, usePrefersReducedMotion } from '@potluck/ui'
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
-import { ChevronLeft, History, UserPlus } from 'lucide-react'
+import { CalendarRange, ChevronLeft, History, UserPlus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { recallGroupFilters } from '@/features/insights/group-filters'
 import { InviteSheet } from '@/features/invites/invite-sheet'
 import { useUserId } from '@/lib/auth'
 import { avatarSrc } from '@/lib/queries'
-import { GroupTile, ViewerBalance } from './group-bits'
+import { GroupCover, GroupTile, ViewerBalance } from './group-bits'
+import { tripDatesLabel } from './group-format'
+import { MissingGroup } from './recently-deleted'
 import { directFriend, displayName, firstName, groupTransitionName, stackPeople } from './people'
 import { useGroup, useGroupsRealtime } from './use-groups'
 
@@ -27,6 +21,7 @@ type TabPath =
   | '/groups/$groupId/balances'
   | '/groups/$groupId/totals'
   | '/groups/$groupId/plans'
+  | '/groups/$groupId/notes'
   | '/groups/$groupId/members'
   | '/groups/$groupId/settings'
 
@@ -47,6 +42,7 @@ function tabsFor(group: GroupDetail): Tab[] {
   return [
     ...tabs,
     { to: '/groups/$groupId/plans', label: t('groups.tabs.plans'), segment: 'plans' },
+    { to: '/groups/$groupId/notes', label: t('groups.tabs.notes'), segment: 'notes' },
     { to: '/groups/$groupId/members', label: t('groups.tabs.members'), segment: 'members' },
     { to: '/groups/$groupId/settings', label: t('groups.tabs.settings'), segment: 'settings' },
   ]
@@ -129,6 +125,8 @@ function GroupTabs({ group }: { group: GroupDetail }) {
   )
 }
 
+const titleId = (groupId: string) => `group-title-${groupId}`
+
 function BackLink({ direct }: { direct?: boolean }) {
   return (
     <Link
@@ -149,20 +147,43 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
       membersCanInvite: group.members_can_invite,
       inviteRole: 'member',
     })
+  const dates = tripDatesLabel(group)
+  const cover = !!group.cover_path
   return (
     <header className="flex flex-col gap-4">
+      {cover && (
+        <GroupCover
+          path={group.cover_path}
+          name={group.name}
+          className="aspect-[16/7] rounded-card lg:aspect-[4/3]"
+        />
+      )}
       <div className="flex items-end gap-4 lg:flex-col lg:items-start">
         <GroupTile
           emoji={group.emoji}
           color={group.color}
           size="lg"
-          className="lg:size-24 lg:rounded-[1.5rem] lg:text-[3.25rem]"
+          className={cn(
+            'lg:size-24 lg:rounded-[1.5rem] lg:text-[3.25rem]',
+            // On a cover the tile sits on its bottom edge, like a place card on a menu.
+            cover &&
+              'relative z-[1] -mt-12 ml-3 self-start shadow-raised ring-4 ring-[var(--pl-paper)] lg:-mt-16 lg:self-auto',
+          )}
           style={{ viewTransitionName: groupTransitionName(group.id) }}
         />
         <div className="min-w-0">
-          <h1 className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] break-words lg:text-5xl">
+          <h1
+            id={titleId(group.id)}
+            className="font-display text-[2.5rem] leading-[0.95] tracking-[-0.01em] wrap-anywhere lg:text-5xl"
+          >
             {group.name}
           </h1>
+          {dates && (
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold text-plum-ink">
+              <CalendarRange aria-hidden className="size-4" />
+              {dates}
+            </p>
+          )}
           <Link
             to="/groups/$groupId/members"
             params={{ groupId: group.id }}
@@ -218,7 +239,10 @@ function DirectHeader({ group }: { group: GroupDetail }) {
       <Avatar name={name} seed={friend.id} src={avatarSrc(friend.avatar_path)} size="xl" />
       <div className="min-w-0">
         <p className="flourish text-xl text-mute">{t('groups.direct')}</p>
-        <h1 className="font-display text-[2.5rem] leading-[0.95] lg:text-5xl">
+        <h1
+          id={titleId(group.id)}
+          className="font-display text-[2.5rem] leading-[0.95] lg:text-5xl"
+        >
           {t('groups.header.withFriend', { name: firstName(friend) })}
         </h1>
         <p
@@ -263,25 +287,15 @@ export function GroupLayout({ groupId }: { groupId: string }) {
   const [inviteOpen, setInviteOpen] = useState(false)
   useGroupsRealtime(groupId)
 
-  if (!isPending && !group) {
-    return (
-      <div className="mx-auto max-w-xl px-4 pt-10">
-        <EmptyState
-          illustration="🧭"
-          title={t('errors.groupNotFound')}
-          action={
-            <Button asChild variant="secondary">
-              <Link to="/groups">{t('groups.header.back')}</Link>
-            </Button>
-          }
-        />
-      </div>
-    )
-  }
+  if (!isPending && !group) return <MissingGroup groupId={groupId} />
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pt-3 pb-32 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:pt-10 lg:pb-12">
-      <aside className="lg:sticky lg:top-10 lg:self-start">
+      {/* Named after the group, so it is not a second unnamed "complementary" next to the nav. */}
+      <aside
+        aria-labelledby={group ? titleId(group.id) : undefined}
+        className="lg:sticky lg:top-10 lg:self-start"
+      >
         <BackLink direct={group?.is_direct} />
         {group ? (
           group.is_direct ? (

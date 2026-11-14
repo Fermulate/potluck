@@ -1,6 +1,7 @@
 import {
   appConfigQueryOptions,
   avatarUrl,
+  coverUrl,
   isFlagOn,
   myProfileQueryOptions,
   type ProfileRow,
@@ -37,4 +38,9 @@ export function profileAvatar(profile: Pick<ProfileRow, 'avatar_path'> | null | 
 
 export function avatarSrc(path: string | null | undefined): string | null {
   return avatarUrl(supabase, path)
+}
+
+/** Public URL of a group cover, or null. Works signed out (the join page). */
+export function coverSrc(path: string | null | undefined): string | null {
+  return coverUrl(supabase, path)
 }

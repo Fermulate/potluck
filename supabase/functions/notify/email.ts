@@ -272,6 +272,22 @@ function copyFor(job: EmailJob): Copy {
         lines: ['You can split with each other now, no group needed.'],
         cta: 'Open their page',
       }
+    case 'group.deleted':
+      return {
+        subject: `${actor} deleted ${group ?? 'a group'}`,
+        heading: `${actor} deleted ${group ?? 'a group'}.`,
+        lines: [
+          'It is off the list for everyone. Anyone who was in it can bring it back for 30 days, then it is removed for good.',
+        ],
+        cta: 'Restore it',
+      }
+    case 'group.restored':
+      return {
+        subject: `${group ?? 'Your group'} is back`,
+        heading: `${actor} brought back ${group ?? 'a group'}.`,
+        lines: ['Everything in it is just as it was.'],
+        cta: 'Open the group',
+      }
     case 'member.joined':
       return {
         subject: `Someone new joined ${group ?? 'your group'}`,

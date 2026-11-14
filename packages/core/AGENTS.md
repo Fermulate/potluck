@@ -12,6 +12,7 @@ Pure domain logic shared with a future React Native app. Root rules: [../../AGEN
 - Money: intermediate products in `BigInt`; round half away from zero; largest remainder with ties to
   the smaller user id compared as code points. FX rates are decimal text with 12 places
   (`numeric(24,12)`); accept `number | string` and keep the text path exact.
+- `suggestCategory` keywords cover every app language; add to all of them.
 - Tests: Vitest + `fast-check` property tests for money code; exact integer assertions only.
   Coverage threshold is 90% statements, branches and functions (`vitest.config.ts`).
 - Run one file: `pnpm --filter @potluck/core exec vitest run src/balances/compute-balances.test.ts`.

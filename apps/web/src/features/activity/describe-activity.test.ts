@@ -183,6 +183,36 @@ describe('describeActivity', () => {
   it('falls back politely for verbs it does not know', () => {
     expect(describeActivity(item({ verb: 'mystery.happened' }), ctx).text).toBe('Ben made a change')
   })
+
+  it('describes deleting, restoring and editing the notes, which links to them', () => {
+    const notes = describeActivity(
+      item({ verb: 'group.notes_updated', data: { excerpt: 'Bins on Tuesday' } }),
+      ctx,
+    )
+    expect(notes).toMatchObject({
+      text: 'Ben edited the notes',
+      detail: 'Bins on Tuesday',
+      emoji: '📝',
+      link: { to: '/groups/$groupId/notes', params: { groupId: 'g1' } },
+    })
+    expect(describeActivity(item({ actor_id: ME, verb: 'group.notes_updated' }), ctx).text).toBe(
+      'You edited the notes',
+    )
+    expect(describeActivity(item({ verb: 'group.deleted' }), ctx)).toMatchObject({
+      text: 'Ben deleted Hike crew',
+      tone: 'tomato',
+    })
+    expect(
+      describeActivity(
+        item({ verb: 'group.deleted', group: null, data: { name: 'Old flat' } }),
+        ctx,
+      ).text,
+    ).toBe('Ben deleted Old flat')
+    expect(describeActivity(item({ actor_id: ME, verb: 'group.restored' }), ctx)).toMatchObject({
+      text: 'You brought the group back',
+      tone: 'olive',
+    })
+  })
 })
 
 describe('repeating expenses in the feed', () => {

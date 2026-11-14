@@ -2,7 +2,7 @@
 -- Money cases: Groceries 30 paid by Ava for Ava, Ben and Sam; Taxi 12 paid by Sam for Ava and
 -- Sam; Ava pays Sam 3. Balances Ava +17, Ben -10, Sam -7 before and after Sam claims his seat.
 begin;
-select plan(171);
+select plan(172);
 
 select tests.create_user('ava');
 select tests.create_user('ben');
@@ -407,6 +407,9 @@ select public.create_expense_v2(jsonb_build_object(
   'splits', jsonb_build_array(pg_temp.person(tests.id('ivy')))));
 select lives_ok(format($$ select public.delete_group(%L) $$, tests.id('tmp')), 'a group with a placeholder can be deleted');
 reset role;
+select is((select count(*)::int from public.profiles p where p.id = tests.id('ivy')), 1,
+  'its placeholders wait with the deleted group for 30 days (28_groups)');
+select private.purge_deleted_groups('0 seconds');
 set constraints all immediate;
 set constraints all deferred;
 select is((select count(*)::int from public.profiles p where p.id = tests.id('ivy')), 0, 'its placeholders go with it');

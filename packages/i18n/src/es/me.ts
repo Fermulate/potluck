@@ -63,6 +63,13 @@ export const notifications = {
         body: '{actor} restauró un pago de {amount} en {group}',
       },
     },
+    group: {
+      deleted: {
+        title: '{group} se eliminó',
+        body: '{actor} lo eliminó. Cualquiera del grupo puede recuperarlo durante 30 días.',
+      },
+      restored: { title: '{group} ha vuelto', body: '{actor} lo recuperó.' },
+    },
     member: {
       joined: { title: 'Cara nueva en {group}', body: '{actor} acaba de unirse. Dile hola.' },
       added: { title: 'Bienvenido a {group}', body: '{actor} te añadió. Toma asiento.' },

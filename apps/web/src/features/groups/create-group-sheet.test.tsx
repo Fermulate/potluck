@@ -36,7 +36,7 @@ describe('CreateGroupSheet', () => {
   })
 
   it('creates the group in the default currency and opens its members page', async () => {
-    db().respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+    db().respond('rpc:create_group_v2', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
     const { router, onOpenChange } = renderSheet()
     const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
     const submit = within(dialog).getByRole('button', { name: t('groups.create.submit') })
@@ -55,14 +55,20 @@ describe('CreateGroupSheet', () => {
     fireEvent.click(submit)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-taco/members'))
-    expect(db().rpcArgs('create_group')).toEqual([
-      { name: 'Taco Tuesdays', emoji: GROUP_EMOJIS[2], color: 'sea', currency: 'EUR' },
+    expect(db().rpcArgs('create_group_v2')).toEqual([
+      {
+        name: 'Taco Tuesdays',
+        emoji: GROUP_EMOJIS[2],
+        color: 'sea',
+        currency: 'EUR',
+        type: 'other',
+      },
     ])
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('refreshes the New expense and New plan group pickers', async () => {
-    db().respond('rpc:create_group', { data: { id: 'g-ski', name: 'Ski trip' } })
+    db().respond('rpc:create_group_v2', { data: { id: 'g-ski', name: 'Ski trip' } })
     const { router, queryClient } = renderSheet()
     queryClient.setQueryData(moneyKeys.myGroups(), [])
     queryClient.setQueryData(plansKeys.myGroups(), [])
@@ -77,8 +83,62 @@ describe('CreateGroupSheet', () => {
     expect(queryClient.getQueryState(plansKeys.myGroups())?.isInvalidated).toBe(true)
   })
 
+  it('makes a trip with dates, its emoji following the type until one is picked', async () => {
+    db().respond('rpc:create_group_v2', { data: { id: 'g-lis', name: 'Lisbon' } })
+    const { router } = renderSheet()
+    const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
+      target: { value: 'Lisbon' },
+    })
+    expect(within(dialog).queryByLabelText(t('groups.trip.starts'))).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(t('groups.types.trip')) }))
+    const starts = await within(dialog).findByLabelText(t('groups.trip.starts'))
+    const ends = within(dialog).getByLabelText(t('groups.trip.ends'))
+    fireEvent.change(starts, { target: { value: '2026-06-10' } })
+    fireEvent.change(ends, { target: { value: '2026-06-03' } })
+    const submit = within(dialog).getByRole('button', { name: t('groups.create.submit') })
+    expect(within(dialog).getByText(t('groups.trip.endBeforeStart'))).toBeInTheDocument()
+    expect(submit).toBeDisabled()
+    fireEvent.change(ends, { target: { value: '2026-06-14' } })
+    fireEvent.click(submit)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-lis/members'))
+    expect(db().rpcArgs('create_group_v2')[0]).toMatchObject({
+      name: 'Lisbon',
+      emoji: '🧳',
+      type: 'trip',
+      starts_on: '2026-06-10',
+      ends_on: '2026-06-14',
+    })
+  })
+
+  it('keeps a picked emoji when the type changes, and drops dates off a trip', async () => {
+    db().respond('rpc:create_group_v2', { data: { id: 'g-home', name: 'Flat' } })
+    renderSheet()
+    const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
+      target: { value: 'Flat' },
+    })
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(t('groups.types.trip')) }))
+    fireEvent.change(await within(dialog).findByLabelText(t('groups.trip.starts')), {
+      target: { value: '2026-06-10' },
+    })
+    fireEvent.click(within(dialog).getByRole('radio', { name: GROUP_EMOJIS[3] }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(t('groups.types.home')) }))
+    fireEvent.click(within(dialog).getByRole('button', { name: t('groups.create.submit') }))
+
+    await waitFor(() => expect(db().rpcArgs('create_group_v2')).toHaveLength(1))
+    expect(db().rpcArgs('create_group_v2')[0]).toEqual({
+      name: 'Flat',
+      emoji: GROUP_EMOJIS[3],
+      color: 'saffron',
+      currency: 'EUR',
+      type: 'home',
+    })
+  })
+
   it('keeps the sheet open and explains when creating fails', async () => {
-    db().respond('rpc:create_group', { error: { message: 'Server error' } })
+    db().respond('rpc:create_group_v2', { error: { message: 'Server error' } })
     const { router, onOpenChange } = renderSheet()
     const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
     fireEvent.change(within(dialog).getByRole('textbox', { name: t('groups.create.nameLabel') }), {
@@ -93,14 +153,14 @@ describe('CreateGroupSheet', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: t('groups.create.submit') }))
 
     expect(await screen.findByText(t('errors.generic'))).toBeInTheDocument()
-    expect(db().rpcArgs('create_group')[0]).toMatchObject({ name: 'Flat 4B', currency: 'GBP' })
+    expect(db().rpcArgs('create_group_v2')[0]).toMatchObject({ name: 'Flat 4B', currency: 'GBP' })
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(router.state.location.pathname).toBe('/groups')
   })
 
   it('adds people not on Potluck yet once the group exists', async () => {
     db()
-      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:create_group_v2', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
       .respond('rpc:add_placeholder_member', { data: 'p-1' })
     renderSheet()
     const dialog = await screen.findByRole('dialog', { name: t('groups.create.title') })
@@ -125,7 +185,7 @@ describe('CreateGroupSheet', () => {
 
   it('opens the new group once and names who could not be added', async () => {
     db()
-      .respond('rpc:create_group', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
+      .respond('rpc:create_group_v2', { data: { id: 'g-taco', name: 'Taco Tuesdays' } })
       .respond('rpc:add_placeholder_member', { error: { message: 'too_many_invites' } })
     const failed = vi.spyOn(toast, 'error')
     const { router, onOpenChange } = renderSheet()
@@ -142,7 +202,7 @@ describe('CreateGroupSheet', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-taco/members'))
     expect(failed).toHaveBeenCalledWith(t('people.createGroup.notAdded', { names: 'Pat and Jo' }))
     failed.mockRestore()
-    expect(db().rpcArgs('create_group')).toHaveLength(1)
+    expect(db().rpcArgs('create_group_v2')).toHaveLength(1)
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

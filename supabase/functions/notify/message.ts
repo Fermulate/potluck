@@ -89,6 +89,18 @@ export function message(
         body: String(d.description ?? c.expenseRestoredBody),
         url: expense,
       }
+    case 'group.deleted':
+      return {
+        title: String(d.group_name ?? c.groupDeleted),
+        body: c.groupDeletedBody,
+        url: d.deleted_group_id ? `/groups/${d.deleted_group_id}` : '/home',
+      }
+    case 'group.restored':
+      return {
+        title: String(d.group_name ?? c.groupRestored),
+        body: c.groupRestoredBody,
+        url: group,
+      }
     case 'member.added':
       return {
         title: c.memberAdded,

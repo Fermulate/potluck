@@ -133,6 +133,7 @@ defines it). To redefine one, copy that body and say so in the migration header.
 - Expense and activity triggers compare explicit column lists: a new `expenses` column is not logged as
   `expense.updated` unless you add it there. It must also be added to the hand-built `Expense` fixtures
   (`apps/web/src/features/expenses/test-utils.ts` and friends).
+- A deleted group keeps its rows for 30 days (ADR 20): read through `my_group_ids` / `require_member`.
 - The user guide lives in another repo, [Fermulate/potluck-docs](https://github.com/Fermulate/potluck-docs);
   anchors in `apps/web/src/features/help/topics.ts` must match its headings.
 

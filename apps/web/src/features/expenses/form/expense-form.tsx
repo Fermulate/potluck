@@ -1,5 +1,6 @@
 import { avatarSrc } from '@/lib/queries'
 import {
+  categoryHistoryQueryOptions,
   createExpense,
   moneyKeys,
   moneyQueries,
@@ -16,12 +17,13 @@ import {
   type RecurringUpdate,
 } from '@potluck/api'
 import {
-  CATEGORIES,
   RECURRENCES,
   can,
   firstName,
   nextOccurrence,
+  suggestCategory,
   type CategoryId,
+  type HomeStarter,
 } from '@potluck/core'
 import { formatDate, formatMoney, intlLocale, t } from '@potluck/i18n'
 import {
@@ -47,7 +49,7 @@ import { Money } from '../money'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CalendarHeart, Repeat } from 'lucide-react'
-import { useId, useState, type FormEvent, type ReactNode } from 'react'
+import { useId, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { openMemberIds, templateAsExpense } from '@/features/recurring/template'
@@ -62,6 +64,7 @@ import {
   usePeople,
   useTimeZone,
 } from '../money-data'
+import { CategoryPicker } from './category-picker'
 import { ConversionPreview } from './conversion-preview'
 import { CurrencyPicker } from './currency-picker'
 import { PayersField } from './payers-sheet'
@@ -98,6 +101,8 @@ export type ExpenseFormProps =
       mode: 'create'
       groupId: string
       eventId?: string
+      /** A home group's monthly bill to start from (rent or utilities). */
+      preset?: HomeStarter
       onDone: (expenseId: string) => void
       onClose: () => void
     }
@@ -209,7 +214,10 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
 
   const [amount, setAmount] = useState<number | null>(editing?.amount_cents ?? null)
   const [currency, setCurrency] = useState(editing?.currency ?? group.currency)
-  const [description, setDescription] = useState(editing?.description ?? '')
+  const preset = props.mode === 'create' ? props.preset : undefined
+  const [description, setDescription] = useState(
+    editing?.description ?? (preset ? categoryLabel(preset) : ''),
+  )
   // A new expense starts in the currency the viewer last used in this group. The route loader
   // prefetches it; until it is there the form starts in the group currency. It is applied only
   // while the form is untouched: once an amount, a description or a currency has been entered,
@@ -225,7 +233,23 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     setLastSettled(true)
     if (untouched && lastCurrency.data) setCurrency(lastCurrency.data)
   }
-  const [category, setCategory] = useState<string | null>(editing?.category ?? null)
+  // Until someone picks a category, it follows the description: the group's own history
+  // first, then core's word list ("Uber" is a taxi). Editing keeps what was saved.
+  const [picked, setPicked] = useState<string | null>(editing?.category ?? preset ?? null)
+  const [categoryTouched, setCategoryTouched] = useState(!!editing || !!preset)
+  const categoryHistory = useQuery({
+    ...categoryHistoryQueryOptions(supabase, group.id),
+    enabled: !categoryTouched,
+  })
+  const suggestion = useMemo(
+    () => (categoryTouched ? null : suggestCategory(description, categoryHistory.data ?? [])),
+    [categoryTouched, description, categoryHistory.data],
+  )
+  const category = categoryTouched ? picked : (suggestion?.category ?? null)
+  const pickCategory = (next: CategoryId | null) => {
+    setCategoryTouched(true)
+    setPicked(next)
+  }
   const [payers, setPayers] = useState<PayersDraft>(() =>
     editing
       ? payersFromExpense(editing)
@@ -249,7 +273,9 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
     file: null,
     existingPath: expense?.receipt_path ?? null,
   })
-  const [recurrence, setRecurrence] = useState<Recurrence>(template?.recurrence ?? 'none')
+  const [recurrence, setRecurrence] = useState<Recurrence>(
+    template?.recurrence ?? (preset ? 'monthly' : 'none'),
+  )
   const [savedDraft] = useState<SplitDraft>(() =>
     editing ? draftFromExpense(editing, memberIds) : initialDraft(memberIds, group.default_split),
   )
@@ -571,38 +597,11 @@ function LoadedExpenseForm(props: ExpenseFormProps & { group: MoneyGroup }) {
             />
           </Field>
 
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-semibold text-ink">{t('categories.label')}</legend>
-            <div
-              role="radiogroup"
-              aria-label={t('categories.label')}
-              className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
-            >
-              {CATEGORIES.map((c) => {
-                const checked = category === c.id
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    onClick={() => setCategory(checked ? null : (c.id as CategoryId))}
-                    className={cn(
-                      'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-pill border px-3 text-sm font-medium transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.96]',
-                      checked
-                        ? 'border-ink bg-ink text-paper'
-                        : 'border-line-strong bg-card text-ink hover:border-ink/40',
-                    )}
-                  >
-                    <span aria-hidden className="text-base leading-none">
-                      {c.emoji}
-                    </span>
-                    {categoryLabel(c.id)}
-                  </button>
-                )
-              })}
-            </div>
-          </fieldset>
+          <CategoryPicker
+            value={category}
+            onChange={pickCategory}
+            suggested={!categoryTouched && category !== null}
+          />
 
           <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-3 sm:gap-4">
             <Field

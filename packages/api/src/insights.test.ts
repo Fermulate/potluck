@@ -66,7 +66,7 @@ describe('searchMoney', () => {
         person: 'u2',
         from_day: '2026-03-01',
         to_day: '2026-03-31',
-        categories: ['food', 'groceries'],
+        categories: ['food', 'dining_out', 'takeout', 'coffee', 'snacks', 'groceries'],
         kinds: ['expense'],
       },
     ])

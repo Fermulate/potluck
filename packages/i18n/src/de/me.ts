@@ -72,6 +72,13 @@ export const notifications = {
         body: '{actor} hat eine Zahlung über {amount} in {group} wiederhergestellt',
       },
     },
+    group: {
+      deleted: {
+        title: '{group} wurde gelöscht',
+        body: '{actor} hat sie gelöscht. Alle darin können sie 30 Tage lang zurückholen.',
+      },
+      restored: { title: '{group} ist zurück', body: '{actor} hat sie zurückgeholt.' },
+    },
     member: {
       joined: {
         title: 'Neues Gesicht in {group}',

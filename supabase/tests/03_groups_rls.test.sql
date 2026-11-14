@@ -135,7 +135,8 @@ select throws_ok(
 select tests.login('owner');
 select delete_group(tests.id('g'));
 reset role;
-select is((select count(*)::int from public.groups where id = tests.id('g')), 0, 'owner can delete the group');
+select isnt((select deleted_at from public.groups where id = tests.id('g')), null,
+  'owner can delete the group (it can be restored for 30 days, 28_groups)');
 
 select * from finish();
 rollback;

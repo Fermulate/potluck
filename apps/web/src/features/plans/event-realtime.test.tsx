@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { emitChange, resetDb } from '@/test/supabase'
+import { emitChange, emitJoined, resetDb } from '@/test/supabase'
 import { useEventRealtime } from './use-event'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -56,6 +56,29 @@ describe('useEventRealtime', () => {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: guestKeys.slots('e1') }),
     )
     for (const key of [guestKeys.guests('e1'), guestKeys.links('e1'), plansKeys.bestSlots('e1')]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
+    }
+  })
+
+  it('refetches the whole plan once the live channel joins, for answers sent before', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    renderHook(() => useEventRealtime('e1', 'g1'), { wrapper })
+    expect(invalidate).not.toHaveBeenCalled()
+
+    emitJoined('availability')
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: plansKeys.availability('e1') }),
+    )
+    for (const key of [
+      plansKeys.bestSlots('e1'),
+      plansKeys.requests('e1'),
+      guestKeys.slots('e1'),
+      guestKeys.guests('e1'),
+      guestKeys.links('e1'),
+      plansKeys.event('e1'),
+      plansKeys.rsvps('e1'),
+      plansKeys.comments('e1'),
+    ]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey: key })
     }
   })

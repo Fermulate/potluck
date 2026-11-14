@@ -58,6 +58,13 @@ export const notifications = {
         body: '{actor} recorded your {amount} payment to {payee}',
       },
     },
+    group: {
+      deleted: {
+        title: '{group} was deleted',
+        body: '{actor} deleted it. Anyone in it can bring it back for 30 days.',
+      },
+      restored: { title: '{group} is back', body: '{actor} brought it back.' },
+    },
     member: {
       joined: { title: 'New face in {group}', body: '{actor} just joined. Say hi.' },
       added: { title: 'Welcome to {group}', body: '{actor} added you. Pull up a chair.' },

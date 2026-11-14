@@ -1,4 +1,5 @@
 import {
+  groupKeys,
   markAllNotificationsRead,
   markNotificationsRead,
   meKeys,
@@ -21,6 +22,8 @@ export function useNotifications() {
   return useQuery(notificationsQueryOptions(supabase, userId))
 }
 
+const GROUP_CHANGES = new Set(['group.deleted', 'group.restored'])
+
 /** New notifications arrive over Realtime; mount once in the app layout. */
 export function useNotificationsRealtime() {
   const userId = useUserId()
@@ -28,8 +31,12 @@ export function useNotificationsRealtime() {
   useRealtime(
     `notifications-${userId}`,
     [{ table: 'notifications', filter: `user_id=eq.${userId}` }],
-    () => {
+    (payload) => {
       void queryClient.invalidateQueries({ queryKey: meKeys.notifications(userId) })
+      const type = (payload.new as { type?: unknown } | null)?.type
+      if (typeof type === 'string' && GROUP_CHANGES.has(type)) {
+        void queryClient.invalidateQueries({ queryKey: groupKeys.all })
+      }
     },
   )
 }

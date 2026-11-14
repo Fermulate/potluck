@@ -31,6 +31,7 @@ interface Listener {
   table: string
   filter?: string
   handler: Handler
+  onStatus?: (status: string) => void
 }
 
 type Row = Record<string, unknown>
@@ -175,6 +176,16 @@ export function emitChange(table: string, eventType = 'INSERT', row: unknown = {
   }
 }
 
+/** Tells every channel listening to `table` that it has joined (`SUBSCRIBED`), as Realtime does. */
+export function emitJoined(table: string) {
+  const topics = new Set<string>()
+  for (const l of listeners.filter((l) => l.table === table)) {
+    if (topics.has(l.topic)) continue
+    topics.add(l.topic)
+    l.onStatus?.('SUBSCRIBED')
+  }
+}
+
 function channel(topic: string) {
   const pending: Listener[] = []
   const ch = {
@@ -183,8 +194,8 @@ function channel(topic: string) {
       pending.push({ topic, table: filter.table, filter: filter.filter, handler })
       return ch
     },
-    subscribe() {
-      listeners.push(...pending)
+    subscribe(onStatus?: (status: string) => void) {
+      listeners.push(...pending.map((l) => ({ ...l, onStatus })))
       return ch
     },
   }

@@ -15,7 +15,7 @@ export const Route = createFileRoute('/_app/new/expense')({
 })
 
 function NewExpense() {
-  const { groupId, eventId } = Route.useSearch()
+  const { groupId, eventId, preset } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouter()
   // Only step back inside the app; a shared or typed link has nothing in-app to return to.
@@ -52,6 +52,7 @@ function NewExpense() {
       mode="create"
       groupId={groupId}
       eventId={eventId}
+      preset={preset}
       onClose={close}
       onDone={() =>
         // Back to the plan the expense was filed under, so it shows up where it was added.

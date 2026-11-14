@@ -55,6 +55,7 @@ repeating expenses, guests, two-step sign in, seats, notifications):
 - A new notification type is ONE row in your migration, or it ignores settings and is never emailed:
   `insert into private.notification_types (type, category) values ('<type>', '<category>') on conflict (type) do nothing;`
   Then its copy (inbox, push, email) and, for a new category, its rows and labels: see the feature notes linked at the top.
+- Deleted groups (ADR 20) keep their rows 30 days; raw `group_members` / `groups` reads add `g.deleted_at is null`.
 - After the migration: `pnpm db:reset`, `pnpm db:test`, `pnpm gen:db`, then update `01_schema.test.sql`
   and `docs/architecture.md`.
 

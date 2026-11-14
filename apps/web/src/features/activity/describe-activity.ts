@@ -6,6 +6,7 @@ export type ActivityLink =
   | { to: '/payments/$paymentId'; params: { paymentId: string } }
   | { to: '/groups/$groupId'; params: { groupId: string } }
   | { to: '/groups/$groupId/balances'; params: { groupId: string } }
+  | { to: '/groups/$groupId/notes'; params: { groupId: string } }
   | { to: '/plans/$eventId'; params: { eventId: string } }
 
 export interface ActivityView {
@@ -49,7 +50,8 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
   const role = str(d.to)
   const params: Record<string, string> = {
     actor,
-    group: item.group?.name ?? '',
+    // A deleted group is hidden, so its delete line carries the name.
+    group: item.group?.name ?? str(d.name) ?? '',
     description: str(d.description) ?? '',
     amount,
     event: [str(d.emoji), str(d.title)].filter(Boolean).join(' '),
@@ -131,6 +133,17 @@ export function describeActivity(item: ActivityItem, ctx: Context): ActivityView
     }
     case 'group':
       emoji = item.group?.emoji ?? '🍽️'
+      if (item.verb === 'group.notes_updated') {
+        emoji = '📝'
+        detail = str(d.excerpt)
+        link = { to: '/groups/$groupId/notes', params: { groupId: item.group_id } }
+      } else if (item.verb === 'group.deleted') {
+        emoji = '🗑️'
+        tone = 'tomato'
+      } else if (item.verb === 'group.restored') {
+        emoji = '♻️'
+        tone = 'olive'
+      }
       break
     case 'recurring': {
       // A repeating expense was set up, changed or skipped: open the expense it started from,

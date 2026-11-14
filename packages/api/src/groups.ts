@@ -10,7 +10,9 @@ import type { PotluckClient } from './index'
 
 type Tables = Database['public']['Tables']
 export type GroupRole = Database['public']['Enums']['group_role']
+export type GroupType = Database['public']['Enums']['group_type']
 export type GroupRow = Tables['groups']['Row']
+export type WhiteboardRow = Tables['group_whiteboards']['Row']
 export type GroupInviteRow = Tables['group_invites']['Row']
 
 /** The slice of a profile the app shows next to people. */
@@ -73,6 +75,11 @@ export const groupKeys = {
   invitePreview: (code: string, viewerId: string | null = null) =>
     ['potluck', 'groups', 'invite-preview', code, viewerId ?? 'anon'] as const,
   friends: (userId: string) => ['potluck', 'groups', 'friends', userId] as const,
+  deleted: (userId: string) => ['potluck', 'groups', 'deleted', userId] as const,
+  whiteboard: (groupId: string) => ['potluck', 'groups', 'whiteboard', groupId] as const,
+  whiteboardHistory: (groupId: string) =>
+    ['potluck', 'groups', 'whiteboard', groupId, 'history'] as const,
+  categoryHistory: (groupId: string) => ['potluck', 'groups', 'category-history', groupId] as const,
 }
 
 const GROUP_SELECT =
@@ -171,14 +178,22 @@ export interface CreateGroupInput {
   emoji?: string | null
   color?: string | null
   currency?: string | null
+  /** Defaults to `other` on the server. */
+  type?: GroupType | null
+  /** Trip dates, `YYYY-MM-DD`; the server keeps them for trips only. */
+  startsOn?: string | null
+  endsOn?: string | null
 }
 
 export async function createGroup(client: PotluckClient, input: CreateGroupInput) {
-  const { data, error } = await client.rpc('create_group', {
+  const { data, error } = await client.rpc('create_group_v2', {
     name: input.name.trim(),
     ...(input.emoji ? { emoji: input.emoji } : {}),
     ...(input.color ? { color: input.color } : {}),
     ...(input.currency ? { currency: input.currency } : {}),
+    ...(input.type ? { type: input.type } : {}),
+    ...(input.startsOn ? { starts_on: input.startsOn } : {}),
+    ...(input.endsOn ? { ends_on: input.endsOn } : {}),
   })
   if (error) throw error
   return data
@@ -195,6 +210,9 @@ export type GroupSettingsPatch = Partial<
     | 'simplify_debts'
     | 'members_can_invite'
     | 'archived_at'
+    | 'type'
+    | 'starts_on'
+    | 'ends_on'
   >
 >
 
@@ -213,11 +231,184 @@ export async function updateGroup(
   return data
 }
 
-/** Owner only; the server refuses while anyone still has an open balance (group_has_balances). */
+/**
+ * Owner only; the server refuses while anyone still has an open balance (group_has_balances).
+ * The group disappears for everyone, and any member can restore it for 30 days.
+ */
 export async function deleteGroup(client: PotluckClient, groupId: string) {
   const { error } = await client.rpc('delete_group', { group_id: groupId })
   if (error) throw error
 }
+
+/** Any member brings a deleted group back (`group_not_found` once it has been purged). */
+export async function restoreGroup(client: PotluckClient, groupId: string) {
+  const { data, error } = await client.rpc('restore_group', { group_id: groupId })
+  if (error) throw error
+  return data
+}
+
+export type DeletedGroup = Database['public']['Functions']['my_deleted_groups']['Returns'][number]
+
+/** The viewer's deleted groups that can still be restored, newest first. */
+export async function fetchDeletedGroups(client: PotluckClient): Promise<DeletedGroup[]> {
+  const { data, error } = await client.rpc('my_deleted_groups')
+  if (error) throw error
+  return data ?? []
+}
+
+export const deletedGroupsQueryOptions = (client: PotluckClient, viewerId: string) =>
+  queryOptions({
+    queryKey: groupKeys.deleted(viewerId),
+    queryFn: () => fetchDeletedGroups(client),
+  })
+
+// Covers -----------------------------------------------------------------------
+
+export const COVER_BUCKET = 'group-covers'
+
+/** Public URL for a stored cover path (`<group_id>/<file>`), or null. Works signed out. */
+export function coverUrl(client: PotluckClient, path: string | null | undefined): string | null {
+  if (!path) return null
+  return client.storage.from(COVER_BUCKET).getPublicUrl(path).data.publicUrl
+}
+
+/**
+ * Uploads a cover under `<group_id>/` and returns its storage path (owners and admins only).
+ * A new name every time, so caches never serve the old photo.
+ */
+export async function uploadCover(
+  client: PotluckClient,
+  groupId: string,
+  body: ArrayBuffer | Uint8Array,
+  contentType: string,
+): Promise<string> {
+  const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'img'
+  const path = `${groupId}/cover-${Date.now().toString(36)}.${ext}`
+  const { error } = await client.storage
+    .from(COVER_BUCKET)
+    .upload(path, body, { contentType, upsert: false, cacheControl: '31536000' })
+  if (error) throw error
+  return path
+}
+
+export async function removeCoverFile(client: PotluckClient, path: string) {
+  const { error } = await client.storage.from(COVER_BUCKET).remove([path])
+  if (error) throw error
+}
+
+// Whiteboard -------------------------------------------------------------------
+
+/** The group's shared notes. A group nobody has written in yet reads as empty, version 0. */
+export async function fetchWhiteboard(
+  client: PotluckClient,
+  groupId: string,
+): Promise<WhiteboardRow> {
+  const { data, error } = await client
+    .from('group_whiteboards')
+    .select('group_id, body, version, updated_by, updated_at')
+    .eq('group_id', groupId)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? { group_id: groupId, body: '', version: 0, updated_by: null, updated_at: '' }
+}
+
+export const whiteboardQueryOptions = (client: PotluckClient, groupId: string) =>
+  queryOptions({
+    queryKey: groupKeys.whiteboard(groupId),
+    queryFn: () => fetchWhiteboard(client, groupId),
+  })
+
+/**
+ * Saves the notes on top of `baseVersion`, the version the editor started from. Throws
+ * `whiteboard_conflict` when someone saved in between.
+ */
+export async function saveWhiteboard(
+  client: PotluckClient,
+  groupId: string,
+  body: string,
+  baseVersion: number,
+): Promise<WhiteboardRow> {
+  const { data, error } = await client.rpc('save_group_whiteboard', {
+    group_id: groupId,
+    body,
+    base_version: baseVersion,
+  })
+  if (error) throw error
+  return data
+}
+
+export interface WhiteboardEdit {
+  id: string
+  actor_id: string | null
+  created_at: string
+  excerpt: string
+}
+
+/** Who edited the notes and when, newest first: one line per sitting, from the activity. */
+export async function fetchWhiteboardHistory(
+  client: PotluckClient,
+  groupId: string,
+  limit = 20,
+): Promise<WhiteboardEdit[]> {
+  const { data, error } = await client
+    .from('activity')
+    .select('id, actor_id, created_at, data')
+    .eq('group_id', groupId)
+    .eq('verb', 'group.notes_updated')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []).map((row) => {
+    const d = row.data as { excerpt?: unknown } | null
+    return {
+      id: row.id,
+      actor_id: row.actor_id,
+      created_at: row.created_at,
+      excerpt: typeof d?.excerpt === 'string' ? d.excerpt : '',
+    }
+  })
+}
+
+export const whiteboardHistoryQueryOptions = (client: PotluckClient, groupId: string) =>
+  queryOptions({
+    queryKey: groupKeys.whiteboardHistory(groupId),
+    queryFn: () => fetchWhiteboardHistory(client, groupId),
+  })
+
+// Category suggestions ---------------------------------------------------------
+
+export interface CategoryHistoryRow {
+  description: string
+  category: string | null
+}
+
+/**
+ * Descriptions and categories of the group's recent expenses, newest first, for core
+ * `suggestCategory`. Only expenses that have a category.
+ */
+export async function fetchCategoryHistory(
+  client: PotluckClient,
+  groupId: string,
+  limit = 300,
+): Promise<CategoryHistoryRow[]> {
+  const { data, error } = await client
+    .from('expenses')
+    .select('description, category')
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+    .not('category', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data ?? []
+}
+
+export const categoryHistoryQueryOptions = (client: PotluckClient, groupId: string) =>
+  queryOptions({
+    queryKey: groupKeys.categoryHistory(groupId),
+    queryFn: () => fetchCategoryHistory(client, groupId),
+    staleTime: 5 * 60 * 1000,
+  })
 
 export async function setMemberRole(
   client: PotluckClient,

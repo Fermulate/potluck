@@ -3,6 +3,7 @@ import { t } from '@potluck/i18n'
 import {
   AvatarStack,
   Button,
+  cn,
   EmptyState,
   PageHeader,
   Skeleton,
@@ -14,15 +15,19 @@ import { motion } from 'motion/react'
 import { useState } from 'react'
 import { errorMessage } from '@/lib/errors'
 import { CreateGroupSheet } from './create-group-sheet'
-import { GroupTile, ViewerBalance } from './group-bits'
+import { GroupCover, GroupTile, ViewerBalance } from './group-bits'
+import { tripDatesLabel } from './group-format'
 import { groupTransitionName, stackPeople } from './people'
+import { RecentlyDeleted } from './recently-deleted'
 import { useAllGroupsRealtime, useMyGroups } from './use-groups'
 
 function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
   const reduced = usePrefersReducedMotion()
   const people = stackPeople(group.members)
+  const dates = tripDatesLabel(group)
   return (
     <motion.li
+      className="min-w-0"
       initial={reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={
@@ -35,20 +40,36 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
         to="/groups/$groupId"
         params={{ groupId: group.id }}
         viewTransition
-        className="group flex h-full flex-col gap-4 rounded-card border border-line bg-card p-4 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99] sm:p-5"
+        className="group flex h-full flex-col gap-4 overflow-hidden rounded-card border border-line bg-card p-4 transition-[border-color,transform] duration-150 [--avatar-ring:var(--pl-card)] hover:border-ink/25 active:scale-[0.99] sm:p-5"
       >
+        {group.cover_path && (
+          <GroupCover
+            path={group.cover_path}
+            name={group.name}
+            className="-mx-4 -mt-4 mb-[-2.25rem] h-24 w-[calc(100%+2rem)] max-w-none sm:-mx-5 sm:-mt-5 sm:w-[calc(100%+2.5rem)]"
+          />
+        )}
         <div className="flex items-start justify-between gap-3">
           <GroupTile
             emoji={group.emoji}
             color={group.color}
             size="md"
-            className="transition-transform duration-200 group-hover:rotate-[-9deg]"
+            className={cn(
+              'transition-transform duration-200 group-hover:rotate-[-9deg]',
+              group.cover_path && 'relative ring-4 ring-[var(--pl-card)]',
+            )}
             style={{ viewTransitionName: groupTransitionName(group.id) }}
           />
-          <ViewerBalance cents={group.my_net_cents} currency={group.currency} stacked />
+          <ViewerBalance
+            cents={group.my_net_cents}
+            currency={group.currency}
+            stacked
+            className={cn(group.cover_path && 'relative rounded-[0.75rem] bg-card/90 px-2 py-1')}
+          />
         </div>
         <div className="mt-auto">
           <h3 className="truncate font-display text-[1.75rem] leading-tight">{group.name}</h3>
+          {dates && <p className="truncate text-xs font-semibold text-plum-ink">{dates}</p>}
           <div className="mt-2 flex items-center gap-2">
             <AvatarStack
               people={people}
@@ -68,7 +89,10 @@ function GroupCard({ group, index }: { group: GroupDetail; index: number }) {
 
 function GroupsSkeleton() {
   return (
-    <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-hidden>
+    <ul
+      className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))] xl:grid-cols-[repeat(3,minmax(0,1fr))]"
+      aria-hidden
+    >
       {Array.from({ length: 4 }, (_, i) => (
         <li key={i} className="flex items-center gap-4 rounded-card border border-line bg-card p-4">
           <Skeleton className="size-14 rounded-[1rem]" />
@@ -169,7 +193,7 @@ export function GroupsPage({
             }
           />
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))] xl:grid-cols-[repeat(3,minmax(0,1fr))]">
             {active.map((group, i) => (
               <GroupCard key={group.id} group={group} index={i} />
             ))}
@@ -196,7 +220,7 @@ export function GroupsPage({
             </button>
           </h2>
           {showArchived && (
-            <ul className="mt-3 grid gap-3 opacity-75 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 opacity-75 sm:grid-cols-[repeat(2,minmax(0,1fr))] xl:grid-cols-[repeat(3,minmax(0,1fr))]">
               {archived.map((group, i) => (
                 <GroupCard key={group.id} group={group} index={i} />
               ))}
@@ -204,6 +228,8 @@ export function GroupsPage({
           )}
         </section>
       )}
+
+      <RecentlyDeleted />
 
       <CreateGroupSheet open={createOpen} onOpenChange={onCreateOpenChange} />
     </div>

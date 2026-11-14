@@ -3,7 +3,7 @@ import type { NotificationRow } from '@potluck/api'
 import { formatDate, formatMoney, formatRelative, formatTime, t } from '@potluck/i18n'
 
 export type NotificationKind =
-  'money' | 'payment' | 'people' | 'plan' | 'comment' | 'summary' | 'other'
+  'money' | 'payment' | 'people' | 'plan' | 'comment' | 'summary' | 'removed' | 'other'
 
 /** Where tapping a notification goes. Shaped for the router's `navigate`. */
 export type NotificationTarget =
@@ -270,6 +270,29 @@ export function describeNotification(n: NotificationRow, ctx: DescribeContext): 
         }),
         kind: 'people',
         target: toGroup('members'),
+      }
+    case 'group.deleted': {
+      // The group is hidden now, so its name comes with the notification; the link opens the
+      // deleted group's page, which offers Restore.
+      const deletedId = str(d.deleted_group_id)
+      const name = str(d.group_name) ?? t('notifications.aGroup')
+      return {
+        title: t('notifications.types.group.deleted.title', { group: name }),
+        body: t('notifications.types.group.deleted.body', { actor }),
+        kind: 'removed',
+        target: deletedId
+          ? { to: '/groups/$groupId', params: { groupId: deletedId } }
+          : { to: '/notifications' },
+      }
+    }
+    case 'group.restored':
+      return {
+        title: t('notifications.types.group.restored.title', {
+          group: str(d.group_name) ?? group,
+        }),
+        body: t('notifications.types.group.restored.body', { actor }),
+        kind: 'people',
+        target: toGroup(),
       }
     case 'member.added':
       return {

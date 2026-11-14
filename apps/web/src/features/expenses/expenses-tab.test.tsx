@@ -173,6 +173,21 @@ describe('ExpensesTab', () => {
     expect(screen.queryByText('Cash for tacos')).not.toBeInTheDocument()
   })
 
+  it('finds subcategories under a top level category filter', async () => {
+    const client = seededClient((c) => {
+      c.setQueryData(moneyKeys.expenses(GROUP_ID), [
+        expense({ id: 'e1', description: 'Tacos', category: 'food' }),
+        expense({ id: 'e2', description: 'Cab home', category: 'taxi' }),
+        expense({ id: 'e3', description: 'Train out', category: 'public_transit' }),
+      ])
+      c.setQueryData(moneyKeys.settlements(GROUP_ID), [])
+    })
+    renderInRouter(<Tab initial={{ categories: ['transport'] }} />, client)
+    expect(await screen.findByText('Cab home')).toBeInTheDocument()
+    expect(screen.getByText('Train out')).toBeInTheDocument()
+    expect(screen.queryByText('Tacos')).not.toBeInTheDocument()
+  })
+
   it('shows only payments or only expenses from the type filter', async () => {
     renderInRouter(<Tab />, withPayment())
     await screen.findByText('Cash for tacos')

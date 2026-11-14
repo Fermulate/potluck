@@ -1,5 +1,6 @@
-import { CATEGORY_IDS, type LedgerLabels } from '@potluck/core'
+import { ALL_CATEGORY_IDS, CATEGORY_IDS, SUBCATEGORY_IDS, type LedgerLabels } from '@potluck/core'
 import { en, t } from '@potluck/i18n'
+import { categoryLabel } from '@/features/expenses/format'
 
 type CsvStrings = typeof en.transfer.csv
 
@@ -63,7 +64,7 @@ export function ledgerLabels(): LedgerLabels {
       tip: t('transfer.csv.tip'),
       discount: t('transfer.csv.discount'),
     } as CsvStrings,
-    Object.fromEntries(CATEGORY_IDS.map((id) => [id, t(`categories.${id}`)])),
+    Object.fromEntries(ALL_CATEGORY_IDS.map((id) => [id, categoryLabel(id)])),
   )
 }
 
@@ -75,7 +76,10 @@ export function importLabelSets(): LedgerLabels[] {
   const current = ledgerLabels()
   const english = build(
     en.transfer.csv,
-    Object.fromEntries(CATEGORY_IDS.map((id) => [id, en.categories[id]])),
+    Object.fromEntries([
+      ...CATEGORY_IDS.map((id) => [id, en.categories[id]]),
+      ...SUBCATEGORY_IDS.map((id) => [id, en.categories.sub[id]]),
+    ]),
   )
   return current.date === english.date && current.paid === english.paid
     ? [current]

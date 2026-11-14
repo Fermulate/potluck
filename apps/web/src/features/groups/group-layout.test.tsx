@@ -44,6 +44,7 @@ describe('GroupLayout', () => {
       t('groups.tabs.balances'),
       t('insights.tab'),
       t('groups.tabs.plans'),
+      t('groups.tabs.notes'),
       t('groups.tabs.members'),
       t('groups.tabs.settings'),
     ])
@@ -158,5 +159,84 @@ describe('GroupLayout', () => {
     const before = db().queries('groups').length
     emitChange('expenses')
     await waitFor(() => expect(db().queries('groups').length).toBeGreaterThan(before))
+  })
+
+  it('puts the cover above the header and shows a trip with its dates', async () => {
+    renderLayout([
+      group({
+        type: 'trip',
+        starts_on: '2026-06-03',
+        ends_on: '2026-06-10',
+        cover_path: 'g-hike/cover.webp',
+      }),
+    ])
+    expect(await screen.findByText('Jun 3 to Jun 10')).toBeInTheDocument()
+    // Decorative next to the group name, so it has an empty alt.
+    expect(document.querySelector('header img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('g-hike/cover.webp'),
+    )
+    expect(tabs().getByRole('link', { name: t('groups.tabs.notes') })).toHaveAttribute(
+      'href',
+      '/groups/g-hike/notes',
+    )
+  })
+
+  it('shows only the first or last day when that is all a trip has', async () => {
+    renderLayout([group({ type: 'trip', starts_on: '2026-06-03' })])
+    expect(await screen.findByText('From Jun 3')).toBeInTheDocument()
+  })
+
+  it('shows the last day alone too, and no dates for other types', async () => {
+    const { unmount } = renderLayout([group({ type: 'trip', ends_on: '2026-06-10' })])
+    expect(await screen.findByText('Until Jun 10')).toBeInTheDocument()
+    unmount()
+    renderLayout([group({ type: 'home', starts_on: '2026-06-03', ends_on: '2026-06-10' })])
+    expect(await screen.findByRole('heading', { name: 'Hike crew' })).toBeInTheDocument()
+    expect(screen.queryByText(/Jun 3|Jun 10/)).not.toBeInTheDocument()
+  })
+
+  it('says a deleted group was deleted and lets any member restore it', async () => {
+    resetDb({ tables: { group_invites: [] } })
+    db().respond('rpc:my_deleted_groups', {
+      data: [
+        {
+          id: 'g-hike',
+          name: 'Hike crew',
+          emoji: '🥾',
+          color: 'olive',
+          type: 'other',
+          cover_path: null,
+          deleted_at: new Date().toISOString(),
+          deleted_by: 'u-ben',
+          purge_after: '',
+          member_count: 3,
+        },
+      ],
+    })
+    const { router } = renderWithProviders(<GroupLayout groupId="g-hike" />, {
+      path: '/groups/g-hike',
+    })
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: t('groups.deleted.pageTitle', { group: 'Hike crew' }),
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('groups.deleted.daysLeft', { count: 30 }))).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: t('groups.deleted.restoreLabel', { group: 'Hike crew' }),
+      }),
+    )
+    await waitFor(() => expect(db().rpcArgs('restore_group')).toEqual([{ group_id: 'g-hike' }]))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/groups/g-hike'))
+  })
+
+  it('still says not found for a group the viewer was never in', async () => {
+    resetDb({ tables: { group_invites: [] } })
+    db().respond('rpc:my_deleted_groups', { data: [] })
+    renderWithProviders(<GroupLayout groupId="g-nope" />, { path: '/groups/g-nope' })
+    expect(await screen.findByText(t('errors.groupNotFound'))).toBeInTheDocument()
   })
 })

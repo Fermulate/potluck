@@ -333,3 +333,18 @@ test('a changed seat invite tells whoever added the seat and opens the members p
   assert.match(e.text, /new address/)
   assert.match(e.text, /https:\/\/potluck\.example\/groups\/g1\/members/)
 })
+
+test('a deleted group says how to bring it back, and a restore says it is back', () => {
+  const deleted = renderEmail(
+    job('group.deleted', { group_name: 'Old flat', actor_name: 'Ava', deleted_group_id: 'g9' }),
+    links,
+  )
+  assert.equal(deleted.subject, 'Ava deleted Old flat')
+  assert.match(deleted.text, /bring it back for 30 days/)
+  assert.match(deleted.text, /\/groups\/g9/)
+  const back = renderEmail(
+    job('group.restored', { group_name: 'Old flat', actor_name: 'Ava', group_id: 'g9' }),
+    links,
+  )
+  assert.equal(back.subject, 'Old flat is back')
+})

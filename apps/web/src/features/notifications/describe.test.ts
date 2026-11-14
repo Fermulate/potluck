@@ -219,6 +219,30 @@ describe('deletions, being added, and the monthly summary', () => {
     expect(view.target).toEqual({ to: '/groups/$groupId', params: { groupId: 'g-1' } })
   })
 
+  it('says a group was deleted, by its stored name, and opens the page that restores it', () => {
+    const view = describeNotification(
+      row('group.deleted', { actor_id: 'u-ben', deleted_group_id: 'g-9', group_name: 'Old flat' }),
+      ctx,
+    )
+    expect(view.title).toBe('Old flat was deleted')
+    expect(view.kind).toBe('removed')
+    expect(view.body).toBe('Ben deleted it. Anyone in it can bring it back for 30 days.')
+    expect(view.target).toEqual({ to: '/groups/$groupId', params: { groupId: 'g-9' } })
+    expect(describeNotification(row('group.deleted', {}), ctx).target).toEqual({
+      to: '/notifications',
+    })
+  })
+
+  it('says a group is back and opens it', () => {
+    const view = describeNotification(
+      row('group.restored', { actor_id: 'u-ben', group_id: 'g-1', group_name: 'Hike crew' }),
+      ctx,
+    )
+    expect(view.title).toBe('Hike crew is back')
+    expect(view.body).toBe('Ben brought it back.')
+    expect(view.target).toEqual({ to: '/groups/$groupId', params: { groupId: 'g-1' } })
+  })
+
   it('sums up the month: the two biggest balances, then a count of the rest', () => {
     const view = describeNotification(
       row('summary.monthly', {

@@ -74,6 +74,8 @@ export const common = {
   delete: 'Delete',
   remove: 'Remove',
   undo: 'Undo',
+  /** Between two parts of one line, like a name and a time. */
+  separator: ', ',
   retry: 'Try again',
   confirm: 'Confirm',
   continue: 'Continue',
@@ -228,6 +230,13 @@ export const errors = {
     email_not_verified: 'Confirm your email first. Check your inbox.',
     friend_has_balance: 'Settle your one-on-one balance first.',
     person_not_found: 'We could not find that person.',
+    group_deleted: 'This group was deleted. Anyone in it can restore it from Groups for 30 days.',
+    group_not_found: 'That group is gone for good.',
+    trip_dates_invalid: 'A trip cannot end before it starts.',
+    whiteboard_conflict: 'Someone else saved the notes first. Their version is loaded.',
+    whiteboard_too_long: 'The notes are full. Keep them under 10,000 characters.',
+    direct_group_not_deletable:
+      'A one-on-one tab cannot be deleted. Settle up and it simply stays quiet.',
   },
   auth: {
     invalidCredentials: 'That email and password do not match.',

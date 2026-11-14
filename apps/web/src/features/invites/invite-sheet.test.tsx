@@ -1,7 +1,10 @@
 import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
+import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { encode } from 'uqr'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { inviteUrl } from '@/lib/app-url'
 import { group, member, VIEWER } from '@/test/fixtures'
 import { renderWithProviders } from '@/test/render'
 import { InvitePanel } from './invite-sheet'
@@ -138,5 +141,50 @@ describe('InvitePanel', () => {
     expect(
       await screen.findByText('Only owners and admins can invite people to this group.'),
     ).toBeInTheDocument()
+  })
+
+  it('shows the newest link as a QR code for someone across the table', async () => {
+    api.open = [
+      {
+        id: 'i-9',
+        code: 'zzzzzzzzzz99',
+        group_id: 'g-hike',
+        role: 'member',
+        max_uses: null,
+        uses: 0,
+        expires_at: null,
+        email: null,
+        created_at: '2026-11-05T00:00:00Z',
+        created_by: VIEWER,
+        revoked_at: null,
+      },
+    ]
+    renderWithProviders(<InvitePanel group={group()} />)
+    const show = await screen.findByRole('button', { name: t('invites.qr.show') })
+    expect(show).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(show)
+    const qr = screen.getByRole('img', { name: t('invites.qr.label', { group: 'Hike crew' }) })
+    // The drawn modules are a QR code of the invite's own link, at whichever error level.
+    const drawn = [...(qr.querySelector('path')?.getAttribute('d') ?? '').matchAll(/M(\d+) (\d+)/g)]
+      .map(([, x, y]) => `${x},${y}`)
+      .sort()
+    const modules = (ecc: 'L' | 'M' | 'Q' | 'H') => {
+      const code = encode(inviteUrl('zzzzzzzzzz99'), { ecc, border: 0 })
+      const n = code.size
+      const eye = (x: number, y: number) =>
+        [
+          [0, 0],
+          [n - 7, 0],
+          [0, n - 7],
+        ].some(([ex, ey]) => x >= ex! && x < ex! + 7 && y >= ey! && y < ey! + 7)
+      return code.data
+        .flatMap((row, y) => row.flatMap((dark, x) => (dark && !eye(x, y) ? [`${x},${y}`] : [])))
+        .sort()
+    }
+    expect(drawn.length).toBeGreaterThan(0)
+    expect((['L', 'M', 'Q', 'H'] as const).map(modules)).toContainEqual(drawn)
+    expect(screen.getByText(t('invites.qr.hint'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('invites.qr.hide') }))
+    expect(screen.queryByRole('img', { name: /QR code/ })).not.toBeInTheDocument()
   })
 })

@@ -57,6 +57,12 @@ export interface RealtimeSubscription {
  * Subscribes to Postgres changes while mounted and calls `onChange` for each one. Pass a stable
  * `channel` label; changing it resubscribes. Disabled when `channel` is null. Each mount gets its
  * own topic, so a remount never picks up a channel the previous mount is still leaving.
+ *
+ * Joining takes a moment, and a change made before the join (or while reconnecting) is never
+ * sent. Without `postgres_changes_options.wait` the server can even answer the join before it
+ * streams Postgres changes, so the channel asks it to hold `SUBSCRIBED` until they flow. A
+ * screen that must not miss a change passes `onSubscribed`, called on every `SUBSCRIBED`
+ * (first join and each rejoin), to refetch what it shows.
  */
 let mounts = 0
 
@@ -64,17 +70,22 @@ export function useRealtime(
   channel: string | null,
   subscriptions: RealtimeSubscription[],
   onChange: (payload: { table: string; eventType: string; new: unknown; old: unknown }) => void,
+  onSubscribed?: () => void,
 ) {
   const handler = useRef(onChange)
+  const joined = useRef(onSubscribed)
   useEffect(() => {
     handler.current = onChange
+    joined.current = onSubscribed
   })
   const key = JSON.stringify(subscriptions)
 
   useEffect(() => {
     if (!channel) return
     const subs = JSON.parse(key) as RealtimeSubscription[]
-    let ch = supabase.channel(`${channel}:${++mounts}`)
+    let ch = supabase.channel(`${channel}:${++mounts}`, {
+      config: { postgres_changes_options: { wait: true } },
+    })
     for (const sub of subs) {
       ch = ch.on(
         'postgres_changes' as never,
@@ -88,7 +99,9 @@ export function useRealtime(
           handler.current(payload),
       )
     }
-    ch.subscribe()
+    ch.subscribe((status) => {
+      if (status === 'SUBSCRIBED') joined.current?.()
+    })
     return () => {
       void supabase.removeChannel(ch)
     }

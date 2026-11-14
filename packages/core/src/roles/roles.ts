@@ -40,6 +40,10 @@ export interface ActionContext {
   'placeholder.remove': { netCents: number; isCreator: boolean }
   'group.edit': undefined
   'group.delete': undefined
+  /** Bringing a deleted group back within 30 days (`restore_group`). */
+  'group.restore': undefined
+  /** Editing the shared notes (`save_group_whiteboard`). */
+  'group.notes': undefined
   'group.transferOwnership': undefined
   'group.leave': { netCents: number }
 }
@@ -87,6 +91,8 @@ const RULES: { [A in Action]: Rule<A> } = {
     netCents === 0 && (isCreator || isManager(role)),
   'group.edit': isManager,
   'group.delete': (role) => role === 'owner',
+  'group.restore': anyone,
+  'group.notes': anyone,
   'group.transferOwnership': (role) => role === 'owner',
   // The owner has to transfer ownership before leaving.
   'group.leave': (role, { netCents }) => role !== 'owner' && netCents === 0,
