@@ -144,17 +144,43 @@ describe('InvitePanel links', () => {
     renderPanel()
     await screen.findByRole('region', { name: t('invites.latest') })
     fireEvent.click(screen.getByRole('button', { name: t('invites.revoke') }))
-    expect(await screen.findByText(t('invites.revoked'))).toBeInTheDocument()
+    // In the link's place: what happened, and one Undo that already has focus.
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent(t('invites.revoked'))
     expect(rowsOf('group_invites')[0]!.revoked_at).toEqual(expect.any(String))
-    expect(await screen.findByText(t('invites.intro', { group: 'Hike crew' }))).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: t('invites.latest') })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('invites.create') })).toBeInTheDocument()
+    const undo = within(note).getByRole('button', { name: t('common.undo') })
+    expect(undo).toHaveFocus()
+    expect(screen.getAllByRole('button', { name: t('common.undo') })).toHaveLength(1)
 
-    fireEvent.click(screen.getByRole('button', { name: t('common.undo') }))
+    fireEvent.click(undo)
     expect(await screen.findByRole('region', { name: t('invites.latest') })).toHaveTextContent(
       '/join/code-i-1-xyz',
     )
-    expect(rowsOf('group_invites')[0]!.revoked_at).toBeNull()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    await waitFor(() => expect(rowsOf('group_invites')[0]!.revoked_at).toBeNull())
+  })
+
+  it('revokes an older link, and undo puts it back in the list', async () => {
+    renderPanel(group(), [invite('i-2', { created_at: '2026-11-03T00:00:00Z' }), invite('i-1')])
+    await screen.findByRole('region', { name: t('invites.latest') })
+    fireEvent.click(
+      within(olderLink('code-i-1-xyz')).getByRole('button', {
+        name: t('invites.revokeLink', { code: 'code-i-1-xyz' }),
+      }),
+    )
+    const undo = await within(openLinks()).findByRole('button', { name: t('common.undo') })
+    expect(undo).toHaveFocus()
+    expect(within(openLinks()).queryByText(/code-i-1-xyz/)).not.toBeInTheDocument()
+    // The newest link stays put.
+    expect(latest()).toHaveTextContent('/join/code-i-2-xyz')
+
+    fireEvent.click(undo)
+    expect(await within(openLinks()).findByText(/code-i-1-xyz/)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(rowsOf('group_invites').find((r) => r.id === 'i-1')!.revoked_at).toBeNull(),
+    )
   })
 
   it('keeps the link and explains when revoking fails', async () => {
