@@ -193,7 +193,11 @@ describe('SettleFlow', () => {
         { from_user: CLEO, to_user: ME, amount_cents: 1000 },
       ]),
     )
-    expect(await screen.findByText('You owe Ben $17.50')).toBeInTheDocument()
+    // The held form still shows the debt it was sent against, so $30 never reads as paying
+    // more than is owed.
+    expect(await screen.findByText('You owe Ben $47.50')).toBeInTheDocument()
+    expect(screen.queryByText('You owe Ben $17.50')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('30')
 
     fireEvent.click(screen.getByRole('button', { name: t('common.retry') }))
     expect(await screen.findByRole('heading', { name: 'Payment recorded' })).toBeInTheDocument()
