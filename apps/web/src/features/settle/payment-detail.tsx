@@ -30,6 +30,7 @@ import {
   useTimeZone,
 } from '@/features/expenses/money-data'
 import { useBlockedInTab } from '@/features/friends/split-note'
+import { mayEditPayment } from './payment-rules'
 import { useDeletePayment, useRestorePayment } from './use-delete-payment'
 
 /** One payment: who paid whom, when, the note, and its comments. Deleted ones can be restored. */
@@ -75,11 +76,11 @@ export function PaymentDetail({ paymentId }: { paymentId: string }) {
   // rule); until that is known, no controls, so none appear and then vanish.
   const recorderOnly = blockedInTab === true && p.created_by !== me
   const settledRule = blockedInTab !== undefined && !recorderOnly
-  const mayEdit = settledRule && can(role, 'settlement.edit', { isParty })
-  const mayDelete = settledRule && can(role, 'settlement.delete', { isParty })
-  const mayRestore = settledRule && can(role, 'settlement.restore', { isParty })
   const deleted = !!p.deleted_at
   const archived = !!group.data?.archived_at
+  const mayEdit = mayEditPayment(p, { viewerId: me, role, blockedInTab, archived }) === true
+  const mayDelete = settledRule && can(role, 'settlement.delete', { isParty })
+  const mayRestore = settledRule && can(role, 'settlement.restore', { isParty })
   const memberIds = group.data?.members.map((m) => m.id) ?? []
   // The server will not move a former member's balance: no delete or restore, details only.
   const departed =
