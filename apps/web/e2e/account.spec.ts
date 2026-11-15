@@ -122,6 +122,35 @@ test('sign out everywhere ends every session', async ({ newUser, openAs }) => {
   await expect(phone.getByText(t('auth.signIn.sessionEnded'))).toBeVisible()
 })
 
+test('a device left open leaves by itself after sign out everywhere, saying why', async ({
+  newUser,
+  openAs,
+}) => {
+  // The other device notices on its next 30 second check, with nobody touching it.
+  test.setTimeout(120_000)
+  const user = await newUser()
+  const phone = await openAs(null)
+  await signIn(phone, user.email, user.password)
+  await expect(phone).toHaveURL(/\/home$/)
+
+  const laptop = await openAs(null)
+  await signIn(laptop, user.email, user.password)
+  await expect(laptop).toHaveURL(/\/home$/)
+  await laptop.goto('/me')
+  await security(laptop)
+    .getByRole('button', { name: t('security.sessions.signOutAll') })
+    .click()
+  await laptop
+    .getByRole('dialog', { name: t('security.sessions.confirmTitle') })
+    .getByRole('button', { name: t('security.sessions.signOutAll') })
+    .click()
+  await expect(laptop).toHaveURL(/\/sign-in/)
+
+  // No reload, no click: the phone gets to sign in and says why.
+  await expect(phone).toHaveURL(/\/sign-in/, { timeout: 60_000 })
+  await expect(phone.getByText(t('auth.signIn.sessionEnded'))).toBeVisible()
+})
+
 test('two-step sign in: set up, asked at sign in, wrong code refused, off with a code', async ({
   newUser,
   openAs,

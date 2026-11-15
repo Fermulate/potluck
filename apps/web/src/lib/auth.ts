@@ -162,8 +162,13 @@ export async function endEndedSession() {
 
 const ENDED_KEY = 'potluck.session-ended'
 let endedHere = false
+const endedListeners = new Set<() => void>()
 
-/** Remembers, for the sign-in page, that the session ended elsewhere (survives its reload). */
+/**
+ * Remembers, for the sign-in page, that the session ended elsewhere (survives its reload). The
+ * page may already be open when this runs (auth-js signs out by itself when `getUser` finds the
+ * session gone, and that sends the app to sign in), so an open page is told as well.
+ */
 function markSessionEnded() {
   endedHere = true
   try {
@@ -171,6 +176,13 @@ function markSessionEnded() {
   } catch {
     // Storage blocked: the in-memory flag still covers the redirect to sign in.
   }
+  for (const listener of endedListeners) listener()
+}
+
+/** Calls `listener` each time this device learns its session ended elsewhere. */
+export function onSessionEnded(listener: () => void): () => void {
+  endedListeners.add(listener)
+  return () => endedListeners.delete(listener)
 }
 
 /**
@@ -197,9 +209,24 @@ export function clearSessionEnded() {
 }
 
 /**
+ * Whether a session check found the session gone: ended elsewhere (`session_not_found`, which
+ * auth-js turns into `AuthSessionMissingError`), the account deleted (`user_not_found`), or the
+ * database's own `session_ended`.
+ */
+function sessionIsGone(error: { name?: string; code?: string }): boolean {
+  return (
+    error.name === 'AuthSessionMissingError' ||
+    error.code === 'session_not_found' ||
+    error.code === 'user_not_found' ||
+    error.code === 'session_ended'
+  )
+}
+
+/**
  * Asks Supabase Auth whether this device's session still exists (`getUser` goes to the server,
- * unlike `getSession`). A session ended elsewhere answers `session_not_found` (auth-js turns it
- * into `AuthSessionMissingError`), a deleted account `user_not_found`, and this device signs out.
+ * unlike `getSession`). When it is gone, this device signs out. For `session_not_found` auth-js
+ * has already dropped the stored session inside `getUser`, so the note for the sign-in page is
+ * left here, before any sign out, not in `endEndedSession` (which then finds no session).
  * Anything else, such as an expired token (`bad_jwt`) or network trouble, changes nothing.
  */
 export async function confirmSession(): Promise<void> {
@@ -207,10 +234,9 @@ export async function confirmSession(): Promise<void> {
   const { data } = await supabase.auth.getSession()
   if (!data.session) return
   const { error } = await supabase.auth.getUser()
-  if (!error) return
-  if (error.name === 'AuthSessionMissingError' || error.code === 'user_not_found') {
-    await endEndedSession()
-  }
+  if (!error || !sessionIsGone(error)) return
+  markSessionEnded()
+  await endEndedSession()
 }
 
 /**

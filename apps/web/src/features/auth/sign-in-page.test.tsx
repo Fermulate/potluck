@@ -1,8 +1,8 @@
 import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { endEndedSession } from '@/lib/auth'
+import { confirmSession, endEndedSession } from '@/lib/auth'
 import { renderWithProviders } from '@/test/render'
 import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
 import { SignInPage } from './sign-in-page'
@@ -57,6 +57,20 @@ describe('SignInPage', () => {
     renderPage()
     expect(await screen.findByRole('button', { name: t('auth.signIn.submit') })).toBeVisible()
     expect(screen.queryByText(t('auth.signIn.sessionEnded'))).not.toBeInTheDocument()
+  })
+
+  it('says why when the session check finds the session gone after the page opened', async () => {
+    renderPage()
+    expect(await screen.findByRole('button', { name: t('auth.signIn.submit') })).toBeVisible()
+    expect(screen.queryByText(t('auth.signIn.sessionEnded'))).not.toBeInTheDocument()
+
+    respondAuth('getSession', { data: { session: { user: { id: 'u-1' }, access_token: 'x' } } })
+    respondAuth('getUser', async () => {
+      respondAuth('getSession', { data: { session: null } })
+      return { data: { user: null }, error: { name: 'AuthSessionMissingError', status: 400 } }
+    })
+    await act(() => confirmSession())
+    expect(await screen.findByText(t('auth.signIn.sessionEnded'))).toBeInTheDocument()
   })
 
   it('never redirects off site after signing in', async () => {
