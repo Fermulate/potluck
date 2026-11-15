@@ -116,7 +116,7 @@ export const expenses = {
       '{names} a quitté le groupe. Sa part reste telle quelle tant que le partage et le montant ne changent pas.',
     formerInSplit: 'Retire {names} du partage pour le modifier.',
     youBlocked:
-      'Tu as bloqué {names}, vous ne pouvez donc pas partager une dépense. Retire cette personne d’abord.',
+      'Tu as bloqué {names}, et tu ne peux pas partager une dépense avec une personne bloquée. Retire d’abord de la dépense toute personne bloquée.',
     departedLocked:
       'Une personne de cette dépense a quitté le groupe, les montants ne peuvent donc pas changer.',
     archivedTitle: 'Ce groupe est archivé',
@@ -244,6 +244,14 @@ export const expenses = {
     paidOnly: 'a payé {amount}',
     gotOnly: 'a reçu {amount}',
     getsBack: 'récupère {amount}',
+    you: {
+      owe: 'dois {amount}',
+      getBack: 'récupères {amount}',
+      paidAndShare: 'as payé {paid}, ta part {share}',
+      gotAndShare: 'as reçu {paid}, ta part {share}',
+      paidOnly: 'as payé {amount}',
+      gotOnly: 'as reçu {amount}',
+    },
     notFound: "Cette dépense s'est fait la malle. Elle a peut-être été supprimée.",
     converted: '{amount} en {currency} au taux de {rate}',
     loading: 'Chargement de la dépense',

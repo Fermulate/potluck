@@ -112,7 +112,9 @@ export const expenses = {
       '{names} left the group. Their share stays as it is while the split and amount do not change.',
     formerInSplit: 'Take {names} out of the split to change it.',
     /** Only the person who blocked sees this, before saving (from their own block list). */
-    youBlocked: 'You blocked {names}, so you two cannot share an expense. Take them out first.',
+    /** `{names}` is one name or a list ("Dee and Gus"), so nothing here counts them. */
+    youBlocked:
+      "You blocked {names}, and you can't share an expense with someone you blocked. Take them out first.",
     departedLocked: "Someone in this expense has left the group, so the amounts can't change.",
     archivedTitle: 'This group is archived',
     archived: '{group} is archived, so its expenses can be read but not added or changed.',
@@ -240,6 +242,15 @@ export const expenses = {
     paidOnly: 'paid {amount}',
     gotOnly: 'got {amount}',
     getsBack: 'gets back {amount}',
+    /** The same lines under "You" on the viewer's own row. */
+    you: {
+      owe: 'owe {amount}',
+      getBack: 'get back {amount}',
+      paidAndShare: 'paid {paid}, share {share}',
+      gotAndShare: 'got {paid}, share {share}',
+      paidOnly: 'paid {amount}',
+      gotOnly: 'got {amount}',
+    },
     notFound: 'That expense wandered off. It may have been deleted.',
     converted: '{amount} in {currency} at {rate}',
     loading: 'Loading expense',

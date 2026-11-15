@@ -681,6 +681,21 @@ describe('ExpenseForm offline', () => {
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
   })
 
+  it('names everyone blocked in one sentence that reads right for several', async () => {
+    renderWithClient(
+      <ExpenseForm mode="create" groupId={GROUP_ID} onDone={vi.fn()} onClose={() => {}} />,
+      seededClient((c) =>
+        c.setQueryData(peopleKeys.blocks(ME), [
+          { user_id: BEN, display_name: 'Ben Okafor', avatar_path: null, blocked_at: 'x' },
+          { user_id: CLEO, display_name: 'Cleo Park', avatar_path: null, blocked_at: 'x' },
+        ]),
+      ),
+    )
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(t('expenses.form.youBlocked', { names: 'Ben and Cleo' }))
+    expect(alert).not.toHaveTextContent('you two')
+  })
+
   it('still reports a refused save as an error, not as the connection', async () => {
     setup()
     create.mockRejectedValueOnce({ message: 'payers_sum_mismatch', code: '23514' })
