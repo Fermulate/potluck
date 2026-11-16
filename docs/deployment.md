@@ -65,7 +65,8 @@ Migrations go first so the database is never behind the client. Because migratio
 `supabase/config.toml` holds local settings at the top and production overrides under `[remotes.production]`. `supabase config push` applies the overrides when the linked project's ref matches `remotes.production.project_id`. Production differs from local in:
 
 - `auth.site_url` is the custom domain. `additional_redirect_urls`: the custom domain, the old workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
-- `minimum_password_length = 8`, email confirmations on, one email per 60 s per address.
+- `minimum_password_length = 8`, email confirmations on (seats and email-bound invites rely on it, see [security](security.md#sign-in)), one email per 60 s per address.
+- Google sign in on (`[remotes.production.auth.external.google]`, client secret from `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`).
 - Security notice email subjects (password, email address and verification method changes) are Supabase's defaults, because the built-in sender refuses custom ones. They go once a custom SMTP provider is set ([launch checklist](launch-checklist.md#3-email)).
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.

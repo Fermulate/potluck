@@ -3,6 +3,7 @@ import { Button } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { ArrowRightLeft, CalendarHeart, Receipt } from 'lucide-react'
 import { lazy, Suspense, type ReactNode } from 'react'
+import { HELP_PAGES } from '@/features/help/topics'
 import { docsUrl } from '@/lib/docs'
 import { Wordmark } from './brand'
 import { heroFrame } from './hero-frame'
@@ -148,6 +149,15 @@ export function LandingPage() {
             className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
           >
             {t('help.guide')} <span className="sr-only">({t('help.newTab')})</span>
+          </a>
+          {'. '}
+          <a
+            href={docsUrl(HELP_PAGES.privacy)}
+            target="_blank"
+            rel="noopener"
+            className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+          >
+            {t('app.landing.footer.privacy')} <span className="sr-only">({t('help.newTab')})</span>
           </a>
           {'. '}
           <a

@@ -329,3 +329,7 @@ update public.activity a set created_at = ev.created_at
 from public.events ev where a.verb = 'event.created' and a.subject_id = ev.id;
 
 select set_config('request.jwt.claims', '', false);
+
+-- Local stacks have no Google provider, so keep its button hidden here
+-- (20261116230000_google_sign_in_on.sql turns it on for production).
+update public.app_config set value = 'false'::jsonb where key = 'google_auth';

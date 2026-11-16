@@ -4,7 +4,9 @@ import { Button, IconButton, Input, toast, type InputProps } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
 import { Eye, EyeOff } from 'lucide-react'
 import { forwardRef, useState } from 'react'
+import { HELP_PAGES } from '@/features/help/topics'
 import { authCallbackUrl } from '@/lib/auth'
+import { docsUrl } from '@/lib/docs'
 import { errorMessage } from '@/lib/errors'
 import { supabase } from '@/lib/supabase'
 
@@ -133,5 +135,22 @@ export function CheckEmail({
         </Button>
       </div>
     </div>
+  )
+}
+
+/** Potluck has no separate terms: the guide's privacy page says what is kept and who sees it. */
+export function PrivacyNote() {
+  return (
+    <p className="text-xs">
+      {t('auth.signUp.privacy')}{' '}
+      <a
+        href={docsUrl(HELP_PAGES.privacy)}
+        target="_blank"
+        rel="noopener"
+        className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+      >
+        {t('auth.signUp.privacyLink')} <span className="sr-only">({t('help.newTab')})</span>
+      </a>
+    </p>
   )
 }

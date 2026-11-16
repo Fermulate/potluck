@@ -507,6 +507,12 @@ verify_enabled = true
 [remotes.production.auth.sms]
 enable_confirmations = true
 
+[remotes.production.auth.external.google]
+enabled = true
+client_id = "939770238734-0hf3vsdsq1uv7n01mvfb0j8pu248j6un.apps.googleusercontent.com"
+# DO NOT commit the secret: the deploy passes it from the GitHub production environment.
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+
 [remotes.production.db.pooler]
 default_pool_size = 15
 max_client_conn = 200
