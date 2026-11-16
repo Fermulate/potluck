@@ -1038,4 +1038,4 @@ There is no `og-invite` function yet. Invite links render the SPA, so link previ
 
 - Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.fermulate.com (custom domain, [ADR 10](adr/0010-custom-domains.md)); https://potluck.potluck-web.workers.dev still serves the same worker. PR previews are worker versions with a `pr-<number>` alias. User guide: https://docs.potluck.fermulate.com (repo `Fermulate/potluck-docs`).
 - Backend: Supabase project `mzotlkpghnrwbezcazld`.
-- Email: auth email uses Supabase built-in SMTP for now (rate-limited); swap to Resend with a sender on `fermulate.com`. Notification email is built and off until the same provider is configured ([launch checklist](launch-checklist.md#3-email)).
+- Email: auth email goes through Resend SMTP from `Potluck <no-reply@fermulate.com>` (`[remotes.production.auth.email.smtp]` in `supabase/config.toml`, 30 an hour), with the templates in `supabase/templates/`. Notification email is built and off until `app_config.email_notifications` is turned on ([launch checklist](launch-checklist.md#3-email)).
