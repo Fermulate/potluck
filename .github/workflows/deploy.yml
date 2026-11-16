@@ -51,8 +51,16 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET }}
           SUPABASE_AUTH_EXTERNAL_APPLE_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_APPLE_SECRET }}
+          SUPABASE_AUTH_SMTP_PASSWORD: ${{ secrets.SUPABASE_AUTH_SMTP_PASSWORD }}
           SUPABASE_YES: '1'
         run: |
+          # config.toml turns on custom SMTP for production. Without the key, config push would
+          # still switch the project to Resend, just with no password, and auth email would stop.
+          # Stop before anything reaches production instead.
+          if [ -z "$SUPABASE_AUTH_SMTP_PASSWORD" ]; then
+            echo "::error::SUPABASE_AUTH_SMTP_PASSWORD is not set in the production environment. Add the Resend API key there and rerun."
+            exit 1
+          fi
           supabase link --project-ref ${{ vars.SUPABASE_PROJECT_REF || 'mzotlkpghnrwbezcazld' }}
           supabase db push --remote --yes
           supabase config push --yes

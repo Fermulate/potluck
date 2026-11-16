@@ -236,39 +236,66 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Local mail goes to Mailpit. Production sends through Resend:
+# [remotes.production.auth.email.smtp] below.
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# Branded auth email, shared by the local stack and production (the remote block inherits these).
+# content_path is relative to the repo root. Every link is {{ .ConfirmationURL }}, the
+# /auth/v1/verify link that apps/web/e2e/support/mail.ts looks for. The app never calls
+# inviteUserByEmail (group invites are Potluck's own links), so there is no invite template.
+[auth.email.template.confirmation]
+subject = "Confirm your email for Potluck"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Your Potluck sign in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Potluck password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your new Potluck email"
+content_path = "./supabase/templates/email_change.html"
+
+# The emailed code Me asks for before a password change from an old session.
+[auth.email.template.reauthentication]
+subject = "Your Potluck code is {{ .Token }}"
+content_path = "./supabase/templates/reauthentication.html"
 
 # Security notices: a short email to the account whenever its sign in changes, so someone who
-# did not do it finds out. Supabase's default bodies. Production overrides the subjects for now
-# (see [remotes.production.auth.email.notification.*] below).
+# did not do it finds out.
 [auth.email.notification.password_changed]
 enabled = true
 subject = "Your Potluck password was changed"
+content_path = "./supabase/templates/password_changed_notification.html"
 
 [auth.email.notification.email_changed]
 enabled = true
 subject = "Your Potluck email was changed"
+content_path = "./supabase/templates/email_changed_notification.html"
 
 [auth.email.notification.mfa_factor_enrolled]
 enabled = true
 subject = "Two-step sign in is on for your Potluck account"
+content_path = "./supabase/templates/mfa_factor_enrolled_notification.html"
 
 [auth.email.notification.mfa_factor_unenrolled]
 enabled = true
 subject = "Two-step sign in was turned off on your Potluck account"
+content_path = "./supabase/templates/mfa_factor_unenrolled_notification.html"
+
+# Google (and Apple later) linked to or removed from an account.
+[auth.email.notification.identity_linked]
+enabled = true
+subject = "A new way to sign in to Potluck"
+content_path = "./supabase/templates/identity_linked_notification.html"
+
+[auth.email.notification.identity_unlinked]
+enabled = true
+subject = "A sign in method was removed from your Potluck account"
+content_path = "./supabase/templates/identity_unlinked_notification.html"
 
 [auth.sms]
 # Allow/disallow the phone provider. When false, users can't sign up or sign in with SMS.
@@ -478,27 +505,28 @@ additional_redirect_urls = [
 ]
 minimum_password_length = 8
 
+# Seats and email-bound invites trust a confirmed address: keep confirmations on.
 [remotes.production.auth.email]
 enable_confirmations = true
 max_frequency = "60s"
 
-# The free plan's built-in mailer refuses custom subjects, so production keeps Supabase's
-# default subjects until a custom SMTP provider is set (launch checklist, email).
-[remotes.production.auth.email.notification.password_changed]
+# Auth email (templates and security notices above) goes out through Resend from fermulate.com.
+# DO NOT commit the API key: the deploy passes it from the GitHub production environment and
+# stops before touching production when it is missing.
+[remotes.production.auth.email.smtp]
 enabled = true
-subject = "Your password was changed"
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(SUPABASE_AUTH_SMTP_PASSWORD)"
+admin_email = "no-reply@fermulate.com"
+sender_name = "Potluck"
 
-[remotes.production.auth.email.notification.email_changed]
-enabled = true
-subject = "Your email address was changed"
-
-[remotes.production.auth.email.notification.mfa_factor_enrolled]
-enabled = true
-subject = "A new verification method was added to your account"
-
-[remotes.production.auth.email.notification.mfa_factor_unenrolled]
-enabled = true
-subject = "A verification method was removed from your account"
+# Every auth email in the project, per hour. Resend's free plan allows 100 a day and 3,000 a
+# month; 30 an hour lets a whole group sign up at once, while one busy hour stays under a third
+# of the daily allowance.
+[remotes.production.auth.rate_limit]
+email_sent = 30
 
 [remotes.production.auth.mfa.totp]
 enroll_enabled = true
