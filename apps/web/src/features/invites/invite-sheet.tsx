@@ -119,6 +119,9 @@ function InviteRow({
   )
 }
 
+/** A revoked link that can still be brought back, until `until` (ms since epoch). */
+type Revoked = { invite: GroupInviteRow; wasLatest: boolean; until: number }
+
 /** A toast that brings back a revoked link, for when the panel is not there to offer it. */
 function offerUndo(onUndo: () => void) {
   toast(t('invites.revoked'), {
@@ -173,20 +176,22 @@ export function InvitePanel({
     onError: (error) => toast.error(errorMessage(error)),
   })
 
-  // The last revoked link, offered back right where it was for a few seconds. A sheet blocks
-  // taps and focus outside it, so a toast's Undo would only close the sheet; in a sheet the
-  // toast waits for it to close instead. A reply that lands after the panel is gone goes
-  // straight to a toast.
-  const [undoable, setUndoable] = useState<{ invite: GroupInviteRow; wasLatest: boolean } | null>(
-    null,
-  )
+  // Each revoked link, offered back right where it was for a few seconds. A sheet blocks taps
+  // and focus outside it, so a toast's Undo would only close the sheet; in a sheet the toasts
+  // wait for it to close instead. A reply that lands after the panel is gone goes straight to
+  // a toast.
+  const [undoable, setUndoable] = useState<Revoked[]>([])
   const undoableRef = useRef(undoable)
   useEffect(() => {
     undoableRef.current = undoable
   }, [undoable])
   useEffect(() => {
-    if (!undoable) return
-    const timer = window.setTimeout(() => setUndoable(null), UNDO_MS)
+    const first = undoable[0]
+    if (!first) return
+    const timer = window.setTimeout(
+      () => setUndoable((list) => list.filter((u) => u !== first)),
+      first.until - Date.now(),
+    )
     return () => window.clearTimeout(timer)
   }, [undoable])
 
@@ -208,15 +213,15 @@ export function InvitePanel({
     mounted.current = true
     return () => {
       mounted.current = false
-      const left = undoableRef.current
-      if (left && inSheet) offerUndo(() => void restoreRef.current(left.invite))
+      if (!inSheet) return
+      for (const { invite } of undoableRef.current) {
+        offerUndo(() => void restoreRef.current(invite))
+      }
     }
   }, [inSheet])
 
-  const undo = () => {
-    if (!undoable) return
-    const { invite } = undoable
-    setUndoable(null)
+  const undo = (invite: GroupInviteRow) => {
+    setUndoable((list) => list.filter((u) => u.invite.id !== invite.id))
     // Back in its place at once (newest first, as the list is read); the refetch confirms it.
     queryClient.setQueryData<GroupInviteRow[]>(key, (rows) =>
       [...(rows ?? []).filter((r) => r.id !== invite.id), invite].sort((a, b) =>
@@ -241,8 +246,10 @@ export function InvitePanel({
       toast.error(errorMessage(error))
     },
     onSuccess: (_data, invite, context) => {
-      if (mounted.current) setUndoable({ invite, wasLatest: context.wasLatest })
-      else offerUndo(() => void restoreRef.current(invite))
+      if (mounted.current) {
+        const until = Date.now() + UNDO_MS
+        setUndoable((list) => [...list, { invite, wasLatest: context.wasLatest, until }])
+      } else offerUndo(() => void restoreRef.current(invite))
     },
   })
 
@@ -269,10 +276,19 @@ export function InvitePanel({
         : t('invites.summary.expires', { count: Number(expiry) }),
   })
   const settingsId = `invite-settings-${group.id}`
+  const byNewest = (a: { invite: GroupInviteRow }, b: { invite: GroupInviteRow }) =>
+    b.invite.created_at.localeCompare(a.invite.created_at)
+  const revokedLatest = undoable.filter((u) => u.wasLatest).sort(byNewest)
+  const olderSlots = [
+    ...others.map((invite) => ({ invite, revoked: false })),
+    ...undoable.filter((u) => !u.wasLatest).map(({ invite }) => ({ invite, revoked: true })),
+  ].sort(byNewest)
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
-      {undoable?.wasLatest && <RevokedNote onUndo={undo} />}
+      {revokedLatest.map(({ invite }) => (
+        <RevokedNote key={invite.id} onUndo={() => undo(invite)} />
+      ))}
       {invites.isPending ? (
         <Skeleton className="h-32" />
       ) : latest ? (
@@ -282,7 +298,7 @@ export function InvitePanel({
           groupName={group.name}
           onRevoke={() => revoke.mutate(latest)}
         />
-      ) : intro && !undoable ? (
+      ) : intro && undoable.length === 0 ? (
         <p className="text-pretty text-mute">{t('invites.intro', { group: group.name })}</p>
       ) : null}
 
@@ -369,26 +385,27 @@ export function InvitePanel({
         </Button>
       </div>
 
-      {(others.length > 0 || (undoable && !undoable.wasLatest)) && (
+      {olderSlots.length > 0 && (
         <section aria-labelledby={`invites-${group.id}`} className="flex min-w-0 flex-col gap-3">
           <h3 id={`invites-${group.id}`} className="text-sm font-bold text-mute">
             {t('invites.active')}
           </h3>
           <ul className="flex flex-col gap-2">
-            {undoable && !undoable.wasLatest && (
-              <li>
-                <RevokedNote onUndo={undo} />
-              </li>
+            {olderSlots.map(({ invite, revoked }) =>
+              revoked ? (
+                <li key={invite.id}>
+                  <RevokedNote onUndo={() => undo(invite)} />
+                </li>
+              ) : (
+                <InviteRow
+                  key={invite.id}
+                  invite={invite}
+                  fresh={invite.id === fresh}
+                  groupName={group.name}
+                  onRevoke={() => revoke.mutate(invite)}
+                />
+              ),
             )}
-            {others.map((invite) => (
-              <InviteRow
-                key={invite.id}
-                invite={invite}
-                fresh={invite.id === fresh}
-                groupName={group.name}
-                onRevoke={() => revoke.mutate(invite)}
-              />
-            ))}
           </ul>
         </section>
       )}
