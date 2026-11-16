@@ -240,7 +240,7 @@ otp_expiry = 3600
 # [remotes.production.auth.email.smtp] below.
 
 # Branded auth email, shared by the local stack and production (the remote block inherits these).
-# content_path is relative to the repo root. Every link is {{ .ConfirmationURL }}, the
+# content_path is relative to the repo root. Every action link is {{ .ConfirmationURL }}, the
 # /auth/v1/verify link that apps/web/e2e/support/mail.ts looks for. The app never calls
 # inviteUserByEmail (group invites are Potluck's own links), so there is no invite template.
 [auth.email.template.confirmation]

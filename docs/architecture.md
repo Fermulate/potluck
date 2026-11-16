@@ -19,7 +19,7 @@ flowchart LR
 
   frankfurter[("Frankfurter API<br/>ECB reference rates")]
   pushsvc[("Browser push services<br/>FCM, Mozilla, Apple")]
-  smtp[("Supabase SMTP<br/>auth emails")]
+  smtp[("Resend SMTP<br/>auth emails")]
 
   member --> web
   guest --> web
