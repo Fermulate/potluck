@@ -32,17 +32,18 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 
 ### Secrets
 
-| Name                                   | Used for                                                                                 |
-| -------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`                 | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account        |
-| `SUPABASE_ACCESS_TOKEN`                | Supabase CLI (personal access token from the dashboard)                                  |
-| `SUPABASE_DB_PASSWORD`                 | Optional. The pinned CLI signs in with a temporary role made from the access token       |
-| `SUPABASE_URL`                         | `keepalive.yml` daily ping                                                               |
-| `SUPABASE_PUBLISHABLE_KEY`             | `keepalive.yml` daily ping                                                               |
-| `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push` for Google sign in, which is on (`production` environment secret) |
-| `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`  | `supabase config push`, once Apple sign in is enabled (`production` environment secret)  |
+| Name                                   | Used for                                                                                                       |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`                 | Wrangler. Needs the "Edit Cloudflare Workers" template permissions on the account                              |
+| `SUPABASE_ACCESS_TOKEN`                | Supabase CLI (personal access token from the dashboard)                                                        |
+| `SUPABASE_DB_PASSWORD`                 | Optional. The pinned CLI signs in with a temporary role made from the access token                             |
+| `SUPABASE_URL`                         | `keepalive.yml` daily ping                                                                                     |
+| `SUPABASE_PUBLISHABLE_KEY`             | `keepalive.yml` daily ping                                                                                     |
+| `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push` for Google sign in, which is on (`production` environment secret)                       |
+| `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`  | `supabase config push`, once Apple sign in is enabled (`production` environment secret)                        |
+| `SUPABASE_AUTH_SMTP_PASSWORD`          | `supabase config push`: the Resend API key auth email is sent with (`production` environment secret). Required |
 
-Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without `SUPABASE_ACCESS_TOKEN` the `migrate` job logs a notice and skips. That keeps forks green.
+Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without `SUPABASE_ACCESS_TOKEN` the `migrate` job logs a notice and skips. That keeps forks green. The one exception: once `SUPABASE_ACCESS_TOKEN` is there, `migrate` fails before touching production if `SUPABASE_AUTH_SMTP_PASSWORD` is empty. `config.toml` turns custom SMTP on for production, and the CLI never sends an unset `env()` secret, so without the guard a first push would point auth email at Resend with no password.
 
 ## What a production deploy does
 
@@ -66,10 +67,13 @@ Migrations go first so the database is never behind the client. Because migratio
 
 - `auth.site_url` is the custom domain. `additional_redirect_urls`: the custom domain, the old workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
 - `minimum_password_length = 8`, email confirmations on (seats and email-bound invites rely on it, see [security](security.md#sign-in)), one email per 60 s per address.
+- Auth email goes out through Resend (`[remotes.production.auth.email.smtp]`: `smtp.resend.com:465`, user `resend`, password from `SUPABASE_AUTH_SMTP_PASSWORD`, sent as `Potluck <no-reply@fermulate.com>`).
+- At most 30 auth emails an hour across the project (`[remotes.production.auth.rate_limit] email_sent`). Resend's free plan allows 100 a day and 3,000 a month; 30 lets a group sign up together while one busy hour stays under a third of the daily allowance.
 - Google sign in on (`[remotes.production.auth.external.google]`, client secret from `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`).
-- Security notice email subjects (password, email address and verification method changes) are Supabase's defaults, because the built-in sender refuses custom ones. They go once a custom SMTP provider is set ([launch checklist](launch-checklist.md#3-email)).
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.
+
+Shared by both, and so pushed to production too: the branded auth email templates in `supabase/templates/` (sign up confirmation, sign in link, password reset, email change, the reauthentication code) and the security notices (password, email, two-step sign in, and a sign in method linked or removed), each with a Potluck subject (`[auth.email.template.*]`, `[auth.email.notification.*]`). `content_path` is relative to the repo root. Every link in them is `{{ .ConfirmationURL }}`, which `apps/web/e2e/support/mail.ts` reads. The local stack picks up template changes on its next `supabase start`, not on `db reset`.
 
 `verify_jwt` per function (`[functions.*]`) is applied by `supabase functions deploy`.
 
@@ -150,7 +154,7 @@ You can run your own Potluck on your own Supabase project and Cloudflare account
 6. **Set edge function secrets and Vault entries** as above, with your URLs.
 7. **Push to `main`.** Once CI is green, the deploy workflow applies migrations, pushes auth config, deploys functions and the web app, and smoke tests it.
 8. **Backfill FX rates** with the `fx-sync?from=` call.
-9. **Auth email.** The built-in Supabase SMTP is rate limited and meant for testing. For real users, configure your own SMTP server under `[auth.email.smtp]` or in the dashboard.
+9. **Auth email.** Production sends through Resend from `fermulate.com`. Point `[remotes.production.auth.email.smtp]` at your own SMTP server and sender, and set `SUPABASE_AUTH_SMTP_PASSWORD` (the deploy stops without it). Supabase's built-in sender only reaches your Supabase team and refuses custom templates, so it cannot replace this.
 
 `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` secrets keep a free project from pausing; skip them on a paid plan.
 

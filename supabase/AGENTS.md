@@ -17,6 +17,11 @@ repeating expenses, guests, two-step sign in, seats, notifications):
   no Deno imports, tested by `pnpm test:functions` (Node's test runner, `*.test.ts`).
   `verify_jwt` per function is in `config.toml`; auth schemes are in `docs/architecture.md`.
 - `seed.sql`: demo data written through the real RPCs. `snippets/`: local perf data only.
+- `templates/*.html`: Supabase Auth email bodies (Go templates, colours inlined, not run through
+  prettier), wired in `config.toml` (`[auth.email.template.*]`, `[auth.email.notification.*]`) for
+  local and production. Links must stay `{{ .ConfirmationURL }}`: e2e `support/mail.ts` reads them.
+  A running stack only picks up changes on `supabase start`. Production sends through Resend SMTP
+  ([deployment](../docs/deployment.md#supabase-config-push)).
 
 ## Writing a migration
 
