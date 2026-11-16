@@ -34,6 +34,8 @@ type UsesChoice = '1' | '5' | '25' | 'unlimited'
 type ExpiryChoice = '1' | '7' | '30' | 'never'
 
 const DAY = 24 * 60 * 60 * 1000
+/** How long a revoked link can be brought back from the note or the toast. */
+const UNDO_MS = 8000
 
 function inviteMeta(invite: GroupInviteRow, timeZone: string): string {
   return [
@@ -117,14 +119,25 @@ function InviteRow({
   )
 }
 
+/** A toast that brings back a revoked link, for when the panel is not there to offer it. */
+function offerUndo(onUndo: () => void) {
+  toast(t('invites.revoked'), {
+    duration: UNDO_MS,
+    action: { label: t('common.undo'), onClick: onUndo },
+  })
+}
+
 /** Create, share and revoke invite links for one group. */
 export function InvitePanel({
   group,
   intro = true,
+  inSheet = false,
 }: {
   group: GroupDetail
   /** Show the one-line explainer before the first link exists. Off when the host page has its own. */
   intro?: boolean
+  /** Hosted in a sheet: a link revoked just before it closes is offered back in a toast. */
+  inSheet?: boolean
 }) {
   const queryClient = useQueryClient()
   const invites = useQuery(groupInvitesQueryOptions(supabase, group.id))
@@ -160,15 +173,21 @@ export function InvitePanel({
     onError: (error) => toast.error(errorMessage(error)),
   })
 
-  // The last revoked link, offered back right where it was. A sheet blocks taps and focus
-  // outside it, so a toast's Undo would only close the sheet; the toast waits for the panel
-  // to go away instead.
+  // The last revoked link, offered back right where it was for a few seconds. A sheet blocks
+  // taps and focus outside it, so a toast's Undo would only close the sheet; in a sheet the
+  // toast waits for it to close instead. A reply that lands after the panel is gone goes
+  // straight to a toast.
   const [undoable, setUndoable] = useState<{ invite: GroupInviteRow; wasLatest: boolean } | null>(
     null,
   )
   const undoableRef = useRef(undoable)
   useEffect(() => {
     undoableRef.current = undoable
+  }, [undoable])
+  useEffect(() => {
+    if (!undoable) return
+    const timer = window.setTimeout(() => setUndoable(null), UNDO_MS)
+    return () => window.clearTimeout(timer)
   }, [undoable])
 
   const restore = async (invite: GroupInviteRow) => {
@@ -184,17 +203,15 @@ export function InvitePanel({
     restoreRef.current = restore
   })
 
-  useEffect(
-    () => () => {
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
       const left = undoableRef.current
-      if (!left) return
-      toast(t('invites.revoked'), {
-        duration: 8000,
-        action: { label: t('common.undo'), onClick: () => void restoreRef.current(left.invite) },
-      })
-    },
-    [],
-  )
+      if (left && inSheet) offerUndo(() => void restoreRef.current(left.invite))
+    }
+  }, [inSheet])
 
   const undo = () => {
     if (!undoable) return
@@ -224,7 +241,8 @@ export function InvitePanel({
       toast.error(errorMessage(error))
     },
     onSuccess: (_data, invite, context) => {
-      setUndoable({ invite, wasLatest: context.wasLatest })
+      if (mounted.current) setUndoable({ invite, wasLatest: context.wasLatest })
+      else offerUndo(() => void restoreRef.current(invite))
     },
   })
 
@@ -514,7 +532,7 @@ export function InviteSheet({
         closeLabel={t('common.close')}
       >
         <div className="pt-2">
-          <InvitePanel group={group} />
+          <InvitePanel group={group} inSheet />
         </div>
       </SheetContent>
     </Sheet>
