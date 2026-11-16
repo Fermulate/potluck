@@ -35,7 +35,7 @@ The `migrate` job skips until `SUPABASE_ACCESS_TOKEN` exists (Supabase dashboard
 
 ### 3. Email
 
-Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production, so sign-ups beyond the limit wait. Notification email (new expenses, payments, the monthly summary, with one-click unsubscribe) is built but off: `app_config.email_notifications` is `false`, so nothing is queued. To send from `fermulate.com`:
+Auth email uses Supabase's built-in sender, which is rate limited and meant for testing. Email confirmation is on in production and must stay on (seats and email-bound invites trust a confirmed address). The built-in sender only delivers to members of the Supabase team, so until custom SMTP is set, people signing up with email never get their confirmation link; Google sign in works without it. Notification email (new expenses, payments, the monthly summary, with one-click unsubscribe) is built but off: `app_config.email_notifications` is `false`, so nothing is queued. To send from `fermulate.com`:
 
 1. Create a Resend account and verify the domain.
 2. Supabase dashboard, Authentication, SMTP settings: enter Resend's SMTP details (auth email).
@@ -61,7 +61,9 @@ Both buttons are hidden behind `app_config` flags (`google_auth`, `apple_auth`).
    secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
    ```
 
-4. `update public.app_config set value = 'true' where key = 'google_auth';` (or `apple_auth`).
+4. Turn the flag on in a migration, `update public.app_config set value = 'true' where key = 'google_auth';` (or `apple_auth`), and set it back to `false` in `supabase/seed.sql`, so local stacks, which have no provider, keep the button hidden.
+
+Google is on (client "Potluck web (production)" in the Google Cloud project `fermulate-potluck-prod`, flag set by `20261116230000_google_sign_in_on.sql`). Apple is still off.
 
 ### 5. Calendar import
 

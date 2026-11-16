@@ -13,7 +13,7 @@ import { errorMessage } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { supabase } from '@/lib/supabase'
 import { AuthLayout } from './auth-layout'
-import { CheckEmail, OAuthButtons, PasswordInput } from './auth-parts'
+import { CheckEmail, OAuthButtons, PasswordInput, PrivacyNote } from './auth-parts'
 
 export interface AuthPageProps {
   redirect?: string
@@ -86,16 +86,19 @@ export function SignInPage({ redirect, notice }: AuthPageProps) {
       subtitle={t('auth.signIn.subtitle')}
       notice={notice ?? (ended ? t('auth.signIn.sessionEnded') : undefined)}
       footer={
-        <p>
-          {t('auth.signIn.noAccount')}{' '}
-          <Link
-            to="/sign-up"
-            search={{ redirect }}
-            className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
-          >
-            {t('auth.signIn.createAccount')}
-          </Link>
-        </p>
+        <div className="grid gap-3">
+          <p>
+            {t('auth.signIn.noAccount')}{' '}
+            <Link
+              to="/sign-up"
+              search={{ redirect }}
+              className="font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+            >
+              {t('auth.signIn.createAccount')}
+            </Link>
+          </p>
+          <PrivacyNote />
+        </div>
       }
     >
       <OAuthButtons redirect={target} />

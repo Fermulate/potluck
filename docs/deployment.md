@@ -39,7 +39,7 @@ Set these under **Settings > Secrets and variables > Actions**. Variables are vi
 | `SUPABASE_DB_PASSWORD`                 | Optional. The pinned CLI signs in with a temporary role made from the access token       |
 | `SUPABASE_URL`                         | `keepalive.yml` daily ping                                                               |
 | `SUPABASE_PUBLISHABLE_KEY`             | `keepalive.yml` daily ping                                                               |
-| `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push`, once Google sign in is enabled (`production` environment secret) |
+| `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | `supabase config push` for Google sign in, which is on (`production` environment secret) |
 | `SUPABASE_AUTH_EXTERNAL_APPLE_SECRET`  | `supabase config push`, once Apple sign in is enabled (`production` environment secret)  |
 
 Missing credentials do not fail the workflow. Without `CLOUDFLARE_API_TOKEN` the web job builds and skips the upload. Without `SUPABASE_ACCESS_TOKEN` the `migrate` job logs a notice and skips. That keeps forks green.
@@ -65,7 +65,8 @@ Migrations go first so the database is never behind the client. Because migratio
 `supabase/config.toml` holds local settings at the top and production overrides under `[remotes.production]`. `supabase config push` applies the overrides when the linked project's ref matches `remotes.production.project_id`. Production differs from local in:
 
 - `auth.site_url` is the custom domain. `additional_redirect_urls`: the custom domain, the old workers.dev URL, every `*-potluck.potluck-web.workers.dev` preview, and localhost.
-- `minimum_password_length = 8`, email confirmations on, one email per 60 s per address.
+- `minimum_password_length = 8`, email confirmations on (seats and email-bound invites rely on it, see [security](security.md#sign-in)), one email per 60 s per address.
+- Google sign in on (`[remotes.production.auth.external.google]`, client secret from `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET`).
 - Security notice email subjects (password, email address and verification method changes) are Supabase's defaults, because the built-in sender refuses custom ones. They go once a custom SMTP provider is set ([launch checklist](launch-checklist.md#3-email)).
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.

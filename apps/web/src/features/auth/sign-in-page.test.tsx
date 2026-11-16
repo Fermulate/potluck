@@ -2,7 +2,9 @@ import { t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { HELP_PAGES } from '@/features/help/topics'
 import { confirmSession, endEndedSession } from '@/lib/auth'
+import { docsUrl } from '@/lib/docs'
 import { renderWithProviders } from '@/test/render'
 import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
 import { SignInPage } from './sign-in-page'
@@ -71,6 +73,15 @@ describe('SignInPage', () => {
     })
     await act(() => confirmSession())
     expect(await screen.findByText(t('auth.signIn.sessionEnded'))).toBeInTheDocument()
+  })
+
+  it("links to the guide's privacy page in a new tab", async () => {
+    renderPage()
+    const link = await screen.findByRole('link', {
+      name: `${t('auth.signUp.privacyLink')} (${t('help.newTab')})`,
+    })
+    expect(link).toHaveAttribute('href', docsUrl(HELP_PAGES.privacy))
+    expect(link).toHaveAttribute('target', '_blank')
   })
 
   it('never redirects off site after signing in', async () => {
