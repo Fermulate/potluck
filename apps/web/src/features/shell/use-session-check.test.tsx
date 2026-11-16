@@ -1,7 +1,7 @@
 import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearSessionEnded, sessionEndedHere } from '@/lib/auth'
-import { authCallsTo, resetDb, respondAuth } from '@/test/supabase'
+import { authCallsTo, emitAuth, resetDb, respondAuth } from '@/test/supabase'
 import { SESSION_CHECK_INTERVAL_MS, useSessionCheck } from './use-session-check'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -113,6 +113,35 @@ describe('useSessionCheck', () => {
     clearSessionEnded()
     expect(sessionEndedHere()).toBe(false)
   })
+
+  it('leaves the note even when auth-js drops the session inside the check', async () => {
+    clearSessionEnded()
+    // What supabase-js does for `session_not_found`: forget the session and announce the
+    // sign out before `getUser` returns.
+    respondAuth('getUser', async () => {
+      respondAuth('getSession', { data: { session: null } })
+      expect(sessionEndedHere()).toBe(false)
+      emitAuth('SIGNED_OUT')
+      return authError('AuthSessionMissingError', 400)
+    })
+    render(<Probe />)
+    await waitFor(() => expect(sessionEndedHere()).toBe(true))
+    // Nothing left to sign out: the session was already gone.
+    expect(authCallsTo('signOut')).toEqual([])
+    clearSessionEnded()
+  })
+
+  it.each([['session_not_found'], ['user_not_found']])(
+    'leaves the note when the check answers %s',
+    async (code) => {
+      clearSessionEnded()
+      respondAuth('getUser', authError('AuthApiError', 403, code))
+      render(<Probe />)
+      await waitFor(() => expect(authCallsTo('signOut')).toEqual([[{ scope: 'local' }]]))
+      expect(sessionEndedHere()).toBe(true)
+      clearSessionEnded()
+    },
+  )
 
   it('does not ask the server without a session', async () => {
     respondAuth('getSession', { data: { session: null } })

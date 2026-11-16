@@ -1,5 +1,5 @@
 import { moneyKeys, type ExpenseComment, type ExpenseWithSplits } from '@potluck/api'
-import { t } from '@potluck/i18n'
+import { formatMoney, setLocale, t } from '@potluck/i18n'
 import { Toaster } from '@potluck/ui'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -144,7 +144,9 @@ describe('ExpenseDetail', () => {
     })
     expect(await screen.findByText(t('expenses.detail.receivedBy', { name: 'Ben' }))).toBeVisible()
     expect(screen.getAllByText(t('expenses.refund.badge')).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(t('expenses.detail.getsBack', { amount: '$10.00' }))).toHaveLength(2)
+    // Ben and Cleo get back; under "You" it reads "get back".
+    expect(screen.getAllByText(t('expenses.detail.getsBack', { amount: '$10.00' }))).toHaveLength(1)
+    expect(screen.getByText(t('expenses.detail.you.getBack', { amount: '$10.00' }))).toBeVisible()
   })
 
   it('shows stored items with tax, tip and discount, and adjustments', async () => {
@@ -273,11 +275,33 @@ describe('ExpenseDetail', () => {
     ).closest('li')!
     expect(ben.querySelector('[data-tone="neutral"]')).not.toBeNull()
     expect(within(ben).getByText(t('expenses.detail.getsBack', { amount: '$20.00' }))).toBeVisible()
-    // My line: my share is what I owe.
-    const mine = screen
-      .getAllByText(t('expenses.detail.owes', { amount: '$10.00' }))[0]!
-      .closest('li')!
+    // My line: my share is what I owe, and it says so in the second person.
+    const mine = screen.getByText(t('expenses.detail.you.owe', { amount: '$10.00' })).closest('li')!
+    expect(mine).toHaveTextContent(t('common.you'))
     expect(mine.querySelector('[data-tone="owe"]')).not.toBeNull()
+    expect(screen.getAllByText(t('expenses.detail.owes', { amount: '$10.00' }))).toHaveLength(1)
+  })
+
+  it('speaks to the viewer on their own row in every language', async () => {
+    await setLocale('de')
+    try {
+      renderDetail({
+        amount_cents: 3000,
+        paid_by: BEN,
+        expense_payers: [{ user_id: BEN, paid_cents: 3000 }],
+      })
+      // Money formats with a no-break space, which the text matcher folds away.
+      const text = (key: 'expenses.detail.you.owe' | 'expenses.detail.owes') =>
+        t(key, { amount: formatMoney(1000, 'USD') }).replace(/\s/g, ' ')
+      const mine = (await screen.findByText(text('expenses.detail.you.owe'))).closest('li')!
+      expect(mine).toHaveTextContent(t('common.you'))
+      expect(mine).toHaveTextContent('schuldest')
+      const cleo = screen.getByText(text('expenses.detail.owes')).closest('li')!
+      expect(cleo).toHaveTextContent('Cleo')
+      expect(cleo).toHaveTextContent('schuldet')
+    } finally {
+      await setLocale('en')
+    }
   })
 
   it('is read only in an archived group', async () => {

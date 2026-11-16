@@ -115,7 +115,8 @@ export const expenses = {
     formerNote:
       '{names} saiu do grupo. A parte dessa pessoa fica como está enquanto a divisão e o valor não mudarem.',
     formerInSplit: 'Tire {names} da divisão para alterá-la.',
-    youBlocked: 'Você bloqueou {names}, então vocês não podem dividir uma despesa. Tire primeiro.',
+    youBlocked:
+      'Você bloqueou {names}, e não dá para dividir uma despesa com quem você bloqueou. Primeiro tire da despesa quem você bloqueou.',
     departedLocked: 'Alguém nesta despesa saiu do grupo, então os valores não podem mudar.',
     archivedTitle: 'Este grupo está arquivado',
     archived:
@@ -239,6 +240,14 @@ export const expenses = {
     paidOnly: 'pagou {amount}',
     gotOnly: 'recebeu {amount}',
     getsBack: 'recebe {amount} de volta',
+    you: {
+      owe: 'deve {amount}',
+      getBack: 'recebe {amount} de volta',
+      paidAndShare: 'pagou {paid}, sua parte {share}',
+      gotAndShare: 'recebeu {paid}, sua parte {share}',
+      paidOnly: 'pagou {amount}',
+      gotOnly: 'recebeu {amount}',
+    },
     notFound: 'Essa despesa sumiu. Talvez tenha sido excluída.',
     converted: '{amount} em {currency} a {rate}',
     loading: 'Carregando despesa',

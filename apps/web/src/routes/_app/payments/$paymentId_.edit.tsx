@@ -9,5 +9,15 @@ function EditPaymentRoute() {
   const { paymentId } = Route.useParams()
   const navigate = useNavigate()
   const back = () => void navigate({ to: '/payments/$paymentId', params: { paymentId } })
-  return <EditPayment key={paymentId} paymentId={paymentId} onClose={back} onDone={back} />
+  const refuse = () =>
+    void navigate({ to: '/payments/$paymentId', params: { paymentId }, replace: true })
+  return (
+    <EditPayment
+      key={paymentId}
+      paymentId={paymentId}
+      onClose={back}
+      onDone={back}
+      onNotAllowed={refuse}
+    />
+  )
 }

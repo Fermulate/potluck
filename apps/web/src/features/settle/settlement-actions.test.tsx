@@ -44,6 +44,7 @@ function setup(settlement: Settlement, role: 'owner' | 'admin' | 'member') {
         settlement={settlement}
         viewerId={ME}
         viewerRole={role}
+        archived={false}
         label="Ben paid Cleo $20.00"
       />
       <Toaster label="Notifications" />
@@ -60,7 +61,13 @@ describe('SettlementActions', () => {
 
   it('is hidden from a member who had nothing to do with the payment', () => {
     renderWithClient(
-      <SettlementActions settlement={payment()} viewerId={ME} viewerRole="member" label="x" />,
+      <SettlementActions
+        settlement={payment()}
+        viewerId={ME}
+        viewerRole="member"
+        archived={false}
+        label="x"
+      />,
     )
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
@@ -94,6 +101,19 @@ describe('SettlementActions', () => {
       'href',
       '/payments/s1/edit',
     )
+  })
+
+  it('offers nothing in an archived group, not even to its owner who paid', () => {
+    renderWithClient(
+      <SettlementActions
+        settlement={payment({ from_user: ME, created_by: ME })}
+        viewerId={ME}
+        viewerRole="owner"
+        archived
+        label="x"
+      />,
+    )
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('puts the deleted payment back when the server refuses', async () => {

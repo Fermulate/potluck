@@ -336,6 +336,10 @@ export function PaymentForm({
   // What was owed when this payment was first sent. A retry keeps it: by then the debts may
   // already count the payment, if the lost try landed.
   const owedWhenSent = useRef(0)
+  // The same figure for the screen: while the payment is held after a lost reply, the debts
+  // refetched meanwhile may already count it, and "You owe €20" above a held €30 reads as
+  // paying too much. The held form keeps showing the debt as it was when sent.
+  const [sentAgainst, setSentAgainst] = useState<number | null>(null)
   const pay = useMutation({
     onMutate: () => setUnreached(false),
     mutationFn: (cents: number) => {
@@ -394,13 +398,17 @@ export function PaymentForm({
     if (!online) return
     setSubmitted(true)
     if (problem || !amount) return
-    if (!unreached) owedWhenSent.current = owed
+    if (!unreached) {
+      owedWhenSent.current = owed
+      setSentAgainst(owed)
+    }
     pay.mutate(amount)
   }
 
   // While a payment is out, and after one whose reply was lost, the form is held as sent: a retry
   // repeats exactly that payment (same request id), so nothing typed meanwhile could be dropped.
   const held = pay.isPending || unreached
+  const shownOwed = held && sentAgainst !== null ? sentAgainst : owed
 
   const swap = () => {
     setFromUser(toUser)
@@ -418,12 +426,12 @@ export function PaymentForm({
         : t('settle.between', { from: nameOf(payer), to: nameOf(payee) })
   const fmt = (cents: number) => formatMoney(cents, group.currency)
   const debtLine =
-    owed > 0
+    shownOwed > 0
       ? fromUser === me
-        ? t('settle.youOwe', { name: firstName(payee.display_name), amount: fmt(owed) })
+        ? t('settle.youOwe', { name: firstName(payee.display_name), amount: fmt(shownOwed) })
         : toUser === me
-          ? t('settle.owesYou', { name: firstName(payer.display_name), amount: fmt(owed) })
-          : t('settle.owes', { from: nameOf(payer), to: nameOf(payee), amount: fmt(owed) })
+          ? t('settle.owesYou', { name: firstName(payer.display_name), amount: fmt(shownOwed) })
+          : t('settle.owes', { from: nameOf(payer), to: nameOf(payee), amount: fmt(shownOwed) })
       : fromUser === me
         ? t('settle.noDebt', { name: firstName(payee.display_name) })
         : toUser === me

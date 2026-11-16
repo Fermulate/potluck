@@ -64,6 +64,14 @@ export function PayersLine({
   )
 }
 
+/** "owes €5" or "gets back €5", or for the viewer's own row "owe" and "get back". */
+function owesOrGetsBack(isMe: boolean, getsBack: boolean, amount: string): string {
+  if (getsBack) {
+    return t(isMe ? 'expenses.detail.you.getBack' : 'expenses.detail.getsBack', { amount })
+  }
+  return t(isMe ? 'expenses.detail.you.owe' : 'expenses.detail.owes', { amount })
+}
+
 /**
  * Everyone on the expense: their share on the right, and underneath what they paid (or got
  * back) and how the share was worked out. Payers who are not in the split are listed too, so
@@ -121,19 +129,31 @@ export function SplitCard({
           const share = s?.share_cents ?? 0
           const paid = paidBy.get(id)
           const isMe = id === me
+          // Your own row sits under "You", so its verbs agree with you ("You / owe").
           const line =
             paid !== undefined
               ? s
-                ? t(e.is_refund ? 'expenses.detail.gotAndShare' : 'expenses.detail.paidAndShare', {
-                    paid: money(paid),
-                    share: money(share),
-                  })
-                : t(e.is_refund ? 'expenses.detail.gotOnly' : 'expenses.detail.paidOnly', {
-                    amount: money(paid),
-                  })
-              : e.is_refund
-                ? t('expenses.detail.getsBack', { amount: money(share) })
-                : t('expenses.detail.owes', { amount: money(share) })
+                ? t(
+                    e.is_refund
+                      ? isMe
+                        ? 'expenses.detail.you.gotAndShare'
+                        : 'expenses.detail.gotAndShare'
+                      : isMe
+                        ? 'expenses.detail.you.paidAndShare'
+                        : 'expenses.detail.paidAndShare',
+                    { paid: money(paid), share: money(share) },
+                  )
+                : t(
+                    e.is_refund
+                      ? isMe
+                        ? 'expenses.detail.you.gotOnly'
+                        : 'expenses.detail.gotOnly'
+                      : isMe
+                        ? 'expenses.detail.you.paidOnly'
+                        : 'expenses.detail.paidOnly',
+                    { amount: money(paid) },
+                  )
+              : owesOrGetsBack(isMe, e.is_refund, money(share))
           return (
             <li
               key={id}
@@ -171,9 +191,7 @@ export function SplitCard({
                       sign * (paid - share) > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
                     )}
                   >
-                    {sign * (paid - share) > 0
-                      ? t('expenses.detail.getsBack', { amount: money(sign * (paid - share)) })
-                      : t('expenses.detail.owes', { amount: money(-sign * (paid - share)) })}
+                    {owesOrGetsBack(isMe, sign * (paid - share) > 0, money(Math.abs(paid - share)))}
                   </span>
                 )}
               </span>

@@ -1,8 +1,8 @@
 import type * as ApiModule from '@potluck/api'
 import type * as AuthModule from '@/lib/auth'
 import { t } from '@potluck/i18n'
-import { Toaster } from '@potluck/ui'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { toast, Toaster } from '@potluck/ui'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { encode } from 'uqr'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { inviteUrl } from '@/lib/app-url'
@@ -54,10 +54,25 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
 
 vi.mock('./share', () => ({ shareInvite: vi.fn(async () => undefined), copyText: vi.fn() }))
 
+const link = {
+  id: 'i-9',
+  code: 'zzzzzzzzzz99',
+  group_id: 'g-hike',
+  role: 'member' as const,
+  max_uses: null,
+  uses: 0,
+  expires_at: null,
+  email: null,
+  created_at: '2026-11-05T00:00:00Z',
+  created_by: VIEWER,
+  revoked_at: null,
+}
+
 describe('InvitePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     api.open = []
+    toast.dismiss()
   })
 
   it('puts the newest open link up front, ready to copy', async () => {
@@ -84,28 +99,9 @@ describe('InvitePanel', () => {
     expect(screen.getByRole('button', { name: 'New link' })).toBeInTheDocument()
   })
 
-  it('keeps Revoke apart from Copy, and offers Undo after revoking', async () => {
-    api.open = [
-      {
-        id: 'i-9',
-        code: 'zzzzzzzzzz99',
-        group_id: 'g-hike',
-        role: 'member',
-        max_uses: null,
-        uses: 0,
-        expires_at: null,
-        email: null,
-        created_at: '2026-11-05T00:00:00Z',
-        created_by: VIEWER,
-        revoked_at: null,
-      },
-    ]
-    renderWithProviders(
-      <>
-        <InvitePanel group={group()} />
-        <Toaster label="Notifications" />
-      </>,
-    )
+  it('keeps Revoke apart from Copy, and offers Undo in its place after revoking', async () => {
+    api.open = [link]
+    renderWithProviders(<InvitePanel group={group()} />)
     const latest = await screen.findByRole('region', { name: 'Your link' })
     const copy = within(latest).getByRole('button', { name: 'Copy link' })
     const revoke = within(latest).getByRole('button', { name: t('invites.revoke') })
@@ -113,9 +109,90 @@ describe('InvitePanel', () => {
     expect(copy.parentElement).not.toBe(revoke.parentElement)
     fireEvent.click(revoke)
     await waitFor(() => expect(api.revokeInvite).toHaveBeenCalledTimes(1))
+    // Undo is in the panel itself (a sheet blocks the toast), with focus on it.
+    const note = await screen.findByRole('status')
+    expect(note).toHaveTextContent(t('invites.revoked'))
+    const undo = within(note).getByRole('button', { name: t('common.undo') })
+    expect(undo).toHaveFocus()
+    fireEvent.click(undo)
+    await waitFor(() => expect(api.restoreInvite).toHaveBeenCalledTimes(1))
+    expect(api.restoreInvite.mock.calls[0]).toEqual([expect.anything(), 'i-9'])
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('offers Undo in a toast once the sheet is gone', async () => {
+    api.open = [link]
+    render(<Toaster label="Notifications" />)
+    const { router } = renderWithProviders(<InvitePanel group={group()} inSheet />)
+    const latest = await screen.findByRole('region', { name: 'Your link' })
+    fireEvent.click(within(latest).getByRole('button', { name: t('invites.revoke') }))
+    await screen.findByRole('status')
+    // One Undo while the panel is open: no toast behind a sheet.
+    expect(screen.getAllByRole('button', { name: t('common.undo') })).toHaveLength(1)
+
+    await act(() => router.navigate({ to: '/home' }))
+    await screen.findByText('elsewhere')
     fireEvent.click(await screen.findByRole('button', { name: t('common.undo') }))
     await waitFor(() => expect(api.restoreInvite).toHaveBeenCalledTimes(1))
     expect(api.restoreInvite.mock.calls[0]).toEqual([expect.anything(), 'i-9'])
+  })
+
+  it('offers Undo in a toast when the revoke lands after the sheet closed', async () => {
+    api.open = [link]
+    let land = () => {}
+    api.revokeInvite.mockImplementationOnce(
+      () => new Promise<undefined>((resolve) => (land = () => resolve(undefined))),
+    )
+    render(<Toaster label="Notifications" />)
+    const { router } = renderWithProviders(<InvitePanel group={group()} inSheet />)
+    const latest = await screen.findByRole('region', { name: 'Your link' })
+    fireEvent.click(within(latest).getByRole('button', { name: t('invites.revoke') }))
+    await waitFor(() => expect(api.revokeInvite).toHaveBeenCalledTimes(1))
+
+    await act(() => router.navigate({ to: '/home' }))
+    await screen.findByText('elsewhere')
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: t('common.undo') })).not.toBeInTheDocument()
+    await act(async () => land())
+    fireEvent.click(await screen.findByRole('button', { name: t('common.undo') }))
+    await waitFor(() => expect(api.restoreInvite).toHaveBeenCalledTimes(1))
+    expect(api.restoreInvite.mock.calls[0]).toEqual([expect.anything(), 'i-9'])
+  })
+
+  it('on a page, keeps Undo to the note, which goes after a few seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      api.open = [link]
+      render(<Toaster label="Notifications" />)
+      const { router } = renderWithProviders(<InvitePanel group={group()} />)
+      const latest = await screen.findByRole('region', { name: 'Your link' })
+      fireEvent.click(within(latest).getByRole('button', { name: t('invites.revoke') }))
+      await screen.findByRole('status')
+      act(() => vi.advanceTimersByTime(8000))
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: t('common.undo') })).not.toBeInTheDocument(),
+      )
+
+      await act(() => router.navigate({ to: '/home' }))
+      await screen.findByText('elsewhere')
+      expect(screen.queryByRole('button', { name: t('common.undo') })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('on a page, raises no toast when the panel goes while the note is up', async () => {
+    api.open = [link]
+    render(<Toaster label="Notifications" />)
+    const { router } = renderWithProviders(<InvitePanel group={group()} />)
+    const latest = await screen.findByRole('region', { name: 'Your link' })
+    fireEvent.click(within(latest).getByRole('button', { name: t('invites.revoke') }))
+    await screen.findByRole('status')
+
+    await act(() => router.navigate({ to: '/home' }))
+    await screen.findByText('elsewhere')
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: t('common.undo') })).not.toBeInTheDocument()
   })
 
   it('creates a member link in one tap, with sensible defaults', async () => {

@@ -374,6 +374,7 @@ export function ExpensesTab({
                                 settlement={item.settlement}
                                 viewerId={me}
                                 viewerRole={myRole}
+                                archived={archived}
                                 blockedInTab={blockedInTab}
                                 label={settlementText(item.settlement, me, nameOf)}
                               />

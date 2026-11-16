@@ -5,18 +5,21 @@ import { Button, ConfirmDialog, IconButton, Sheet, SheetContent } from '@potluck
 import { Link } from '@tanstack/react-router'
 import { MoreHorizontal, PencilLine, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { mayEditPayment } from './payment-rules'
 import { useDeletePayment } from './use-delete-payment'
 
 /**
  * The menu on a recorded payment: edit or delete it. The server's rule (`update_settlement`,
  * `delete_settlement`): the payer, the person paid, whoever recorded it, or an owner or admin.
- * Deleting asks first, then offers Undo.
+ * Edit follows `mayEditPayment`, the rule behind the edit route. An archived group is read only,
+ * so it has no menu. Deleting asks first, then offers Undo.
  */
 export function SettlementActions({
   settlement,
   viewerId,
   viewerRole,
   label,
+  archived,
   blockedInTab = false,
 }: {
   settlement: Settlement
@@ -24,6 +27,8 @@ export function SettlementActions({
   viewerRole: GroupRole | undefined
   /** What the payment says in the list, e.g. "You paid Kai $20.00". */
   label: string
+  /** The group is archived: nothing here may change. */
+  archived: boolean
   /**
    * The viewer is the blocked side of this 1:1 tab (`useBlockedInTab`; undefined while it is
    * being checked): they may change only the payments they recorded, so the menu waits.
@@ -36,8 +41,11 @@ export function SettlementActions({
   const isParty = [settlement.from_user, settlement.to_user, settlement.created_by].includes(
     viewerId,
   )
+  if (archived) return null
   if (blockedInTab !== false && settlement.created_by !== viewerId) return null
   if (!can(viewerRole, 'settlement.delete', { isParty })) return null
+  const mayEdit =
+    mayEditPayment(settlement, { viewerId, role: viewerRole, blockedInTab, archived }) === true
 
   return (
     <>
@@ -50,7 +58,7 @@ export function SettlementActions({
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent title={label} closeLabel={t('common.close')} size="sm">
           <div className="grid gap-2">
-            {can(viewerRole, 'settlement.edit', { isParty }) && (
+            {mayEdit && (
               <Button asChild block variant="secondary">
                 <Link
                   to="/payments/$paymentId/edit"

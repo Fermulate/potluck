@@ -116,7 +116,7 @@ export const expenses = {
       '{names} hat die Gruppe verlassen. Der Anteil bleibt, solange Aufteilung und Betrag gleich bleiben.',
     formerInSplit: 'Nimm {names} aus der Aufteilung, um sie zu ändern.',
     youBlocked:
-      'Du hast {names} blockiert, darum könnt ihr keine Ausgabe teilen. Nimm sie zuerst heraus.',
+      'Du hast {names} blockiert, und mit blockierten Personen kannst du keine Ausgabe teilen. Nimm sie zuerst heraus.',
     departedLocked:
       'Jemand aus dieser Ausgabe hat die Gruppe verlassen, deshalb lassen sich die Beträge nicht ändern.',
     archivedTitle: 'Diese Gruppe ist archiviert',
@@ -245,6 +245,14 @@ export const expenses = {
     paidOnly: 'hat {amount} bezahlt',
     gotOnly: 'hat {amount} bekommen',
     getsBack: 'bekommt {amount} zurück',
+    you: {
+      owe: 'schuldest {amount}',
+      getBack: 'bekommst {amount} zurück',
+      paidAndShare: 'hast {paid} bezahlt, Anteil {share}',
+      gotAndShare: 'hast {paid} bekommen, Anteil {share}',
+      paidOnly: 'hast {amount} bezahlt',
+      gotOnly: 'hast {amount} bekommen',
+    },
     notFound: 'Diese Ausgabe hat sich verlaufen. Vielleicht wurde sie gelöscht.',
     converted: '{amount} in {currency} zum Kurs {rate}',
     loading: 'Ausgabe wird geladen',

@@ -115,7 +115,8 @@ export const expenses = {
     formerNote:
       '{names} dejó el grupo. Su parte se queda igual mientras no cambien el reparto ni el importe.',
     formerInSplit: 'Saca a {names} del reparto para cambiarlo.',
-    youBlocked: 'Bloqueaste a {names}, así que no pueden compartir un gasto. Quítalo primero.',
+    youBlocked:
+      'Bloqueaste a {names}, y no puedes compartir un gasto con alguien bloqueado. Primero quita del gasto a quien bloqueaste.',
     departedLocked:
       'Alguien de este gasto dejó el grupo, así que los importes no se pueden cambiar.',
     archivedTitle: 'Este grupo está archivado',
@@ -239,6 +240,14 @@ export const expenses = {
     paidOnly: 'pagó {amount}',
     gotOnly: 'recibió {amount}',
     getsBack: 'recupera {amount}',
+    you: {
+      owe: 'debes {amount}',
+      getBack: 'recuperas {amount}',
+      paidAndShare: 'pagaste {paid}, tu parte {share}',
+      gotAndShare: 'recibiste {paid}, tu parte {share}',
+      paidOnly: 'pagaste {amount}',
+      gotOnly: 'recibiste {amount}',
+    },
     notFound: 'Ese gasto se nos escapó. Puede que lo hayan eliminado.',
     converted: '{amount} en {currency} a {rate}',
     loading: 'Cargando gasto',

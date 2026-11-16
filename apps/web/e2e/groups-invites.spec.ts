@@ -54,4 +54,22 @@ test('create a group, share an invite, and a signed out friend joins', async ({
   // The owner sees the new member.
   await page.reload()
   await expect(page.getByText(friend.name).first()).toBeVisible()
+
+  // Revoking from the invite sheet by mistake: one tap on Undo, right there, brings it back.
+  await page.getByRole('button', { name: t('members.invite') }).click()
+  const inviteSheet = page.getByRole('dialog', { name: t('invites.title') })
+  const sheetLink = inviteSheet.getByRole('region', { name: t('invites.latest') })
+  await expect(sheetLink.getByText(`/join/${code}`)).toBeVisible()
+  await sheetLink.getByRole('button', { name: t('invites.revoke') }).click()
+  await expect(inviteSheet.getByText(t('invites.revoked'))).toBeVisible()
+  await expect(sheetLink).toBeHidden()
+  await inviteSheet.getByRole('button', { name: t('common.undo') }).click()
+  await expect(inviteSheet).toBeVisible()
+  await expect(sheetLink.getByText(`/join/${code}`)).toBeVisible()
+  await expect(inviteSheet.getByText(t('invites.revoked'))).toBeHidden()
+
+  // And the link still lets people in.
+  const later = await openAs(null)
+  await later.goto(`/join/${code}`)
+  await expect(later.getByRole('link', { name: t('invites.join.signInToJoin') })).toBeVisible()
 })

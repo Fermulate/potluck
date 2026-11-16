@@ -20,8 +20,8 @@ import {
   toast,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronDown, Copy, Link2, QrCode, Share2, X } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ChevronDown, Copy, Link2, QrCode, Share2, Undo2, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Help } from '@/features/help/help'
 import { inviteUrl } from '@/lib/app-url'
 import { errorMessage } from '@/lib/errors'
@@ -34,6 +34,8 @@ type UsesChoice = '1' | '5' | '25' | 'unlimited'
 type ExpiryChoice = '1' | '7' | '30' | 'never'
 
 const DAY = 24 * 60 * 60 * 1000
+/** How long a revoked link can be brought back from the note or the toast. */
+const UNDO_MS = 8000
 
 function inviteMeta(invite: GroupInviteRow, timeZone: string): string {
   return [
@@ -117,14 +119,28 @@ function InviteRow({
   )
 }
 
+/** A revoked link that can still be brought back, until `until` (ms since epoch). */
+type Revoked = { invite: GroupInviteRow; wasLatest: boolean; until: number }
+
+/** A toast that brings back a revoked link, for when the panel is not there to offer it. */
+function offerUndo(onUndo: () => void) {
+  toast(t('invites.revoked'), {
+    duration: UNDO_MS,
+    action: { label: t('common.undo'), onClick: onUndo },
+  })
+}
+
 /** Create, share and revoke invite links for one group. */
 export function InvitePanel({
   group,
   intro = true,
+  inSheet = false,
 }: {
   group: GroupDetail
   /** Show the one-line explainer before the first link exists. Off when the host page has its own. */
   intro?: boolean
+  /** Hosted in a sheet: a link revoked just before it closes is offered back in a toast. */
+  inSheet?: boolean
 }) {
   const queryClient = useQueryClient()
   const invites = useQuery(groupInvitesQueryOptions(supabase, group.id))
@@ -160,6 +176,61 @@ export function InvitePanel({
     onError: (error) => toast.error(errorMessage(error)),
   })
 
+  // Each revoked link, offered back right where it was for a few seconds. A sheet blocks taps
+  // and focus outside it, so a toast's Undo would only close the sheet; in a sheet the toasts
+  // wait for it to close instead. A reply that lands after the panel is gone goes straight to
+  // a toast.
+  const [undoable, setUndoable] = useState<Revoked[]>([])
+  const undoableRef = useRef(undoable)
+  useEffect(() => {
+    undoableRef.current = undoable
+  }, [undoable])
+  useEffect(() => {
+    const first = undoable[0]
+    if (!first) return
+    const timer = window.setTimeout(
+      () => setUndoable((list) => list.filter((u) => u !== first)),
+      first.until - Date.now(),
+    )
+    return () => window.clearTimeout(timer)
+  }, [undoable])
+
+  const restore = async (invite: GroupInviteRow) => {
+    try {
+      await restoreInvite(supabase, invite.id)
+    } catch (error) {
+      toast.error(errorMessage(error))
+    }
+    void queryClient.invalidateQueries({ queryKey: key })
+  }
+  const restoreRef = useRef(restore)
+  useEffect(() => {
+    restoreRef.current = restore
+  })
+
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      if (!inSheet) return
+      for (const { invite } of undoableRef.current) {
+        offerUndo(() => void restoreRef.current(invite))
+      }
+    }
+  }, [inSheet])
+
+  const undo = (invite: GroupInviteRow) => {
+    setUndoable((list) => list.filter((u) => u.invite.id !== invite.id))
+    // Back in its place at once (newest first, as the list is read); the refetch confirms it.
+    queryClient.setQueryData<GroupInviteRow[]>(key, (rows) =>
+      [...(rows ?? []).filter((r) => r.id !== invite.id), invite].sort((a, b) =>
+        b.created_at.localeCompare(a.created_at),
+      ),
+    )
+    void restore(invite)
+  }
+
   const revoke = useMutation({
     mutationFn: (invite: GroupInviteRow) => revokeInvite(supabase, invite.id),
     onMutate: async (invite) => {
@@ -168,27 +239,17 @@ export function InvitePanel({
       queryClient.setQueryData<GroupInviteRow[]>(key, (rows) =>
         rows?.filter((r) => r.id !== invite.id),
       )
-      return { previous }
+      return { previous, wasLatest: previous?.[0]?.id === invite.id }
     },
     onError: (error, _invite, context) => {
       if (context?.previous) queryClient.setQueryData(key, context.previous)
       toast.error(errorMessage(error))
     },
-    onSuccess: (_data, invite) => {
-      toast(t('invites.revoked'), {
-        duration: 8000,
-        action: {
-          label: t('common.undo'),
-          onClick: async () => {
-            try {
-              await restoreInvite(supabase, invite.id)
-            } catch (error) {
-              toast.error(errorMessage(error))
-            }
-            void queryClient.invalidateQueries({ queryKey: key })
-          },
-        },
-      })
+    onSuccess: (_data, invite, context) => {
+      if (mounted.current) {
+        const until = Date.now() + UNDO_MS
+        setUndoable((list) => [...list, { invite, wasLatest: context.wasLatest, until }])
+      } else offerUndo(() => void restoreRef.current(invite))
     },
   })
 
@@ -215,9 +276,19 @@ export function InvitePanel({
         : t('invites.summary.expires', { count: Number(expiry) }),
   })
   const settingsId = `invite-settings-${group.id}`
+  const byNewest = (a: { invite: GroupInviteRow }, b: { invite: GroupInviteRow }) =>
+    b.invite.created_at.localeCompare(a.invite.created_at)
+  const revokedLatest = undoable.filter((u) => u.wasLatest).sort(byNewest)
+  const olderSlots = [
+    ...others.map((invite) => ({ invite, revoked: false })),
+    ...undoable.filter((u) => !u.wasLatest).map(({ invite }) => ({ invite, revoked: true })),
+  ].sort(byNewest)
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+      {revokedLatest.map(({ invite }) => (
+        <RevokedNote key={invite.id} onUndo={() => undo(invite)} />
+      ))}
       {invites.isPending ? (
         <Skeleton className="h-32" />
       ) : latest ? (
@@ -227,7 +298,7 @@ export function InvitePanel({
           groupName={group.name}
           onRevoke={() => revoke.mutate(latest)}
         />
-      ) : intro ? (
+      ) : intro && undoable.length === 0 ? (
         <p className="text-pretty text-mute">{t('invites.intro', { group: group.name })}</p>
       ) : null}
 
@@ -314,24 +385,57 @@ export function InvitePanel({
         </Button>
       </div>
 
-      {others.length > 0 && (
+      {olderSlots.length > 0 && (
         <section aria-labelledby={`invites-${group.id}`} className="flex min-w-0 flex-col gap-3">
           <h3 id={`invites-${group.id}`} className="text-sm font-bold text-mute">
             {t('invites.active')}
           </h3>
           <ul className="flex flex-col gap-2">
-            {others.map((invite) => (
-              <InviteRow
-                key={invite.id}
-                invite={invite}
-                fresh={invite.id === fresh}
-                groupName={group.name}
-                onRevoke={() => revoke.mutate(invite)}
-              />
-            ))}
+            {olderSlots.map(({ invite, revoked }) =>
+              revoked ? (
+                <li key={invite.id}>
+                  <RevokedNote onUndo={() => undo(invite)} />
+                </li>
+              ) : (
+                <InviteRow
+                  key={invite.id}
+                  invite={invite}
+                  fresh={invite.id === fresh}
+                  groupName={group.name}
+                  onRevoke={() => revoke.mutate(invite)}
+                />
+              ),
+            )}
           </ul>
         </section>
       )}
+    </div>
+  )
+}
+
+/**
+ * Where a link was just revoked: one tap, or Enter, brings it back. The Revoke button went away
+ * with its link, so focus lands here and a keyboard user can undo straight away.
+ */
+function RevokedNote({ onUndo }: { onUndo: () => void }) {
+  const button = useRef<HTMLButtonElement>(null)
+  useEffect(() => button.current?.focus(), [])
+  return (
+    <div
+      role="status"
+      className="flex items-center justify-between gap-3 rounded-card border border-dashed border-line bg-sunken py-2 pr-2 pl-4"
+    >
+      <p className="min-w-0 text-sm text-mute">{t('invites.revoked')}</p>
+      <Button
+        ref={button}
+        variant="ghost"
+        size="sm"
+        className="shrink-0"
+        leadingIcon={<Undo2 />}
+        onClick={onUndo}
+      >
+        {t('common.undo')}
+      </Button>
     </div>
   )
 }
@@ -397,7 +501,7 @@ function LatestLink({
         </Button>
       </div>
       {/* Revoking sits on its own, below a rule and away from Copy, so a slip never closes
-          the link; it also leaves an Undo in the toast. */}
+          the link; it also leaves an Undo in its place. */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2">
         <Button
           variant="ghost"
@@ -445,7 +549,7 @@ export function InviteSheet({
         closeLabel={t('common.close')}
       >
         <div className="pt-2">
-          <InvitePanel group={group} />
+          <InvitePanel group={group} inSheet />
         </div>
       </SheetContent>
     </Sheet>
