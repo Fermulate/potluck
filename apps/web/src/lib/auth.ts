@@ -210,15 +210,13 @@ export function clearSessionEnded() {
 
 /**
  * Whether a session check found the session gone: ended elsewhere (`session_not_found`, which
- * auth-js turns into `AuthSessionMissingError`), the account deleted (`user_not_found`), or the
- * database's own `session_ended`.
+ * auth-js turns into `AuthSessionMissingError`) or the account deleted (`user_not_found`).
  */
 function sessionIsGone(error: { name?: string; code?: string }): boolean {
   return (
     error.name === 'AuthSessionMissingError' ||
     error.code === 'session_not_found' ||
-    error.code === 'user_not_found' ||
-    error.code === 'session_ended'
+    error.code === 'user_not_found'
   )
 }
 

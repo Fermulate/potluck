@@ -131,7 +131,7 @@ describe('useSessionCheck', () => {
     clearSessionEnded()
   })
 
-  it.each([['session_not_found'], ['user_not_found'], ['session_ended']])(
+  it.each([['session_not_found'], ['user_not_found']])(
     'leaves the note when the check answers %s',
     async (code) => {
       clearSessionEnded()

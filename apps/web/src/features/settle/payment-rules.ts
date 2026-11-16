@@ -2,11 +2,11 @@ import type { Settlement } from '@potluck/api'
 import { can, type GroupRole } from '@potluck/core'
 
 /**
- * Whether the viewer may edit this payment, the rule behind the Edit button on its page and
- * behind its edit route. The blocked side of a 1:1 tab may change only the payments they
- * recorded (the server's rule); `blockedInTab` is undefined until that is known, and so is the
- * answer, so nothing appears and then vanishes. Deleted payments and archived groups are read
- * only.
+ * Whether the viewer may edit this payment, the rule behind the Edit button on its page and in
+ * its menu in the expenses list, and behind its edit route. The blocked side of a 1:1 tab may
+ * change only the payments they recorded (the server's rule); `blockedInTab` is undefined until
+ * that is known, and so is the answer, so nothing appears and then vanishes. Deleted payments and
+ * archived groups are read only.
  */
 export function mayEditPayment(
   p: Settlement,
