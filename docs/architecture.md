@@ -930,7 +930,7 @@ Accounts can add an authenticator app (Supabase Auth TOTP). Supabase hands out a
 - The app sends such a session to `/two-factor` (`needsSecondFactor()` in `apps/web/src/lib/auth.ts`, checked by the `_app` and `/welcome` routes). Turning two-step sign in off takes a fresh code; Supabase refuses to remove a verified factor from an `aal1` session.
 - Storage: a restrictive policy on `storage.objects` ("two-step sign in done", every command, every bucket) applies the same check.
 - Recovery: the caller's `aal1` token plus one recovery code, posted to the `mfa-recover` edge function, removes every factor (admin API) and then every code. Five tries per account per fifteen minutes (`record_mfa_recover_attempt`). The app refreshes the session, which no longer needs a second step. Turning two-step sign in off from Me clears the codes (`clear_mfa_recovery_codes`).
-- Auth settings that back this up: TOTP on, `secure_password_change` (an emailed code for password changes from sessions older than a day), and security emails for password, email, authenticator and sign in method changes (`supabase/config.toml`, bodies in `supabase/templates/`).
+- Auth settings that back this up: TOTP on, `secure_password_change` (an emailed code for password changes from sessions older than a day), and security emails for password, email and authenticator changes and a newly linked sign in method (`supabase/config.toml`, bodies in `supabase/templates/`).
 
 ### Storage
 

@@ -73,7 +73,7 @@ Migrations go first so the database is never behind the client. Because migratio
 - TOTP MFA enroll and verify on.
 - Pooler sizes, and the vector bucket feature off.
 
-Shared by both, and so pushed to production too: the branded auth email templates in `supabase/templates/` (sign up confirmation, sign in link, password reset, email change, the reauthentication code) and the security notices (password, email, two-step sign in, and a sign in method linked or removed), each with a Potluck subject (`[auth.email.template.*]`, `[auth.email.notification.*]`). `content_path` is relative to the repo root. Every link in them is `{{ .ConfirmationURL }}`, which `apps/web/e2e/support/mail.ts` reads. The local stack picks up template changes on its next `supabase start`, not on `db reset`.
+Shared by both, and so pushed to production too: the branded auth email templates in `supabase/templates/` (sign up confirmation, sign in link, password reset, email change, the reauthentication code) and the security notices (password, email, two-step sign in, and a newly linked sign in method), each with a Potluck subject (`[auth.email.template.*]`, `[auth.email.notification.*]`). `content_path` is relative to the repo root. Every link in them is `{{ .ConfirmationURL }}`, which `apps/web/e2e/support/mail.ts` reads. The local stack picks up template changes on its next `supabase start`, not on `db reset`.
 
 `verify_jwt` per function (`[functions.*]`) is applied by `supabase functions deploy`.
 

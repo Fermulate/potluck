@@ -27,6 +27,7 @@
 <p class="ink" style="margin:0 0 12px;font-size:16px;line-height:1.5;color:#1d1a16">{{ if eq .Provider "google" }}Google{{ else if eq .Provider "apple" }}Apple{{ else }}{{ .Provider }}{{ end }} can now sign you in to your Potluck account, {{ .Email }}.</p>
 <p class="ink" style="margin:0 0 12px;font-size:16px;line-height:1.5;color:#1d1a16">If this was you, there is nothing to do. If not, reset your password now.</p>
 <p style="margin:22px 0 0"><a href="{{ .SiteURL }}/forgot-password" style="display:inline-block;background:#d63f25;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:12px 22px;border-radius:999px">Reset my password</a></p>
+<p class="mute" style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#716759">Button not working? Paste this link into your browser:<br><a class="link" href="{{ .SiteURL }}/forgot-password" style="color:#bc3720;word-break:break-all">{{ .SiteURL }}/forgot-password</a></p>
 </td></tr>
 <tr><td class="mute" style="padding:18px 4px 0;font-size:13px;line-height:1.6;color:#716759">We always send this: it is about the security of your Potluck account.</td></tr>
 </table>
