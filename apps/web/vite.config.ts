@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => ({
       registerType: 'autoUpdate',
       // Deferred so the registration script never blocks the first paint.
       injectRegister: 'script-defer',
-      includeAssets: ['favicon.svg', 'icon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'icon.svg', 'apple-touch-icon.png'],
       workbox: {
         // Push and notification click handlers live in a plain script next to the app.
         importScripts: ['push-sw.js'],

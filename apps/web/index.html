@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#fbf5ea" />
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Split expenses and plan get-togethers with your people." />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -29,6 +30,21 @@
       name="twitter:description"
       content="Split expenses and plan get-togethers with your people."
     />
+    <!-- The site name Google shows above search results, in place of the bare domain. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Potluck",
+        "alternateName": "Potluck by Fermulate",
+        "url": "%VITE_APP_URL%/",
+        "publisher": {
+          "@type": "Organization",
+          "name": "Fermulate",
+          "url": "https://fermulate.com/"
+        }
+      }
+    </script>
     <style>
       /* First paint before the token stylesheet loads. Values mirror @potluck/tokens. */
       html {
