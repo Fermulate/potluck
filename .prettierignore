@@ -7,3 +7,5 @@ coverage
 supabase/.temp
 supabase/.branches
 .claude/worktrees
+# Email HTML for Supabase Auth: Go template actions must not be wrapped across lines.
+supabase/templates

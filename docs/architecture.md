@@ -19,7 +19,7 @@ flowchart LR
 
   frankfurter[("Frankfurter API<br/>ECB reference rates")]
   pushsvc[("Browser push services<br/>FCM, Mozilla, Apple")]
-  smtp[("Supabase SMTP<br/>auth emails")]
+  smtp[("Resend SMTP<br/>auth emails")]
 
   member --> web
   guest --> web
@@ -930,7 +930,7 @@ Accounts can add an authenticator app (Supabase Auth TOTP). Supabase hands out a
 - The app sends such a session to `/two-factor` (`needsSecondFactor()` in `apps/web/src/lib/auth.ts`, checked by the `_app` and `/welcome` routes). Turning two-step sign in off takes a fresh code; Supabase refuses to remove a verified factor from an `aal1` session.
 - Storage: a restrictive policy on `storage.objects` ("two-step sign in done", every command, every bucket) applies the same check.
 - Recovery: the caller's `aal1` token plus one recovery code, posted to the `mfa-recover` edge function, removes every factor (admin API) and then every code. Five tries per account per fifteen minutes (`record_mfa_recover_attempt`). The app refreshes the session, which no longer needs a second step. Turning two-step sign in off from Me clears the codes (`clear_mfa_recovery_codes`).
-- Auth settings that back this up: TOTP on, `secure_password_change` (an emailed code for password changes from sessions older than a day), and security emails for password, email and authenticator changes (`supabase/config.toml`).
+- Auth settings that back this up: TOTP on, `secure_password_change` (an emailed code for password changes from sessions older than a day), and security emails for password, email and authenticator changes and a newly linked sign in method (`supabase/config.toml`, bodies in `supabase/templates/`).
 
 ### Storage
 
@@ -1038,4 +1038,4 @@ There is no `og-invite` function yet. Invite links render the SPA, so link previ
 
 - Web: Cloudflare Workers static assets, worker `potluck` (`apps/web/wrangler.jsonc`), https://potluck.fermulate.com (custom domain, [ADR 10](adr/0010-custom-domains.md)); https://potluck.potluck-web.workers.dev still serves the same worker. PR previews are worker versions with a `pr-<number>` alias. User guide: https://docs.potluck.fermulate.com (repo `Fermulate/potluck-docs`).
 - Backend: Supabase project `mzotlkpghnrwbezcazld`.
-- Email: auth email uses Supabase built-in SMTP for now (rate-limited); swap to Resend with a sender on `fermulate.com`. Notification email is built and off until the same provider is configured ([launch checklist](launch-checklist.md#3-email)).
+- Email: auth email goes through Resend SMTP from `Potluck <no-reply@fermulate.com>` (`[remotes.production.auth.email.smtp]` in `supabase/config.toml`, 30 an hour), with the templates in `supabase/templates/`. Notification email is built and off until `app_config.email_notifications` is turned on ([launch checklist](launch-checklist.md#3-email)).

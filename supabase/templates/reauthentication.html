@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>Your Potluck code</title>
+<style>
+@media (prefers-color-scheme: dark) {
+  body, .paper { background: #14110e !important; }
+  .card { background: #1f1b17 !important; border-color: #3a332b !important; }
+  .ink { color: #f6efe3 !important; }
+  .mute { color: #b5ab9c !important; }
+  .link { color: #ff8a70 !important; }
+  .code { background: #0f0d0a !important; border-color: #3a332b !important; color: #f6efe3 !important; }
+}
+</style>
+</head>
+<body class="paper" style="margin:0;padding:0;background:#fbf5ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="paper" style="background:#fbf5ea">
+<tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+<tr><td class="ink" style="padding:0 4px 16px;font-family:'Instrument Serif',Georgia,'Times New Roman',serif;font-style:italic;font-size:26px;color:#1d1a16">Potluck</td></tr>
+<tr><td class="card" style="background:#ffffff;border:1px solid #ebe2d3;border-radius:18px;padding:28px 24px">
+<h1 class="ink" style="margin:0 0 12px;font-size:22px;line-height:1.3;color:#1d1a16">Your code</h1>
+<p class="ink" style="margin:0 0 12px;font-size:16px;line-height:1.5;color:#1d1a16">Enter this code on the Me page to save your new password.</p>
+<p class="code" style="margin:8px 0 16px;padding:14px 18px;background:#f4ecde;border:1px solid #ebe2d3;border-radius:12px;font-size:30px;font-weight:700;letter-spacing:6px;text-align:center;font-variant-numeric:tabular-nums;color:#1d1a16">{{ .Token }}</p>
+<p class="mute" style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#716759">It works once. Codes expire, so ask for a fresh one if this one does not work.</p>
+</td></tr>
+<tr><td class="mute" style="padding:18px 4px 0;font-size:13px;line-height:1.6;color:#716759">Did not ask for a code? You can ignore this email, but someone may be signed in to your account: open <a class="mute" href="{{ .SiteURL }}/me" style="color:#716759">Me</a>, use Sign out everywhere, then change your password.</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

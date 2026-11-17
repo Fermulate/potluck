@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>A new way to sign in</title>
+<style>
+@media (prefers-color-scheme: dark) {
+  body, .paper { background: #14110e !important; }
+  .card { background: #1f1b17 !important; border-color: #3a332b !important; }
+  .ink { color: #f6efe3 !important; }
+  .mute { color: #b5ab9c !important; }
+  .link { color: #ff8a70 !important; }
+  .code { background: #0f0d0a !important; border-color: #3a332b !important; color: #f6efe3 !important; }
+}
+</style>
+</head>
+<body class="paper" style="margin:0;padding:0;background:#fbf5ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="paper" style="background:#fbf5ea">
+<tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+<tr><td class="ink" style="padding:0 4px 16px;font-family:'Instrument Serif',Georgia,'Times New Roman',serif;font-style:italic;font-size:26px;color:#1d1a16">Potluck</td></tr>
+<tr><td class="card" style="background:#ffffff;border:1px solid #ebe2d3;border-radius:18px;padding:28px 24px">
+<h1 class="ink" style="margin:0 0 12px;font-size:22px;line-height:1.3;color:#1d1a16">A new way to sign in</h1>
+<p class="ink" style="margin:0 0 12px;font-size:16px;line-height:1.5;color:#1d1a16">{{ if eq .Provider "google" }}Google{{ else if eq .Provider "apple" }}Apple{{ else }}{{ .Provider }}{{ end }} can now sign you in to your Potluck account, {{ .Email }}.</p>
+<p class="ink" style="margin:0 0 12px;font-size:16px;line-height:1.5;color:#1d1a16">If this was you, there is nothing to do. If not, reset your password now.</p>
+<p style="margin:22px 0 0"><a href="{{ .SiteURL }}/forgot-password" style="display:inline-block;background:#d63f25;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:12px 22px;border-radius:999px">Reset my password</a></p>
+<p class="mute" style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#716759">Button not working? Paste this link into your browser:<br><a class="link" href="{{ .SiteURL }}/forgot-password" style="color:#bc3720;word-break:break-all">{{ .SiteURL }}/forgot-password</a></p>
+</td></tr>
+<tr><td class="mute" style="padding:18px 4px 0;font-size:13px;line-height:1.6;color:#716759">We always send this: it is about the security of your Potluck account.</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
