@@ -224,6 +224,30 @@ describe('HomeDashboard', () => {
     expect(screen.queryByRole('heading', { name: t('home.needsYou') })).not.toBeInTheDocument()
   })
 
+  it('mutes the zero figures on the balance card and keeps the all square headline olive', async () => {
+    seed({ items: [], balances: false })
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const hero = await screen.findByRole('region', { name: t('home.balance.title') })
+    await within(hero).findByText(t('home.balance.settledHint'))
+    // You owe and Owed to you: zero is muted grey, never tomato or olive (docs/design.md).
+    const zeros = within(hero).getAllByText('$0.00')
+    expect(zeros).toHaveLength(2)
+    for (const zero of zeros) expect(zero.parentElement).toHaveAttribute('data-tone', 'settled')
+    expect(within(hero).getByText(t('home.balance.settled'))).toHaveClass('text-hero-olive')
+  })
+
+  it('keeps what you owe tomato and what you are owed olive on the balance card', async () => {
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const hero = await screen.findByRole('region', { name: t('home.balance.title') })
+    const figure = (label: string) =>
+      within(within(hero).getByText(label).parentElement!).getByText(/\d/, {
+        selector: '.sr-only',
+      }).parentElement
+    await within(hero).findByText('You owe $32.51')
+    expect(figure(t('home.balance.youOwe'))).toHaveAttribute('data-tone', 'owe')
+    expect(figure(t('home.balance.owedToYou'))).toHaveAttribute('data-tone', 'owed')
+  })
+
   it('walks a newcomer through the first steps, one at a time', async () => {
     const fake = resetDb({
       tables: { profiles: [viewerProfile], groups: [], group_balances: [], event_rsvps: [] },

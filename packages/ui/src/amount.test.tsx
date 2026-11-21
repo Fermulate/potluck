@@ -57,6 +57,19 @@ describe('Amount', () => {
     expect(container.firstElementChild).toHaveAttribute('data-tone', 'neutral')
   })
 
+  it('mutes a zero amount even when the caller names it owed or owing', () => {
+    // Design rule (docs/design.md): settled or zero amounts are muted grey, on either surface.
+    for (const tone of ['owe', 'owed'] as const) {
+      const { container, unmount } = render(
+        <Amount cents={0} currency="USD" locale="en-US" tone={tone} surface="hero" />,
+      )
+      expect(container.firstElementChild).toHaveAttribute('data-tone', 'settled')
+      unmount()
+    }
+    const { container } = render(<Amount cents={500} currency="USD" locale="en-US" tone="owe" />)
+    expect(container.firstElementChild).toHaveAttribute('data-tone', 'owe')
+  })
+
   it('lets callers override the spoken label', () => {
     render(<Amount cents={800} currency="USD" locale="en-US" srLabel="You are owed $8.00" />)
     expect(screen.getByText('You are owed $8.00')).toBeInTheDocument()
