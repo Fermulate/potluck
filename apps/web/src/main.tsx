@@ -2,7 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { RouteError, RouteNotFound } from '@/features/shell/route-error'
+import { routerFallbacks } from '@/features/shell/router-options'
 import { startLanguage } from '@/lib/language'
 import { queryClient } from '@/lib/query-client'
 import { initTheme } from '@/styles/theme-preference'
@@ -18,13 +18,7 @@ const router = createRouter({
   routeTree,
   context: { queryClient },
   defaultPreload: 'intent',
-  // A screen that throws shows our own page, with a retry and a way home, in place of the
-  // router's unstyled default.
-  defaultErrorComponent: RouteError,
-  // An address no screen answers to gets a page with a way home, not the bare "Not Found". It
-  // is a whole page, so a miss under a layout (a group, the app frame) shows it at the root too.
-  defaultNotFoundComponent: RouteNotFound,
-  notFoundMode: 'root',
+  ...routerFallbacks,
 })
 
 declare module '@tanstack/react-router' {

@@ -9,7 +9,8 @@ import {
 } from '@tanstack/react-router'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RouteError, RouteNotFound } from './route-error'
+import { RouteError } from './route-error'
+import { routerFallbacks } from './router-options'
 
 // The router restores scroll on navigation; jsdom has no layout to scroll.
 window.scrollTo = () => {}
@@ -37,7 +38,7 @@ function renderBrokenScreen() {
   const router = createRouter({
     routeTree: rootRoute.addChildren([screenRoute]),
     history: createMemoryHistory({ initialEntries: ['/search'] }),
-    defaultErrorComponent: RouteError,
+    ...routerFallbacks,
   })
   return render(<RouterProvider router={router as never} />)
 }
@@ -87,7 +88,7 @@ describe('RouteNotFound', () => {
     const router = createRouter({
       routeTree: rootRoute.addChildren([homeRoute]),
       history: createMemoryHistory({ initialEntries: ['/nowhere'] }),
-      defaultNotFoundComponent: RouteNotFound,
+      ...routerFallbacks,
     })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     render(<RouterProvider router={router as never} />)
@@ -121,8 +122,7 @@ describe('RouteNotFound', () => {
     const router = createRouter({
       routeTree: rootRoute.addChildren([groupRoute.addChildren([expensesRoute])]),
       history: createMemoryHistory({ initialEntries: ['/groups/g-hike/bogus'] }),
-      defaultNotFoundComponent: RouteNotFound,
-      notFoundMode: 'root',
+      ...routerFallbacks,
     })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     render(<RouterProvider router={router as never} />)

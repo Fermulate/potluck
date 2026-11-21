@@ -38,7 +38,8 @@ export function HomeDashboard() {
 
   // Every group, archived ones and friend tabs included: any of those, or a group with someone
   // else in it, means this is not a first visit. Until the list is in, nobody counts as new.
-  const mine = useMyGroups().data
+  const myGroups = useMyGroups()
+  const mine = myGroups.data
   const [stepsHidden, hideSteps] = useFirstStepsHidden(viewer.userId)
   const newcomer =
     mine !== undefined && !mine.some((g) => g.is_direct || g.archived_at || g.members.length > 1)
@@ -80,16 +81,18 @@ export function HomeDashboard() {
     ? summarizeBalances(balances.data, viewer.profile?.defaultCurrency)
     : null
   const todayKey = dayKey(now, viewer.timeZone)
-  // On phones everything stacks, so "Needs you" (known once the timeline is in) and the real
-  // balance card (taller than its skeleton) would push down whatever was already on screen.
-  // What sits below them waits, invisible but laid out, until both have answered (with data or
-  // an error) or a moment has passed, whichever comes first.
+  // On phones everything stacks, so "Needs you" (known once the timeline is in), the first steps
+  // card (known once every group is in) and the real balance card (taller than its skeleton)
+  // would push down whatever was already on screen. What sits below them waits, invisible but
+  // laid out, until all three have answered (with data or an error) or a moment has passed,
+  // whichever comes first.
   const [heldLongEnough, setHeldLongEnough] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setHeldLongEnough(true), HOLD_MS)
     return () => clearTimeout(timer)
   }, [])
-  const settled = heldLongEnough || (!timeline.isPending && !balances.isPending)
+  const settled =
+    heldLongEnough || (!timeline.isPending && !balances.isPending && !myGroups.isPending)
   const holdBelow = settled ? undefined : 'max-lg:invisible'
 
   return (
