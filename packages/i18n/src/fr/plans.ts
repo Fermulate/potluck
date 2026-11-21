@@ -295,7 +295,6 @@ export const home = {
     expenseHint: 'Potluck calcule qui doit quoi.',
     groupAction: 'Créer un groupe',
     peopleAction: 'Ajouter des personnes',
-    expenseAction: 'Ajouter une dépense',
     progress: '{done} sur {total} terminées',
     hide: 'Masquer ces étapes',
   },

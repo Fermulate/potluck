@@ -9,7 +9,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { RecentActivityRow } from '@/features/activity/activity-link'
+import { useMyGroups } from '@/features/groups/use-groups'
 import { FirstSteps } from '@/features/onboarding/first-steps'
+import { useFirstStepsHidden } from '@/features/onboarding/use-first-steps-hidden'
 import { InboxBell } from '@/features/notifications/inbox-bell'
 import { NavRow } from '@/features/insights/nav-row'
 import { SearchIconLink } from '@/features/insights/search-link'
@@ -34,7 +36,15 @@ export function HomeDashboard() {
   const timeline = useQuery(planQueries.timeline(supabase, range))
   const groups = useQuery(planQueries.groups(supabase))
 
-  const noGroups = groups.data?.length === 0
+  // Every group, archived ones and friend tabs included: any of those, or a group with someone
+  // else in it, means this is not a first visit. Until the list is in, nobody counts as new.
+  const mine = useMyGroups().data
+  const [stepsHidden, hideSteps] = useFirstStepsHidden(viewer.userId)
+  const newcomer =
+    mine !== undefined && !mine.some((g) => g.is_direct || g.archived_at || g.members.length > 1)
+  const firstSteps = newcomer && !stepsHidden
+  // With no group at all the card leads; what cannot be used without a group waits behind it.
+  const stepsLead = firstSteps && mine?.length === 0
   const items = useMemo(() => timeline.data ?? [], [timeline.data])
   const needsTimes = items.filter((i) => i.status === 'polling' && !i.availability_submitted)
   // Asked explicitly first.
@@ -147,9 +157,9 @@ export function HomeDashboard() {
         </div>
 
         <div className={cn('flex min-w-0 flex-col gap-8', holdBelow)}>
-          {groups.data && <FirstSteps groups={groups.data} userId={viewer.userId} />}
+          {firstSteps && <FirstSteps groupId={mine?.[0]?.id} onHide={hideSteps} />}
           {/* Nothing can be planned without a group: the first steps card leads there instead. */}
-          {!(noGroups && upcoming.length === 0) && (
+          {!(stepsLead && upcoming.length === 0) && (
             <Appear as="section" index={2} className="flex flex-col gap-3">
               <div className="flex items-baseline justify-between">
                 <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
@@ -198,7 +208,7 @@ export function HomeDashboard() {
             </Appear>
           )}
 
-          {!noGroups && (
+          {!stepsLead && (
             <Appear as="section" index={3} className="flex flex-col gap-3">
               <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
               {groups.isPending ? (

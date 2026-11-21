@@ -1,4 +1,5 @@
 import type * as AuthModule from '@/lib/auth'
+import { groupKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -99,6 +100,29 @@ const groupRows = [
   },
 ]
 
+// The fake returns rows whole, so one row answers both the member count and the member list.
+const membersOf = (...ids: string[]) =>
+  ids.map((id) => ({
+    count: ids.length,
+    role: 'member',
+    joined_at: '2026-08-17T12:00:00Z',
+    profiles: { id, display_name: id },
+  }))
+
+/** Home for someone whose only groups are `groups`, once every group list has answered. */
+async function renderHomeWith(groups: Record<string, unknown>[]) {
+  const fake = resetDb({
+    tables: { profiles: [viewerProfile], groups, group_balances: [], event_rsvps: [] },
+  })
+  fake.respond('rpc:my_timeline', { data: [] })
+  const view = renderWithProviders(<HomeDashboard />, { path: '/home' })
+  await screen.findByText(t('home.balance.settledHint'))
+  await waitFor(() =>
+    expect(view.queryClient.getQueryState(groupKeys.list(VIEWER))?.status).toBe('success'),
+  )
+  return view
+}
+
 function seed({ items = timeline as object[], balances = true } = {}) {
   const fake = resetDb({
     tables: {
@@ -120,7 +144,10 @@ function seed({ items = timeline as object[], balances = true } = {}) {
 }
 
 describe('HomeDashboard', () => {
-  beforeEach(() => seed())
+  beforeEach(() => {
+    window.localStorage.clear()
+    seed()
+  })
 
   it('greets you and adds up what you owe across groups', async () => {
     renderWithProviders(<HomeDashboard />, { path: '/home' })
@@ -209,13 +236,14 @@ describe('HomeDashboard', () => {
     ).toHaveAttribute('href', '/groups?new=true')
     // Nothing can be planned without a group, so that prompt waits.
     expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('home.newGroup') })).not.toBeInTheDocument()
     unmount()
 
     // A group of one: the next step is people.
     const solo = resetDb({
       tables: {
         profiles: [viewerProfile],
-        groups: [{ ...groupRows[0]!, group_members: [{ count: 1 }] }],
+        groups: [{ ...groupRows[0]!, group_members: membersOf(VIEWER) }],
         group_balances: [],
         event_rsvps: [],
       },
@@ -233,9 +261,40 @@ describe('HomeDashboard', () => {
   })
 
   it('shows no first steps once a group has company', async () => {
-    renderWithProviders(<HomeDashboard />, { path: '/home' })
-    await screen.findByText(t('home.groups'))
+    await renderHomeWith([{ ...groupRows[0]!, group_members: membersOf(VIEWER, 'u-ben') }])
     expect(screen.queryByText(t('home.firstSteps.title'))).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Hike crew/ })).toBeInTheDocument()
+  })
+
+  it('keeps a way to start a group on Home after a newcomer hides the first steps', async () => {
+    await renderHomeWith([])
+    const steps = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    fireEvent.click(within(steps).getByRole('button', { name: t('home.firstSteps.hide') }))
+    expect(
+      screen.queryByRole('region', { name: t('home.firstSteps.title') }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('home.newGroup') })).toHaveAttribute(
+      'href',
+      '/groups',
+    )
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      'an archived group',
+      { ...groupRows[0]!, archived_at: '2026-10-01T00:00:00Z', group_members: membersOf(VIEWER) },
+    ],
+    ['a friend tab', { ...groupRows[4]!, group_members: membersOf(VIEWER, 'u-jules') }],
+  ])('does not treat someone with only %s as new', async (_what, row) => {
+    await renderHomeWith([row])
+    expect(screen.queryByText(t('home.firstSteps.title'))).not.toBeInTheDocument()
+    // Home is whole, as for anyone else: the plan prompt and the way to a new group.
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('home.newGroup') })).toHaveAttribute(
+      'href',
+      '/groups',
+    )
   })
 
   it('never says nothing needs you while money is owed, in any currency', async () => {

@@ -102,6 +102,11 @@ describe('GroupLayout', () => {
     await screen.findByRole('heading', { name: 'Hike crew' })
     expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
     balances.unmount()
+    // Still owing, but nothing can be paid in an archived group.
+    const archived = renderLayout([group({ archived_at: '2026-10-01T00:00:00Z' })])
+    await screen.findByText(t('groups.header.youOwe', { amount: '$60.51' }))
+    expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
+    archived.unmount()
     renderLayout([
       group({
         members: [member(VIEWER, 'Ava Chen', 'owner', 0), member('u-ben', 'Ben Ortiz', 'admin', 0)],

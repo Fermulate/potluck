@@ -1,21 +1,10 @@
-import type { PlanGroup } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { Button, cn } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { Check, X } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { HELP_PAGES } from '@/features/help/topics'
 import { docsUrl } from '@/lib/docs'
-
-const hiddenKey = (userId: string) => `potluck:first-steps-hidden:${userId}`
-
-function readHidden(userId: string): boolean {
-  try {
-    return window.localStorage.getItem(hiddenKey(userId)) === '1'
-  } catch {
-    return false
-  }
-}
 
 function Step({
   number,
@@ -60,24 +49,12 @@ function Step({
 
 /**
  * The first run checklist on Home: start a group, add people, add an expense. It shows the one
- * thing to do next and goes away by itself once a group has someone else in it (from there the
- * group's own screens lead on), or when it is hidden.
+ * thing to do next. Home decides who sees it: only someone new, until a group has someone else
+ * in it (from there the group's own screens lead on) or the card is hidden. `groupId` is the
+ * group they started, once there is one.
  */
-export function FirstSteps({ groups, userId }: { groups: PlanGroup[]; userId: string }) {
-  const [hidden, setHidden] = useState(() => readHidden(userId))
-  const first = groups[0]
-  const hasCompany = groups.some((g) => g.memberCount > 1)
-  if (hidden || hasCompany) return null
-
-  const done = first ? 1 : 0
-  const hide = () => {
-    setHidden(true)
-    try {
-      window.localStorage.setItem(hiddenKey(userId), '1')
-    } catch {
-      // Private mode: it stays hidden for this visit only.
-    }
-  }
+export function FirstSteps({ groupId, onHide }: { groupId?: string; onHide: () => void }) {
+  const done = groupId ? 1 : 0
 
   return (
     <section
@@ -95,7 +72,7 @@ export function FirstSteps({ groups, userId }: { groups: PlanGroup[]; userId: st
           </div>
           <button
             type="button"
-            onClick={hide}
+            onClick={onHide}
             aria-label={t('home.firstSteps.hide')}
             title={t('home.firstSteps.hide')}
             className="-mt-1.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-full text-mute transition-colors hover:bg-ink/[0.06] hover:text-ink"
@@ -109,7 +86,7 @@ export function FirstSteps({ groups, userId }: { groups: PlanGroup[]; userId: st
         <ol className="mt-1 divide-y divide-line">
           <Step
             number={1}
-            state={first ? 'done' : 'current'}
+            state={groupId ? 'done' : 'current'}
             title={t('home.firstSteps.group')}
             hint={t('home.firstSteps.groupHint')}
             action={
@@ -122,13 +99,13 @@ export function FirstSteps({ groups, userId }: { groups: PlanGroup[]; userId: st
           />
           <Step
             number={2}
-            state={first ? 'current' : 'later'}
+            state={groupId ? 'current' : 'later'}
             title={t('home.firstSteps.people')}
             hint={t('home.firstSteps.peopleHint')}
             action={
-              first && (
+              groupId && (
                 <Button asChild size="sm">
-                  <Link to="/groups/$groupId/members" params={{ groupId: first.id }}>
+                  <Link to="/groups/$groupId/members" params={{ groupId }}>
                     {t('home.firstSteps.peopleAction')}
                   </Link>
                 </Button>

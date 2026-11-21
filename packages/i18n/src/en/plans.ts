@@ -404,7 +404,6 @@ export const home = {
     expenseHint: 'Potluck works out who owes what.',
     groupAction: 'Create a group',
     peopleAction: 'Add people',
-    expenseAction: 'Add expense',
     progress: '{done} of {total} done',
     hide: 'Hide these steps',
   },

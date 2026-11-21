@@ -100,4 +100,38 @@ describe('RouteNotFound', () => {
     expect(await screen.findByText('Home')).toBeInTheDocument()
     vi.restoreAllMocks()
   })
+
+  it('takes the whole page for a miss under a layout, as the app sets the router up', async () => {
+    const rootRoute = createRootRoute({ component: () => <Outlet /> })
+    const groupRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/groups/$groupId',
+      component: () => (
+        <main id="main">
+          <nav aria-label="Group">tabs</nav>
+          <Outlet />
+        </main>
+      ),
+    })
+    const expensesRoute = createRoute({
+      getParentRoute: () => groupRoute,
+      path: '/',
+      component: () => <p>Expenses</p>,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([groupRoute.addChildren([expensesRoute])]),
+      history: createMemoryHistory({ initialEntries: ['/groups/g-hike/bogus'] }),
+      defaultNotFoundComponent: RouteNotFound,
+      notFoundMode: 'root',
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<RouterProvider router={router as never} />)
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t('errors.notFound') }),
+    ).toBeInTheDocument()
+    // One main landmark, and none of the group's frame around the page.
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(screen.queryByRole('navigation', { name: 'Group' })).toBeNull()
+    vi.restoreAllMocks()
+  })
 })
