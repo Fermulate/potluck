@@ -1,4 +1,5 @@
-# Free Supabase projects pause after a period of inactivity. Ping the REST API daily.
+# Free Supabase projects pause after a period of inactivity. Read one row through the REST API daily.
+# The bare /rest/v1/ root only answers secret keys now, so this reads a public feature flag instead.
 name: Keepalive
 
 on:
@@ -21,4 +22,4 @@ jobs:
           curl --fail --silent --show-error --output /dev/null \
             --retry 3 --retry-delay 10 \
             -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
-            "${SUPABASE_URL}/rest/v1/"
+            "${SUPABASE_URL}/rest/v1/app_config?select=key&limit=1"
