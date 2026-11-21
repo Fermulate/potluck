@@ -94,6 +94,10 @@ export function HomeDashboard() {
   const settled =
     heldLongEnough || (!timeline.isPending && !balances.isPending && !myGroups.isPending)
   const holdBelow = settled ? undefined : 'max-lg:invisible'
+  // On every width: the empty Coming up prompt and Groups give way to the first steps card for
+  // someone with no group, so neither is drawn until the group list says which it is (or the
+  // same moment has passed). Showing them first and taking them away again is a flash.
+  const groupsKnown = heldLongEnough || !myGroups.isPending
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 lg:px-8 lg:pb-12">
@@ -162,7 +166,7 @@ export function HomeDashboard() {
         <div className={cn('flex min-w-0 flex-col gap-8', holdBelow)}>
           {firstSteps && <FirstSteps groupId={mine?.[0]?.id} onHide={hideSteps} />}
           {/* Nothing can be planned without a group: the first steps card leads there instead. */}
-          {!(stepsLead && upcoming.length === 0) && (
+          {(upcoming.length > 0 || (groupsKnown && !stepsLead)) && (
             <Appear as="section" index={2} className="flex flex-col gap-3">
               <div className="flex items-baseline justify-between">
                 <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
@@ -211,7 +215,7 @@ export function HomeDashboard() {
             </Appear>
           )}
 
-          {!stepsLead && (
+          {groupsKnown && !stepsLead && (
             <Appear as="section" index={3} className="flex flex-col gap-3">
               <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
               {groups.isPending ? (

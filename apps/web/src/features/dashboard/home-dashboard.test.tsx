@@ -1,12 +1,13 @@
 import type * as AuthModule from '@/lib/auth'
-import { groupKeys } from '@potluck/api'
+import type * as ApiModule from '@potluck/api'
+import { groupKeys, planQueries } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
 import { viewerProfile } from '@/test/plan-fixtures'
 import { renderWithProviders } from '@/test/render'
-import { resetDb, rowsOf } from '@/test/supabase'
+import { resetDb, rowsOf, supabase } from '@/test/supabase'
 import { HomeDashboard } from './home-dashboard'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -14,6 +15,20 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof AuthModule>()),
   useUserId: () => VIEWER,
 }))
+
+// The list of every group can be made to answer late: set `myGroupsGate` and resolve it later.
+let myGroupsGate: Promise<void> | null = null
+vi.mock('@potluck/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof ApiModule>()
+  const myGroupsQueryOptions: typeof actual.myGroupsQueryOptions = (client, viewerId) => ({
+    ...actual.myGroupsQueryOptions(client, viewerId),
+    queryFn: async () => {
+      await myGroupsGate
+      return actual.fetchMyGroups(client, viewerId)
+    },
+  })
+  return { ...actual, myGroupsQueryOptions }
+})
 
 const DAY = 86_400_000
 const at = (days: number) => new Date(Date.now() + days * DAY).toISOString()
@@ -146,6 +161,7 @@ function seed({ items = timeline as object[], balances = true } = {}) {
 describe('HomeDashboard', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    myGroupsGate = null
     seed()
   })
 
@@ -282,6 +298,50 @@ describe('HomeDashboard', () => {
     expect(
       screen.queryByRole('region', { name: t('home.firstSteps.title') }),
     ).not.toBeInTheDocument()
+  })
+
+  /** Newcomer Home with the timeline, balances and plan groups in, the list of every group not. */
+  async function renderNewcomerWaitingOnGroups() {
+    let release = () => {}
+    myGroupsGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fake = resetDb({
+      tables: { profiles: [viewerProfile], groups: [], group_balances: [], event_rsvps: [] },
+    })
+    fake.respond('rpc:my_timeline', { data: [] })
+    const view = renderWithProviders(<HomeDashboard />, { path: '/home' })
+    await screen.findByText(t('home.balance.settledHint'))
+    await screen.findByText(t('home.summary.none'))
+    const groupsKey = planQueries.groups(supabase).queryKey
+    await waitFor(() => expect(view.queryClient.getQueryState(groupsKey)?.status).toBe('success'))
+    return { ...view, release }
+  }
+
+  it('never shows a newcomer the plan prompt or Groups before the first steps card', async () => {
+    const { release } = await renderNewcomerWaitingOnGroups()
+    // Everything else has answered; whether this is a first visit is still unknown.
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: t('timeline.title') })).not.toBeInTheDocument()
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+    // What does not depend on having a group is there meanwhile.
+    expect(screen.getByRole('link', { name: new RegExp(t('insights.open')) })).toBeInTheDocument()
+
+    release()
+    expect(
+      await screen.findByRole('region', { name: t('home.firstSteps.title') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+  })
+
+  it('stops waiting on a slow group list after a moment and shows Home whole', async () => {
+    await renderNewcomerWaitingOnGroups()
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: t('home.groups') }, { timeout: 4000 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
   })
 
   it('shows no first steps once a group has company', async () => {
