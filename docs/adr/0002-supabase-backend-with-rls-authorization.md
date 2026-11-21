@@ -24,5 +24,5 @@ Authorization lives in Postgres:
 - One place to audit. A rule written in SQL applies to the web app, the future native app and anyone poking the API with curl.
 - Policy mistakes are security bugs, so pgTAP coverage for RLS is not optional (see [testing.md](../testing.md)).
 - Business logic that spans rows has to be written in PL/pgSQL. That is a smaller hiring pool than TypeScript, and harder to debug.
-- Free projects pause when idle. `keepalive.yml` pings the REST API daily.
+- Free projects pause when idle. `keepalive.yml` reads one `app_config` row through the REST API daily.
 - Moving off Supabase would mean rebuilding auth, storage and realtime. The schema and RPCs are plain Postgres and would carry over.
