@@ -38,6 +38,7 @@ export const prefetch = {
       void queryClient.prefetchQuery(planQueries.homeBalances(client, userId))
       void queryClient.prefetchQuery(planQueries.timeline(client, timelineRange()))
       void queryClient.prefetchQuery(planQueries.groups(client))
+      void queryClient.prefetchQuery(myGroupsQueryOptions(client, userId))
     })
   },
 

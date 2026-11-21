@@ -188,7 +188,7 @@ export function SplitCard({
                   <span
                     className={cn(
                       'text-xs font-semibold',
-                      sign * (paid - share) > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
+                      sign * (paid - share) > 0 ? 'text-olive-ink' : 'text-tomato-ink',
                     )}
                   >
                     {owesOrGetsBack(isMe, sign * (paid - share) > 0, money(Math.abs(paid - share)))}

@@ -2,6 +2,7 @@ import type { PlanMember, PlanRsvp, RsvpStatus } from '@potluck/api'
 import { formatDate, t } from '@potluck/i18n'
 import { AvatarStack, Card, cn } from '@potluck/ui'
 import { Check, CircleHelp, X } from 'lucide-react'
+import { Help } from '@/features/help/help'
 import { useNow } from './use-now'
 import { useRsvp } from './use-rsvp'
 
@@ -60,7 +61,10 @@ export function RsvpPanel({
   return (
     <Card padding="roomy" className="flex flex-col gap-4 [--avatar-ring:var(--pl-card)]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xl font-bold tracking-tight">{t('rsvp.title')}</h2>
+        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight">
+          {t('rsvp.title')}
+          <Help topic="rsvp" align="start" />
+        </h2>
         {deadline && (
           <span className={cn('text-sm', deadlinePassed ? 'text-tomato-ink' : 'text-mute')}>
             {t(deadlinePassed ? 'rsvp.deadlinePassed' : 'rsvp.deadline', {

@@ -173,6 +173,7 @@ export const errors = {
   generic: 'Ça a brûlé en cuisine. On réessaie ?',
   network: 'Tu sembles hors ligne. On réessaiera dès ton retour.',
   notFound: "Cette page s'est fait la malle.",
+  notFoundBody: "Vérifie le lien, ou reviens à l'accueil et cherche à partir de là.",
   forbidden: "Tu n'as pas de place à cette table.",
   sessionExpired: 'Ta session a expiré. Reconnecte-toi.',
   rateLimited: 'Doucement. Réessaie dans un instant.',

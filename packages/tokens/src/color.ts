@@ -1,6 +1,10 @@
 /**
  * Color tokens. "Paper and ink, a splash of tomato and saffron."
  *
+ * Tomato is the brand and the thing to press next: a solid fill is an action, tomato
+ * text is money you owe. Olive is money coming back to you and anything done, saffron
+ * is plans and dates, plum stays a quiet accent for history and charts.
+ *
  * Each theme exposes the same semantic keys so components never branch on
  * the theme. `*Ink` variants are the text-safe versions of a hue (AA on
  * paper and card), `*Soft` variants are tinted backgrounds, `on*` is the
@@ -16,7 +20,7 @@ export const palette = {
   line: '#ebe2d3',
   tomato: '#e8492f',
   saffron: '#f5b53d',
-  olive: '#5f7a3a',
+  olive: '#4a8431',
   plum: '#6b3d6e',
 } as const
 
@@ -37,7 +41,7 @@ export interface ThemeColors {
   lineStrong: string
 
   tomato: string
-  /** Solid fill for primary buttons, AA with `onTomato`. */
+  /** Solid fill for primary buttons and count badges, AA with `onTomato`. */
   tomatoStrong: string
   tomatoInk: string
   tomatoSoft: string
@@ -97,9 +101,9 @@ export const lightColors: ThemeColors = {
   saffronSoft: '#fdf0d4',
   onSaffron: '#1d1a16',
 
-  olive: '#5f7a3a',
-  oliveInk: '#4f6a2c',
-  oliveSoft: '#e9eedd',
+  olive: '#4a8431',
+  oliveInk: '#3a6f24',
+  oliveSoft: '#e4f0d9',
   onOlive: '#ffffff',
 
   plum: '#6b3d6e',
@@ -112,7 +116,7 @@ export const lightColors: ThemeColors = {
   heroMute: '#b9ad9c',
   heroTomato: '#ff7a5c',
   heroSaffron: '#f5b53d',
-  heroOlive: '#a6c47c',
+  heroOlive: '#a8d587',
 
   avatarInk: '#1d1a16',
 
@@ -140,9 +144,9 @@ export const darkColors: ThemeColors = {
   saffronSoft: '#382c15',
   onSaffron: '#14110e',
 
-  olive: '#8fb062',
-  oliveInk: '#a6c47c',
-  oliveSoft: '#222a18',
+  olive: '#8fc46a',
+  oliveInk: '#a8d587',
+  oliveSoft: '#1f2b17',
   onOlive: '#14110e',
 
   plum: '#c79bd0',
@@ -156,7 +160,7 @@ export const darkColors: ThemeColors = {
   heroMute: '#6c6152',
   heroTomato: '#b23a22',
   heroSaffron: '#8a5800',
-  heroOlive: '#4f6a2c',
+  heroOlive: '#3a6f24',
 
   avatarInk: '#4a4038',
 
@@ -221,7 +225,7 @@ export function avatarColor(seed: string): (typeof avatarPalette)[number] {
 export const celebration = [
   '#e8492f',
   '#f5b53d',
-  '#5f7a3a',
+  '#4a8431',
   '#6b3d6e',
   '#fbf5ea',
   '#ff8a70',

@@ -97,6 +97,8 @@ export interface HelpTipProps {
   newTabHint?: string
   /** Which edge of the button the popover lines up with. */
   align?: 'start' | 'end'
+  /** Set on the balance hero, where the "?" takes the hero's own foreground colors. */
+  onHero?: boolean
   className?: string
 }
 
@@ -113,6 +115,7 @@ export function HelpTip({
   readMoreLabel,
   newTabHint,
   align = 'end',
+  onHero = false,
   className,
 }: HelpTipProps) {
   const id = useId()
@@ -177,7 +180,10 @@ export function HelpTip({
         aria-expanded={open}
         aria-controls={panelId}
         popoverTarget={panelId}
-        className={triggerClass}
+        className={cn(
+          triggerClass,
+          onHero && 'text-hero-mute hover:text-on-hero aria-expanded:text-on-hero',
+        )}
       >
         <Glyph />
       </button>

@@ -1,3 +1,4 @@
+import { FADE_RIGHT, useMoreToTheRight } from '@/lib/overflow'
 import { avatarSrc } from '@/lib/queries'
 import type { MoneyMember, SplitTypeValue } from '@potluck/api'
 import { firstName, SPLIT_TYPES } from '@potluck/core'
@@ -15,7 +16,7 @@ import {
   Plus,
   ReceiptText,
 } from 'lucide-react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { Help } from '@/features/help/help'
 import { SPLIT_HELP } from '@/features/help/topics'
 import { joinNames } from '@/features/plans/format'
@@ -85,6 +86,14 @@ export function SplitEditor({
 }: SplitEditorProps) {
   const order = members.map((m) => m.id)
   const modesRef = useRef<HTMLDivElement>(null)
+  const [modesFadeRef, moreModes] = useMoreToTheRight<HTMLDivElement>()
+  const modesTrackRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      modesRef.current = node
+      modesFadeRef(node)
+    },
+    [modesFadeRef],
+  )
   useEffect(() => {
     // Sideways only: scrollIntoView could also move the page.
     const track = modesRef.current
@@ -318,8 +327,11 @@ export function SplitEditor({
           in view. Icons join in only where the split column is wide (one
           column layouts from md, before the two column lg). */}
       <div
-        ref={modesRef}
-        className="-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden"
+        ref={modesTrackRef}
+        className={cn(
+          '-mx-1 [scrollbar-width:none] overflow-x-auto px-1 pb-1 [&::-webkit-scrollbar]:hidden',
+          moreModes && FADE_RIGHT,
+        )}
       >
         <SegmentedControl
           block

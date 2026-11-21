@@ -3,7 +3,7 @@ import { can } from '@potluck/core'
 import { formatMoney, t } from '@potluck/i18n'
 import { Avatar, AvatarStack, Button, cn, Skeleton, usePrefersReducedMotion } from '@potluck/ui'
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
-import { CalendarRange, ChevronLeft, History, UserPlus } from 'lucide-react'
+import { ArrowRightLeft, CalendarRange, ChevronLeft, History, UserPlus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { recallGroupFilters } from '@/features/insights/group-filters'
@@ -63,8 +63,10 @@ function GroupTabs({ group }: { group: GroupDetail }) {
     const update = () => setMore(nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4)
     const current = nav.querySelector<HTMLElement>('[aria-current="page"]')?.parentElement
     if (current) {
+      // Centered, not just inside the edge: the right edge is the faded part.
+      const centered = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2
       const right = current.offsetLeft + current.offsetWidth - nav.clientWidth + 16
-      if (right > nav.scrollLeft) nav.scrollLeft = right
+      if (right > nav.scrollLeft) nav.scrollLeft = Math.max(right, centered)
     }
     update()
     nav.addEventListener('scroll', update, { passive: true })
@@ -195,6 +197,11 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
       inviteRole: 'member',
     })
   const dates = tripDatesLabel(group)
+  // Balances has its own settle up buttons, so there the header does not repeat them.
+  const onBalances = useRouterState({
+    select: (s) => s.location.pathname.endsWith(`/groups/${group.id}/balances`),
+  })
+  const owes = !group.archived_at && group.my_net_cents < 0 && !onBalances
   const cover = !!group.cover_path
   return (
     <header className="flex flex-col gap-4">
@@ -248,11 +255,26 @@ function SharedHeader({ group, onInvite }: { group: GroupDetail; onInvite: () =>
           currency={group.currency}
           className="text-[0.9375rem]"
         />
-        {canInvite && (
-          <Button size="sm" variant="ink" leadingIcon={<UserPlus />} onClick={onInvite}>
-            {t('groups.header.invite')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch">
+          {/* Owing is the thing to act on here, so paying it back leads and inviting steps back. */}
+          {owes && (
+            <Button asChild size="sm" leadingIcon={<ArrowRightLeft />}>
+              <Link to="/new/settle" search={{ groupId: group.id }}>
+                {t('balances.settleUp')}
+              </Link>
+            </Button>
+          )}
+          {canInvite && (
+            <Button
+              size="sm"
+              variant={owes ? 'secondary' : 'ink'}
+              leadingIcon={<UserPlus />}
+              onClick={onInvite}
+            >
+              {t('groups.header.invite')}
+            </Button>
+          )}
+        </div>
       </div>
       {group.archived_at && (
         <p className="rounded-card border border-dashed border-line-strong px-4 py-2 text-sm text-mute">
@@ -290,7 +312,7 @@ function DirectHeader({ group }: { group: GroupDetail }) {
         <p
           className={cn(
             'mt-2 text-[0.9375rem] font-semibold',
-            net > 0 ? 'text-saffron-ink' : net < 0 ? 'text-tomato-ink' : 'text-mute',
+            net > 0 ? 'text-olive-ink' : net < 0 ? 'text-tomato-ink' : 'text-mute',
           )}
         >
           {line}

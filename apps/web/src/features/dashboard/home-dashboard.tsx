@@ -9,6 +9,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { RecentActivityRow } from '@/features/activity/activity-link'
+import { useMyGroups } from '@/features/groups/use-groups'
+import { FirstSteps } from '@/features/onboarding/first-steps'
+import { useFirstStepsHidden } from '@/features/onboarding/use-first-steps-hidden'
 import { InboxBell } from '@/features/notifications/inbox-bell'
 import { NavRow } from '@/features/insights/nav-row'
 import { SearchIconLink } from '@/features/insights/search-link'
@@ -33,6 +36,16 @@ export function HomeDashboard() {
   const timeline = useQuery(planQueries.timeline(supabase, range))
   const groups = useQuery(planQueries.groups(supabase))
 
+  // Every group, archived ones and friend tabs included: any of those, or a group with someone
+  // else in it, means this is not a first visit. Until the list is in, nobody counts as new.
+  const myGroups = useMyGroups()
+  const mine = myGroups.data
+  const [stepsHidden, hideSteps] = useFirstStepsHidden(viewer.userId)
+  const newcomer =
+    mine !== undefined && !mine.some((g) => g.is_direct || g.archived_at || g.members.length > 1)
+  const firstSteps = newcomer && !stepsHidden
+  // With no group at all the card leads; what cannot be used without a group waits behind it.
+  const stepsLead = firstSteps && mine?.length === 0
   const items = useMemo(() => timeline.data ?? [], [timeline.data])
   const needsTimes = items.filter((i) => i.status === 'polling' && !i.availability_submitted)
   // Asked explicitly first.
@@ -68,17 +81,23 @@ export function HomeDashboard() {
     ? summarizeBalances(balances.data, viewer.profile?.defaultCurrency)
     : null
   const todayKey = dayKey(now, viewer.timeZone)
-  // On phones everything stacks, so "Needs you" (known once the timeline is in) and the real
-  // balance card (taller than its skeleton) would push down whatever was already on screen.
-  // What sits below them waits, invisible but laid out, until both have answered (with data or
-  // an error) or a moment has passed, whichever comes first.
+  // On phones everything stacks, so "Needs you" (known once the timeline is in), the first steps
+  // card (known once every group is in) and the real balance card (taller than its skeleton)
+  // would push down whatever was already on screen. What sits below them waits, invisible but
+  // laid out, until all three have answered (with data or an error) or a moment has passed,
+  // whichever comes first.
   const [heldLongEnough, setHeldLongEnough] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setHeldLongEnough(true), HOLD_MS)
     return () => clearTimeout(timer)
   }, [])
-  const settled = heldLongEnough || (!timeline.isPending && !balances.isPending)
+  const settled =
+    heldLongEnough || (!timeline.isPending && !balances.isPending && !myGroups.isPending)
   const holdBelow = settled ? undefined : 'max-lg:invisible'
+  // On every width: the empty Coming up prompt and Groups give way to the first steps card for
+  // someone with no group, so neither is drawn until the group list says which it is (or the
+  // same moment has passed). Showing them first and taking them away again is a flash.
+  const groupsKnown = heldLongEnough || !myGroups.isPending
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 lg:px-8 lg:pb-12">
@@ -145,64 +164,71 @@ export function HomeDashboard() {
         </div>
 
         <div className={cn('flex min-w-0 flex-col gap-8', holdBelow)}>
-          <Appear as="section" index={2} className="flex flex-col gap-3">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
-              <Link
-                to="/plans"
-                className="inline-flex items-center gap-0.5 text-sm font-semibold text-mute hover:text-ink"
-              >
-                {t('common.seeAll')}
-                <ChevronRight aria-hidden className="size-4" />
-              </Link>
-            </div>
-            {timeline.isPending ? (
-              <div aria-busy className="flex flex-col gap-2">
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
+          {firstSteps && <FirstSteps groupId={mine?.[0]?.id} onHide={hideSteps} />}
+          {/* Nothing can be planned without a group: the first steps card leads there instead. */}
+          {(upcoming.length > 0 || (groupsKnown && !stepsLead)) && (
+            <Appear as="section" index={2} className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
+                <Link
+                  to="/plans"
+                  className="inline-flex items-center gap-0.5 text-sm font-semibold text-mute hover:text-ink"
+                >
+                  {t('common.seeAll')}
+                  <ChevronRight aria-hidden className="size-4" />
+                </Link>
               </div>
-            ) : upcoming.length === 0 ? (
-              <Card tone="ghost" padding="roomy">
-                <EmptyState
-                  as="h3"
-                  align="start"
-                  title={t('timeline.empty.title')}
-                  description={t('timeline.empty.body')}
-                  action={
-                    <Button asChild size="sm" leadingIcon={<CalendarHeart aria-hidden />}>
-                      <Link to="/new/plan">{t('timeline.empty.action')}</Link>
-                    </Button>
-                  }
-                />
-              </Card>
-            ) : (
-              <Card padding="none" className="divide-y divide-line overflow-hidden">
-                {upcoming.map((item) => (
-                  <PlanRow
-                    key={item.event_id}
-                    plan={fromTimeline(item)}
-                    timeZone={viewer.timeZone}
-                    todayKey={todayKey}
-                    dayKeyOf={(iso) => dayKey(iso, viewer.timeZone)}
+              {timeline.isPending ? (
+                <div aria-busy className="flex flex-col gap-2">
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </div>
+              ) : upcoming.length === 0 ? (
+                <Card tone="ghost">
+                  <EmptyState
+                    as="h3"
+                    align="start"
+                    className="px-1 py-1"
+                    title={t('timeline.empty.title')}
+                    description={t('timeline.empty.body')}
+                    action={
+                      <Button asChild size="sm" leadingIcon={<CalendarHeart aria-hidden />}>
+                        <Link to="/new/plan">{t('timeline.empty.action')}</Link>
+                      </Button>
+                    }
                   />
-                ))}
-              </Card>
-            )}
-          </Appear>
+                </Card>
+              ) : (
+                <Card padding="none" className="divide-y divide-line overflow-hidden">
+                  {upcoming.map((item) => (
+                    <PlanRow
+                      key={item.event_id}
+                      plan={fromTimeline(item)}
+                      timeZone={viewer.timeZone}
+                      todayKey={todayKey}
+                      dayKeyOf={(iso) => dayKey(iso, viewer.timeZone)}
+                    />
+                  ))}
+                </Card>
+              )}
+            </Appear>
+          )}
 
-          <Appear as="section" index={3} className="flex flex-col gap-3">
-            <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
-            {groups.isPending ? (
-              <div className="flex gap-3">
-                <Skeleton className="h-28 w-36" />
-                <Skeleton className="h-28 w-36" />
-                <Skeleton className="h-28 w-36" />
-              </div>
-            ) : (
-              <GroupsRow groups={groups.data ?? []} />
-            )}
-          </Appear>
+          {groupsKnown && !stepsLead && (
+            <Appear as="section" index={3} className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
+              {groups.isPending ? (
+                <div className="flex gap-3">
+                  <Skeleton className="h-28 w-36" />
+                  <Skeleton className="h-28 w-36" />
+                  <Skeleton className="h-28 w-36" />
+                </div>
+              ) : (
+                <GroupsRow groups={groups.data ?? []} />
+              )}
+            </Appear>
+          )}
 
           <Appear index={4} className="flex flex-col gap-3">
             <NavRow

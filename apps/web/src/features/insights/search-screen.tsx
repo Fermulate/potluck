@@ -197,10 +197,7 @@ function HitRow({
           <>
             <span
               aria-hidden
-              className={cn(
-                'text-xs font-medium',
-                net > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
-              )}
+              className={cn('text-xs font-medium', net > 0 ? 'text-olive-ink' : 'text-tomato-ink')}
             >
               {net > 0 ? t('expenses.youLentLabel') : t('expenses.youBorrowedLabel')}
             </span>

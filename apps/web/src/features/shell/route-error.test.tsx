@@ -10,6 +10,7 @@ import {
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouteError } from './route-error'
+import { routerFallbacks } from './router-options'
 
 // The router restores scroll on navigation; jsdom has no layout to scroll.
 window.scrollTo = () => {}
@@ -37,7 +38,7 @@ function renderBrokenScreen() {
   const router = createRouter({
     routeTree: rootRoute.addChildren([screenRoute]),
     history: createMemoryHistory({ initialEntries: ['/search'] }),
-    defaultErrorComponent: RouteError,
+    ...routerFallbacks,
   })
   return render(<RouterProvider router={router as never} />)
 }
@@ -73,5 +74,64 @@ describe('RouteError', () => {
     fireEvent.click(retry)
     expect(await screen.findByText('Results')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: t('errors.screen.title') })).toBeNull()
+  })
+})
+
+describe('RouteNotFound', () => {
+  it('gives an unknown address a page with a way home', async () => {
+    const rootRoute = createRootRoute({ component: () => <Outlet /> })
+    const homeRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/home',
+      component: () => <p>Home</p>,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([homeRoute]),
+      history: createMemoryHistory({ initialEntries: ['/nowhere'] }),
+      ...routerFallbacks,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<RouterProvider router={router as never} />)
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t('errors.notFound') }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('errors.notFoundBody'))).toBeInTheDocument()
+    expect(screen.queryByText('Not Found')).toBeNull()
+    fireEvent.click(screen.getByRole('link', { name: t('errors.screen.home') }))
+    expect(await screen.findByText('Home')).toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
+
+  it('takes the whole page for a miss under a layout, as the app sets the router up', async () => {
+    const rootRoute = createRootRoute({ component: () => <Outlet /> })
+    const groupRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/groups/$groupId',
+      component: () => (
+        <main id="main">
+          <nav aria-label="Group">tabs</nav>
+          <Outlet />
+        </main>
+      ),
+    })
+    const expensesRoute = createRoute({
+      getParentRoute: () => groupRoute,
+      path: '/',
+      component: () => <p>Expenses</p>,
+    })
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([groupRoute.addChildren([expensesRoute])]),
+      history: createMemoryHistory({ initialEntries: ['/groups/g-hike/bogus'] }),
+      ...routerFallbacks,
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<RouterProvider router={router as never} />)
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t('errors.notFound') }),
+    ).toBeInTheDocument()
+    // One main landmark, and none of the group's frame around the page.
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(screen.queryByRole('navigation', { name: 'Group' })).toBeNull()
+    vi.restoreAllMocks()
   })
 })

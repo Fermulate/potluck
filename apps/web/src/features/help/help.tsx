@@ -32,17 +32,24 @@ type TipTopic = keyof typeof en.help.tips
 export function GoodToKnow({
   topic,
   tip,
+  text,
   align,
+  onHero,
   className,
 }: {
   topic: HelpTopic
   /** Which note to show. */
-  tip: TipTopic
+  tip?: Exclude<TipTopic, 'expenseList'>
+  /** The note itself, for one whose wording takes values (pass the finished `t()` string). */
+  text?: string
   align?: 'start' | 'end'
+  /** Set on the balance hero. */
+  onHero?: boolean
   className?: string
 }) {
   return (
     <HelpTip
+      onHero={onHero}
       label={t(`help.topics.${topic}`)}
       title={t('help.goodToKnow')}
       href={helpHref(topic)}
@@ -51,7 +58,7 @@ export function GoodToKnow({
       align={align}
       className={className}
     >
-      {t(`help.tips.${tip}`)}
+      {text ?? (tip && t(`help.tips.${tip}`))}
     </HelpTip>
   )
 }

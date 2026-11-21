@@ -50,6 +50,7 @@ describe('route prefetch', () => {
       planQueries.timeline(supabase, range).queryKey,
       planQueries.past(supabase, range.from).queryKey,
       planQueries.groups(supabase).queryKey,
+      myGroupsQueryOptions(supabase, ME).queryKey,
     )
   })
 

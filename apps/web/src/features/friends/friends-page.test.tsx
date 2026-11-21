@@ -190,9 +190,10 @@ describe('FriendsPage', () => {
     seed({ friends: false, groups: [] })
     renderPage()
     expect(await screen.findByText(t('friends.empty.title'))).toBeInTheDocument()
-    const [header, empty] = screen.getAllByRole('button', { name: t('friends.empty.action') })
-    expect(header).toBeInTheDocument()
-    fireEvent.click(empty!)
+    // With nobody here the empty state carries the one button; the header's steps aside.
+    const buttons = screen.getAllByRole('button', { name: t('friends.empty.action') })
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0]!)
     const sheet = await screen.findByRole('dialog', { name: t('friends.addTitle') })
     expect(within(sheet).getByText(t('friends.noGroups'))).toBeInTheDocument()
     expect(within(sheet).getByRole('link', { name: t('groups.new') })).toHaveAttribute(

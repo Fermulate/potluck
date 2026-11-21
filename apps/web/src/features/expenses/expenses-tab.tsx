@@ -11,10 +11,12 @@ import {
   Button,
   Card,
   Chip,
+  cn,
   EmptyState,
   IconButton,
   Input,
   Skeleton,
+  useMediaQuery,
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
@@ -22,6 +24,8 @@ import { Download, Plus, Search, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useUserId } from '@/lib/auth'
+import { FADE_RIGHT, useMoreToTheRight } from '@/lib/overflow'
+import { GoodToKnow } from '@/features/help/help'
 import { ActivityIconLink } from '@/features/activity/activity-link'
 import { ActiveFilterChips, FilterButton, FilterSheet } from '@/features/insights/filter-sheet'
 import { activeFilters, withoutFilter, type MoneyFilters } from '@/features/insights/filter-state'
@@ -61,6 +65,8 @@ export function ExpensesTab({
   const timeZone = useTimeZone()
   const nameOf = useNameOf()
   const reduced = usePrefersReducedMotion()
+  const wide = useMediaQuery('(min-width: 40rem)')
+  const [chipsRef, moreChips] = useMoreToTheRight<HTMLDivElement>()
   const group = useMoneyGroup(groupId)
   const expenses = useGroupExpenses(groupId)
   const settlements = useGroupSettlements(groupId)
@@ -224,7 +230,8 @@ export function ExpensesTab({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('expenses.search')}
+            // The whole label does not fit beside three buttons on a phone: the short word does.
+            placeholder={wide ? t('expenses.search') : t('search.title')}
             aria-label={t('expenses.search')}
             leading={<Search />}
             className="h-11 rounded-pill"
@@ -269,7 +276,11 @@ export function ExpensesTab({
         <div
           role="group"
           aria-label={t('expenses.filterCategory')}
-          className="-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0"
+          ref={chipsRef}
+          className={cn(
+            '-mx-4 flex [scrollbar-width:none] gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:px-0',
+            moreChips && FADE_RIGHT,
+          )}
         >
           <Chip selected={selectedCategories.length === 0} onClick={() => toggleCategory(null)}>
             {t('expenses.allCategories')}
@@ -340,12 +351,23 @@ export function ExpensesTab({
         <div aria-label={t('expenses.listLabel')} className="flex flex-col gap-5">
           {sections.map((section) => (
             <section key={section.day} aria-labelledby={`day-${section.day}`}>
-              <h3
-                id={`day-${section.day}`}
-                className="mb-2 px-1 text-sm font-bold tracking-tight text-mute"
-              >
-                {dayLabel(section.day, timeZone)}
-              </h3>
+              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <h3
+                  id={`day-${section.day}`}
+                  className="text-sm font-bold tracking-tight text-mute"
+                >
+                  {dayLabel(section.day, timeZone)}
+                </h3>
+                {section === sections[0] && (
+                  <GoodToKnow
+                    topic="expenseList"
+                    text={t('help.tips.expenseList', {
+                      lent: t('expenses.youLentLabel'),
+                      borrowed: t('expenses.youBorrowedLabel'),
+                    })}
+                  />
+                )}
+              </div>
               <Card padding="none" className="overflow-hidden">
                 <ul className="divide-y divide-line">
                   {section.items.map((item) => {

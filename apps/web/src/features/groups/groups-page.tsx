@@ -162,7 +162,6 @@ export function GroupsPage({
           </Link>
         </Button>
         <Button
-          variant="secondary"
           size="sm"
           leadingIcon={<Plus />}
           className="sm:hidden"

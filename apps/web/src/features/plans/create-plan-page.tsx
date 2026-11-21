@@ -31,6 +31,7 @@ import { fromZonedTime } from 'date-fns-tz'
 import { Minus, Plus } from 'lucide-react'
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Help } from '@/features/help/help'
 import { BackToPlans } from './back-link'
 import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
 import { useViewer, useViewerProfile } from './viewer'
@@ -107,8 +108,10 @@ export function CreatePlanPage({ groupId: initialGroup }: CreatePlanPageProps) {
           title={t('empty.groups.title')}
           description={t('events.create.noGroups')}
           action={
-            <Button asChild variant="ink">
-              <Link to="/groups">{t('empty.groups.action')}</Link>
+            <Button asChild>
+              <Link to="/groups" search={{ new: true }}>
+                {t('empty.groups.action')}
+              </Link>
             </Button>
           }
         />
@@ -137,6 +140,7 @@ function Page({ children }: { children: ReactNode }) {
         leading={<BackToPlans label={t('events.back')} />}
         title={<span className="flourish">{t('events.create.title')}</span>}
         subtitle={t('events.create.subtitle')}
+        actions={<Help topic="startPoll" className="mr-2" />}
       />
       <div className="mt-6">{children}</div>
     </div>

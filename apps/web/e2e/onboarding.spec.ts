@@ -32,4 +32,9 @@ test('landing page leads to sign up, onboarding and home', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/home$/)
   await expect(page.getByRole('heading', { level: 1 })).toContainText(name)
+
+  // Home picks up where onboarding left off: the first steps card leads to making a group.
+  const steps = page.getByRole('region', { name: t('home.firstSteps.title') })
+  await steps.getByRole('link', { name: t('home.firstSteps.groupAction') }).click()
+  await expect(page.getByRole('dialog', { name: t('groups.create.title') })).toBeVisible()
 })

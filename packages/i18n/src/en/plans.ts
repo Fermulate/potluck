@@ -392,6 +392,21 @@ export const timeline = {
 /** Keyed by `activity.verb`. Params: actor, plus whatever the row's `data` carries. */
 
 export const home = {
+  /** The first run checklist on Home, shown until there is a group with someone else in it. */
+  firstSteps: {
+    title: 'Set the table',
+    body: 'Three small steps and Potluck starts keeping the tab.',
+    group: 'Start a group',
+    groupHint: 'Roommates, a trip, the dinner crew.',
+    people: 'Add your people',
+    peopleHint: 'Send an invite link, or add someone by name.',
+    expense: 'Add the first expense',
+    expenseHint: 'Potluck works out who owes what.',
+    groupAction: 'Create a group',
+    peopleAction: 'Add people',
+    progress: '{done} of {total} done',
+    hide: 'Hide these steps',
+  },
   greeting: {
     morning: 'Morning, {name}.',
     afternoon: 'Afternoon, {name}.',
