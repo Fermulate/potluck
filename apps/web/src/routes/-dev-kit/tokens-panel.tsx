@@ -7,8 +7,8 @@ const swatches: Array<{ key: keyof ThemeColors; label: string; note: string }> =
   { key: 'mute', label: 'Mute', note: 'Secondary text' },
   { key: 'line', label: 'Line', note: 'Borders' },
   { key: 'tomato', label: 'Tomato', note: 'Action, you owe' },
-  { key: 'saffron', label: 'Saffron', note: 'Owed to you' },
-  { key: 'olive', label: 'Olive', note: 'Settled' },
+  { key: 'olive', label: 'Olive', note: 'Owed to you, done' },
+  { key: 'saffron', label: 'Saffron', note: 'Plans, notices' },
   { key: 'plum', label: 'Plum', note: 'Accents' },
 ]
 

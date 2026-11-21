@@ -3,9 +3,10 @@ import { firstName } from '@potluck/core'
 import { moneyQueries, type MoneyGroup } from '@potluck/api'
 import { groupTitle } from './format'
 import { t } from '@potluck/i18n'
-import { AvatarStack, Card, EmptyState, Skeleton } from '@potluck/ui'
+import { AvatarStack, Button, Card, EmptyState, Skeleton } from '@potluck/ui'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ChevronRight, Plus } from 'lucide-react'
 import { useUserId } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 
@@ -35,7 +36,19 @@ export function GroupPicker({
           ))}
         </div>
       ) : !data || data.length === 0 ? (
-        <EmptyState title={t('empty.groups.title')} description={t('expenses.pickGroup.none')} />
+        <EmptyState
+          illustration="🍽️"
+          title={t('empty.groups.title')}
+          description={t('expenses.pickGroup.none')}
+          // Without a group there is nothing to pick: lead straight to making one.
+          action={
+            <Button asChild leadingIcon={<Plus />}>
+              <Link to="/groups" search={{ new: true }}>
+                {t('empty.groups.action')}
+              </Link>
+            </Button>
+          }
+        />
       ) : (
         <ul className="flex flex-col gap-2.5">
           {data.map((group) => (

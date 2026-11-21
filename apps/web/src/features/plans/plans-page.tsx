@@ -7,6 +7,7 @@ import { Link } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Help } from '@/features/help/help'
 import { Appear } from '@/features/timeline/appear'
 import { DayTimeline } from '@/features/timeline/day-timeline'
 import { groupByDay } from '@/features/timeline/days'
@@ -56,7 +57,17 @@ export function PlansPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-6 pb-28 lg:px-8 lg:pb-12">
-      <PageHeader title={t('events.title')} subtitle={t('events.subtitle')} actions={planButton} />
+      <PageHeader
+        title={t('events.title')}
+        subtitle={t('events.subtitle')}
+        actions={
+          <div className="flex items-center gap-3">
+            <Help topic="plansPage" />
+            {/* With nothing planned the empty state carries the one button. */}
+            {!empty && planButton}
+          </div>
+        }
+      />
 
       {(groups.data?.length ?? 0) > 1 && (
         <div
@@ -153,7 +164,7 @@ function SectionTitle({ title, hint, count }: { title: string; hint?: string; co
       <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight">
         {title}
         {count !== undefined && (
-          <span className="grid min-w-6 place-items-center rounded-pill bg-tomato px-1.5 tabular text-xs font-bold text-on-tomato">
+          <span className="grid min-w-6 place-items-center rounded-pill bg-tomato-strong px-1.5 tabular text-xs font-bold text-on-tomato">
             {count}
           </span>
         )}

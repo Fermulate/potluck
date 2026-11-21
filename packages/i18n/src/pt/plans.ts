@@ -284,6 +284,21 @@ export const timeline = {
 } satisfies Translation<typeof en.timeline>
 
 export const home = {
+  firstSteps: {
+    title: 'Ponha a mesa',
+    body: 'Três passos curtos e o Potluck começa a cuidar da conta.',
+    group: 'Crie um grupo',
+    groupHint: 'A república, uma viagem, os jantares de quinta.',
+    people: 'Chame sua turma',
+    peopleHint: 'Envie um link de convite ou adicione alguém pelo nome.',
+    expense: 'Adicione a primeira despesa',
+    expenseHint: 'O Potluck calcula quem deve o quê.',
+    groupAction: 'Criar um grupo',
+    peopleAction: 'Adicionar pessoas',
+    expenseAction: 'Adicionar despesa',
+    progress: '{done} de {total} concluídos',
+    hide: 'Ocultar estes passos',
+  },
   greeting: {
     morning: 'Bom dia, {name}.',
     afternoon: 'Boa tarde, {name}.',

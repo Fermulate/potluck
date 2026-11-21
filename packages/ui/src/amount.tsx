@@ -44,14 +44,14 @@ export function formatMoney(
 const toneClass: Record<AmountSurface, Record<'owe' | 'owed' | 'settled' | 'neutral', string>> = {
   default: {
     owe: 'text-tomato-ink',
-    owed: 'text-saffron-ink',
-    settled: 'text-olive-ink',
+    owed: 'text-olive-ink',
+    settled: 'text-mute',
     neutral: 'text-ink',
   },
   hero: {
     owe: 'text-hero-tomato',
-    owed: 'text-hero-saffron',
-    settled: 'text-hero-olive',
+    owed: 'text-hero-olive',
+    settled: 'text-hero-mute',
     neutral: 'text-on-hero',
   },
 }
@@ -63,7 +63,7 @@ export interface AmountProps {
   locale?: string
   /** How to show the sign. `auto` shows minus only. */
   sign?: AmountSign
-  /** `auto` colors by sign: negative = owe (tomato), positive = owed (saffron). */
+  /** `auto` colors by sign: negative = owe (tomato), positive = owed (olive). */
   tone?: AmountTone
   /** Use on the balance hero so colors stay legible on its surface. */
   surface?: AmountSurface

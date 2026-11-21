@@ -60,7 +60,7 @@ export function FilterButton({
       {count > 0 && (
         <span
           aria-hidden
-          className="pointer-events-none absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-pill bg-tomato px-1 text-[0.6875rem] leading-5 font-bold text-on-tomato tabular-nums ring-2 ring-paper"
+          className="pointer-events-none absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-pill bg-tomato-strong px-1 text-[0.6875rem] leading-5 font-bold text-on-tomato tabular-nums ring-2 ring-paper"
         >
           {count}
         </span>

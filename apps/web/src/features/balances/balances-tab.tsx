@@ -170,7 +170,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                       className={cn(
                         'flex items-center gap-3 px-4 py-3',
                         d.from_user === me && 'bg-tomato-soft/40',
-                        d.to_user === me && 'bg-saffron-soft/40',
+                        d.to_user === me && 'bg-olive-soft/50',
                       )}
                     >
                       <span aria-hidden className="flex shrink-0 items-center">
@@ -278,7 +278,7 @@ export function BalancesTab({ groupId }: { groupId: string }) {
                         <span
                           className={cn(
                             'absolute inset-y-0 rounded-pill transition-[width] duration-500',
-                            r.cents >= 0 ? 'left-1/2 bg-saffron' : 'right-1/2 bg-tomato',
+                            r.cents >= 0 ? 'left-1/2 bg-olive' : 'right-1/2 bg-tomato',
                           )}
                           style={{ width }}
                         />

@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 import { RecentActivityRow } from '@/features/activity/activity-link'
+import { FirstSteps } from '@/features/onboarding/first-steps'
 import { InboxBell } from '@/features/notifications/inbox-bell'
 import { NavRow } from '@/features/insights/nav-row'
 import { SearchIconLink } from '@/features/insights/search-link'
@@ -33,6 +34,7 @@ export function HomeDashboard() {
   const timeline = useQuery(planQueries.timeline(supabase, range))
   const groups = useQuery(planQueries.groups(supabase))
 
+  const noGroups = groups.data?.length === 0
   const items = useMemo(() => timeline.data ?? [], [timeline.data])
   const needsTimes = items.filter((i) => i.status === 'polling' && !i.availability_submitted)
   // Asked explicitly first.
@@ -145,64 +147,71 @@ export function HomeDashboard() {
         </div>
 
         <div className={cn('flex min-w-0 flex-col gap-8', holdBelow)}>
-          <Appear as="section" index={2} className="flex flex-col gap-3">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
-              <Link
-                to="/plans"
-                className="inline-flex items-center gap-0.5 text-sm font-semibold text-mute hover:text-ink"
-              >
-                {t('common.seeAll')}
-                <ChevronRight aria-hidden className="size-4" />
-              </Link>
-            </div>
-            {timeline.isPending ? (
-              <div aria-busy className="flex flex-col gap-2">
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
-                <Skeleton className="h-16" />
+          {groups.data && <FirstSteps groups={groups.data} userId={viewer.userId} />}
+          {/* Nothing can be planned without a group: the first steps card leads there instead. */}
+          {!(noGroups && upcoming.length === 0) && (
+            <Appear as="section" index={2} className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-xl font-bold tracking-tight">{t('timeline.title')}</h2>
+                <Link
+                  to="/plans"
+                  className="inline-flex items-center gap-0.5 text-sm font-semibold text-mute hover:text-ink"
+                >
+                  {t('common.seeAll')}
+                  <ChevronRight aria-hidden className="size-4" />
+                </Link>
               </div>
-            ) : upcoming.length === 0 ? (
-              <Card tone="ghost" padding="roomy">
-                <EmptyState
-                  as="h3"
-                  align="start"
-                  title={t('timeline.empty.title')}
-                  description={t('timeline.empty.body')}
-                  action={
-                    <Button asChild size="sm" leadingIcon={<CalendarHeart aria-hidden />}>
-                      <Link to="/new/plan">{t('timeline.empty.action')}</Link>
-                    </Button>
-                  }
-                />
-              </Card>
-            ) : (
-              <Card padding="none" className="divide-y divide-line overflow-hidden">
-                {upcoming.map((item) => (
-                  <PlanRow
-                    key={item.event_id}
-                    plan={fromTimeline(item)}
-                    timeZone={viewer.timeZone}
-                    todayKey={todayKey}
-                    dayKeyOf={(iso) => dayKey(iso, viewer.timeZone)}
+              {timeline.isPending ? (
+                <div aria-busy className="flex flex-col gap-2">
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                  <Skeleton className="h-16" />
+                </div>
+              ) : upcoming.length === 0 ? (
+                <Card tone="ghost">
+                  <EmptyState
+                    as="h3"
+                    align="start"
+                    className="px-1 py-1"
+                    title={t('timeline.empty.title')}
+                    description={t('timeline.empty.body')}
+                    action={
+                      <Button asChild size="sm" leadingIcon={<CalendarHeart aria-hidden />}>
+                        <Link to="/new/plan">{t('timeline.empty.action')}</Link>
+                      </Button>
+                    }
                   />
-                ))}
-              </Card>
-            )}
-          </Appear>
+                </Card>
+              ) : (
+                <Card padding="none" className="divide-y divide-line overflow-hidden">
+                  {upcoming.map((item) => (
+                    <PlanRow
+                      key={item.event_id}
+                      plan={fromTimeline(item)}
+                      timeZone={viewer.timeZone}
+                      todayKey={todayKey}
+                      dayKeyOf={(iso) => dayKey(iso, viewer.timeZone)}
+                    />
+                  ))}
+                </Card>
+              )}
+            </Appear>
+          )}
 
-          <Appear as="section" index={3} className="flex flex-col gap-3">
-            <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
-            {groups.isPending ? (
-              <div className="flex gap-3">
-                <Skeleton className="h-28 w-36" />
-                <Skeleton className="h-28 w-36" />
-                <Skeleton className="h-28 w-36" />
-              </div>
-            ) : (
-              <GroupsRow groups={groups.data ?? []} />
-            )}
-          </Appear>
+          {!noGroups && (
+            <Appear as="section" index={3} className="flex flex-col gap-3">
+              <h2 className="text-xl font-bold tracking-tight">{t('home.groups')}</h2>
+              {groups.isPending ? (
+                <div className="flex gap-3">
+                  <Skeleton className="h-28 w-36" />
+                  <Skeleton className="h-28 w-36" />
+                  <Skeleton className="h-28 w-36" />
+                </div>
+              ) : (
+                <GroupsRow groups={groups.data ?? []} />
+              )}
+            </Appear>
+          )}
 
           <Appear index={4} className="flex flex-col gap-3">
             <NavRow

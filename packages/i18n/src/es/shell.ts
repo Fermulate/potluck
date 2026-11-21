@@ -173,6 +173,7 @@ export const errors = {
   generic: 'Algo se quemó en la cocina. ¿Lo intentas de nuevo?',
   network: 'Parece que no tienes conexión. Lo reintentaremos cuando vuelvas.',
   notFound: 'Esa página se fue de paseo.',
+  notFoundBody: 'Revisa el enlace o vuelve al inicio y búscala desde allí.',
   forbidden: 'No tienes sitio en esta mesa.',
   sessionExpired: 'Tu sesión caducó. Vuelve a iniciar sesión.',
   rateLimited: 'Con calma. Inténtalo de nuevo en un momento.',

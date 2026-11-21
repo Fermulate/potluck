@@ -17,6 +17,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, type ReactNode } from 'react'
 import { useMyGroups } from '@/features/groups/use-groups'
+import { Help } from '@/features/help/help'
 import { useUserId } from '@/lib/auth'
 import { useViewerTimezone } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
@@ -157,7 +158,7 @@ export function NotificationsPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-32 lg:px-8 lg:pt-10 lg:pb-12">
-      <PageHeader title={t('notifications.title')} />
+      <PageHeader title={t('notifications.title')} actions={<Help topic="inbox" />} />
       <div className="mt-3 flex min-h-9 flex-wrap items-center justify-between gap-3">
         {/* Nothing until the list is in: "All caught up" over a loading list is a fib. */}
         {isPending ? (

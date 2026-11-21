@@ -126,6 +126,21 @@ describe('AppLayout', () => {
     ).toHaveTextContent('9+')
   })
 
+  it.each(['/payments/p-1', '/recurring/r-1', '/expenses/e-1'])(
+    'keeps Groups lit on %s, which lives in a group',
+    async (path) => {
+      renderWithProviders(<AppLayout />, { path })
+      const [, tabs] = await navs()
+      expect(within(tabs!).getByRole('link', { name: t('nav.groups') })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      expect(within(tabs!).getByRole('link', { name: t('nav.home') })).not.toHaveAttribute(
+        'aria-current',
+      )
+    },
+  )
+
   it('marks plans and home as you move around', async () => {
     renderWithProviders(<AppLayout />, { path: '/plans' })
     const [, tabs] = await navs()

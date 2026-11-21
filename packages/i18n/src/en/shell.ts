@@ -171,6 +171,7 @@ export const errors = {
   generic: 'Something burned in the kitchen. Try again?',
   network: 'You seem to be offline. We will retry when you are back.',
   notFound: 'That page wandered off.',
+  notFoundBody: 'Check the link, or head home and find it from there.',
   forbidden: 'You do not have a seat at this table.',
   sessionExpired: 'Your session timed out. Sign in again.',
   rateLimited: 'Easy there. Try again in a moment.',

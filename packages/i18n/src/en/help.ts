@@ -5,6 +5,14 @@ export const help = {
   readMore: 'Read more',
   guide: 'Guide',
   topics: {
+    plansPage: 'How the Plans page is sorted',
+    startPoll: 'How a poll works',
+    rsvp: 'How RSVPs work',
+    inbox: 'About the inbox',
+    expenseList: 'Reading the expense list',
+    balancesAcross: 'How your total is counted',
+    createGroup: 'About starting a group',
+    friendTotals: 'What the totals mean',
     splitEqual: 'How equal splits work',
     splitExact: 'How exact amounts work',
     splitPercent: 'How percent splits work',
@@ -53,6 +61,10 @@ export const help = {
     importExpenses: 'How importing works',
   },
   tips: {
+    balancesAcross:
+      'Every group and friend tab keeps its own balance. This card adds them up in one currency. Other currencies are listed apart and never converted.',
+    expenseList:
+      '"{lent}": you paid, and others owe you their share. "{borrowed}": someone else paid, and this is your share.',
     simplifiedDebts:
       'Potluck nets out who owes whom so the group needs fewer payments. You might pay someone you never split with directly, but your total stays the same.',
     everyDebt:

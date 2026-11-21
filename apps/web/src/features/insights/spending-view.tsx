@@ -124,7 +124,7 @@ function TotalsCard({
           <dd
             className={cn(
               'text-[0.9375rem] font-bold tabular-nums',
-              net > 0 ? 'text-saffron-ink' : net < 0 ? 'text-tomato-ink' : 'text-mute',
+              net > 0 ? 'text-olive-ink' : net < 0 ? 'text-tomato-ink' : 'text-mute',
             )}
           >
             {net > 0

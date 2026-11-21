@@ -180,10 +180,10 @@ describe('PlansPage', () => {
     seed([], false)
     renderWithProviders(<PlansPage />, { path: '/plans' })
     expect(await screen.findByText(t('empty.plans.title'))).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: t('events.new') })[0]).toHaveAttribute(
-      'href',
-      '/new/plan',
-    )
+    // One button, in the empty state: the header's steps aside.
+    const links = screen.getAllByRole('link', { name: t('events.new') })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/new/plan')
   })
 
   it('says when nothing has happened yet', async () => {

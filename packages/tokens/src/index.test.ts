@@ -56,6 +56,7 @@ describe.each(Object.values(themes))('$name theme contrast', (theme) => {
     ['oliveInk on paper', c.oliveInk, c.paper],
     ['oliveInk on card', c.oliveInk, c.card],
     ['plumInk on card', c.plumInk, c.card],
+    ['oliveInk on sunken', c.oliveInk, c.sunken],
     ['onTomato on tomatoStrong', c.onTomato, c.tomatoStrong],
     ['onSaffron on saffron', c.onSaffron, c.saffron],
     ['onOlive on olive', c.onOlive, c.olive],

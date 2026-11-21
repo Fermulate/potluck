@@ -313,7 +313,7 @@ function BalancesAfter({ plan, group }: { plan: ImportPlan; group: MoneyGroup })
                 <span
                   className={cn(
                     'absolute inset-y-0 rounded-pill',
-                    r.after >= 0 ? 'left-1/2 bg-saffron' : 'right-1/2 bg-tomato',
+                    r.after >= 0 ? 'left-1/2 bg-olive' : 'right-1/2 bg-tomato',
                   )}
                   style={{ width: `${(Math.abs(r.after) / scale) * 50}%` }}
                 />

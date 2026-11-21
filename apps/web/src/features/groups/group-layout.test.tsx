@@ -90,6 +90,28 @@ describe('GroupLayout', () => {
     rememberGroupFilters('g-hike', {})
   })
 
+  it('leads with settling up while you owe, and not once you are square or the group is archived', async () => {
+    const { unmount } = renderLayout([group()])
+    expect(await screen.findByRole('link', { name: t('balances.settleUp') })).toHaveAttribute(
+      'href',
+      '/new/settle?groupId=g-hike',
+    )
+    unmount()
+    // Balances has its own settle up buttons.
+    const balances = renderLayout([group()], '/groups/g-hike/balances')
+    await screen.findByRole('heading', { name: 'Hike crew' })
+    expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
+    balances.unmount()
+    renderLayout([
+      group({
+        members: [member(VIEWER, 'Ava Chen', 'owner', 0), member('u-ben', 'Ben Ortiz', 'admin', 0)],
+      }),
+    ])
+    await screen.findByRole('heading', { name: 'Hike crew' })
+    expect(screen.queryByRole('link', { name: t('balances.settleUp') })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('groups.header.invite') })).toBeInTheDocument()
+  })
+
   it('opens the invite sheet', async () => {
     renderLayout([group()])
     fireEvent.click(await screen.findByRole('button', { name: t('groups.header.invite') }))

@@ -197,6 +197,47 @@ describe('HomeDashboard', () => {
     expect(screen.queryByRole('heading', { name: t('home.needsYou') })).not.toBeInTheDocument()
   })
 
+  it('walks a newcomer through the first steps, one at a time', async () => {
+    const fake = resetDb({
+      tables: { profiles: [viewerProfile], groups: [], group_balances: [], event_rsvps: [] },
+    })
+    fake.respond('rpc:my_timeline', { data: [] })
+    const { unmount } = renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const steps = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    expect(
+      within(steps).getByRole('link', { name: t('home.firstSteps.groupAction') }),
+    ).toHaveAttribute('href', '/groups?new=true')
+    // Nothing can be planned without a group, so that prompt waits.
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+    unmount()
+
+    // A group of one: the next step is people.
+    const solo = resetDb({
+      tables: {
+        profiles: [viewerProfile],
+        groups: [{ ...groupRows[0]!, group_members: [{ count: 1 }] }],
+        group_balances: [],
+        event_rsvps: [],
+      },
+    })
+    solo.respond('rpc:my_timeline', { data: [] })
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const next = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    expect(
+      within(next).getByRole('link', { name: t('home.firstSteps.peopleAction') }),
+    ).toHaveAttribute('href', '/groups/g-hike/members')
+    fireEvent.click(within(next).getByRole('button', { name: t('home.firstSteps.hide') }))
+    expect(
+      screen.queryByRole('region', { name: t('home.firstSteps.title') }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows no first steps once a group has company', async () => {
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    await screen.findByText(t('home.groups'))
+    expect(screen.queryByText(t('home.firstSteps.title'))).not.toBeInTheDocument()
+  })
+
   it('never says nothing needs you while money is owed, in any currency', async () => {
     const fake = resetDb({
       tables: {
