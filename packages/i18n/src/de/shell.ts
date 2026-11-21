@@ -173,6 +173,7 @@ export const errors = {
   generic: 'In der Küche ist was angebrannt. Nochmal versuchen?',
   network: 'Du scheinst offline zu sein. Wir versuchen es erneut, sobald du zurück bist.',
   notFound: 'Diese Seite hat sich verlaufen.',
+  notFoundBody: 'Prüf den Link oder geh zur Startseite und such von dort.',
   forbidden: 'An diesem Tisch hast du keinen Platz.',
   sessionExpired: 'Deine Sitzung ist abgelaufen. Melde dich erneut an.',
   rateLimited: 'Immer mit der Ruhe. Versuch es gleich nochmal.',

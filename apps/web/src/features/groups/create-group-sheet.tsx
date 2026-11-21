@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 import { CurrencyField } from '@/features/me/profile-fields'
+import { Help } from '@/features/help/help'
 import { errorMessage } from '@/lib/errors'
 import type { GroupColor } from '@/lib/group-colors'
 import { useMyProfile } from '@/lib/queries'
@@ -207,6 +208,7 @@ export function CreateGroupSheet({ open, onOpenChange }: CreateGroupSheetProps) 
               </ul>
             )}
           </div>
+          <Help topic="createGroup" showLabel className="justify-self-start" />
         </form>
       </SheetContent>
     </Sheet>

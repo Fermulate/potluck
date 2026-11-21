@@ -185,9 +185,7 @@ function PersonPicker({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate font-semibold">{m.display_name}</span>
           {line && (
-            <span
-              className={tone === 'owe' ? 'text-sm text-tomato-ink' : 'text-sm text-saffron-ink'}
-            >
+            <span className={tone === 'owe' ? 'text-sm text-tomato-ink' : 'text-sm text-olive-ink'}>
               {line}
             </span>
           )}

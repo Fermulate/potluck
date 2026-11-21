@@ -131,7 +131,7 @@ export function ExpenseRow({
                 aria-hidden
                 className={cn(
                   'text-xs font-medium',
-                  line.kind === 'lent' ? 'text-saffron-ink' : 'text-tomato-ink',
+                  line.kind === 'lent' ? 'text-olive-ink' : 'text-tomato-ink',
                 )}
               >
                 {line.kind === 'lent'

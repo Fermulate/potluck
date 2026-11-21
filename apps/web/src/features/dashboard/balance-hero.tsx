@@ -2,6 +2,7 @@ import { intlLocale, formatMoney, t } from '@potluck/i18n'
 import { Amount } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
+import { GoodToKnow } from '@/features/help/help'
 import type { BalanceSummary } from './summary'
 
 // Perforated bottom edge, like a bill torn off the pad.
@@ -98,7 +99,10 @@ export function BalanceHero({ summary }: { summary: BalanceSummary }) {
         <span>
           {t('home.balance.title')}, {acrossWhat(summary)}
         </span>
-        <span className="tabular">{currency}</span>
+        <span className="flex shrink-0 items-center gap-2.5">
+          <span className="tabular">{currency}</span>
+          <GoodToKnow topic="balancesAcross" tip="balancesAcross" onHero />
+        </span>
       </div>
       <p className="mt-5 flourish text-2xl leading-none text-hero-mute">{headline}</p>
       {net === 0 ? (

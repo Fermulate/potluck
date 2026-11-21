@@ -32,6 +32,7 @@ import { GroupTile } from '@/features/groups/group-bits'
 import { useMyGroups, useMyGroupsRealtime } from '@/features/groups/use-groups'
 import { shareInvite } from '@/features/invites/share'
 import { useUserId } from '@/lib/auth'
+import { Help } from '@/features/help/help'
 import { errorMessage } from '@/lib/errors'
 import { avatarSrc } from '@/lib/queries'
 import { supabase } from '@/lib/supabase'
@@ -62,7 +63,7 @@ function FriendBalance({ friend, total }: { friend: Friend; total: FriendTotal |
       .reduce((a, b) => t('friends.and', { first: a, second: b }))
   const label = (owedToYou: boolean) =>
     (owedToYou ? t('friends.owesYou', { amount: '' }) : t('friends.youOwe', { amount: '' })).trim()
-  const tone = (owedToYou: boolean) => (owedToYou ? 'text-saffron-ink' : 'text-tomato-ink')
+  const tone = (owedToYou: boolean) => (owedToYou ? 'text-olive-ink' : 'text-tomato-ink')
 
   if (directions.length === 1) {
     const [only] = directions
@@ -288,14 +289,20 @@ export function FriendsPage() {
         title={t('friends.title')}
         subtitle={t('friends.subtitle')}
         actions={
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon={<UserPlus />}
-            onClick={() => setAddOpen(true)}
-          >
-            {t('friends.add')}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Help topic="friendTotals" />
+            {/* With nobody here yet the empty state carries the one button. */}
+            {(isPending || (friends && friends.length > 0)) && (
+              <Button
+                size="sm"
+                variant="secondary"
+                leadingIcon={<UserPlus />}
+                onClick={() => setAddOpen(true)}
+              >
+                {t('friends.add')}
+              </Button>
+            )}
+          </div>
         }
       />
 

@@ -1,8 +1,9 @@
 import { moneyKeys } from '@potluck/api'
 import { t } from '@potluck/i18n'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { GroupPicker } from './group-picker'
+import { renderInRouter } from './router-test-utils'
 import { group, members, renderWithClient, seededClient } from './test-utils'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -31,9 +32,11 @@ describe('GroupPicker', () => {
     expect(onPick).toHaveBeenLastCalledWith(direct)
   })
 
-  it('explains when there are no groups yet', () => {
+  it('explains when there are no groups yet, and leads to making one', async () => {
     const client = seededClient((c) => c.setQueryData(moneyKeys.myGroups(), []))
-    renderWithClient(<GroupPicker title="Which group?" onPick={vi.fn()} />, client)
-    expect(screen.getByText(t('expenses.pickGroup.none'))).toBeInTheDocument()
+    renderInRouter(<GroupPicker title="Which group?" onPick={vi.fn()} />, client)
+    expect(await screen.findByText(t('expenses.pickGroup.none'))).toBeInTheDocument()
+    const create = within(document.body).getByRole('link', { name: t('empty.groups.action') })
+    expect(create.getAttribute('href')).toMatch(/^\/groups\?new=true$/)
   })
 })

@@ -7,6 +7,14 @@ export const help = {
   readMore: 'Leer más',
   guide: 'Guía',
   topics: {
+    plansPage: 'Cómo se ordena la página Planes',
+    startPoll: 'Cómo funciona una encuesta',
+    rsvp: 'Cómo funcionan las confirmaciones',
+    inbox: 'Sobre la bandeja de entrada',
+    expenseList: 'Cómo leer la lista de gastos',
+    balancesAcross: 'Cómo se suma tu total',
+    createGroup: 'Sobre crear un grupo',
+    friendTotals: 'Qué significan los totales',
     splitEqual: 'Cómo funciona dividir a partes iguales',
     splitExact: 'Cómo funcionan los importes exactos',
     splitPercent: 'Cómo funciona dividir por porcentaje',
@@ -55,6 +63,10 @@ export const help = {
     importExpenses: 'Cómo funciona importar',
   },
   tips: {
+    balancesAcross:
+      'Cada grupo y cada cuenta con un amigo lleva su propio saldo. Esta tarjeta los suma en una moneda. Las demás monedas aparecen aparte y nunca se convierten.',
+    expenseList:
+      '"{lent}": pagaste tú y los demás te deben su parte. "{borrowed}": pagó otra persona y esta es tu parte.',
     simplifiedDebts:
       'Potluck compensa quién debe a quién para que el grupo necesite menos pagos. Quizá le pagues a alguien con quien nunca dividiste nada directamente, pero tu total sigue igual.',
     everyDebt:

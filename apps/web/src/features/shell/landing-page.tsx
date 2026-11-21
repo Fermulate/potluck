@@ -12,8 +12,7 @@ import { heroFrame } from './hero-frame'
 const HeroDemo = lazy(() => import('./hero-demo').then((m) => ({ default: m.HeroDemo })))
 
 /** Tomato gingham: the tablecloth the demo cards sit on. */
-const gingham =
-  'bg-paper [background-image:linear-gradient(90deg,color-mix(in_oklab,var(--pl-tomato)_42%,transparent)_50%,transparent_50%),linear-gradient(color-mix(in_oklab,var(--pl-tomato)_42%,transparent)_50%,transparent_50%)] [background-size:44px_44px]'
+const gingham = 'gingham [--gingham-size:44px]'
 
 function Feature({
   icon,

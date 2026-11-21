@@ -1,11 +1,13 @@
 import type * as AuthModule from '@/lib/auth'
+import type * as ApiModule from '@potluck/api'
+import { groupKeys, planQueries } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VIEWER } from '@/test/fixtures'
 import { viewerProfile } from '@/test/plan-fixtures'
 import { renderWithProviders } from '@/test/render'
-import { resetDb, rowsOf } from '@/test/supabase'
+import { resetDb, rowsOf, supabase } from '@/test/supabase'
 import { HomeDashboard } from './home-dashboard'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
@@ -13,6 +15,20 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof AuthModule>()),
   useUserId: () => VIEWER,
 }))
+
+// The list of every group can be made to answer late: set `myGroupsGate` and resolve it later.
+let myGroupsGate: Promise<void> | null = null
+vi.mock('@potluck/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof ApiModule>()
+  const myGroupsQueryOptions: typeof actual.myGroupsQueryOptions = (client, viewerId) => ({
+    ...actual.myGroupsQueryOptions(client, viewerId),
+    queryFn: async () => {
+      await myGroupsGate
+      return actual.fetchMyGroups(client, viewerId)
+    },
+  })
+  return { ...actual, myGroupsQueryOptions }
+})
 
 const DAY = 86_400_000
 const at = (days: number) => new Date(Date.now() + days * DAY).toISOString()
@@ -99,6 +115,29 @@ const groupRows = [
   },
 ]
 
+// The fake returns rows whole, so one row answers both the member count and the member list.
+const membersOf = (...ids: string[]) =>
+  ids.map((id) => ({
+    count: ids.length,
+    role: 'member',
+    joined_at: '2026-08-17T12:00:00Z',
+    profiles: { id, display_name: id },
+  }))
+
+/** Home for someone whose only groups are `groups`, once every group list has answered. */
+async function renderHomeWith(groups: Record<string, unknown>[]) {
+  const fake = resetDb({
+    tables: { profiles: [viewerProfile], groups, group_balances: [], event_rsvps: [] },
+  })
+  fake.respond('rpc:my_timeline', { data: [] })
+  const view = renderWithProviders(<HomeDashboard />, { path: '/home' })
+  await screen.findByText(t('home.balance.settledHint'))
+  await waitFor(() =>
+    expect(view.queryClient.getQueryState(groupKeys.list(VIEWER))?.status).toBe('success'),
+  )
+  return view
+}
+
 function seed({ items = timeline as object[], balances = true } = {}) {
   const fake = resetDb({
     tables: {
@@ -120,7 +159,11 @@ function seed({ items = timeline as object[], balances = true } = {}) {
 }
 
 describe('HomeDashboard', () => {
-  beforeEach(() => seed())
+  beforeEach(() => {
+    window.localStorage.clear()
+    myGroupsGate = null
+    seed()
+  })
 
   it('greets you and adds up what you owe across groups', async () => {
     renderWithProviders(<HomeDashboard />, { path: '/home' })
@@ -195,6 +238,147 @@ describe('HomeDashboard', () => {
     expect(await screen.findByText(t('home.balance.settledHint'))).toBeInTheDocument()
     expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: t('home.needsYou') })).not.toBeInTheDocument()
+  })
+
+  it('mutes the zero figures on the balance card and keeps the all square headline olive', async () => {
+    seed({ items: [], balances: false })
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const hero = await screen.findByRole('region', { name: t('home.balance.title') })
+    await within(hero).findByText(t('home.balance.settledHint'))
+    // You owe and Owed to you: zero is muted grey, never tomato or olive (docs/design.md).
+    const zeros = within(hero).getAllByText('$0.00')
+    expect(zeros).toHaveLength(2)
+    for (const zero of zeros) expect(zero.parentElement).toHaveAttribute('data-tone', 'settled')
+    expect(within(hero).getByText(t('home.balance.settled'))).toHaveClass('text-hero-olive')
+  })
+
+  it('keeps what you owe tomato and what you are owed olive on the balance card', async () => {
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const hero = await screen.findByRole('region', { name: t('home.balance.title') })
+    const figure = (label: string) =>
+      within(within(hero).getByText(label).parentElement!).getByText(/\d/, {
+        selector: '.sr-only',
+      }).parentElement
+    await within(hero).findByText('You owe $32.51')
+    expect(figure(t('home.balance.youOwe'))).toHaveAttribute('data-tone', 'owe')
+    expect(figure(t('home.balance.owedToYou'))).toHaveAttribute('data-tone', 'owed')
+  })
+
+  it('walks a newcomer through the first steps, one at a time', async () => {
+    const fake = resetDb({
+      tables: { profiles: [viewerProfile], groups: [], group_balances: [], event_rsvps: [] },
+    })
+    fake.respond('rpc:my_timeline', { data: [] })
+    const { unmount } = renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const steps = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    expect(
+      within(steps).getByRole('link', { name: t('home.firstSteps.groupAction') }),
+    ).toHaveAttribute('href', '/groups?new=true')
+    // Nothing can be planned without a group, so that prompt waits.
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('home.newGroup') })).not.toBeInTheDocument()
+    unmount()
+
+    // A group of one: the next step is people.
+    const solo = resetDb({
+      tables: {
+        profiles: [viewerProfile],
+        groups: [{ ...groupRows[0]!, group_members: membersOf(VIEWER) }],
+        group_balances: [],
+        event_rsvps: [],
+      },
+    })
+    solo.respond('rpc:my_timeline', { data: [] })
+    renderWithProviders(<HomeDashboard />, { path: '/home' })
+    const next = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    expect(
+      within(next).getByRole('link', { name: t('home.firstSteps.peopleAction') }),
+    ).toHaveAttribute('href', '/groups/g-hike/members')
+    fireEvent.click(within(next).getByRole('button', { name: t('home.firstSteps.hide') }))
+    expect(
+      screen.queryByRole('region', { name: t('home.firstSteps.title') }),
+    ).not.toBeInTheDocument()
+  })
+
+  /** Newcomer Home with the timeline, balances and plan groups in, the list of every group not. */
+  async function renderNewcomerWaitingOnGroups() {
+    let release = () => {}
+    myGroupsGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const fake = resetDb({
+      tables: { profiles: [viewerProfile], groups: [], group_balances: [], event_rsvps: [] },
+    })
+    fake.respond('rpc:my_timeline', { data: [] })
+    const view = renderWithProviders(<HomeDashboard />, { path: '/home' })
+    await screen.findByText(t('home.balance.settledHint'))
+    await screen.findByText(t('home.summary.none'))
+    const groupsKey = planQueries.groups(supabase).queryKey
+    await waitFor(() => expect(view.queryClient.getQueryState(groupsKey)?.status).toBe('success'))
+    return { ...view, release }
+  }
+
+  it('never shows a newcomer the plan prompt or Groups before the first steps card', async () => {
+    const { release } = await renderNewcomerWaitingOnGroups()
+    // Everything else has answered; whether this is a first visit is still unknown.
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: t('timeline.title') })).not.toBeInTheDocument()
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+    // What does not depend on having a group is there meanwhile.
+    expect(screen.getByRole('link', { name: new RegExp(t('insights.open')) })).toBeInTheDocument()
+
+    release()
+    expect(
+      await screen.findByRole('region', { name: t('home.firstSteps.title') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(screen.queryByText(t('timeline.empty.title'))).not.toBeInTheDocument()
+  })
+
+  it('stops waiting on a slow group list after a moment and shows Home whole', async () => {
+    await renderNewcomerWaitingOnGroups()
+    expect(screen.queryByRole('heading', { name: t('home.groups') })).not.toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: t('home.groups') }, { timeout: 4000 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
+  })
+
+  it('shows no first steps once a group has company', async () => {
+    await renderHomeWith([{ ...groupRows[0]!, group_members: membersOf(VIEWER, 'u-ben') }])
+    expect(screen.queryByText(t('home.firstSteps.title'))).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Hike crew/ })).toBeInTheDocument()
+  })
+
+  it('keeps a way to start a group on Home after a newcomer hides the first steps', async () => {
+    await renderHomeWith([])
+    const steps = await screen.findByRole('region', { name: t('home.firstSteps.title') })
+    fireEvent.click(within(steps).getByRole('button', { name: t('home.firstSteps.hide') }))
+    expect(
+      screen.queryByRole('region', { name: t('home.firstSteps.title') }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('home.newGroup') })).toHaveAttribute(
+      'href',
+      '/groups',
+    )
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      'an archived group',
+      { ...groupRows[0]!, archived_at: '2026-10-01T00:00:00Z', group_members: membersOf(VIEWER) },
+    ],
+    ['a friend tab', { ...groupRows[4]!, group_members: membersOf(VIEWER, 'u-jules') }],
+  ])('does not treat someone with only %s as new', async (_what, row) => {
+    await renderHomeWith([row])
+    expect(screen.queryByText(t('home.firstSteps.title'))).not.toBeInTheDocument()
+    // Home is whole, as for anyone else: the plan prompt and the way to a new group.
+    expect(screen.getByText(t('timeline.empty.title'))).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('home.newGroup') })).toHaveAttribute(
+      'href',
+      '/groups',
+    )
   })
 
   it('never says nothing needs you while money is owed, in any currency', async () => {

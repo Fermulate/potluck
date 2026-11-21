@@ -52,6 +52,14 @@ export const HELP_TOPICS = {
   restoreGroup: '/groups/settings/#restore-a-deleted-group',
   notes: '/groups/#group-notes',
   categories: '/expenses/#categories',
+  expenseList: '/expenses/#reading-the-expense-list',
+  balancesAcross: '/balances/#balances-across-groups',
+  createGroup: '/groups/#create-a-group',
+  friendTotals: '/friends/#what-the-totals-mean',
+  plansPage: '/plans/#the-plans-page',
+  startPoll: '/plans/#start-a-poll',
+  rsvp: '/plans/lock-in/#rsvp',
+  inbox: '/notifications/#the-inbox',
 } as const satisfies Record<string, `/${string}`>
 
 export type HelpTopic = keyof typeof HELP_TOPICS

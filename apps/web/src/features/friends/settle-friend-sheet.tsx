@@ -163,7 +163,7 @@ export function SettleFriendSheet({
                       <span
                         className={cn(
                           'tabular text-sm font-medium',
-                          row.netCents > 0 ? 'text-saffron-ink' : 'text-tomato-ink',
+                          row.netCents > 0 ? 'text-olive-ink' : 'text-tomato-ink',
                         )}
                       >
                         {row.netCents > 0
