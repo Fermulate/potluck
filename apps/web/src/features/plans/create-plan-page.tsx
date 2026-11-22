@@ -33,16 +33,12 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Help } from '@/features/help/help'
 import { BackToPlans } from './back-link'
-import { formatDuration, formatMinuteOfDay, planErrorMessage } from './format'
+import { planErrorMessage } from './format'
 import { useViewer, useViewerProfile } from './viewer'
+import { addDays, durationOptions, type PollWindow } from './window'
+import { WindowFields } from './window-fields'
 
 const EMOJIS = ['🍽️', '🍕', '🌮', '🍜', '🥾', '🎲', '🎬', '🏖️', '🎉', '☕']
-const DURATIONS = [30, 60, 90, 120, 180, 240, 360, 480, 720]
-const DAY = 86_400_000
-
-const addDays = (key: string, n: number) =>
-  new Date(Date.parse(`${key}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10)
-
 /** The last user-perceived character typed, so a multi code point emoji stays whole. */
 const lastGrapheme = (value: string) =>
   [...new Intl.Segmenter().segment(value)].at(-1)?.segment ?? ''
@@ -165,10 +161,12 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
   const [emoji, setEmoji] = useState(EMOJIS[0]!)
   const [location, setLocation] = useState('')
   const [description, setDescription] = useState('')
-  const [windowStart, setWindowStart] = useState(() => addDays(today, 1))
-  const [windowEnd, setWindowEnd] = useState(() => addDays(today, 7))
-  const [dayStart, setDayStart] = useState(600)
-  const [dayEnd, setDayEnd] = useState(1320)
+  const [pollWindow, setPollWindow] = useState<PollWindow>(() => ({
+    windowStart: addDays(today, 1),
+    windowEnd: addDays(today, 7),
+    dayStartMinute: 600,
+    dayEndMinute: 1320,
+  }))
   const [slot, setSlot] = useState<'15' | '30' | '60'>('30')
   const [duration, setDuration] = useState(120)
   const [minAttendees, setMinAttendees] = useState(2)
@@ -185,13 +183,6 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
   const selected = picked[groupId] ?? new Set(others.map((m) => m.userId))
   const setSelected = (next: Set<string>) => setPicked((p) => ({ ...p, [groupId]: next }))
 
-  const windowDays = Math.round((Date.parse(windowEnd) - Date.parse(windowStart)) / DAY) + 1 || 0
-
-  const hourOptions = Array.from({ length: 49 }, (_, i) => i * 30).map((m) => ({
-    value: String(m),
-    label: formatMinuteOfDay(m),
-  }))
-
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!members.isSuccess) return
@@ -201,10 +192,10 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
       emoji,
       location,
       description,
-      window_start: windowStart,
-      window_end: windowEnd,
-      day_start_minute: dayStart,
-      day_end_minute: dayEnd,
+      window_start: pollWindow.windowStart,
+      window_end: pollWindow.windowEnd,
+      day_start_minute: pollWindow.dayStartMinute,
+      day_end_minute: pollWindow.dayEndMinute,
       slot_minutes: Number(slot),
       duration_minutes: duration,
       min_attendees: minAttendees,
@@ -327,56 +318,13 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
           </span>
         }
       >
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label={t('events.create.windowFrom')}
-            error={errors.window_start}
-            id="plan-window_start"
-          >
-            <Input
-              type="date"
-              value={windowStart}
-              min={today}
-              onChange={(e) => {
-                setWindowStart(e.target.value)
-                if (e.target.value > windowEnd) setWindowEnd(e.target.value)
-              }}
-            />
-          </Field>
-          <Field label={t('events.create.windowTo')} error={errors.window_end} id="plan-window_end">
-            <Input
-              type="date"
-              value={windowEnd}
-              min={windowStart}
-              onChange={(e) => setWindowEnd(e.target.value)}
-            />
-          </Field>
-        </div>
-        {windowDays > 0 && (
-          <p className="-mt-2 text-sm text-mute">
-            {t('events.create.windowDays', { count: windowDays })}
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t('events.create.hoursFrom')}>
-            <Select
-              value={String(dayStart)}
-              onValueChange={(v) => setDayStart(Number(v))}
-              options={hourOptions.slice(0, -1)}
-            />
-          </Field>
-          <Field
-            label={t('events.create.hoursTo')}
-            error={errors.day_end_minute}
-            id="plan-day_end_minute"
-          >
-            <Select
-              value={String(dayEnd)}
-              onValueChange={(v) => setDayEnd(Number(v))}
-              options={hourOptions.slice(1)}
-            />
-          </Field>
-        </div>
+        <WindowFields
+          value={pollWindow}
+          onChange={setPollWindow}
+          today={today}
+          errors={errors}
+          idPrefix="plan"
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
             label={t('events.create.durationLabel')}
@@ -386,7 +334,7 @@ export function PlanForm({ groups, groupId, onGroupChange, timeZone, viewerId }:
             <Select
               value={String(duration)}
               onValueChange={(v) => setDuration(Number(v))}
-              options={DURATIONS.map((d) => ({ value: String(d), label: formatDuration(d) }))}
+              options={durationOptions()}
             />
           </Field>
           <div className="flex flex-col gap-2">

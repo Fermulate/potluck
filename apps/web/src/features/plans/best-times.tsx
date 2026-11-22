@@ -16,6 +16,8 @@ export interface BestTimesProps {
   /** Called with the slot being looked at, so the heatmap can outline it. */
   onPreview?: (slot: PlanBestSlot | null) => void
   avatarUrl?: (path: string | null) => string | null
+  /** How "missing" names someone; first names with a guest tag by default. */
+  nameOf?: (person: PlanMember | undefined) => string
 }
 
 /** Ranked suggestions from `best_slots`, with "Lock it in" for the organizer and admins. */
@@ -27,6 +29,7 @@ export function BestTimes({
   onLock,
   onPreview,
   avatarUrl,
+  nameOf = personName,
 }: BestTimesProps) {
   const [confirming, setConfirming] = useState<PlanBestSlot | null>(null)
   const people = members.filter((m) => !m.deleted)
@@ -63,7 +66,7 @@ export function BestTimes({
   const whoIsMissing = (slot: PlanBestSlot) => {
     const missing = slot.missing.filter((id) => byId.has(id))
     if (missing.length === 0) return t('bestTime.everyoneCanMake')
-    const names = missing.map((id) => personName(byId.get(id))).filter(Boolean)
+    const names = missing.map((id) => nameOf(byId.get(id))).filter(Boolean)
     return names.length === missing.length
       ? t('bestTime.missing', { names: joinNames(names, 2) })
       : t('bestTime.missingCount', { count: missing.length })
