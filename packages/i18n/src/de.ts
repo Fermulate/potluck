@@ -10,6 +10,7 @@ import { help } from './de/help'
 import { search, filters, insights, deletedItems, activityFilter } from './de/insights'
 import { people } from './de/people'
 import { transfer } from './de/transfer'
+import { quickPolls } from './de/quick-polls'
 
 /**
  * German (du). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -53,6 +54,7 @@ export const de = {
   activityFilter,
   people,
   transfer,
+  quickPolls,
   empty,
   errors,
 } satisfies Translation<Dictionary>

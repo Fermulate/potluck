@@ -10,6 +10,7 @@ import { help } from './fr/help'
 import { search, filters, insights, deletedItems, activityFilter } from './fr/insights'
 import { people } from './fr/people'
 import { transfer } from './fr/transfer'
+import { quickPolls } from './fr/quick-polls'
 
 /**
  * French (tu, written for France and other French-speaking places). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -53,6 +54,7 @@ export const fr = {
   activityFilter,
   people,
   transfer,
+  quickPolls,
   empty,
   errors,
 } satisfies Translation<Dictionary>

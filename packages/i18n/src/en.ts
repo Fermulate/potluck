@@ -8,6 +8,7 @@ import { help } from './en/help'
 import { search, filters, insights, deletedItems, activityFilter } from './en/insights'
 import { people } from './en/people'
 import { transfer } from './en/transfer'
+import { quickPolls } from './en/quick-polls'
 
 /**
  * English strings. Nested by screen or domain; look them up with dotted keys via `t()`.
@@ -58,6 +59,7 @@ export const en = {
   activityFilter,
   people,
   transfer,
+  quickPolls,
   empty,
   errors,
 } as const

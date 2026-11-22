@@ -10,6 +10,7 @@ import { help } from './es/help'
 import { search, filters, insights, deletedItems, activityFilter } from './es/insights'
 import { people } from './es/people'
 import { transfer } from './es/transfer'
+import { quickPolls } from './es/quick-polls'
 
 /**
  * Spanish (tú, neutral Latin American and Spain friendly). Same files and keys as `./en`; a key
@@ -53,6 +54,7 @@ export const es = {
   activityFilter,
   people,
   transfer,
+  quickPolls,
   empty,
   errors,
 } satisfies Translation<Dictionary>

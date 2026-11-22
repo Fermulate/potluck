@@ -20,7 +20,12 @@ const raised = [
   ),
 ].sort()
 
-const SCOPES: (ErrorScope | undefined)[] = [undefined, 'expenses.errors', 'events.errors']
+const SCOPES: (ErrorScope | undefined)[] = [
+  undefined,
+  'expenses.errors',
+  'events.errors',
+  'quickPolls.errors',
+]
 
 describe('error codes the database raises', () => {
   it('finds the codes', () => {
