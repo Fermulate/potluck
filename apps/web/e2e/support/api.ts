@@ -5,10 +5,16 @@ import {
   createGuestLink,
   createInvite,
   createPlanEvent,
+  createQuickPoll,
+  setQuickPollAvailability,
+  type CreateQuickPollInput,
   type ExpensePayload,
 } from '@potluck/api'
 import { createClient } from '@supabase/supabase-js'
-import { stackEnv } from './env'
+import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { repoRoot, stackEnv } from './env'
 import { unique, type TestUser } from './fixtures'
 
 /** `days` from today as YYYY-MM-DD (UTC, like every e2e user). */
@@ -99,4 +105,73 @@ export async function addEqualExpense(
     spent_at: new Date().toISOString().slice(0, 10),
     ...extra,
   })
+}
+
+/**
+ * Empties the quick poll create log on the local database. Creating is limited to 5 polls an
+ * hour per client address and every local call shares one address, so each test that makes a
+ * poll starts here; the limit itself stays as it is. Runs psql inside the local stack's database
+ * container (the stack's `project_id` names it), never against a hosted project.
+ */
+export function clearQuickPollCreates() {
+  const config = readFileSync(`${repoRoot}supabase/config.toml`, 'utf8')
+  const projectId = /^project_id\s*=\s*"([^"]+)"/m.exec(config)?.[1] ?? 'potluck'
+  execFileSync(
+    'docker',
+    [
+      'exec',
+      `supabase_db_${projectId}`,
+      'psql',
+      '-U',
+      'postgres',
+      '-tAc',
+      'delete from private.quick_poll_creates',
+    ],
+    { stdio: 'ignore' },
+  )
+}
+
+/** A client with no account, like a browser that never signed in. */
+function anonymousClient() {
+  const env = stackEnv()
+  return createClient(env.url, env.publishableKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+/**
+ * A quick poll made without an account: tomorrow and the day after, 10:00 to 12:00 UTC, one hour
+ * long. Returns its code and the creator token.
+ */
+export async function quickPoll(input: Partial<CreateQuickPollInput> = {}) {
+  clearQuickPollCreates()
+  return createQuickPoll(anonymousClient(), {
+    title: unique('Picnic'),
+    timeZone: 'UTC',
+    windowStart: dayFromToday(1),
+    windowEnd: dayFromToday(2),
+    dayStartMinute: 600,
+    dayEndMinute: 720,
+    durationMinutes: 60,
+    slotMinutes: 30,
+    ttl: '7d',
+    namesRequired: true,
+    maxPeople: 10,
+    ...input,
+  })
+}
+
+/** Someone without an account answers `code` with tomorrow 10:00 to 11:00; returns their token. */
+export async function answerQuickPoll(code: string, name: string, token = randomUUID()) {
+  const day = dayFromToday(1)
+  const saved = await setQuickPollAvailability(anonymousClient(), {
+    code,
+    name,
+    token,
+    slots: [
+      { slot_start: `${day}T10:00:00.000Z`, level: 'yes' },
+      { slot_start: `${day}T10:30:00.000Z`, level: 'yes' },
+    ],
+  })
+  return saved.token
 }

@@ -1,0 +1,3 @@
+# Quick polls are reached by a private link: keep them out of search results.
+/p/*
+  X-Robots-Tag: noindex

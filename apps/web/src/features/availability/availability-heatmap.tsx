@@ -27,6 +27,8 @@ export interface AvailabilityHeatmapProps {
   viewerId?: string
   label: string
   avatarUrl?: (path: string | null) => string | null
+  /** How the inspector names someone; first names with a guest tag by default. */
+  nameOf?: (person: PlanMember | undefined) => string
 }
 
 interface SlotInfo {
@@ -55,6 +57,7 @@ export function AvailabilityHeatmap({
   viewerId,
   label,
   avatarUrl,
+  nameOf = personName,
 }: AvailabilityHeatmapProps) {
   const reduced = usePrefersReducedMotion()
   const gridRef = useRef<HTMLDivElement>(null)
@@ -121,7 +124,7 @@ export function AvailabilityHeatmap({
   }
 
   const shown = active ? info.get(active) : undefined
-  const names = (ids: string[]) => ids.map((id) => personName(byId.get(id)))
+  const names = (ids: string[]) => ids.map((id) => nameOf(byId.get(id)))
 
   return (
     <div className="flex flex-col gap-3">

@@ -1331,65 +1331,12 @@ COMMENT ON COLUMN "public"."events"."reminder_sent_at" IS 'Set by the hourly rem
 
 
 CREATE OR REPLACE FUNCTION "private"."event_slots"("ev" "public"."events", "slots" "jsonb") RETURNS "jsonb"
-    LANGUAGE "plpgsql" STABLE
+    LANGUAGE "sql" STABLE
     SET "search_path" TO ''
     AS $$
-declare
-  parsed jsonb;
-begin
-  if slots is null or jsonb_typeof(slots) <> 'array' then
-    raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
-  end if;
-  if jsonb_array_length(slots) > 5000 then
-    raise exception using message = 'invalid_slots', detail = 'Too many slots', errcode = '22023';
-  end if;
-
-  begin
-    select coalesce(jsonb_agg(jsonb_build_object('slot_start', x.slot_start, 'level', x.level)), '[]'::jsonb)
-    into parsed
-    from (
-      select
-        (e.elem ->> 'slot_start')::timestamptz as slot_start,
-        coalesce((e.elem ->> 'level')::public.availability_level, 'yes') as level
-      from jsonb_array_elements(slots) as e (elem)
-    ) x;
-  exception
-    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
-      raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
-  end;
-
-  if exists (
-    select 1
-    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
-    cross join lateral (
-      select (s.slot_start at time zone ev.timezone) as local_ts
-    ) l
-    cross join lateral (
-      select
-        l.local_ts::date as day,
-        (extract(hour from l.local_ts) * 60 + extract(minute from l.local_ts))::int as minute,
-        extract(second from l.local_ts) as sec
-    ) t
-    where s.slot_start is null
-       or t.day < ev.window_start
-       or t.day > ev.window_end
-       or t.sec <> 0
-       or t.minute < ev.day_start_minute
-       or t.minute + ev.slot_minutes > ev.day_end_minute
-       or (t.minute - ev.day_start_minute) % ev.slot_minutes <> 0
-  ) then
-    raise exception using message = 'invalid_slot', detail = 'Some times are outside this event''s grid', errcode = '22023';
-  end if;
-
-  if (select count(*) from jsonb_array_elements(parsed)) <> (
-    select count(distinct (s.slot_start))
-    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
-  ) then
-    raise exception using message = 'duplicate_slot', detail = 'A time appears twice', errcode = '22023';
-  end if;
-
-  return parsed;
-end;
+  select private.grid_slots(
+    ev.timezone, ev.window_start, ev.window_end, ev.day_start_minute, ev.day_end_minute, ev.slot_minutes, slots
+  );
 $$;
 
 
@@ -2087,6 +2034,72 @@ $$;
 
 
 ALTER FUNCTION "private"."fx_rate"("from_currency" character, "to_currency" character, "on_day" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."grid_slots"("timezone" "text", "window_start" "date", "window_end" "date", "day_start_minute" integer, "day_end_minute" integer, "slot_minutes" integer, "slots" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" STABLE
+    SET "search_path" TO ''
+    AS $$
+declare
+  parsed jsonb;
+begin
+  if slots is null or jsonb_typeof(slots) <> 'array' then
+    raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end if;
+  if jsonb_array_length(slots) > 5000 then
+    raise exception using message = 'invalid_slots', detail = 'Too many slots', errcode = '22023';
+  end if;
+
+  begin
+    select coalesce(jsonb_agg(jsonb_build_object('slot_start', x.slot_start, 'level', x.level)), '[]'::jsonb)
+    into parsed
+    from (
+      select
+        (e.elem ->> 'slot_start')::timestamptz as slot_start,
+        coalesce((e.elem ->> 'level')::public.availability_level, 'yes') as level
+      from jsonb_array_elements(slots) as e (elem)
+    ) x;
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow then
+      raise exception using message = 'invalid_slots', detail = 'Availability is not valid', errcode = '22023';
+  end;
+
+  if exists (
+    select 1
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+    cross join lateral (
+      select (s.slot_start at time zone grid_slots.timezone) as local_ts
+    ) l
+    cross join lateral (
+      select
+        l.local_ts::date as day,
+        (extract(hour from l.local_ts) * 60 + extract(minute from l.local_ts))::int as minute,
+        extract(second from l.local_ts) as sec
+    ) t
+    where s.slot_start is null
+       or t.day < grid_slots.window_start
+       or t.day > grid_slots.window_end
+       or t.sec <> 0
+       or t.minute < grid_slots.day_start_minute
+       or t.minute + grid_slots.slot_minutes > grid_slots.day_end_minute
+       or (t.minute - grid_slots.day_start_minute) % grid_slots.slot_minutes <> 0
+  ) then
+    raise exception using message = 'invalid_slot', detail = 'Some times are outside the grid', errcode = '22023';
+  end if;
+
+  if (select count(*) from jsonb_array_elements(parsed)) <> (
+    select count(distinct (s.slot_start))
+    from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level)
+  ) then
+    raise exception using message = 'duplicate_slot', detail = 'A time appears twice', errcode = '22023';
+  end if;
+
+  return parsed;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."grid_slots"("timezone" "text", "window_start" "date", "window_end" "date", "day_start_minute" integer, "day_end_minute" integer, "slot_minutes" integer, "slots" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."group_debts"("gid" "uuid") RETURNS TABLE("from_user" "uuid", "to_user" "uuid", "amount_cents" bigint)
@@ -3698,6 +3711,24 @@ $$;
 ALTER FUNCTION "private"."purge_deleted_groups"("keep" interval) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."purge_quick_polls"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  n int;
+begin
+  delete from public.quick_polls q where q.expires_at <= now();
+  get diagnostics n = row_count;
+  delete from private.quick_poll_creates c where c.created_at <= now() - interval '1 hour';
+  return n;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."purge_quick_polls"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."push_notification"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3750,6 +3781,71 @@ $$;
 
 
 ALTER FUNCTION "private"."random_code"("bytes" integer) OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."quick_polls" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "code" "text" DEFAULT "private"."random_code"(12) NOT NULL,
+    "title" "text",
+    "timezone" "text" NOT NULL,
+    "window_start" "date" NOT NULL,
+    "window_end" "date" NOT NULL,
+    "day_start_minute" integer NOT NULL,
+    "day_end_minute" integer NOT NULL,
+    "slot_minutes" integer DEFAULT 30 NOT NULL,
+    "duration_minutes" integer NOT NULL,
+    "names_required" boolean DEFAULT true NOT NULL,
+    "max_people" integer DEFAULT 10 NOT NULL,
+    "creator_token_hash" "bytea" NOT NULL,
+    "expires_at" timestamp with time zone NOT NULL,
+    "closed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "quick_polls_check" CHECK ((("window_end" >= "window_start") AND (("window_end" - "window_start") <= 13))),
+    CONSTRAINT "quick_polls_check1" CHECK ((("day_end_minute" - "day_start_minute") >= "slot_minutes")),
+    CONSTRAINT "quick_polls_day_end_minute_check" CHECK ((("day_end_minute" >= 1) AND ("day_end_minute" <= 1440))),
+    CONSTRAINT "quick_polls_day_start_minute_check" CHECK ((("day_start_minute" >= 0) AND ("day_start_minute" <= 1439))),
+    CONSTRAINT "quick_polls_duration_minutes_check" CHECK ((("duration_minutes" >= 15) AND ("duration_minutes" <= 1440))),
+    CONSTRAINT "quick_polls_max_people_check" CHECK ((("max_people" >= 2) AND ("max_people" <= 15))),
+    CONSTRAINT "quick_polls_slot_minutes_check" CHECK (("slot_minutes" = ANY (ARRAY[30, 60]))),
+    CONSTRAINT "quick_polls_timezone_check" CHECK ("private"."is_time_zone"("timezone")),
+    CONSTRAINT "quick_polls_title_check" CHECK ((("char_length"("title") >= 1) AND ("char_length"("title") <= 80)))
+);
+
+
+ALTER TABLE "public"."quick_polls" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."quick_polls" IS 'Availability polls made without an account (ADR 22). Only the quick poll RPCs read or write them; creator_token_hash is sha256 of the token the creator''s browser keeps.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."quick_poll_status"("poll" "public"."quick_polls", "answered" boolean) RETURNS "text"
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select case
+    when poll.expires_at <= now() then 'expired'
+    when poll.closed_at is not null then 'closed'
+    when not coalesce(answered, false)
+      and (select count(*) from public.quick_poll_answers a where a.poll_id = poll.id) >= poll.max_people
+      then 'full'
+    else 'open'
+  end;
+$$;
+
+
+ALTER FUNCTION "private"."quick_poll_status"("poll" "public"."quick_polls", "answered" boolean) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."quick_poll_token_hash"("token" "text") RETURNS "bytea"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select case when char_length(token) between 16 and 200 then sha256(convert_to(token, 'UTF8')) end;
+$$;
+
+
+ALTER FUNCTION "private"."quick_poll_token_hash"("token" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."receipt_content_type"("file_path" "text") RETURNS "text"
@@ -5992,6 +6088,29 @@ $$;
 ALTER FUNCTION "public"."clear_mfa_recovery_codes"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  poll public.quick_polls;
+begin
+  select * into poll from public.quick_polls q where q.code = close_quick_poll.code for update;
+  if poll.id is null then
+    raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
+  end if;
+  if private.quick_poll_token_hash(close_quick_poll.token) is distinct from poll.creator_token_hash then
+    raise exception using message = 'not_allowed', detail = 'Only whoever made the poll can close it', errcode = '42501';
+  end if;
+  update public.quick_polls q set closed_at = coalesce(q.closed_at, now()) where q.id = poll.id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."create_expense"("payload" "jsonb") RETURNS "public"."expenses"
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -6439,6 +6558,120 @@ $$;
 ALTER FUNCTION "public"."create_mfa_recovery_codes"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."create_quick_poll"("payload" "jsonb") RETURNS TABLE("code" "text", "creator_token" "text", "expires_at" timestamp with time zone)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  p jsonb := create_quick_poll.payload;
+  v_title text;
+  v_timezone text;
+  v_window_start date;
+  v_window_end date;
+  v_day_start int;
+  v_day_end int;
+  v_duration int;
+  v_slot int;
+  v_ttl text;
+  v_names boolean;
+  v_max int;
+  headers json;
+  client bytea;
+  token text := private.random_code(24);
+  poll public.quick_polls;
+begin
+  if p is null or jsonb_typeof(p) <> 'object' then
+    raise exception using message = 'invalid_quick_poll', detail = 'Poll settings are not valid', errcode = '22023';
+  end if;
+
+  begin
+    v_title := nullif(private.clean_guest_name(p ->> 'title'), '');
+    v_timezone := p ->> 'timezone';
+    v_window_start := (p ->> 'window_start')::date;
+    v_window_end := (p ->> 'window_end')::date;
+    v_day_start := (p ->> 'day_start_minute')::int;
+    v_day_end := (p ->> 'day_end_minute')::int;
+    v_duration := (p ->> 'duration_minutes')::int;
+    v_slot := coalesce((p ->> 'slot_minutes')::int, 30);
+    v_ttl := p ->> 'ttl';
+    v_names := coalesce((p ->> 'names_required')::boolean, true);
+    v_max := coalesce((p ->> 'max_people')::int, 10);
+  exception
+    when invalid_text_representation or invalid_datetime_format or datetime_field_overflow
+      or numeric_value_out_of_range then
+      raise exception using message = 'invalid_quick_poll', detail = 'Poll settings are not valid', errcode = '22023';
+  end;
+
+  if char_length(v_title) > 80 then
+    raise exception using message = 'invalid_quick_poll_title', detail = 'Titles are up to 80 characters', errcode = '22023';
+  end if;
+  if v_timezone is null or not private.is_time_zone(v_timezone) then
+    raise exception using message = 'invalid_quick_poll_timezone', detail = 'That time zone is not known', errcode = '22023';
+  end if;
+  if v_window_start is null or v_window_end is null
+     or v_window_end < v_window_start
+     or v_window_end - v_window_start > 13
+     or v_window_end < (now() at time zone v_timezone)::date then
+    raise exception using message = 'invalid_quick_poll_window', detail = 'Polls cover 1 to 14 days, not all in the past', errcode = '22023';
+  end if;
+  if v_slot not in (30, 60) then
+    raise exception using message = 'invalid_quick_poll_slot_minutes', detail = 'Slots are 30 or 60 minutes', errcode = '22023';
+  end if;
+  if v_day_start is null or v_day_end is null
+     or v_day_start not between 0 and 1439
+     or v_day_end not between 1 and 1440
+     or v_day_end - v_day_start < v_slot then
+    raise exception using message = 'invalid_quick_poll_hours', detail = 'The day must end at least one slot after it starts', errcode = '22023';
+  end if;
+  if v_duration is null or v_duration not between 15 and 1440 then
+    raise exception using message = 'invalid_quick_poll_duration', detail = 'Plans last 15 minutes to 24 hours', errcode = '22023';
+  end if;
+  if v_ttl is null or v_ttl not in ('24h', '7d') then
+    raise exception using message = 'invalid_quick_poll_ttl', detail = 'Polls last 24 hours or 7 days', errcode = '22023';
+  end if;
+  if v_max not between 2 and 15 then
+    raise exception using message = 'invalid_quick_poll_people', detail = 'A poll takes 2 to 15 people', errcode = '22023';
+  end if;
+
+  -- PostgREST passes the request headers; the first x-forwarded-for entry is the client address
+  -- (Supabase "Securing your API"). Only its hash is kept, and only for an hour.
+  headers := nullif(current_setting('request.headers', true), '')::json;
+  client := sha256(convert_to(nullif(btrim(split_part(headers ->> 'x-forwarded-for', ',', 1)), ''), 'UTF8'));
+
+  perform pg_advisory_xact_lock(hashtextextended('create_quick_poll', 0));
+  if client is not null and (
+    select count(*) from private.quick_poll_creates c
+    where c.creator_hash = client and c.created_at > now() - interval '1 hour'
+  ) >= 5 then
+    raise exception using message = 'quick_poll_rate_limited', detail = 'Too many polls from here, try again in an hour', errcode = '23514';
+  end if;
+  if (
+    select count(*) from private.quick_poll_creates c where c.created_at > now() - interval '1 hour'
+  ) >= 200 then
+    raise exception using message = 'quick_poll_rate_limited', detail = 'Too many polls right now, try again later', errcode = '23514';
+  end if;
+  insert into private.quick_poll_creates (creator_hash) values (client);
+
+  insert into public.quick_polls (
+    title, timezone, window_start, window_end, day_start_minute, day_end_minute, slot_minutes,
+    duration_minutes, names_required, max_people, creator_token_hash, expires_at
+  )
+  values (
+    v_title, v_timezone, v_window_start, v_window_end, v_day_start, v_day_end, v_slot,
+    v_duration, v_names, v_max, sha256(convert_to(token, 'UTF8')),
+    now() + case v_ttl when '24h' then interval '24 hours' else interval '7 days' end
+  )
+  returning * into poll;
+
+  return query select poll.code, token, poll.expires_at;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."create_quick_poll"("payload" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."delete_expense"("id" "uuid") RETURNS "public"."expenses"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -6606,6 +6839,29 @@ $$;
 
 
 ALTER FUNCTION "public"."delete_my_account"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  poll public.quick_polls;
+begin
+  select * into poll from public.quick_polls q where q.code = delete_quick_poll.code for update;
+  if poll.id is null then
+    raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
+  end if;
+  if private.quick_poll_token_hash(delete_quick_poll.token) is distinct from poll.creator_token_hash then
+    raise exception using message = 'not_allowed', detail = 'Only whoever made the poll can delete it', errcode = '42501';
+  end if;
+  delete from public.quick_polls q where q.id = poll.id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."settlements" (
@@ -8293,6 +8549,65 @@ $$;
 ALTER FUNCTION "public"."orphan_receipts"("max_count" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text" DEFAULT NULL::"text") RETURNS TABLE("status" "text", "title" "text", "timezone" "text", "window_start" "date", "window_end" "date", "day_start_minute" integer, "day_end_minute" integer, "slot_minutes" integer, "duration_minutes" integer, "names_required" boolean, "max_people" integer, "expires_at" timestamp with time zone, "is_creator" boolean, "answers" "jsonb")
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  poll public.quick_polls;
+  hashed bytea := private.quick_poll_token_hash(quick_poll_preview.token);
+  my_id uuid;
+  st text;
+begin
+  select * into poll from public.quick_polls q where q.code = quick_poll_preview.code;
+  if poll.id is null then
+    raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
+  end if;
+  select a.id into my_id from public.quick_poll_answers a where a.poll_id = poll.id and a.token_hash = hashed;
+  st := private.quick_poll_status(poll, my_id is not null);
+
+  if st = 'expired' then
+    return query select st, null::text, null::text, null::date, null::date, null::int, null::int,
+      null::int, null::int, null::boolean, null::int, null::timestamptz, null::boolean, null::jsonb;
+    return;
+  end if;
+
+  return query select
+    st,
+    poll.title,
+    poll.timezone,
+    poll.window_start,
+    poll.window_end,
+    poll.day_start_minute,
+    poll.day_end_minute,
+    poll.slot_minutes,
+    poll.duration_minutes,
+    poll.names_required,
+    poll.max_people,
+    poll.expires_at,
+    coalesce(hashed = poll.creator_token_hash, false),
+    (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'seat', a.seat,
+        'name', case when poll.names_required then a.display_name end,
+        'mine', a.id is not distinct from my_id,
+        'slots', (
+          select coalesce(jsonb_agg(jsonb_build_object('slot_start', s.slot_start, 'level', s.level) order by s.slot_start), '[]'::jsonb)
+          from public.quick_poll_slots s
+          where s.answer_id = a.id
+        )
+      ) order by a.seat), '[]'::jsonb)
+      from public.quick_poll_answers a
+      where a.poll_id = poll.id
+    );
+end;
+$$;
+
+
+ALTER FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."record_mfa_recover_attempt"("target" "uuid") RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -9562,6 +9877,91 @@ $$;
 ALTER FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") RETURNS TABLE("answer_token" "text", "saved" integer)
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  poll public.quick_polls;
+  me public.quick_poll_answers;
+  hashed bytea := private.quick_poll_token_hash(set_quick_poll_availability.token);
+  clean_name text;
+  parsed jsonb;
+  n int;
+begin
+  if hashed is null then
+    raise exception using message = 'invalid_quick_poll_token', detail = 'The answer token is missing or not valid', errcode = '22023';
+  end if;
+  select * into poll from public.quick_polls q where q.code = set_quick_poll_availability.code for update;
+  if poll.id is null then
+    raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
+  end if;
+  select * into me from public.quick_poll_answers a where a.poll_id = poll.id and a.token_hash = hashed;
+
+  case private.quick_poll_status(poll, me.id is not null)
+    when 'expired' then
+      raise exception using message = 'quick_poll_expired', detail = 'This poll has ended', errcode = '23514';
+    when 'closed' then
+      raise exception using message = 'quick_poll_closed', detail = 'This poll is closed', errcode = '23514';
+    when 'full' then
+      raise exception using message = 'quick_poll_full', detail = 'This poll is full', errcode = '23514';
+    else
+      null;
+  end case;
+
+  if poll.names_required then
+    clean_name := private.clean_guest_name(set_quick_poll_availability.name);
+    if char_length(clean_name) not between 1 and 40 then
+      raise exception using message = 'invalid_quick_poll_name', detail = 'Names are 1 to 40 characters', errcode = '22023';
+    end if;
+  end if;
+
+  parsed := private.grid_slots(
+    poll.timezone, poll.window_start, poll.window_end, poll.day_start_minute, poll.day_end_minute,
+    poll.slot_minutes, set_quick_poll_availability.slots
+  );
+
+  if me.id is null then
+    if jsonb_array_length(parsed) = 0 then
+      raise exception using message = 'quick_poll_slots_required', detail = 'Pick at least one time', errcode = '22023';
+    end if;
+    -- Answers only ever go with their poll, so the next seat is never one used before.
+    insert into public.quick_poll_answers (poll_id, seat, display_name, token_hash)
+    values (
+      poll.id,
+      coalesce((select max(a.seat) from public.quick_poll_answers a where a.poll_id = poll.id), 0) + 1,
+      clean_name,
+      hashed
+    )
+    returning * into me;
+  elsif me.saves_window_start > now() - interval '1 hour' then
+    if me.saves >= 60 then
+      raise exception using message = 'quick_poll_rate_limited', detail = 'Too many saves, try again later', errcode = '23514';
+    end if;
+    update public.quick_poll_answers a
+    set saves = a.saves + 1, display_name = clean_name, updated_at = now()
+    where a.id = me.id;
+  else
+    update public.quick_poll_answers a
+    set saves = 1, saves_window_start = now(), display_name = clean_name, updated_at = now()
+    where a.id = me.id;
+  end if;
+
+  delete from public.quick_poll_slots s where s.answer_id = me.id;
+  insert into public.quick_poll_slots (answer_id, slot_start, level)
+  select me.id, s.slot_start, s.level
+  from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level);
+  get diagnostics n = row_count;
+
+  return query select set_quick_poll_availability.token, n;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."settle_all"("group_id" "uuid", "settled_on" "date" DEFAULT NULL::"date", "note" "text" DEFAULT NULL::"text") RETURNS SETOF "public"."settlements"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -10828,6 +11228,19 @@ COMMENT ON TABLE "private"."notification_types" IS 'Which setting governs each n
 
 
 
+CREATE TABLE IF NOT EXISTS "private"."quick_poll_creates" (
+    "creator_hash" "bytea",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "private"."quick_poll_creates" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "private"."quick_poll_creates" IS 'One row per quick poll made, kept an hour, for the create rate limit. creator_hash is sha256 of the first x-forwarded-for entry, null without one. Deleting a poll leaves its row here.';
+
+
+
 CREATE TABLE IF NOT EXISTS "private"."recurring_heads_ups" (
     "recurring_id" "uuid" NOT NULL,
     "posts_on" "date" NOT NULL,
@@ -11477,6 +11890,42 @@ CREATE TABLE IF NOT EXISTS "public"."push_tokens" (
 ALTER TABLE "public"."push_tokens" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."quick_poll_answers" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "poll_id" "uuid" NOT NULL,
+    "seat" integer NOT NULL,
+    "display_name" "text",
+    "token_hash" "bytea" NOT NULL,
+    "saves" integer DEFAULT 1 NOT NULL,
+    "saves_window_start" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "quick_poll_answers_display_name_check" CHECK ((("char_length"("display_name") >= 1) AND ("char_length"("display_name") <= 40))),
+    CONSTRAINT "quick_poll_answers_seat_check" CHECK (("seat" >= 1))
+);
+
+
+ALTER TABLE "public"."quick_poll_answers" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."quick_poll_answers" IS 'One answer per browser per quick poll. seat numbers the answers 1, 2, 3 in order; display_name is null when the poll does not ask for names. token_hash is sha256 of the browser''s token.';
+
+
+
+COMMENT ON COLUMN "public"."quick_poll_answers"."saves" IS 'Saves since saves_window_start: the per answer rate limit in set_quick_poll_availability.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."quick_poll_slots" (
+    "answer_id" "uuid" NOT NULL,
+    "slot_start" timestamp with time zone NOT NULL,
+    "level" "public"."availability_level" DEFAULT 'yes'::"public"."availability_level" NOT NULL
+);
+
+
+ALTER TABLE "public"."quick_poll_slots" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."reports" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "reporter_id" "uuid" DEFAULT "auth"."uid"() NOT NULL,
@@ -11787,6 +12236,36 @@ ALTER TABLE ONLY "public"."push_tokens"
 
 
 
+ALTER TABLE ONLY "public"."quick_poll_answers"
+    ADD CONSTRAINT "quick_poll_answers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."quick_poll_answers"
+    ADD CONSTRAINT "quick_poll_answers_poll_id_seat_key" UNIQUE ("poll_id", "seat");
+
+
+
+ALTER TABLE ONLY "public"."quick_poll_answers"
+    ADD CONSTRAINT "quick_poll_answers_poll_id_token_hash_key" UNIQUE ("poll_id", "token_hash");
+
+
+
+ALTER TABLE ONLY "public"."quick_poll_slots"
+    ADD CONSTRAINT "quick_poll_slots_pkey" PRIMARY KEY ("answer_id", "slot_start");
+
+
+
+ALTER TABLE ONLY "public"."quick_polls"
+    ADD CONSTRAINT "quick_polls_code_key" UNIQUE ("code");
+
+
+
+ALTER TABLE ONLY "public"."quick_polls"
+    ADD CONSTRAINT "quick_polls_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."recurring_expenses"
     ADD CONSTRAINT "recurring_expenses_pkey" PRIMARY KEY ("id");
 
@@ -11843,6 +12322,14 @@ CREATE INDEX "mfa_recover_attempts_user_time_idx" ON "private"."mfa_recover_atte
 
 
 CREATE INDEX "notification_types_category_idx" ON "private"."notification_types" USING "btree" ("category");
+
+
+
+CREATE INDEX "quick_poll_creates_created_at_idx" ON "private"."quick_poll_creates" USING "btree" ("created_at");
+
+
+
+CREATE INDEX "quick_poll_creates_creator_idx" ON "private"."quick_poll_creates" USING "btree" ("creator_hash", "created_at");
 
 
 
@@ -12095,6 +12582,10 @@ CREATE INDEX "placeholders_held_by_idx" ON "public"."placeholders" USING "btree"
 
 
 CREATE INDEX "profiles_placeholder_idx" ON "public"."profiles" USING "btree" ("id") WHERE "is_placeholder";
+
+
+
+CREATE INDEX "quick_polls_expires_at_idx" ON "public"."quick_polls" USING "btree" ("expires_at");
 
 
 
@@ -12833,6 +13324,16 @@ ALTER TABLE ONLY "public"."push_tokens"
 
 
 
+ALTER TABLE ONLY "public"."quick_poll_answers"
+    ADD CONSTRAINT "quick_poll_answers_poll_id_fkey" FOREIGN KEY ("poll_id") REFERENCES "public"."quick_polls"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."quick_poll_slots"
+    ADD CONSTRAINT "quick_poll_slots_answer_id_fkey" FOREIGN KEY ("answer_id") REFERENCES "public"."quick_poll_answers"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."recurring_expenses"
     ADD CONSTRAINT "recurring_expenses_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
@@ -13310,6 +13811,15 @@ CREATE POLICY "push_tokens: update own" ON "public"."push_tokens" FOR UPDATE TO 
 
 
 
+ALTER TABLE "public"."quick_poll_answers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."quick_poll_slots" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."quick_polls" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."recurring_expenses" ENABLE ROW LEVEL SECURITY;
 
 
@@ -13576,6 +14086,10 @@ REVOKE ALL ON FUNCTION "private"."freeze_blocked_direct_money"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."grid_slots"("timezone" "text", "window_start" "date", "window_end" "date", "day_start_minute" integer, "day_end_minute" integer, "slot_minutes" integer, "slots" "jsonb") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."group_debts"("gid" "uuid") FROM PUBLIC;
 
 
@@ -13807,11 +14321,27 @@ REVOKE ALL ON FUNCTION "private"."purge_deleted_groups"("keep" interval) FROM PU
 
 
 
+REVOKE ALL ON FUNCTION "private"."purge_quick_polls"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."push_notification"() FROM PUBLIC;
 
 
 
 REVOKE ALL ON FUNCTION "private"."queue_email"() FROM PUBLIC;
+
+
+
+GRANT ALL ON TABLE "public"."quick_polls" TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."quick_poll_status"("poll" "public"."quick_polls", "answered" boolean) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."quick_poll_token_hash"("token" "text") FROM PUBLIC;
 
 
 
@@ -14046,6 +14576,13 @@ GRANT ALL ON FUNCTION "public"."clear_mfa_recovery_codes"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."close_quick_poll"("code" "text", "token" "text") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_expense"("payload" "jsonb") TO "service_role";
@@ -14203,6 +14740,13 @@ GRANT ALL ON FUNCTION "public"."create_mfa_recovery_codes"() TO "service_role";
 
 
 
+REVOKE ALL ON FUNCTION "public"."create_quick_poll"("payload" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."create_quick_poll"("payload" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."create_quick_poll"("payload" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_quick_poll"("payload" "jsonb") TO "service_role";
+
+
+
 REVOKE ALL ON FUNCTION "public"."delete_expense"("id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."delete_expense"("id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."delete_expense"("id" "uuid") TO "service_role";
@@ -14218,6 +14762,13 @@ GRANT ALL ON FUNCTION "public"."delete_group"("group_id" "uuid") TO "service_rol
 REVOKE ALL ON FUNCTION "public"."delete_my_account"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."delete_my_account"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."delete_my_account"() TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_quick_poll"("code" "text", "token" "text") TO "service_role";
 
 
 
@@ -14379,6 +14930,13 @@ GRANT ALL ON FUNCTION "public"."notify_mfa_recovered"("target" "uuid") TO "servi
 
 REVOKE ALL ON FUNCTION "public"."orphan_receipts"("max_count" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."orphan_receipts"("max_count" integer) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."quick_poll_preview"("code" "text", "token" "text") TO "service_role";
 
 
 
@@ -14601,6 +15159,13 @@ GRANT ALL ON FUNCTION "public"."set_member_role"("group_id" "uuid", "user_id" "u
 REVOKE ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."set_notification_pref"("category" "text", "push" boolean, "email" boolean) TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_quick_poll_availability"("code" "text", "name" "text", "token" "text", "slots" "jsonb") TO "service_role";
 
 
 
@@ -15001,6 +15566,14 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE "public"."push_tokens" TO "authentica
 
 
 
+GRANT ALL ON TABLE "public"."quick_poll_answers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."quick_poll_slots" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."reports" TO "service_role";
 GRANT SELECT,INSERT ON TABLE "public"."reports" TO "authenticated";
 
@@ -15059,5 +15632,6 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."settlements";
 -- cron purge-deleted-groups '20 3 * * *': select private.purge_deleted_groups()
 -- cron purge-import-batches '*/15 * * * *': delete from private.import_batches where created_at < now() - interval '1 hour'
 -- cron purge-invite-sends '20 3 * * *': delete from private.invite_sends where sent_at < now() - interval '7 days'
+-- cron purge-quick-polls '25 * * * *': select private.purge_quick_polls()
 -- cron receipts-sweep '40 3 * * *': select private.invoke_edge_function('receipts-sweep')
 -- cron recurring-heads-up '5,35 * * * *': select private.send_recurring_heads_ups()

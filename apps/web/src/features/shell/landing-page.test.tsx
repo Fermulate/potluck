@@ -36,6 +36,13 @@ describe('LandingPage', () => {
       'href',
       '/sign-in',
     )
+    // A quick poll needs no account: one way in under the buttons, a quieter one by the planner.
+    expect(
+      screen.getByRole('link', { name: new RegExp(`^${t('app.landing.quickPoll.title')}`) }),
+    ).toHaveAttribute('href', '/poll')
+    expect(
+      screen.getByRole('link', { name: t('app.landing.features.night.poll') }),
+    ).toHaveAttribute('href', '/poll')
     expect(
       screen.getByRole('heading', { name: t('app.landing.features.tab.title') }),
     ).toBeInTheDocument()

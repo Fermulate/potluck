@@ -1585,6 +1585,136 @@ export type Database = {
           },
         ]
       }
+      quick_poll_answers: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          poll_id: string
+          saves: number
+          saves_window_start: string
+          seat: number
+          token_hash: string
+          updated_at: string
+        }
+        ComputedFields: never
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          poll_id: string
+          saves?: number
+          saves_window_start?: string
+          seat: number
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          poll_id?: string
+          saves?: number
+          saves_window_start?: string
+          seat?: number
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'quick_poll_answers_poll_id_fkey'
+            columns: ['poll_id']
+            isOneToOne: false
+            referencedRelation: 'quick_polls'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      quick_poll_slots: {
+        Row: {
+          answer_id: string
+          level: Database['public']['Enums']['availability_level']
+          slot_start: string
+        }
+        ComputedFields: never
+        Insert: {
+          answer_id: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start: string
+        }
+        Update: {
+          answer_id?: string
+          level?: Database['public']['Enums']['availability_level']
+          slot_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'quick_poll_slots_answer_id_fkey'
+            columns: ['answer_id']
+            isOneToOne: false
+            referencedRelation: 'quick_poll_answers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      quick_polls: {
+        Row: {
+          closed_at: string | null
+          code: string
+          created_at: string
+          creator_token_hash: string
+          day_end_minute: number
+          day_start_minute: number
+          duration_minutes: number
+          expires_at: string
+          id: string
+          max_people: number
+          names_required: boolean
+          slot_minutes: number
+          timezone: string
+          title: string | null
+          window_end: string
+          window_start: string
+        }
+        ComputedFields: never
+        Insert: {
+          closed_at?: string | null
+          code?: string
+          created_at?: string
+          creator_token_hash: string
+          day_end_minute: number
+          day_start_minute: number
+          duration_minutes: number
+          expires_at: string
+          id?: string
+          max_people?: number
+          names_required?: boolean
+          slot_minutes?: number
+          timezone: string
+          title?: string | null
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          closed_at?: string | null
+          code?: string
+          created_at?: string
+          creator_token_hash?: string
+          day_end_minute?: number
+          day_start_minute?: number
+          duration_minutes?: number
+          expires_at?: string
+          id?: string
+          max_people?: number
+          names_required?: boolean
+          slot_minutes?: number
+          timezone?: string
+          title?: string | null
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       recurring_expenses: {
         Row: {
           active: boolean
@@ -1891,6 +2021,7 @@ export type Database = {
         }
       }
       clear_mfa_recovery_codes: { Args: Record<PropertyKey, never>; Returns: number }
+      close_quick_poll: { Args: { code: string; token: string }; Returns: undefined }
       create_expense: {
         Args: { payload: Json }
         Returns: {
@@ -2128,6 +2259,14 @@ export type Database = {
         }
       }
       create_mfa_recovery_codes: { Args: Record<PropertyKey, never>; Returns: string[] }
+      create_quick_poll: {
+        Args: { payload: Json }
+        Returns: {
+          code: string
+          creator_token: string
+          expires_at: string
+        }[]
+      }
       delete_expense: {
         Args: { id: string }
         Returns: {
@@ -2163,6 +2302,7 @@ export type Database = {
       }
       delete_group: { Args: { group_id: string }; Returns: undefined }
       delete_my_account: { Args: Record<PropertyKey, never>; Returns: undefined }
+      delete_quick_poll: { Args: { code: string; token: string }; Returns: undefined }
       delete_settlement: {
         Args: { id: string }
         Returns: {
@@ -2412,6 +2552,25 @@ export type Database = {
       }
       notify_mfa_recovered: { Args: { target: string }; Returns: undefined }
       orphan_receipts: { Args: { max_count?: number }; Returns: string[] }
+      quick_poll_preview: {
+        Args: { code: string; token?: string }
+        Returns: {
+          answers: Json
+          day_end_minute: number
+          day_start_minute: number
+          duration_minutes: number
+          expires_at: string
+          is_creator: boolean
+          max_people: number
+          names_required: boolean
+          slot_minutes: number
+          status: string
+          timezone: string
+          title: string
+          window_end: string
+          window_start: string
+        }[]
+      }
       record_mfa_recover_attempt: { Args: { target: string }; Returns: boolean }
       remind_debt: {
         Args: { group_id: string; note?: string; user_id: string }
@@ -2666,6 +2825,13 @@ export type Database = {
       set_notification_pref: {
         Args: { category: string; email?: boolean; push?: boolean }
         Returns: undefined
+      }
+      set_quick_poll_availability: {
+        Args: { code: string; name: string; slots: Json; token: string }
+        Returns: {
+          answer_token: string
+          saved: number
+        }[]
       }
       settle_all: {
         Args: { group_id: string; note?: string; settled_on?: string }

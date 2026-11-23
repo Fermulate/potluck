@@ -10,7 +10,7 @@
 --   new cron job              -> a cron.job check
 -- Count the assertions and update plan(N); finish() fails when it is off.
 begin;
-select plan(132);
+select plan(138);
 
 select tables_are('public', array[
   'profiles', 'friendships', 'blocks', 'reports',
@@ -22,7 +22,8 @@ select tables_are('public', array[
   'activity', 'comments', 'notifications', 'push_tokens', 'app_config',
   'calendar_feed_tokens', 'notification_prefs',
   'event_guest_links', 'event_guests', 'event_guest_availability',
-  'placeholders', 'friend_invites', 'group_whiteboards'
+  'placeholders', 'friend_invites', 'group_whiteboards',
+  'quick_polls', 'quick_poll_answers', 'quick_poll_slots'
 ], 'public has exactly the documented tables');
 
 select views_are('public', array['group_balances', 'expense_ledger'], 'public has the balances and ledger views');
@@ -142,6 +143,11 @@ select has_function('public', 'revoke_guest_link', array['uuid'], 'revoke_guest_
 select has_function('public', 'remove_guest_answer', array['uuid'], 'remove_guest_answer(guest_id)');
 select has_function('public', 'guest_link_preview', array['text', 'text'], 'guest_link_preview(code, token)');
 select has_function('public', 'set_guest_availability', array['text', 'text', 'text', 'jsonb'], 'set_guest_availability(code, name, token, slots)');
+select has_function('public', 'create_quick_poll', array['jsonb'], 'create_quick_poll(payload)');
+select has_function('public', 'quick_poll_preview', array['text', 'text'], 'quick_poll_preview(code, token)');
+select has_function('public', 'set_quick_poll_availability', array['text', 'text', 'text', 'jsonb'], 'set_quick_poll_availability(code, name, token, slots)');
+select has_function('public', 'close_quick_poll', array['text', 'text'], 'close_quick_poll(code, token)');
+select has_function('public', 'delete_quick_poll', array['text', 'text'], 'delete_quick_poll(code, token)');
 
 select is(
   (select count(*)::int from pg_proc p
@@ -155,8 +161,10 @@ select is(
   (select array_agg(p.proname::text order by p.proname) from pg_proc p
    where p.pronamespace = 'public'::regnamespace and p.prokind = 'f'
      and has_function_privilege('anon', p.oid, 'execute')),
-  array['email_unsubscribe', 'friend_invite_preview', 'guest_link_preview', 'invite_preview', 'invite_preview_v2', 'set_guest_availability'],
-  'anon can only execute the invite previews, email_unsubscribe and the guest link RPCs'
+  array['close_quick_poll', 'create_quick_poll', 'delete_quick_poll', 'email_unsubscribe', 'friend_invite_preview',
+        'guest_link_preview', 'invite_preview', 'invite_preview_v2', 'quick_poll_preview', 'set_guest_availability',
+        'set_quick_poll_availability'],
+  'anon can only execute the invite previews, email_unsubscribe, the guest link and the quick poll RPCs'
 );
 
 -- Not found is PT404 (HTTP 404). P0002 reaches clients as HTTP 500; old migration files still
@@ -274,6 +282,10 @@ select ok(
 select ok(
   exists (select 1 from cron.job where jobname = 'receipts-sweep' and schedule = '40 3 * * *'),
   'orphaned receipt files are swept daily'
+);
+select ok(
+  exists (select 1 from cron.job where jobname = 'purge-quick-polls' and schedule = '25 * * * *'),
+  'expired quick polls are purged hourly'
 );
 
 -- Grants: clients never write money tables directly.

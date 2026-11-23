@@ -25,6 +25,7 @@ Live at https://potluck.fermulate.com (user guide at https://docs.potluck.fermul
 - Ranked best times, with who can and cannot make each one
 - Lock in a time, RSVP, and get reminders the day before
 - Personal calendar feed (`.ics`) for every plan you are part of
+- Quick polls: share an availability link that up to 15 people answer without an account
 
 **Everywhere**
 

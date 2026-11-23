@@ -33,7 +33,7 @@ export function isNotFoundError(error: unknown): boolean {
 }
 
 /** Screens with their own wording for server codes, e.g. `expenses.errors.sum_mismatch`. */
-export type ErrorScope = 'expenses.errors' | 'events.errors'
+export type ErrorScope = 'expenses.errors' | 'events.errors' | 'quickPolls.errors'
 
 /**
  * `fetch` rejects with a TypeError when the request never got an answer; each browser words it

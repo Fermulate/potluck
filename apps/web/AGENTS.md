@@ -18,8 +18,8 @@ Per-feature notes (payers and refunds, repeating expenses, language, two-step si
   a validator returns every key, `undefined` when dropped, or the raw value shows through),
   no feature imports beyond the screen. A `loader` may call `prefetch.<screen>()` from
   `src/lib/prefetch.ts` and must not await it.
-- `/a/$code` (guest links) is signed out. `/` is prerendered (`prerender-landing.ts`): nothing on the
-  landing page may touch `window` during render.
+- `/a/$code` (guest links), `/poll` and `/p/$code` (quick polls) are signed out. `/` is prerendered
+  (`prerender-landing.ts`): nothing on the landing page may touch `window` during render.
 - Server data goes through `@potluck/api` functions and `queryOptions`; never `supabase.from()` in a component.
 - Realtime: subscribe with `useRealtime` / `useBatchedInvalidate` (`src/lib/realtime.ts`) and invalidate
   query keys; never patch the cache from the payload.

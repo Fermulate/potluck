@@ -10,6 +10,7 @@ import { help } from './pt/help'
 import { search, filters, insights, deletedItems, activityFilter } from './pt/insights'
 import { people } from './pt/people'
 import { transfer } from './pt/transfer'
+import { quickPolls } from './pt/quick-polls'
 
 /**
  * Portuguese (você, written to read naturally in Brazil and Portugal). Same files and keys as `./en`; a key missing here shows in English. Loaded on demand
@@ -53,6 +54,7 @@ export const pt = {
   activityFilter,
   people,
   transfer,
+  quickPolls,
   empty,
   errors,
 } satisfies Translation<Dictionary>

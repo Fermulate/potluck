@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, resetDb } from '@/test/supabase'
 import { renderWithProviders } from '@/test/render'
 import { GuestPage } from './guest-page'
-import { readGuestMemory, writeGuestMemory } from './guest-token'
+import { guestMemory } from './guest-token'
 
 vi.mock('@/lib/supabase', () => import('@/test/supabase'))
 
@@ -84,7 +84,7 @@ describe('GuestPage', () => {
         slots: [{ slot_start: slot('18:00'), level: 'yes' }],
       },
     ])
-    expect(readGuestMemory('abc123')).toEqual({ token: 'tok-new', name: 'Ana' })
+    expect(guestMemory.read('abc123')).toEqual({ token: 'tok-new', name: 'Ana' })
     // After sending, the page shows how everyone looks, as counts only.
     expect(screen.getByRole('grid', { name: /How everyone looks/ })).toBeInTheDocument()
     await waitFor(() =>
@@ -96,7 +96,7 @@ describe('GuestPage', () => {
   })
 
   it('brings a returning guest back to their answer and lets them change it', async () => {
-    writeGuestMemory('abc123', { token: 'tok-ana', name: 'Ana' })
+    guestMemory.write('abc123', { token: 'tok-ana', name: 'Ana' })
     const mine = {
       ...open,
       my_name: 'Ana',

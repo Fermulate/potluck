@@ -1,6 +1,6 @@
 import { guestKeys, guestQueries, setGuestAvailability, type GuestLinkPreview } from '@potluck/api'
 import { cleanGuestName } from '@potluck/core'
-import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
+import { formatDate, formatTime, t } from '@potluck/i18n'
 import {
   Button,
   Card,
@@ -9,30 +9,22 @@ import {
   Input,
   SegmentedControl,
   Skeleton,
-  Stamp,
-  StampAnimation,
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { CalendarDays, Clock } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
 import { buildGridModel, slotKey, type PaintLevel } from '@/features/availability/grid'
+import { SentCard } from '@/features/availability/sent-card'
+import { WindowFacts } from '@/features/availability/window-facts'
 import { Help } from '@/features/help/help'
-import {
-  formatDuration,
-  minuteOfDayIn,
-  planErrorCode,
-  planErrorMessage,
-} from '@/features/plans/format'
-import { Wordmark } from '@/features/shell/brand'
-import { useSession } from '@/lib/auth'
+import { planErrorCode, planErrorMessage } from '@/features/plans/format'
+import { DeadEnd, NextSteps, Notice, Pitch, PublicFrame } from '@/features/shell/public-page'
 import { isNotFoundError } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
 import { supabase } from '@/lib/supabase'
 import { GuestHeatmap } from './guest-heatmap'
-import { readGuestMemory, writeGuestMemory, type GuestMemory } from './guest-token'
+import { guestMemory, type GuestMemory } from './guest-token'
 
 type OpenPreview = GuestLinkPreview & { plan: NonNullable<GuestLinkPreview['plan']> }
 type Scheduled = NonNullable<GuestLinkPreview['scheduled']>
@@ -49,90 +41,6 @@ const CLOSING_CODES = new Set([
 
 /** The longest name the server keeps, counted in characters like Postgres does. */
 const MAX_NAME = 40
-
-function Frame({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
-  return (
-    <div className="relative min-h-dvh overflow-x-clip">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[50dvh] bg-[radial-gradient(ellipse_at_30%_0%,color-mix(in_oklab,var(--pl-saffron)_32%,transparent),transparent_65%)]"
-      />
-      <main
-        id="main"
-        className={
-          wide
-            ? 'relative mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 pt-4 pb-10 sm:px-6 lg:px-8 lg:pt-5'
-            : 'relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pt-5 pb-10'
-        }
-      >
-        <Link
-          to="/"
-          className={wide ? 'self-start rounded-pill' : 'self-center rounded-pill'}
-          aria-label={t('app.name')}
-        >
-          <Wordmark />
-        </Link>
-        {children}
-      </main>
-    </div>
-  )
-}
-
-/** Where someone with no account goes next: sign up, or a look at what Potluck is. */
-function NextSteps() {
-  const session = useSession()
-  if (session) {
-    return (
-      <Button asChild variant="secondary">
-        <Link to="/home">{t('guests.closed.home')}</Link>
-      </Button>
-    )
-  }
-  return (
-    <div className="flex w-full max-w-xs flex-col gap-2">
-      <Button asChild size="lg" block>
-        <Link to="/sign-up">{t('guests.closed.signUp')}</Link>
-      </Button>
-      <Button asChild variant="ghost" block>
-        <Link to="/">{t('guests.closed.action')}</Link>
-      </Button>
-    </div>
-  )
-}
-
-/** A dead end with a way out: the link closed, is unknown, is full, or the answer was removed. */
-function DeadEnd({
-  emoji,
-  title,
-  body,
-  unsaved,
-}: {
-  emoji: string
-  title: string
-  body: string
-  unsaved: boolean
-}) {
-  return (
-    <Frame>
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
-        <span aria-hidden className="text-7xl">
-          {emoji}
-        </span>
-        <h1 className="flourish text-4xl leading-tight">{title}</h1>
-        {unsaved && (
-          <p
-            role="alert"
-            className="rounded-[0.875rem] bg-tomato-soft px-3.5 py-2.5 text-sm font-semibold text-tomato-ink"
-          >
-            {t('guests.closed.unsaved')}
-          </p>
-        )}
-        <p className="max-w-xs text-pretty text-mute">{body}</p>
-        <NextSteps />
-      </div>
-    </Frame>
-  )
-}
 
 function closedBody(status: GuestLinkPreview['status'] | 'not_found'): string {
   switch (status) {
@@ -155,7 +63,7 @@ function closedBody(status: GuestLinkPreview['status'] | 'not_found'): string {
  * else about the group. The browser keeps the token the server returns so it can edit later.
  */
 export function GuestPage({ code }: { code: string }) {
-  const [memory, setMemory] = useState<GuestMemory | null>(() => readGuestMemory(code))
+  const [memory, setMemory] = useState<GuestMemory | null>(() => guestMemory.read(code))
   // Painted or typed but not saved: if the link closes meanwhile, the closed page says so.
   const [unsaved, setUnsaved] = useState(false)
   // Saving hands back a token, which changes the query key; keep showing the plan meanwhile.
@@ -166,20 +74,20 @@ export function GuestPage({ code }: { code: string }) {
 
   if (preview.isPending) {
     return (
-      <Frame wide>
+      <PublicFrame wide>
         <div aria-busy className="mt-8 flex flex-col gap-4">
           <Skeleton className="size-12 rounded-[1rem] lg:size-16" />
           <Skeleton shape="line" className="h-10 w-3/4 max-w-md" />
           <Skeleton shape="line" className="w-1/2 max-w-xs" />
           <Skeleton className="mt-4 h-[26rem]" />
         </div>
-      </Frame>
+      </PublicFrame>
     )
   }
 
   if (preview.isError && !isNotFoundError(preview.error)) {
     return (
-      <Frame>
+      <PublicFrame>
         <div className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
           <span aria-hidden className="text-7xl">
             📡
@@ -190,7 +98,7 @@ export function GuestPage({ code }: { code: string }) {
             {t('common.retry')}
           </Button>
         </div>
-      </Frame>
+      </PublicFrame>
     )
   }
 
@@ -204,7 +112,7 @@ export function GuestPage({ code }: { code: string }) {
         emoji="🚪"
         title={t('guests.closed.removedTitle')}
         body={t('guests.closed.removed')}
-        unsaved={unsaved}
+        notice={unsaved ? t('guests.closed.unsaved') : undefined}
       />
     )
   }
@@ -215,7 +123,7 @@ export function GuestPage({ code }: { code: string }) {
         emoji="🪑"
         title={t('guests.closed.fullTitle')}
         body={host ? t('guests.closed.full', { name: host }) : t('guests.closed.fullAnon')}
-        unsaved={unsaved}
+        notice={unsaved ? t('guests.closed.unsaved') : undefined}
       />
     )
   }
@@ -225,7 +133,7 @@ export function GuestPage({ code }: { code: string }) {
         emoji="🔒"
         title={t('guests.closed.title')}
         body={closedBody(data?.status ?? 'not_found')}
-        unsaved={unsaved}
+        notice={unsaved ? t('guests.closed.unsaved') : undefined}
       />
     )
   }
@@ -248,7 +156,7 @@ export function GuestPage({ code }: { code: string }) {
 function ScheduledPlan({ plan, unsaved }: { plan: Scheduled; unsaved: boolean }) {
   const timeZone = useMemo(() => detectTimezone(), [])
   return (
-    <Frame>
+    <PublicFrame>
       <div className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
         <PlanTile emoji={plan.emoji} groupEmoji={plan.groupEmoji} />
         <p className="flourish text-xl text-mute">
@@ -266,20 +174,13 @@ function ScheduledPlan({ plan, unsaved }: { plan: Scheduled; unsaved: boolean })
           </p>
           <p className="text-sm text-mute">{t('guests.page.timezoneNote', { zone: timeZone })}</p>
         </div>
-        {unsaved && (
-          <p
-            role="alert"
-            className="rounded-[0.875rem] bg-tomato-soft px-3.5 py-2.5 text-sm font-semibold text-tomato-ink"
-          >
-            {t('guests.closed.unsaved')}
-          </p>
-        )}
+        {unsaved && <Notice>{t('guests.closed.unsaved')}</Notice>}
         <p className="max-w-xs text-pretty">
           {t('guests.scheduled.thanks', { name: plan.myName })}
         </p>
         <NextSteps />
       </div>
-    </Frame>
+    </PublicFrame>
   )
 }
 
@@ -365,7 +266,7 @@ function GuestPoll({
       }),
     onSuccess: (result) => {
       const next = { token: result.token, name: cleanName }
-      writeGuestMemory(code, next)
+      guestMemory.write(code, next)
       setName(cleanName)
       setJustSent(true)
       setEditing(false)
@@ -412,7 +313,7 @@ function GuestPoll({
   const respondents = preview.respondents ?? 0
 
   return (
-    <Frame wide>
+    <PublicFrame wide>
       <div className="mt-5 grid gap-5 lg:mt-12 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12">
         <header className="flex flex-col gap-3 lg:sticky lg:top-8 lg:gap-5">
           <div className="flex items-center gap-4 lg:flex-col lg:items-start lg:gap-5">
@@ -424,39 +325,11 @@ function GuestPoll({
           <h1 className="font-display text-[2.25rem] leading-[0.95] text-balance sm:text-5xl lg:text-[3.25rem]">
             {plan.title}
           </h1>
-          <dl className="flex flex-col gap-1.5 text-sm lg:gap-2 lg:text-[0.9375rem]">
-            <div className="flex items-start gap-2.5">
-              <dt className="sr-only">{t('events.when')}</dt>
-              <CalendarDays
-                aria-hidden
-                className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]"
-              />
-              <dd>
-                {t('events.windowRange', {
-                  range: formatDateRange(plan.window_start, plan.window_end, { timeZone }),
-                  from: formatTime(
-                    minuteOfDayIn(plan.window_start, plan.day_start_minute, plan.timezone),
-                    { timeZone },
-                  ),
-                  to: formatTime(
-                    minuteOfDayIn(plan.window_start, plan.day_end_minute, plan.timezone),
-                    { timeZone },
-                  ),
-                })}
-              </dd>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <dt className="sr-only">{t('events.create.durationLabel')}</dt>
-              <Clock aria-hidden className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]" />
-              <dd>
-                {t('events.durationShort', { duration: formatDuration(plan.duration_minutes) })}
-              </dd>
-            </div>
-          </dl>
+          <WindowFacts grid={plan} durationMinutes={plan.duration_minutes} timeZone={timeZone} />
           <p className="hidden text-sm text-mute lg:block">
             {closes} {zoneNote}
           </p>
-          <Pitch className="hidden lg:flex" />
+          <GuestPitch className="hidden lg:flex" />
         </header>
 
         <section
@@ -465,10 +338,13 @@ function GuestPoll({
           aria-labelledby="guest-poll-title"
         >
           {!editing ? (
-            <Sent
-              name={cleanName}
+            <SentCard
               stamp={justSent}
-              onEdit={() => {
+              stampLabel={t('guests.page.sentStamp')}
+              title={t('guests.page.sentTitle', { name: cleanName })}
+              body={t('guests.page.sentBody')}
+              actionLabel={t('guests.page.edit')}
+              onAction={() => {
                 setEditing(true)
                 setView('mine')
                 setJustSent(false)
@@ -570,56 +446,20 @@ function GuestPoll({
           <p className="text-sm text-mute lg:hidden">
             {closes} {zoneNote}
           </p>
-          <Pitch className="flex lg:hidden" />
+          <GuestPitch className="flex lg:hidden" />
         </section>
       </div>
-    </Frame>
+    </PublicFrame>
   )
 }
 
-function Sent({ name, stamp, onEdit }: { name: string; stamp: boolean; onEdit: () => void }) {
+function GuestPitch({ className }: { className: string }) {
   return (
-    <Card tone="sunken" padding="roomy" className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      <div className="shrink-0 self-start sm:self-center">
-        {stamp ? (
-          <StampAnimation show rotate={-8}>
-            <Stamp tone="olive">{t('guests.page.sentStamp')}</Stamp>
-          </StampAnimation>
-        ) : (
-          <span className="inline-flex -rotate-[8deg]">
-            <Stamp tone="olive">{t('guests.page.sentStamp')}</Stamp>
-          </span>
-        )}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p role="status" className="flourish text-2xl leading-tight">
-          {t('guests.page.sentTitle', { name })}
-        </p>
-        <p className="text-sm text-mute">{t('guests.page.sentBody')}</p>
-      </div>
-      <Button variant="secondary" className="self-start sm:self-center" onClick={onEdit}>
-        {t('guests.page.edit')}
-      </Button>
-    </Card>
-  )
-}
-
-function Pitch({ className }: { className?: string }) {
-  return (
-    <div
-      className={cn(
-        'flex-col gap-2 rounded-card border border-dashed border-line-strong p-4',
-        className,
-      )}
-    >
-      <p className="font-semibold">{t('guests.page.pitchTitle')}</p>
-      <p className="text-sm text-mute">{t('guests.page.pitchBody')}</p>
-      <div className="flex items-center justify-between gap-2">
-        <Button asChild size="sm" variant="ghost" className="-ml-2 self-start">
-          <Link to="/sign-up">{t('guests.page.pitchAction')}</Link>
-        </Button>
-        <Help topic="guestLinks" />
-      </div>
-    </div>
+    <Pitch
+      title={t('guests.page.pitchTitle')}
+      body={t('guests.page.pitchBody')}
+      help={<Help topic="guestLinks" />}
+      className={className}
+    />
   )
 }

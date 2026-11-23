@@ -9,6 +9,10 @@ export const app = {
     body: 'Potluck keeps a running tab for your people and finds the evening everyone can actually make. Free, open source, and no ads at the table.',
     cta: 'Start a table',
     secondary: 'I already have an account',
+    quickPoll: {
+      title: 'Find a time, no sign-up',
+      body: 'Send a quick poll and see when everyone is free.',
+    },
     demo: {
       label:
         'A short demo: a dinner bill splits four ways, then friends paint when they are free and a night gets locked in.',
@@ -41,6 +45,7 @@ export const app = {
       night: {
         title: 'The night',
         body: 'Everyone drags across the hours they are free. The grid warms up where it works and the best slot floats to the top.',
+        poll: 'Or start with a quick poll, no account needed',
       },
       square: {
         title: 'The square up',

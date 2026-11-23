@@ -11,14 +11,14 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Native share sheet where there is one, clipboard otherwise. */
-export async function shareInvite(groupName: string, code: string) {
-  const url = inviteUrl(code)
-  const data = {
-    title: t('invites.shareTitle', { group: groupName }),
-    text: t('invites.shareText', { group: groupName, url }),
-    url,
-  }
+/**
+ * Native share sheet where there is one, clipboard otherwise (then a toast saying `copied`).
+ * Closing the sheet without sharing is not an error.
+ */
+export async function shareLink(
+  data: { title: string; text: string; url: string },
+  copied: string,
+) {
   if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(data))) {
     try {
       await navigator.share(data)
@@ -27,5 +27,17 @@ export async function shareInvite(groupName: string, code: string) {
       if (error instanceof DOMException && error.name === 'AbortError') return
     }
   }
-  if (await copyText(url)) toast.success(t('invites.linkCopied'))
+  if (await copyText(data.url)) toast.success(copied)
+}
+
+export async function shareInvite(groupName: string, code: string) {
+  const url = inviteUrl(code)
+  await shareLink(
+    {
+      title: t('invites.shareTitle', { group: groupName }),
+      text: t('invites.shareText', { group: groupName, url }),
+      url,
+    },
+    t('invites.linkCopied'),
+  )
 }

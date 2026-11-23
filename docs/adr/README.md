@@ -25,6 +25,7 @@ Short notes on decisions that shape the codebase: what we were facing, what we c
 | [0019](0019-placeholder-members-and-claiming.md)                | Placeholder members and claiming them                       |
 | [0020](0020-group-types-restorable-deletes-and-shared-notes.md) | Group types, restorable deletes, covers and shared notes    |
 | [0021](0021-receipt-scanning-and-attachments.md)                | Receipt scanning on the device, several attachments         |
+| [0022](0022-quick-polls-without-accounts.md)                    | Quick polls without accounts                                |
 
 ## Writing a new one
 

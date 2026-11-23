@@ -12,6 +12,10 @@ export const app = {
     body: 'O Potluck mantém a conta da sua turma em dia e encontra a noite em que todo mundo pode de verdade. Gratuito, de código aberto e sem anúncios à mesa.',
     cta: 'Abrir uma mesa',
     secondary: 'Já tenho uma conta',
+    quickPoll: {
+      title: 'Ache um horário, sem cadastro',
+      body: 'Mande uma enquete rápida e veja quando todo mundo está livre.',
+    },
     demo: {
       label:
         'Uma demonstração rápida: a conta de um jantar é dividida por quatro, depois os amigos marcam quando estão livres e uma noite fica confirmada.',
@@ -44,6 +48,7 @@ export const app = {
       night: {
         title: 'A noite',
         body: 'Cada um arrasta pelas horas em que está livre. A grade esquenta onde dá certo e o melhor horário sobe para o topo.',
+        poll: 'Ou comece com uma enquete rápida, sem precisar de conta',
       },
       square: {
         title: 'As contas acertadas',
