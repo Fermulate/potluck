@@ -7,7 +7,9 @@ import { addDays, windowDays, type PollWindow, type WindowField } from './window
  * The date range and daily hours of a poll, shared by plans and quick polls. Each control's id is
  * `<idPrefix>-<field>` so a form can focus the first one with an error. With `maxDays`, the last
  * day cannot be picked more than that many days after the first, and moving the first day pulls
- * the last one along.
+ * the last one along. That waits for a first day from `today` on: clearing the field gives '', and
+ * typing a year passes through days like 0002-06-02, and neither should move the last day (the
+ * form's submit check refuses a window that is not valid).
  */
 export function WindowFields({
   value,
@@ -26,7 +28,10 @@ export function WindowFields({
   idPrefix: string
 }) {
   const days = windowDays(value)
-  const lastDay = (start: string) => (maxDays ? addDays(start, maxDays - 1) : undefined)
+  const lastDay = (start: string) =>
+    maxDays && start >= today && !Number.isNaN(Date.parse(start))
+      ? addDays(start, maxDays - 1)
+      : undefined
   const hourOptions = Array.from({ length: 49 }, (_, i) => i * 30).map((m) => ({
     value: String(m),
     label: formatMinuteOfDay(m),

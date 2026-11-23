@@ -123,6 +123,30 @@ describe('CreatePollPage', () => {
     expect(last).toHaveAttribute('max', '2026-07-03')
   })
 
+  it('leaves the last day alone while the first day is cleared', async () => {
+    await renderPage()
+    const first = screen.getByLabelText(t('events.create.windowFrom'))
+    const last = screen.getByLabelText(t('events.create.windowTo'))
+    fireEvent.change(first, { target: { value: '' } })
+    expect(first).toHaveValue('')
+    expect(last).toHaveValue('2026-06-08')
+    submit()
+    expect(await screen.findByText(t('quickPolls.errors.invalid_quick_poll_window'))).toBeVisible()
+    expect(db().rpcArgs('create_quick_poll')).toEqual([])
+  })
+
+  it('keeps the window while a year is typed into the first day', async () => {
+    await renderPage()
+    const first = screen.getByLabelText(t('events.create.windowFrom'))
+    const last = screen.getByLabelText(t('events.create.windowTo'))
+    // Typing 2026 by keyboard goes through each of these.
+    for (const day of ['0002-06-03', '0020-06-03', '0202-06-03', '2026-06-03']) {
+      fireEvent.change(first, { target: { value: day } })
+    }
+    expect(last).toHaveValue('2026-06-08')
+    expect(screen.getByText(t('events.create.windowDays', { count: 6 }))).toBeInTheDocument()
+  })
+
   it('stops a window longer than two weeks before sending it', async () => {
     await renderPage()
     fireEvent.change(screen.getByLabelText(t('events.create.windowTo')), {
