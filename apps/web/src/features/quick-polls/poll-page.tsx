@@ -62,7 +62,8 @@ export function PollPage({ code }: { code: string }) {
   const [memory, setMemory] = useState<PollMemory | null>(() => pollMemory.read(code))
   // Painted or typed but not saved: if the poll stops taking answers meanwhile, the page says so.
   const [unsaved, setUnsaved] = useState(false)
-  // The first save keeps a new token, which changes the query key; keep showing the poll meanwhile.
+  // A new visitor's token is kept as their first save goes out, which changes the query key; keep
+  // showing the poll meanwhile.
   const preview = useQuery({
     ...quickPollQueries.preview(supabase, code, memory?.token ?? null),
     placeholderData: (previous) => previous,
@@ -129,6 +130,7 @@ export function PollPage({ code }: { code: string }) {
         view={view}
         memory={memory}
         unsaved={unsaved}
+        onToken={setMemory}
         onSaved={(next) => {
           setUnsaved(false)
           setMemory(next)
@@ -164,6 +166,7 @@ function Poll({
   view,
   memory,
   unsaved,
+  onToken,
   onSaved,
   onDirty,
   onDiscarded,
@@ -172,6 +175,7 @@ function Poll({
   view: LivePoll
   memory: PollMemory | null
   unsaved: boolean
+  onToken: (memory: PollMemory) => void
   onSaved: (memory: PollMemory) => void
   onDirty: () => void
   onDiscarded: () => void
@@ -298,6 +302,7 @@ function Poll({
                     }
                   : undefined
               }
+              onToken={onToken}
               onSaved={(next) => {
                 onSaved(next)
                 setMode('viewing')
@@ -367,6 +372,7 @@ function AnswerForm({
   title,
   memory,
   onCancel,
+  onToken,
   onSaved,
   onDirty,
   onStopped,
@@ -377,6 +383,7 @@ function AnswerForm({
   title: string
   memory: PollMemory | null
   onCancel?: () => void
+  onToken: (memory: PollMemory) => void
   onSaved: (memory: PollMemory) => void
   onDirty: () => void
   onStopped: () => void
@@ -394,8 +401,6 @@ function AnswerForm({
   const [nameError, setNameError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
-  // The token a new visitor made for their first save, for when storage is blocked.
-  const madeToken = useRef<string | null>(null)
   const cleanName = cleanGuestName(name)
 
   const save = useMutation({
@@ -447,12 +452,14 @@ function AnswerForm({
       return
     }
     // A new visitor makes their token and keeps it before the first save goes out, so a retry
-    // after a lost reply (or a reload) sends the same one and edits that answer, not a second.
-    let token = memory?.token ?? madeToken.current
+    // after a lost reply (or a reload) sends the same one and edits that answer, not a second,
+    // and every refresh meanwhile asks for the poll as that visitor.
+    let token = memory?.token
     if (!token) {
       token = newRequestId()
-      madeToken.current = token
-      pollMemory.write(code, { token, name: poll.namesRequired ? cleanName : '' })
+      const made = { token, name: poll.namesRequired ? cleanName : '' }
+      pollMemory.write(code, made)
+      onToken(made)
     }
     save.mutate(token)
   }

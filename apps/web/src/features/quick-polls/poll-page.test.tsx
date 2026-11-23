@@ -362,6 +362,57 @@ describe('PollPage', () => {
     expect(db().rpcArgs('set_quick_poll_availability')[1]).toEqual(first)
   })
 
+  it('keeps the form for a retry when the last seat was saved but the reply was lost', async () => {
+    // The server as ADR 22 has it: the last seat reads `full` to anyone but the people in it.
+    let stored = false
+    const cy = { seat: 2, name: 'Cy', slots: [{ slot_start: at('19:00'), level: 'yes' }] }
+    db()
+      .respond('rpc:quick_poll_preview', (call) => {
+        const { token } = (call as { args: { token?: string } }).args
+        if (!stored) return { data: [{ ...open, max_people: 2 }] }
+        const mine = token !== undefined
+        return {
+          data: [
+            {
+              ...open,
+              max_people: 2,
+              status: mine ? 'open' : 'full',
+              answers: [ana, { ...cy, mine }],
+            },
+          ],
+        }
+      })
+      .respond(
+        'rpc:set_quick_poll_availability',
+        () => {
+          stored = true
+          return { error: { message: 'TypeError: Failed to fetch' } }
+        },
+        { data: [{ answer_token: 'ignored', saved: 1 }] },
+      )
+    const { queryClient } = renderPage()
+    fireEvent.change(await screen.findByLabelText(t('quickPolls.page.nameLabel')), {
+      target: { value: 'Cy' },
+    })
+    paint(slot('19:00'))
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.submit') }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    const first = db().rpcArgs('set_quick_poll_availability')[0] as { token: string }
+
+    await queryClient.invalidateQueries()
+
+    expect(
+      await screen.findByText(t('quickPolls.page.answered', { count: 2, max: 2 })),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { name: t('quickPolls.page.fullTitle') }),
+    ).not.toBeInTheDocument()
+    expect(cell(slot('19:00'))).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.update') }))
+    expect(await screen.findByText(t('quickPolls.page.sentTitle', { name: 'Cy' }))).toBeVisible()
+    expect(db().rpcArgs('set_quick_poll_availability')[1]).toEqual(first)
+  })
+
   it('words other save errors in place', async () => {
     db()
       .respond('rpc:quick_poll_preview', { data: [open] })
