@@ -2,7 +2,14 @@ import AxeBuilder from '@axe-core/playwright'
 import { addPlaceholderMember, createPlanEvent, fetchMyFriendLink } from '@potluck/api'
 import { t } from '@potluck/i18n'
 import type { Page, TestInfo } from '@playwright/test'
-import { addEqualExpense, groupWith, guestLinkFor, pollIn } from './support/api'
+import {
+  addEqualExpense,
+  answerQuickPoll,
+  groupWith,
+  guestLinkFor,
+  pollIn,
+  quickPoll,
+} from './support/api'
 import { expect, test, unique, type TestUser } from './support/fixtures'
 
 /** Serious and critical WCAG 2.1 A/AA violations fail the test; the rest are reported. */
@@ -228,6 +235,23 @@ test.describe('accessibility', () => {
     const link = await guestLinkFor(me, event.id)
     const page = await openAs(null)
     await page.goto(`/a/${link.code}`)
+    await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+    await expect(page.getByRole('grid').first()).toBeVisible()
+    await audit(page, testInfo)
+  })
+
+  test('quick poll pages, signed out', async ({ openAs }, testInfo) => {
+    const page = await openAs(null)
+    await page.goto('/poll')
+    await expect(
+      page.getByRole('heading', { level: 1, name: t('quickPolls.create.title') }),
+    ).toBeVisible()
+    await audit(page, testInfo)
+
+    const title = unique('Picnic')
+    const poll = await quickPoll({ title })
+    await answerQuickPoll(poll.code, unique('Cy'))
+    await page.goto(`/p/${poll.code}`)
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
     await expect(page.getByRole('grid').first()).toBeVisible()
     await audit(page, testInfo)
