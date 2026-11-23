@@ -214,6 +214,13 @@
       "signedIn": false
     },
     {
+      "id": "/p/$code",
+      "path": "/p/$code",
+      "file": "apps/web/src/routes/p.$code.tsx",
+      "signedIn": false
+    },
+    { "id": "/poll", "path": "/poll", "file": "apps/web/src/routes/poll.tsx", "signedIn": false },
+    {
       "id": "/reset-password",
       "path": "/reset-password",
       "file": "apps/web/src/routes/reset-password.tsx",

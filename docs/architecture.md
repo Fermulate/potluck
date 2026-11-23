@@ -550,6 +550,7 @@ Availability polls that need no account, group or event ([ADR 22](adr/0022-quick
 - `quick_poll_answers`: `id`, `poll_id`, `seat int` (1, 2, 3... in answer order, unique per poll, never reused), `display_name` (1 to 40 characters after `private.clean_guest_name`; null when the poll does not ask for names), `token_hash bytea` (unique per poll; the creator's answer reuses `creator_token_hash`), `saves` and `saves_window_start` (rate limit), timestamps.
 - `quick_poll_slots`: `(answer_id, slot_start)` pk, `level`. Same shape as `availability`.
 - `private.quick_poll_creates`: `creator_hash` (sha256 of the first `x-forwarded-for` entry, null without one), `created_at`. One row per poll made, kept an hour, for the create rate limit; deleting a poll leaves its row.
+- Screens: `/poll` makes a poll and `/p/<code>` shows it (`apps/web/src/features/quick-polls`), both open signed in or out. Results refresh by polling the preview (every 15 seconds while the tab is visible, and on focus): `anon` reads no tables, so there is no Realtime. `/p/*` is kept out of search engines by a robots meta tag and an `X-Robots-Tag` header (`apps/web/public/_headers`).
 
 ### Feed, notifications, platform
 
