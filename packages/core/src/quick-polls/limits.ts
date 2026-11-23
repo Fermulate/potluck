@@ -14,10 +14,6 @@ export type QuickPollTtl = (typeof QUICK_POLL_TTLS)[number]
 export const QUICK_POLL_SLOT_MINUTES = [30, 60] as const
 export type QuickPollSlotMinutes = (typeof QUICK_POLL_SLOT_MINUTES)[number]
 
-export function isQuickPollTtl(value: unknown): value is QuickPollTtl {
-  return QUICK_POLL_TTLS.some((ttl) => ttl === value)
-}
-
 /** True when the days from `windowStart` to `windowEnd` (`YYYY-MM-DD`, both included) fit a poll. */
 export function quickPollWindowFits(windowStart: string, windowEnd: string): boolean {
   const days =

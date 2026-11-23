@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  isQuickPollTtl,
   QUICK_POLL_DEFAULT_PEOPLE,
   QUICK_POLL_MAX_PEOPLE,
   QUICK_POLL_MIN_PEOPLE,
@@ -13,13 +12,6 @@ describe('quick poll limits', () => {
     expect([QUICK_POLL_MIN_PEOPLE, QUICK_POLL_DEFAULT_PEOPLE, QUICK_POLL_MAX_PEOPLE]).toEqual([
       2, 10, 15,
     ])
-  })
-
-  it('lasts 24 hours or 7 days', () => {
-    expect(isQuickPollTtl('24h')).toBe(true)
-    expect(isQuickPollTtl('7d')).toBe(true)
-    expect(isQuickPollTtl('30d')).toBe(false)
-    expect(isQuickPollTtl(null)).toBe(false)
   })
 
   it('covers 1 to 14 days, both ends included', () => {
