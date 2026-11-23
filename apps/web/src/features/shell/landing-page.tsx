@@ -1,7 +1,7 @@
 import { t } from '@potluck/i18n'
 import { Button } from '@potluck/ui'
 import { Link } from '@tanstack/react-router'
-import { ArrowRightLeft, CalendarHeart, Receipt } from 'lucide-react'
+import { ArrowRightLeft, CalendarClock, CalendarHeart, Receipt } from 'lucide-react'
 import { lazy, Suspense, type ReactNode } from 'react'
 import { HELP_PAGES } from '@/features/help/topics'
 import { docsUrl } from '@/lib/docs'
@@ -19,11 +19,13 @@ function Feature({
   tile,
   title,
   body,
+  children,
 }: {
   icon: ReactNode
   tile: string
   title: string
   body: string
+  children?: ReactNode
 }) {
   return (
     <div className="grid content-start gap-3">
@@ -35,7 +37,35 @@ function Feature({
       </span>
       <h2 className="font-display text-3xl leading-none">{title}</h2>
       <p className="max-w-[34ch] text-mute">{body}</p>
+      {children}
     </div>
+  )
+}
+
+/**
+ * The way in for someone who only needs a time: a quick poll, no account. It sits under the
+ * sign up buttons as a saffron date chip (saffron is plans and dates here), with the same tile
+ * as "The night" below, so it reads as part of the table rather than a banner on top of it.
+ */
+function QuickPollEntry() {
+  return (
+    <Link
+      to="/poll"
+      className="group mt-5 flex w-fit max-w-full items-center gap-3.5 rounded-[1.125rem] border border-saffron/45 bg-saffron-soft py-2.5 pr-5 pl-2.5 transition-[border-color,transform] duration-150 ease-out hover:border-saffron active:scale-[0.98]"
+    >
+      <span
+        aria-hidden
+        className="grid size-11 shrink-0 place-items-center rounded-[0.875rem] bg-saffron text-on-saffron [&_svg]:size-[1.375rem]"
+      >
+        <CalendarClock />
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="font-bold underline decoration-transparent decoration-2 underline-offset-4 transition-colors group-hover:decoration-tomato">
+          {t('app.landing.quickPoll.title')}
+        </span>
+        <span className="text-sm text-mute">{t('app.landing.quickPoll.body')}</span>
+      </span>
+    </Link>
   )
 }
 
@@ -79,6 +109,7 @@ export function LandingPage() {
                   <Link to="/sign-in">{t('app.landing.secondary')}</Link>
                 </Button>
               </div>
+              <QuickPollEntry />
             </div>
             <div className="relative z-10 -mb-28 lg:-mb-32">
               <Suspense fallback={<div aria-hidden data-hero-slot className={heroFrame} />}>
@@ -105,7 +136,14 @@ export function LandingPage() {
               tile="bg-saffron text-on-saffron"
               title={t('app.landing.features.night.title')}
               body={t('app.landing.features.night.body')}
-            />
+            >
+              <Link
+                to="/poll"
+                className="w-fit font-semibold text-ink underline decoration-tomato decoration-2 underline-offset-4"
+              >
+                {t('app.landing.features.night.poll')}
+              </Link>
+            </Feature>
             <Feature
               icon={<ArrowRightLeft />}
               tile="bg-olive text-on-olive"
