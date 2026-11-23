@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as PollRouteImport } from './routes/poll'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SignUpRouteImport } from './routes/sign-up'
@@ -28,6 +29,7 @@ import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as DevKitRouteImport } from './routes/dev.kit'
 import { Route as FriendCodeRouteImport } from './routes/friend.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
+import { Route as PCodeRouteImport } from './routes/p.$code'
 import { Route as AppExpensesExpenseIdRouteImport } from './routes/_app/expenses/$expenseId'
 import { Route as AppFriendsIndexRouteImport } from './routes/_app/friends/index'
 import { Route as AppFriendsFriendIdRouteImport } from './routes/_app/friends/$friendId'
@@ -65,6 +67,11 @@ const AppRoute = AppRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PollRoute = PollRouteImport.update({
+  id: '/poll',
+  path: '/poll',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -145,6 +152,11 @@ const FriendCodeRoute = FriendCodeRouteImport.update({
 const JoinCodeRoute = JoinCodeRouteImport.update({
   id: '/join/$code',
   path: '/join/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PCodeRoute = PCodeRouteImport.update({
+  id: '/p/$code',
+  path: '/p/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppExpensesExpenseIdRoute = AppExpensesExpenseIdRouteImport.update({
@@ -275,6 +287,7 @@ const AppPaymentsPaymentIdEditRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/poll': typeof PollRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -291,6 +304,7 @@ export interface FileRoutesByFullPath {
   '/dev/kit': typeof DevKitRoute
   '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
+  '/p/$code': typeof PCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
   '/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
@@ -319,6 +333,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
+  '/poll': typeof PollRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -335,6 +350,7 @@ export interface FileRoutesByTo {
   '/dev/kit': typeof DevKitRoute
   '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
+  '/p/$code': typeof PCodeRoute
   '/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
   '/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/new/expense': typeof AppNewExpenseRoute
@@ -364,6 +380,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
+  '/poll': typeof PollRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
@@ -380,6 +397,7 @@ export interface FileRoutesById {
   '/dev/kit': typeof DevKitRoute
   '/friend/$code': typeof FriendCodeRoute
   '/join/$code': typeof JoinCodeRoute
+  '/p/$code': typeof PCodeRoute
   '/_app/expenses/$expenseId': typeof AppExpensesExpenseIdRoute
   '/_app/friends/$friendId': typeof AppFriendsFriendIdRoute
   '/_app/groups/$groupId': typeof AppGroupsGroupIdRouteWithChildren
@@ -410,6 +428,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/forgot-password'
+    | '/poll'
     | '/reset-password'
     | '/sign-in'
     | '/sign-up'
@@ -426,6 +445,7 @@ export interface FileRouteTypes {
     | '/dev/kit'
     | '/friend/$code'
     | '/join/$code'
+    | '/p/$code'
     | '/expenses/$expenseId'
     | '/friends/$friendId'
     | '/groups/$groupId'
@@ -454,6 +474,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/forgot-password'
+    | '/poll'
     | '/reset-password'
     | '/sign-in'
     | '/sign-up'
@@ -470,6 +491,7 @@ export interface FileRouteTypes {
     | '/dev/kit'
     | '/friend/$code'
     | '/join/$code'
+    | '/p/$code'
     | '/expenses/$expenseId'
     | '/friends/$friendId'
     | '/new/expense'
@@ -498,6 +520,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/forgot-password'
+    | '/poll'
     | '/reset-password'
     | '/sign-in'
     | '/sign-up'
@@ -514,6 +537,7 @@ export interface FileRouteTypes {
     | '/dev/kit'
     | '/friend/$code'
     | '/join/$code'
+    | '/p/$code'
     | '/_app/expenses/$expenseId'
     | '/_app/friends/$friendId'
     | '/_app/groups/$groupId'
@@ -544,6 +568,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
+  PollRoute: typeof PollRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
@@ -555,6 +580,7 @@ export interface RootRouteChildren {
   DevKitRoute: typeof DevKitRoute
   FriendCodeRoute: typeof FriendCodeRoute
   JoinCodeRoute: typeof JoinCodeRoute
+  PCodeRoute: typeof PCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -578,6 +604,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/poll': {
+      id: '/poll'
+      path: '/poll'
+      fullPath: '/poll'
+      preLoaderRoute: typeof PollRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -690,6 +723,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$code'
       fullPath: '/join/$code'
       preLoaderRoute: typeof JoinCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$code': {
+      id: '/p/$code'
+      path: '/p/$code'
+      fullPath: '/p/$code'
+      preLoaderRoute: typeof PCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/expenses/$expenseId': {
@@ -942,6 +982,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  PollRoute: PollRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
@@ -953,6 +994,7 @@ const rootRouteChildren: RootRouteChildren = {
   DevKitRoute: DevKitRoute,
   FriendCodeRoute: FriendCodeRoute,
   JoinCodeRoute: JoinCodeRoute,
+  PCodeRoute: PCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

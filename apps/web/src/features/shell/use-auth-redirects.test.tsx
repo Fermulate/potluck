@@ -44,15 +44,20 @@ describe('useAuthRedirects', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/sign-in'))
   })
 
-  it.each(['/', '/sign-up', '/join/hikecrew-demo', '/auth/callback', '/forgot-password'])(
-    'stays on the public page %s after sign out',
-    async (path) => {
-      const { router } = await renderAt(path)
-      act(() => emitAuth('SIGNED_OUT'))
-      await act(async () => {})
-      expect(router.state.location.pathname).toBe(path)
-    },
-  )
+  it.each([
+    '/',
+    '/sign-up',
+    '/join/hikecrew-demo',
+    '/auth/callback',
+    '/forgot-password',
+    '/poll',
+    '/p/abc123',
+  ])('stays on the public page %s after sign out', async (path) => {
+    const { router } = await renderAt(path)
+    act(() => emitAuth('SIGNED_OUT'))
+    await act(async () => {})
+    expect(router.state.location.pathname).toBe(path)
+  })
 
   it('opens the reset form from a recovery link', async () => {
     const { router } = await renderAt('/home')

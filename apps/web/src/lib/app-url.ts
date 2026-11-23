@@ -14,6 +14,11 @@ export function guestUrl(code: string): string {
   return `${appOrigin()}/a/${encodeURIComponent(code)}`
 }
 
+/** A quick poll (`/p/<code>`), for anyone with or without an account. */
+export function quickPollUrl(code: string): string {
+  return `${appOrigin()}/p/${encodeURIComponent(code)}`
+}
+
 export function friendUrl(code: string): string {
   return `${appOrigin()}/friend/${encodeURIComponent(code)}`
 }
