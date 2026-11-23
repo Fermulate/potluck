@@ -12,6 +12,10 @@ export const app = {
     body: 'Potluck tient les comptes de ta bande et trouve la soirée où tout le monde est vraiment dispo. Gratuit, open source, et pas de pub à table.',
     cta: 'Dresser la table',
     secondary: "J'ai déjà un compte",
+    quickPoll: {
+      title: 'Trouve un créneau, sans inscription',
+      body: 'Lance un sondage rapide et vois quand tout le monde est dispo.',
+    },
     demo: {
       label:
         "Une courte démo : l'addition d'un dîner se partage en quatre, puis les amis indiquent quand ils sont libres et une soirée est fixée.",
@@ -44,6 +48,7 @@ export const app = {
       night: {
         title: 'La soirée',
         body: 'Chacun fait glisser son doigt sur les heures où il est libre. La grille se réchauffe là où ça colle et le meilleur créneau remonte en haut.',
+        poll: 'Ou commence par un sondage rapide, sans compte',
       },
       square: {
         title: 'Les comptes soldés',

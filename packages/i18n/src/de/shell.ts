@@ -12,6 +12,10 @@ export const app = {
     body: 'Potluck führt eine laufende Rechnung für deine Leute und findet den Abend, an dem wirklich alle können. Kostenlos, Open Source und keine Werbung am Tisch.',
     cta: 'Tisch eröffnen',
     secondary: 'Ich habe schon ein Konto',
+    quickPoll: {
+      title: 'Termin finden, ohne Anmeldung',
+      body: 'Schick eine schnelle Umfrage und sieh, wann alle Zeit haben.',
+    },
     demo: {
       label:
         'Eine kurze Demo: Eine Restaurantrechnung wird durch vier geteilt, dann markieren Freunde, wann sie Zeit haben, und ein Abend wird festgezurrt.',
@@ -44,6 +48,7 @@ export const app = {
       night: {
         title: 'Der Abend',
         body: 'Alle ziehen über die Stunden, in denen sie Zeit haben. Das Raster leuchtet dort auf, wo es passt, und der beste Termin schwimmt nach oben.',
+        poll: 'Oder starte mit einer schnellen Umfrage, ganz ohne Konto',
       },
       square: {
         title: 'Die Abrechnung',
