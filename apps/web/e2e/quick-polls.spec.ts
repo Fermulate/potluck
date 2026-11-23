@@ -3,8 +3,11 @@ import type { Page } from '@playwright/test'
 import { answerQuickPoll, clearQuickPollCreates, quickPoll } from './support/api'
 import { expect, test, unique } from './support/fixtures'
 
-/** Paints the first `count` free cells of the poll's grid with the keyboard. */
-async function paint(page: Page, title: string, count: number) {
+/**
+ * Paints `count` cells down from the first free one with the keyboard; `total` is how many the
+ * answer then has.
+ */
+async function paint(page: Page, title: string, count: number, total = count) {
   const painter = page.getByRole('grid', { name: t('quickPolls.page.gridLabel', { title }) })
   await expect(painter).toBeVisible()
   await painter
@@ -13,7 +16,7 @@ async function paint(page: Page, title: string, count: number) {
     .focus()
   await page.keyboard.press('Space')
   for (let i = 1; i < count; i++) await page.keyboard.press('Shift+ArrowDown')
-  await expect(page.getByText(t('availability.mySlots', { count }))).toBeVisible()
+  await expect(page.getByText(t('availability.mySlots', { count: total }))).toBeVisible()
 }
 
 async function answer(page: Page, title: string, name: string, count: number) {
@@ -90,7 +93,7 @@ test('make a quick poll from the landing page, two people answer without account
   // The friend comes back on the same browser and changes their answer.
   await friend.reload()
   await friend.getByRole('button', { name: t('quickPolls.page.edit') }).click()
-  await paint(friend, title, 3)
+  await paint(friend, title, 1, 3)
   await friend.getByRole('button', { name: t('quickPolls.page.update') }).click()
   await expect(friend.getByText(t('quickPolls.page.sentTitle', { name: ben }))).toBeVisible()
 
