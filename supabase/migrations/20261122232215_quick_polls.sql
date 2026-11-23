@@ -5,7 +5,8 @@
 --   quick_polls                 one row per poll: its code, grid, expiry and the sha256 of the
 --                               creator's token (the browser keeps the token)
 --   quick_poll_answers          one row per browser that answered, with a seat number (1, 2,
---                               3...) and, when the poll asks for names, a name; a token hash too
+--                               3...) and, when the poll asks for names, a name; plus the sha256
+--                               of the token that browser made
 --   quick_poll_slots            the slots each answer painted, same shape as public.availability
 --   private.quick_poll_creates  when polls were made and by which client (sha256 of the first
 --                               x-forwarded-for entry), kept an hour, for the create rate limit
@@ -446,9 +447,12 @@ $$;
 revoke execute on function public.quick_poll_preview(text, text) from public;
 grant execute on function public.quick_poll_preview(text, text) to anon, authenticated, service_role;
 
--- Adds or replaces an answer. A token this poll does not know makes a new answer, if there is a
--- seat, and returns a fresh token for the browser to keep; a known token edits its answer. The
--- creator's token (from create_quick_poll) makes the creator's answer under that same token. The
+-- Adds or replaces an answer. The browser makes its own token (16 to 200 characters) before its
+-- first save and sends it every time, so a save resent after a lost reply edits the answer it
+-- made instead of taking a second seat. A token this poll does not know makes a new answer under
+-- it, if there is a seat; a known token edits its answer; the creator's token (from
+-- create_quick_poll) makes or edits the creator's answer. No token, or a malformed one, is
+-- invalid_quick_poll_token. Only the sha256 is kept, and the token is handed back as given. The
 -- poll row lock serializes seats and the cap.
 -- Limits: names 1 to 40 characters once cleaned when the poll asks for names (ignored and stored
 -- as null when it does not), a new answer needs at least one slot, 60 saves per answer per hour,
@@ -466,9 +470,11 @@ declare
   hashed bytea := private.quick_poll_token_hash(set_quick_poll_availability.token);
   clean_name text;
   parsed jsonb;
-  fresh_token text;
   n int;
 begin
+  if hashed is null then
+    raise exception using message = 'invalid_quick_poll_token', detail = 'The answer token is missing or not valid', errcode = '22023';
+  end if;
   select * into poll from public.quick_polls q where q.code = set_quick_poll_availability.code for update;
   if poll.id is null then
     raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
@@ -502,10 +508,6 @@ begin
     if jsonb_array_length(parsed) = 0 then
       raise exception using message = 'quick_poll_slots_required', detail = 'Pick at least one time', errcode = '22023';
     end if;
-    if hashed is distinct from poll.creator_token_hash then
-      fresh_token := private.random_code(24);
-      hashed := sha256(convert_to(fresh_token, 'UTF8'));
-    end if;
     -- Answers only ever go with their poll, so the next seat is never one used before.
     insert into public.quick_poll_answers (poll_id, seat, display_name, token_hash)
     values (
@@ -534,7 +536,7 @@ begin
   from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level);
   get diagnostics n = row_count;
 
-  return query select coalesce(fresh_token, set_quick_poll_availability.token), n;
+  return query select set_quick_poll_availability.token, n;
 end;
 $$;
 

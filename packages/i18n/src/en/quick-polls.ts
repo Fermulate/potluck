@@ -109,6 +109,8 @@ export const quickPolls = {
     invalid_quick_poll_ttl: 'Pick how long the poll stays open.',
     invalid_quick_poll_people: 'A poll takes 2 to 15 people.',
     invalid_quick_poll_name: 'Names are 1 to 40 characters.',
+    invalid_quick_poll_token:
+      'This browser could not save its answer. Reload the page and try again.',
     invalid_slot: 'Some of those times are outside the poll.',
     invalid_slots: 'Those times did not save. Try again?',
     duplicate_slot: 'A time showed up twice. Try again?',

@@ -1,6 +1,7 @@
 /**
  * Quick polls (ADR 22): availability polls anyone can make and answer without an account. Every
- * call goes through an anon-callable RPC; the browser keeps the tokens they hand back.
+ * call goes through an anon-callable RPC; the browser keeps the creator token and the answer
+ * token it makes.
  */
 import type { QuickPollSlotMinutes, QuickPollTtl, SlotGrid } from '@potluck/core'
 import { queryOptions } from '@tanstack/react-query'
@@ -168,20 +169,20 @@ export async function createQuickPoll(
 }
 
 /**
- * Adds or replaces the visitor's answer. With no token (or one the poll does not know) the server
- * makes a new answer and returns its token; keep it to edit later. The creator passes their
- * creator token and gets it back.
+ * Adds or replaces the visitor's answer. The browser makes its token (16 to 200 characters) and
+ * keeps it before the first save, then sends the same one every time: a token the poll does not
+ * know makes a new answer, a known one edits it, so a save resent after a lost reply never takes
+ * a second seat. The creator passes their creator token. Returns the token as sent.
  */
 export async function setQuickPollAvailability(
   client: PotluckClient,
-  input: { code: string; name: string | null; token: string | null; slots: QuickPollSlot[] },
+  input: { code: string; name: string | null; token: string; slots: QuickPollSlot[] },
 ): Promise<{ token: string; saved: number }> {
   const { data, error } = await client.rpc('set_quick_poll_availability', {
     code: input.code,
     // Ignored when the poll does not ask for names.
     name: input.name ?? '',
-    // An empty token is one the poll does not know, so the server makes a new answer.
-    token: input.token ?? '',
+    token: input.token,
     slots: input.slots,
   })
   if (error) fail(error)

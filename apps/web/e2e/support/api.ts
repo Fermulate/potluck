@@ -12,6 +12,7 @@ import {
 } from '@potluck/api'
 import { createClient } from '@supabase/supabase-js'
 import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { repoRoot, stackEnv } from './env'
 import { unique, type TestUser } from './fixtures'
@@ -161,7 +162,7 @@ export async function quickPoll(input: Partial<CreateQuickPollInput> = {}) {
 }
 
 /** Someone without an account answers `code` with tomorrow 10:00 to 11:00; returns their token. */
-export async function answerQuickPoll(code: string, name: string, token: string | null = null) {
+export async function answerQuickPoll(code: string, name: string, token = randomUUID()) {
   const day = dayFromToday(1)
   const saved = await setQuickPollAvailability(anonymousClient(), {
     code,

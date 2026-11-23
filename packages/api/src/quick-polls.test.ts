@@ -194,19 +194,24 @@ describe('quick poll writes', () => {
     ])
   })
 
-  it('saves an answer, sending empty strings for no name and no token', async () => {
+  it('saves an answer under the token given, sending an empty string for no name', async () => {
     const fake = fakeSupabase().respond('rpc:set_quick_poll_availability', {
-      data: [{ answer_token: 'fresh', saved: 1 }],
+      data: [{ answer_token: 'browser-made-token', saved: 1 }],
     })
     const slots = [{ slot_start: 's1', level: 'yes' as const }]
 
     expect(
-      await setQuickPollAvailability(fake.client, { code: 'c', name: null, token: null, slots }),
-    ).toEqual({ token: 'fresh', saved: 1 })
+      await setQuickPollAvailability(fake.client, {
+        code: 'c',
+        name: null,
+        token: 'browser-made-token',
+        slots,
+      }),
+    ).toEqual({ token: 'browser-made-token', saved: 1 })
     await setQuickPollAvailability(fake.client, { code: 'c', name: 'Ana', token: 'old', slots })
 
     expect(fake.rpcArgs('set_quick_poll_availability')).toEqual([
-      { code: 'c', name: '', token: '', slots },
+      { code: 'c', name: '', token: 'browser-made-token', slots },
       { code: 'c', name: 'Ana', token: 'old', slots },
     ])
   })
@@ -226,7 +231,7 @@ describe('quick poll writes', () => {
       .respond('rpc:set_quick_poll_availability', { error })
       .respond('rpc:close_quick_poll', { error })
       .respond('rpc:delete_quick_poll', { error })
-    const answer = { code: 'c', name: 'A', token: null, slots: [] }
+    const answer = { code: 'c', name: 'A', token: 'browser-made-token', slots: [] }
     const creator = { code: 'c', creatorToken: 'secret' }
     for (const write of [
       () => createQuickPoll(fake.client, input),

@@ -9888,9 +9888,11 @@ declare
   hashed bytea := private.quick_poll_token_hash(set_quick_poll_availability.token);
   clean_name text;
   parsed jsonb;
-  fresh_token text;
   n int;
 begin
+  if hashed is null then
+    raise exception using message = 'invalid_quick_poll_token', detail = 'The answer token is missing or not valid', errcode = '22023';
+  end if;
   select * into poll from public.quick_polls q where q.code = set_quick_poll_availability.code for update;
   if poll.id is null then
     raise exception using message = 'quick_poll_not_found', detail = 'This poll is not valid', errcode = 'PT404';
@@ -9924,10 +9926,6 @@ begin
     if jsonb_array_length(parsed) = 0 then
       raise exception using message = 'quick_poll_slots_required', detail = 'Pick at least one time', errcode = '22023';
     end if;
-    if hashed is distinct from poll.creator_token_hash then
-      fresh_token := private.random_code(24);
-      hashed := sha256(convert_to(fresh_token, 'UTF8'));
-    end if;
     -- Answers only ever go with their poll, so the next seat is never one used before.
     insert into public.quick_poll_answers (poll_id, seat, display_name, token_hash)
     values (
@@ -9956,7 +9954,7 @@ begin
   from jsonb_to_recordset(parsed) as s (slot_start timestamptz, level public.availability_level);
   get diagnostics n = row_count;
 
-  return query select coalesce(fresh_token, set_quick_poll_availability.token), n;
+  return query select set_quick_poll_availability.token, n;
 end;
 $$;
 

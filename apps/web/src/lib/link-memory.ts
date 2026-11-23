@@ -1,6 +1,7 @@
 /**
- * What a browser remembers per shared link (a guest link, a quick poll): the token the server
- * handed back, which proves this browser wrote the answer, plus whatever the page needs next time.
+ * What a browser remembers per shared link (a guest link, a quick poll): the token that proves
+ * this browser wrote the answer (a guest link's server hands it back, a quick poll's browser makes
+ * it), plus whatever the page needs next time.
  * Storage can be missing or blocked (private windows, strict settings); the page then works, it
  * just forgets on reload.
  */

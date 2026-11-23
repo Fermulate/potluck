@@ -32,6 +32,7 @@ import { DeadEnd, Notice, Pitch, PublicFrame } from '@/features/shell/public-pag
 import { useSession } from '@/lib/auth'
 import { errorCode, errorMessage, isNotFoundError } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
+import { newRequestId } from '@/lib/request-id'
 import { supabase } from '@/lib/supabase'
 import { pollMemory, type PollMemory } from './poll-memory'
 import { answerName, gridEvent, pollResults } from './results'
@@ -61,7 +62,7 @@ export function PollPage({ code }: { code: string }) {
   const [memory, setMemory] = useState<PollMemory | null>(() => pollMemory.read(code))
   // Painted or typed but not saved: if the poll stops taking answers meanwhile, the page says so.
   const [unsaved, setUnsaved] = useState(false)
-  // Saving hands back a token, which changes the query key; keep showing the poll meanwhile.
+  // The first save keeps a new token, which changes the query key; keep showing the poll meanwhile.
   const preview = useQuery({
     ...quickPollQueries.preview(supabase, code, memory?.token ?? null),
     placeholderData: (previous) => previous,
@@ -393,18 +394,20 @@ function AnswerForm({
   const [nameError, setNameError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  // The token a new visitor made for their first save, for when storage is blocked.
+  const madeToken = useRef<string | null>(null)
   const cleanName = cleanGuestName(name)
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (token: string) =>
       setQuickPollAvailability(supabase, {
         code,
         name: poll.namesRequired ? cleanName : null,
-        token: memory?.token ?? null,
+        token,
         slots: [...value].map(([slot_start, level]) => ({ slot_start, level })),
       }),
-    onSuccess: async (result) => {
-      const next = { token: result.token, name: poll.namesRequired ? cleanName : '' }
+    onSuccess: async (_, token) => {
+      const next = { token, name: poll.namesRequired ? cleanName : '' }
       pollMemory.write(code, next)
       // Load the poll with the answer in it before leaving the form, so "Sent" has it to show.
       try {
@@ -443,7 +446,15 @@ function AnswerForm({
       setFormError(t('quickPolls.page.needTimes'))
       return
     }
-    save.mutate()
+    // A new visitor makes their token and keeps it before the first save goes out, so a retry
+    // after a lost reply (or a reload) sends the same one and edits that answer, not a second.
+    let token = memory?.token ?? madeToken.current
+    if (!token) {
+      token = newRequestId()
+      madeToken.current = token
+      pollMemory.write(code, { token, name: poll.namesRequired ? cleanName : '' })
+    }
+    save.mutate(token)
   }
 
   return (

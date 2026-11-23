@@ -112,6 +112,8 @@ export const quickPolls = {
     invalid_quick_poll_ttl: 'Escolha por quanto tempo a enquete fica aberta.',
     invalid_quick_poll_people: 'Uma enquete aceita de 2 a 15 pessoas.',
     invalid_quick_poll_name: 'Nomes têm de 1 a 40 caracteres.',
+    invalid_quick_poll_token:
+      'Este navegador não conseguiu salvar sua resposta. Recarregue a página e tente de novo.',
     invalid_slot: 'Alguns desses horários estão fora da enquete.',
     invalid_slots: 'Esses horários não foram salvos. Tentamos de novo?',
     duplicate_slot: 'Um horário aparece duas vezes. Tentamos de novo?',

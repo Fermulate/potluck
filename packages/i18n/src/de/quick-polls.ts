@@ -113,6 +113,8 @@ export const quickPolls = {
     invalid_quick_poll_ttl: 'Wähle, wie lange die Umfrage offen bleibt.',
     invalid_quick_poll_people: 'Eine Umfrage nimmt 2 bis 15 Personen.',
     invalid_quick_poll_name: 'Namen haben 1 bis 40 Zeichen.',
+    invalid_quick_poll_token:
+      'Dieser Browser konnte die Antwort nicht speichern. Lade die Seite neu und versuch es noch mal.',
     invalid_slot: 'Einige dieser Zeiten liegen außerhalb der Umfrage.',
     invalid_slots: 'Diese Zeiten wurden nicht gespeichert. Noch mal versuchen?',
     duplicate_slot: 'Eine Zeit kommt doppelt vor. Noch mal versuchen?',

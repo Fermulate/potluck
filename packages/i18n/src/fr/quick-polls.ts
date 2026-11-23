@@ -112,6 +112,8 @@ export const quickPolls = {
     invalid_quick_poll_ttl: 'Choisis combien de temps le sondage reste ouvert.',
     invalid_quick_poll_people: 'Un sondage accepte de 2 à 15 personnes.',
     invalid_quick_poll_name: 'Les noms font de 1 à 40 caractères.',
+    invalid_quick_poll_token:
+      "Ce navigateur n'a pas pu enregistrer ta réponse. Recharge la page et réessaie.",
     invalid_slot: 'Certains de ces horaires sont hors du sondage.',
     invalid_slots: "Ces horaires n'ont pas été enregistrés. On réessaie ?",
     duplicate_slot: 'Un horaire apparaît deux fois. On réessaie ?',

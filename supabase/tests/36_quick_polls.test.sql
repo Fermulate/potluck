@@ -1,9 +1,10 @@
 -- Quick polls (ADR 22): nobody reads or writes the tables directly; creating a poll and its
--- checks; names on and off; seats and the people cap; the creator token doubling as the creator's
--- answer token; the preview per status; closing, expiry and deleting; the hourly purge; and the
--- save and create rate limits (the same limits as packages/core quick-polls).
+-- checks; names on and off; answer tokens the browser makes (a resent first save keeps one seat);
+-- seats and the people cap; the creator token doubling as the creator's answer token; the preview
+-- per status; closing, expiry and deleting; the hourly purge; and the save and create rate limits
+-- (the same limits as packages/core quick-polls).
 begin;
-select plan(80);
+select plan(84);
 
 select tests.create_user('alice');
 
@@ -181,37 +182,60 @@ select throws_ok(
   'PT404', 'quick_poll_not_found', 'unknown codes are not found'
 );
 select throws_ok(
-  format($$ select * from public.set_quick_poll_availability(%L, '  ', null, %L) $$,
+  format($$ select * from public.set_quick_poll_availability(%L, '  ', 'ana-made-this-token-1', %L) $$,
     pg_temp.code('names'), jsonb_build_array(pg_temp.slot(1, '10:00'))),
   '22023', 'invalid_quick_poll_name', 'a poll with names needs a name'
 );
 select throws_ok(
-  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', null, '[]') $$, pg_temp.code('names')),
+  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', 'ana-made-this-token-1', '[]') $$, pg_temp.code('names')),
   '22023', 'quick_poll_slots_required', 'a new answer picks at least one time'
 );
 select throws_ok(
-  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', null, %L) $$,
+  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', 'ana-made-this-token-1', %L) $$,
     pg_temp.code('names'), jsonb_build_array(pg_temp.slot(1, '12:00'))),
   '22023', 'invalid_slot', 'times outside the grid are refused'
 );
 select throws_ok(
-  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', null, '{"no": 1}') $$, pg_temp.code('names')),
+  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', 'ana-made-this-token-1', '{"no": 1}') $$, pg_temp.code('names')),
   '22023', 'invalid_slots', 'slots are a list'
 );
+select throws_ok(
+  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', null, %L) $$,
+    pg_temp.code('names'), jsonb_build_array(pg_temp.slot(1, '10:00'))),
+  '22023', 'invalid_quick_poll_token', 'a save needs a token'
+);
+select throws_ok(
+  format($$ select * from public.set_quick_poll_availability(%L, 'Ana', 'too-short', %L) $$,
+    pg_temp.code('names'), jsonb_build_array(pg_temp.slot(1, '10:00'))),
+  '22023', 'invalid_quick_poll_token', 'a token under 16 characters is refused'
+);
 
+-- Each browser makes its own token and keeps it before its first save.
 insert into tok select 'ana', s.answer_token
-from public.set_quick_poll_availability(pg_temp.code('names'), 'Ana', null,
+from public.set_quick_poll_availability(pg_temp.code('names'), 'Ana', 'ana-made-this-token-1',
   jsonb_build_array(pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:30', 'maybe'))) s;
+select is(pg_temp.tok('ana'), 'ana-made-this-token-1', 'a new answer keeps the token its browser made');
+-- The reply to that first save was lost, so the browser sends it again with the same token.
+select is(
+  (select s.saved from public.set_quick_poll_availability(pg_temp.code('names'), 'Ana', pg_temp.tok('ana'),
+    jsonb_build_array(pg_temp.slot(1, '10:00'), pg_temp.slot(1, '10:30', 'maybe'))) s),
+  2,
+  'the same first save sent again saves'
+);
+select is(
+  (select jsonb_array_length(answers) from public.quick_poll_preview(pg_temp.code('names'))),
+  1,
+  'and is still one answer in one seat'
+);
 insert into tok select 'cy', s.answer_token
 from public.set_quick_poll_availability(pg_temp.code('names'), 'Cy', pg_temp.creator('names'),
   jsonb_build_array(pg_temp.slot(2, '11:00'))) s;
 insert into tok select 'ben', s.answer_token
-from public.set_quick_poll_availability(pg_temp.code('names'), 'Ben', 'not-a-token-this-poll-knows',
+from public.set_quick_poll_availability(pg_temp.code('names'), 'Ben', 'ben-made-this-token-1',
   jsonb_build_array(pg_temp.slot(2, '11:30'))) s;
 
 select is(pg_temp.tok('cy'), pg_temp.creator('names'), 'the creator answers under their creator token');
-select isnt(pg_temp.tok('ben'), 'not-a-token-this-poll-knows', 'an unknown token gets a fresh one');
-select ok(char_length(pg_temp.tok('ana')) >= 16, 'a new answer gets a long token');
+select is(pg_temp.tok('ben'), 'ben-made-this-token-1', 'another browser answers under its own token');
 
 reset role;
 select results_eq(
@@ -234,7 +258,7 @@ select is(
   'a full poll still shows its answers'
 );
 select throws_ok(
-  format($$ select * from public.set_quick_poll_availability(%L, 'Dee', null, %L) $$,
+  format($$ select * from public.set_quick_poll_availability(%L, 'Dee', 'dee-made-this-token-1', %L) $$,
     pg_temp.code('names'), jsonb_build_array(pg_temp.slot(1, '10:00'))),
   '23514', 'quick_poll_full', 'a full poll takes no new answers'
 );
@@ -265,12 +289,12 @@ select is(
 insert into polls select 'nameless', q.code, q.creator_token
 from public.create_quick_poll(pg_temp.payload('{"names_required": false, "max_people": 2, "slot_minutes": 60}')) q;
 select lives_ok(
-  format($$ insert into tok select 'n1', s.answer_token from public.set_quick_poll_availability(%L, null, null, %L) s $$,
+  format($$ insert into tok select 'n1', s.answer_token from public.set_quick_poll_availability(%L, null, 'n1-made-this-token-1', %L) s $$,
     pg_temp.code('nameless'), jsonb_build_array(pg_temp.slot(1, '10:00'))),
   'a poll without names takes an answer with no name'
 );
 select lives_ok(
-  format($$ insert into tok select 'n2', s.answer_token from public.set_quick_poll_availability(%L, 'Ignored', null, %L) s $$,
+  format($$ insert into tok select 'n2', s.answer_token from public.set_quick_poll_availability(%L, 'Ignored', 'n2-made-this-token-1', %L) s $$,
     pg_temp.code('nameless'), jsonb_build_array(pg_temp.slot(1, '11:00'))),
   'and ignores a name it is given'
 );
@@ -353,7 +377,7 @@ select is(
 
 insert into polls select 'gone', q.code, q.creator_token from public.create_quick_poll(pg_temp.payload()) q;
 insert into tok select 'g1', s.answer_token
-from public.set_quick_poll_availability(pg_temp.code('gone'), 'Gil', null, jsonb_build_array(pg_temp.slot(1, '10:00'))) s;
+from public.set_quick_poll_availability(pg_temp.code('gone'), 'Gil', 'gil-made-this-token-1', jsonb_build_array(pg_temp.slot(1, '10:00'))) s;
 reset role;
 select tests.remember('gone', (select id from public.quick_polls where code = pg_temp.code('gone')));
 select tests.login_anon();
@@ -408,7 +432,7 @@ select is(
 
 select tests.login_anon();
 insert into tok select 'r1', s.answer_token
-from public.set_quick_poll_availability(pg_temp.code('big'), 'Rae', null, jsonb_build_array(pg_temp.slot(1, '10:00'))) s;
+from public.set_quick_poll_availability(pg_temp.code('big'), 'Rae', 'rae-made-this-token-1', jsonb_build_array(pg_temp.slot(1, '10:00'))) s;
 reset role;
 update public.quick_poll_answers set saves = 60 where token_hash = sha256(convert_to(pg_temp.tok('r1'), 'UTF8'));
 select tests.login_anon();

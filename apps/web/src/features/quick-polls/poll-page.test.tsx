@@ -17,6 +17,8 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
 }))
 
 const slot = (time: string) => `2026-06-12T${time}:00.000Z`
+// A token the browser made: long enough for the server and safe in a URL.
+const madeToken = expect.stringMatching(/^[\w-]{24,200}$/)
 const at = (time: string) => `2026-06-12T${time}:00+00:00`
 
 const ana = {
@@ -68,6 +70,7 @@ function renderPage(code = 'poll123') {
 
 describe('PollPage', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     resetDb()
     window.localStorage.clear()
     auth.session = null
@@ -117,12 +120,13 @@ describe('PollPage', () => {
       {
         code: 'poll123',
         name: 'Ben',
-        token: '',
+        token: madeToken,
         slots: [{ slot_start: slot('18:00'), level: 'yes' }],
       },
     ])
-    expect(pollMemory.read('poll123')).toEqual({ token: 'tok-ben', name: 'Ben' })
-    expect(db().rpcArgs('quick_poll_preview')).toContainEqual({ code: 'poll123', token: 'tok-ben' })
+    const { token } = db().rpcArgs('set_quick_poll_availability')[0] as { token: string }
+    expect(pollMemory.read('poll123')).toEqual({ token, name: 'Ben' })
+    expect(db().rpcArgs('quick_poll_preview')).toContainEqual({ code: 'poll123', token })
     expect(screen.getByText(t('quickPolls.page.answered', { count: 2, max: 10 }))).toBeVisible()
   })
 
@@ -201,7 +205,10 @@ describe('PollPage', () => {
         t('quickPolls.page.sentTitleAnon', { name: t('quickPolls.anonymous', { seat: 2 }) }),
       ),
     ).toBeVisible()
-    expect(db().rpcArgs('set_quick_poll_availability')[0]).toMatchObject({ name: '', token: '' })
+    expect(db().rpcArgs('set_quick_poll_availability')[0]).toMatchObject({
+      name: '',
+      token: madeToken,
+    })
     // The first answer suits seat 1 only, so the best time goes without seat 2.
     expect(
       screen.getByText(t('bestTime.missing', { names: t('quickPolls.anonymous', { seat: 2 }) })),
@@ -320,6 +327,39 @@ describe('PollPage', () => {
       await screen.findByRole('heading', { name: t('quickPolls.page.fullTitle') }),
     ).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent(t('quickPolls.page.unsaved'))
+  })
+
+  it.each([
+    ['kept in storage', false],
+    ['with storage blocked', true],
+  ])('sends a failed first save again under the same token, %s', async (_, blocked) => {
+    if (blocked) {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('blocked', 'SecurityError')
+      })
+    }
+    const offline = { error: { message: 'TypeError: Failed to fetch' } }
+    db()
+      .respond('rpc:quick_poll_preview', { data: [open] })
+      .respond('rpc:set_quick_poll_availability', offline, {
+        data: [{ answer_token: 'ignored', saved: 1 }],
+      })
+    renderPage()
+    fireEvent.change(await screen.findByLabelText(t('quickPolls.page.nameLabel')), {
+      target: { value: 'Cy' },
+    })
+    paint(slot('19:00'))
+
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.submit') }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+    const first = db().rpcArgs('set_quick_poll_availability')[0] as { token: string }
+    expect(first).toMatchObject({ token: madeToken })
+    // Kept before the reply came, so a reload after a lost reply sends it too.
+    expect(pollMemory.read('poll123')?.token).toBe(blocked ? undefined : first.token)
+
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.submit') }))
+    await waitFor(() => expect(db().rpcArgs('set_quick_poll_availability')).toHaveLength(2))
+    expect(db().rpcArgs('set_quick_poll_availability')[1]).toEqual(first)
   })
 
   it('words other save errors in place', async () => {
