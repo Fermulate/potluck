@@ -62,11 +62,9 @@ export function PollPage({ code }: { code: string }) {
   const [memory, setMemory] = useState<PollMemory | null>(() => pollMemory.read(code))
   // Painted or typed but not saved: if the poll stops taking answers meanwhile, the page says so.
   const [unsaved, setUnsaved] = useState(false)
-  // A new visitor's token is kept as their first save goes out, which changes the query key; keep
-  // showing the poll meanwhile.
+  const queryClient = useQueryClient()
   const preview = useQuery({
     ...quickPollQueries.preview(supabase, code, memory?.token ?? null),
-    placeholderData: (previous) => previous,
     refetchInterval: REFRESH_MS,
     refetchOnWindowFocus: 'always',
   })
@@ -130,7 +128,15 @@ export function PollPage({ code }: { code: string }) {
         view={view}
         memory={memory}
         unsaved={unsaved}
-        onToken={setMemory}
+        onToken={(made) => {
+          // The token changes the query key: the poll on screen goes with it, so it stays up
+          // whatever becomes of the next refresh.
+          queryClient.setQueryData(
+            quickPollQueries.preview(supabase, code, made.token).queryKey,
+            view,
+          )
+          setMemory(made)
+        }}
         onSaved={(next) => {
           setUnsaved(false)
           setMemory(next)
@@ -415,11 +421,11 @@ function AnswerForm({
       const next = { token, name: poll.namesRequired ? cleanName : '' }
       pollMemory.write(code, next)
       // Load the poll with the answer in it before leaving the form, so "Sent" has it to show.
+      // A refresh already on its way may have read the poll before the save: drop it.
+      const query = quickPollQueries.preview(supabase, code, next.token)
+      await queryClient.cancelQueries({ queryKey: query.queryKey, exact: true })
       try {
-        await queryClient.fetchQuery({
-          ...quickPollQueries.preview(supabase, code, next.token),
-          staleTime: 0,
-        })
+        await queryClient.fetchQuery({ ...query, staleTime: 0 })
       } catch {
         // Saved all the same; the next refresh shows it.
       }

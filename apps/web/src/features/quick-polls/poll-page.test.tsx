@@ -58,6 +58,37 @@ function paint(s: string) {
   fireEvent.pointerUp(screen.getByRole('grid', { name: /^Your times for/ }), { pointerId: 1 })
 }
 
+/**
+ * A slow network for one poll read: once armed, the next `quick_poll_preview` call is held back
+ * and, when released, answers with `stale` (the poll as it was when the read went out).
+ */
+function slowPreview(stale: unknown) {
+  const client = db().client as unknown as { rpc: (name: string, args?: unknown) => unknown }
+  const real = client.rpc.bind(client)
+  let armed = false
+  let held = 0
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  vi.spyOn(client, 'rpc').mockImplementation((name, args) => {
+    if (name !== 'quick_poll_preview' || !armed) return real(name, args)
+    armed = false
+    held += 1
+    return {
+      then: (onFulfilled?: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
+        gate.then(() => ({ data: [stale], error: null })).then(onFulfilled, onRejected),
+    }
+  })
+  return {
+    arm: () => {
+      armed = true
+    },
+    held: () => held,
+    release,
+  }
+}
+
 function renderPage(code = 'poll123') {
   return renderWithProviders(
     <>
@@ -411,6 +442,96 @@ describe('PollPage', () => {
     fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.update') }))
     expect(await screen.findByText(t('quickPolls.page.sentTitle', { name: 'Cy' }))).toBeVisible()
     expect(db().rpcArgs('set_quick_poll_availability')[1]).toEqual(first)
+  })
+
+  it('keeps the form and its times when nothing gets through after the first send', async () => {
+    const offline = { error: { message: 'TypeError: Failed to fetch' } }
+    db()
+      .respond('rpc:quick_poll_preview', { data: [open] }, offline)
+      .respond('rpc:set_quick_poll_availability', offline)
+    const { queryClient } = renderPage()
+    fireEvent.change(await screen.findByLabelText(t('quickPolls.page.nameLabel')), {
+      target: { value: 'Cy' },
+    })
+    paint(slot('19:00'))
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.submit') }))
+    expect(await screen.findByRole('alert')).toBeVisible()
+
+    // The refresh that follows the send tries three times before it gives up.
+    await waitFor(() => expect(db().rpcArgs('quick_poll_preview')).toHaveLength(4), {
+      timeout: 10_000,
+    })
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Board games' })).toBeVisible()
+    expect(cell(slot('19:00'))).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByLabelText(t('quickPolls.page.nameLabel'))).toHaveValue('Cy')
+    expect(screen.queryByText(t('quickPolls.page.loadFailedTitle'))).not.toBeInTheDocument()
+  }, 15_000)
+
+  it('shows a first answer as sent though a slower read left before it was saved', async () => {
+    const cy = {
+      seat: 2,
+      name: 'Cy',
+      mine: true,
+      slots: [{ slot_start: at('19:00'), level: 'yes' }],
+    }
+    let stored = false
+    db()
+      .respond('rpc:quick_poll_preview', () => ({
+        data: [stored ? { ...open, answers: [ana, cy] } : open],
+      }))
+      .respond('rpc:set_quick_poll_availability', () => {
+        stored = true
+        return { data: [{ answer_token: 'ignored', saved: 1 }] }
+      })
+    renderPage()
+    fireEvent.change(await screen.findByLabelText(t('quickPolls.page.nameLabel')), {
+      target: { value: 'Cy' },
+    })
+    paint(slot('19:00'))
+    const slow = slowPreview(open)
+    slow.arm()
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.submit') }))
+
+    expect(await screen.findByText(t('quickPolls.page.sentTitle', { name: 'Cy' }))).toBeVisible()
+    expect(slow.held()).toBe(1)
+    slow.release()
+    await Promise.resolve()
+    expect(screen.getByText(t('quickPolls.page.sentTitle', { name: 'Cy' }))).toBeVisible()
+    expect(screen.getByText(t('quickPolls.page.answered', { count: 2, max: 10 }))).toBeVisible()
+  })
+
+  it('shows an edit as saved though a slower refresh left before it', async () => {
+    pollMemory.write('poll123', { token: 'tok-ana', name: 'Ana' })
+    const before = { ...open, answers: [{ ...ana, mine: true }] }
+    const after = {
+      ...open,
+      answers: [
+        { ...ana, mine: true, slots: [...ana.slots, { slot_start: at('19:00'), level: 'yes' }] },
+      ],
+    }
+    let stored = false
+    db()
+      .respond('rpc:quick_poll_preview', () => ({ data: [stored ? after : before] }))
+      .respond('rpc:set_quick_poll_availability', () => {
+        stored = true
+        return { data: [{ answer_token: 'ignored', saved: 3 }] }
+      })
+    const { queryClient } = renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: t('quickPolls.page.edit') }))
+    paint(slot('19:00'))
+    const slow = slowPreview(before)
+    slow.arm()
+    void queryClient.invalidateQueries()
+    await waitFor(() => expect(slow.held()).toBe(1))
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.update') }))
+
+    expect(await screen.findByText(t('quickPolls.page.sentTitle', { name: 'Ana' }))).toBeVisible()
+    slow.release()
+    await Promise.resolve()
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.edit') }))
+    expect(cell(slot('19:00'))).toHaveAttribute('aria-selected', 'true')
   })
 
   it('words other save errors in place', async () => {
