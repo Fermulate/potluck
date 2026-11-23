@@ -1,6 +1,6 @@
 import { guestKeys, guestQueries, setGuestAvailability, type GuestLinkPreview } from '@potluck/api'
 import { cleanGuestName } from '@potluck/core'
-import { formatDate, formatDateRange, formatTime, t } from '@potluck/i18n'
+import { formatDate, formatTime, t } from '@potluck/i18n'
 import {
   Button,
   Card,
@@ -9,22 +9,16 @@ import {
   Input,
   SegmentedControl,
   Skeleton,
-  Stamp,
-  StampAnimation,
   usePrefersReducedMotion,
 } from '@potluck/ui'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarDays, Clock } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { AvailabilityPainter } from '@/features/availability/availability-painter'
 import { buildGridModel, slotKey, type PaintLevel } from '@/features/availability/grid'
+import { SentCard } from '@/features/availability/sent-card'
+import { WindowFacts } from '@/features/availability/window-facts'
 import { Help } from '@/features/help/help'
-import {
-  formatDuration,
-  minuteOfDayIn,
-  planErrorCode,
-  planErrorMessage,
-} from '@/features/plans/format'
+import { planErrorCode, planErrorMessage } from '@/features/plans/format'
 import { DeadEnd, NextSteps, Notice, Pitch, PublicFrame } from '@/features/shell/public-page'
 import { isNotFoundError } from '@/lib/errors'
 import { detectTimezone } from '@/lib/locale'
@@ -331,35 +325,7 @@ function GuestPoll({
           <h1 className="font-display text-[2.25rem] leading-[0.95] text-balance sm:text-5xl lg:text-[3.25rem]">
             {plan.title}
           </h1>
-          <dl className="flex flex-col gap-1.5 text-sm lg:gap-2 lg:text-[0.9375rem]">
-            <div className="flex items-start gap-2.5">
-              <dt className="sr-only">{t('events.when')}</dt>
-              <CalendarDays
-                aria-hidden
-                className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]"
-              />
-              <dd>
-                {t('events.windowRange', {
-                  range: formatDateRange(plan.window_start, plan.window_end, { timeZone }),
-                  from: formatTime(
-                    minuteOfDayIn(plan.window_start, plan.day_start_minute, plan.timezone),
-                    { timeZone },
-                  ),
-                  to: formatTime(
-                    minuteOfDayIn(plan.window_start, plan.day_end_minute, plan.timezone),
-                    { timeZone },
-                  ),
-                })}
-              </dd>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <dt className="sr-only">{t('events.create.durationLabel')}</dt>
-              <Clock aria-hidden className="mt-0.5 size-4 shrink-0 text-mute lg:size-[1.125rem]" />
-              <dd>
-                {t('events.durationShort', { duration: formatDuration(plan.duration_minutes) })}
-              </dd>
-            </div>
-          </dl>
+          <WindowFacts grid={plan} durationMinutes={plan.duration_minutes} timeZone={timeZone} />
           <p className="hidden text-sm text-mute lg:block">
             {closes} {zoneNote}
           </p>
@@ -372,10 +338,13 @@ function GuestPoll({
           aria-labelledby="guest-poll-title"
         >
           {!editing ? (
-            <Sent
-              name={cleanName}
+            <SentCard
               stamp={justSent}
-              onEdit={() => {
+              stampLabel={t('guests.page.sentStamp')}
+              title={t('guests.page.sentTitle', { name: cleanName })}
+              body={t('guests.page.sentBody')}
+              actionLabel={t('guests.page.edit')}
+              onAction={() => {
                 setEditing(true)
                 setView('mine')
                 setJustSent(false)
@@ -481,33 +450,6 @@ function GuestPoll({
         </section>
       </div>
     </PublicFrame>
-  )
-}
-
-function Sent({ name, stamp, onEdit }: { name: string; stamp: boolean; onEdit: () => void }) {
-  return (
-    <Card tone="sunken" padding="roomy" className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      <div className="shrink-0 self-start sm:self-center">
-        {stamp ? (
-          <StampAnimation show rotate={-8}>
-            <Stamp tone="olive">{t('guests.page.sentStamp')}</Stamp>
-          </StampAnimation>
-        ) : (
-          <span className="inline-flex -rotate-[8deg]">
-            <Stamp tone="olive">{t('guests.page.sentStamp')}</Stamp>
-          </span>
-        )}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p role="status" className="flourish text-2xl leading-tight">
-          {t('guests.page.sentTitle', { name })}
-        </p>
-        <p className="text-sm text-mute">{t('guests.page.sentBody')}</p>
-      </div>
-      <Button variant="secondary" className="self-start sm:self-center" onClick={onEdit}>
-        {t('guests.page.edit')}
-      </Button>
-    </Card>
   )
 }
 

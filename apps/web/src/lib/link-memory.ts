@@ -42,7 +42,16 @@ export function linkMemory<T>(prefix: string, parse: (stored: unknown) => T | nu
   }
 }
 
-/** The stored value as a record, or an empty one. */
-export function storedRecord(stored: unknown): Record<string, unknown> {
-  return stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {}
+/** The usual record: the token that proves this browser wrote its answer, and the name typed. */
+export interface TokenMemory {
+  token: string
+  name: string
+}
+
+/** Reads a `TokenMemory`; a record without a token is nothing remembered. */
+export function parseTokenMemory(stored: unknown): TokenMemory | null {
+  const value = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {}
+  return typeof value.token === 'string' && value.token
+    ? { token: value.token, name: typeof value.name === 'string' ? value.name : '' }
+    : null
 }
