@@ -89,12 +89,10 @@ function parseAnswers(value: unknown): QuickPollAnswer[] {
       name: typeof a.name === 'string' ? a.name : null,
       mine: a.mine === true,
       slots: Array.isArray(a.slots)
-        ? a.slots.map((slot) => {
+        ? a.slots.flatMap((slot): QuickPollSlot[] => {
             const s = record(slot)
-            return {
-              slot_start: String(s.slot_start),
-              level: s.level === 'maybe' ? 'maybe' : 'yes',
-            }
+            if (typeof s.slot_start !== 'string') return []
+            return [{ slot_start: s.slot_start, level: s.level === 'maybe' ? 'maybe' : 'yes' }]
           })
         : [],
     }

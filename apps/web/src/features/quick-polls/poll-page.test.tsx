@@ -367,6 +367,60 @@ describe('PollPage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Board games' })).toBeVisible()
   })
 
+  it('closes a poll that is deleted while it is open on the page', async () => {
+    db().respond(
+      'rpc:quick_poll_preview',
+      { data: [open] },
+      { error: { message: 'quick_poll_not_found' } },
+    )
+    const { queryClient } = renderPage()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Board games' })).toBeVisible()
+
+    await queryClient.invalidateQueries()
+
+    expect(
+      await screen.findByRole('heading', { name: t('quickPolls.ended.notFoundTitle') }),
+    ).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Board games' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the poll and the times being painted when a refresh fails', async () => {
+    const offline = { error: { message: 'TypeError: Failed to fetch' } }
+    db().respond('rpc:quick_poll_preview', { data: [open] }, offline)
+    const { queryClient } = renderPage()
+    await screen.findByRole('heading', { level: 1, name: 'Board games' })
+    paint(slot('19:00'))
+
+    // The refresh tries three times before it gives up.
+    await queryClient.invalidateQueries()
+
+    expect(db().rpcArgs('quick_poll_preview')).toHaveLength(4)
+    expect(screen.getByRole('heading', { level: 1, name: 'Board games' })).toBeVisible()
+    expect(cell(slot('19:00'))).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByText(t('quickPolls.page.loadFailedTitle'))).not.toBeInTheDocument()
+  }, 15_000)
+
+  it('does not call times unsaved after the visitor backs out of editing', async () => {
+    pollMemory.write('poll123', { token: 'tok-ana', name: 'Ana' })
+    const mine = { ...open, answers: [{ ...ana, mine: true }] }
+    db().respond(
+      'rpc:quick_poll_preview',
+      { data: [mine] },
+      { data: [{ ...mine, status: 'closed' }] },
+    )
+    const { queryClient } = renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: t('quickPolls.page.edit') }))
+    paint(slot('19:00'))
+    fireEvent.click(screen.getByRole('button', { name: t('quickPolls.page.cancel') }))
+    await queryClient.invalidateQueries()
+
+    expect(
+      await screen.findByRole('heading', { name: t('quickPolls.page.closedTitle') }),
+    ).toBeVisible()
+    expect(screen.queryByText(t('quickPolls.page.unsaved'))).not.toBeInTheDocument()
+  })
+
   it('pitches an account to visitors without one, and not to people signed in', async () => {
     db().respond('rpc:quick_poll_preview', { data: [open] })
     const first = renderPage()

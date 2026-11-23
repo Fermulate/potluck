@@ -104,24 +104,25 @@ describe('fetchQuickPollPreview', () => {
     expect(await fetchQuickPollPreview(odd.client, 'abc', null)).toEqual({ status: 'expired' })
   })
 
-  it('reads odd answers defensively', async () => {
+  it('reads odd answers defensively, dropping slots that name no time', async () => {
+    const kept = { slot_start: '2026-06-01T08:30:00+00:00', level: 'maybe' }
     const row = {
       ...openRow,
-      answers: [null, { seat: 'x', name: 3, mine: 'yes', slots: [null, { level: 'no' }] }],
+      answers: [
+        null,
+        {
+          seat: 'x',
+          name: 3,
+          mine: 'yes',
+          slots: [null, { level: 'yes' }, { slot_start: 5, level: 'yes' }, kept],
+        },
+      ],
     }
     const fake = fakeSupabase().respond('rpc:quick_poll_preview', { data: [row] })
     const view = await fetchQuickPollPreview(fake.client, 'abc', null)
     expect(view.status === 'open' && view.answers).toEqual([
       { seat: 0, name: null, mine: false, slots: [] },
-      {
-        seat: 0,
-        name: null,
-        mine: false,
-        slots: [
-          { slot_start: 'undefined', level: 'yes' },
-          { slot_start: 'undefined', level: 'yes' },
-        ],
-      },
+      { seat: 0, name: null, mine: false, slots: [kept] },
     ])
     const none = fakeSupabase().respond('rpc:quick_poll_preview', {
       data: [{ ...openRow, answers: null }],

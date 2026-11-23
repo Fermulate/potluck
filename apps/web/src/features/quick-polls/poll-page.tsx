@@ -82,7 +82,10 @@ export function PollPage({ code }: { code: string }) {
     )
   }
 
-  if (preview.isError && !isNotFoundError(preview.error)) {
+  const gone = preview.isError && isNotFoundError(preview.error)
+  const view = gone ? undefined : preview.data
+
+  if (preview.isError && !gone && !view) {
     return (
       <PublicFrame>
         {noIndex}
@@ -102,7 +105,6 @@ export function PollPage({ code }: { code: string }) {
     )
   }
 
-  const view = preview.data
   if (!view || view.status === 'expired') {
     return (
       <>
@@ -131,6 +133,7 @@ export function PollPage({ code }: { code: string }) {
           setMemory(next)
         }}
         onDirty={() => setUnsaved(true)}
+        onDiscarded={() => setUnsaved(false)}
       />
     </>
   )
@@ -162,6 +165,7 @@ function Poll({
   unsaved,
   onSaved,
   onDirty,
+  onDiscarded,
 }: {
   code: string
   view: LivePoll
@@ -169,6 +173,7 @@ function Poll({
   unsaved: boolean
   onSaved: (memory: PollMemory) => void
   onDirty: () => void
+  onDiscarded: () => void
 }) {
   const queryClient = useQueryClient()
   const session = useSession()
@@ -284,7 +289,14 @@ function Poll({
               model={model}
               title={title}
               memory={memory}
-              onCancel={mine ? () => setMode('viewing') : undefined}
+              onCancel={
+                mine
+                  ? () => {
+                      setMode('viewing')
+                      onDiscarded()
+                    }
+                  : undefined
+              }
               onSaved={(next) => {
                 onSaved(next)
                 setMode('viewing')
