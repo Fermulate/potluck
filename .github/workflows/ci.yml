@@ -39,7 +39,7 @@ jobs:
               node -e "const s=require('./$f').total;console.log('| $pkg | '+['statements','branches','functions','lines'].map(k=>s[k].pct+'%').join(' | ')+' |')"
             done
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -58,7 +58,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: 3.0.0
       - run: pnpm install --frozen-lockfile
@@ -78,7 +78,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: 3.0.0
       - run: pnpm install --frozen-lockfile
@@ -107,7 +107,7 @@ jobs:
       - name: Realtime log
         if: failure()
         run: docker logs supabase_realtime_potluck 2>&1 | tail -n 400
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
