@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "react": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
